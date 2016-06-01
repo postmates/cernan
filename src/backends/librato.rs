@@ -5,7 +5,6 @@ use time;
 use rustc_serialize::json;
 use hyper::client::Client;
 use hyper::header::{ContentType, Authorization, Basic, Connection};
-use hyper;
 use url;
 use mime::Mime;
 
@@ -104,7 +103,7 @@ impl Backend for Librato {
         let payload = self.format_stats(&buckets, Some(time::get_time().sec));
         let mime: Mime = "application/json".parse().unwrap();
         let uri = url::Url::parse(&(self.host)).ok().expect("malformed url");
-        let res = client.post(uri)
+        client.post(uri)
             .body(&payload)
             .header(ContentType(mime))
             .header(Authorization(Basic {
@@ -114,7 +113,7 @@ impl Backend for Librato {
             .header(Connection::keep_alive())
             .send()
             .unwrap();
-        assert_eq!(res.status, hyper::Ok);
+        // assert_eq!(res.status, hyper::Ok);
     }
 }
 
