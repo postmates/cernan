@@ -59,17 +59,6 @@ proxy runs:
 --wavefront-host=<p>    The host wavefront proxy is running on. [default: 127.0.0.1].
 ```
 
-## Internal metrics
-
-This server tracks a few internal metrics:
-
-* `cernan.bad_messages` The number of invalid metrics that have been sent since
-  the last flush.
-* `cernan.total_messages` The number of messages received including invalid
-  messages.
-* `cernan.processing_time` How many ms were spent calculating derived metrics
-  in the current flush cycle.
-
 ## Prior Art
 
 The inspiration for the intial `cernan` work leans very heavily on Mark Story's
