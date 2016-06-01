@@ -1,5 +1,7 @@
 # cernan - telemetry aggregation and shipping, last up the ladder
 
+![cernan](Gene-Cernan-1-578x485.jpg)
+
 `cernan` is a telemetry and logging aggregation server. It exposes a statsd
 interface as of this writing. There are further ambitions.
 
