@@ -59,8 +59,6 @@ impl Buckets {
     /// ```
     pub fn add(&mut self, value: &Metric) {
         let name = value.name.to_owned();
-        // TODO there has to be a better way than value.name.to_owned()
-        // everything
         match value.kind {
             MetricKind::Counter(rate) => {
                 if !self.counters.contains_key(&name) {
