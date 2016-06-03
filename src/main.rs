@@ -1,6 +1,7 @@
 extern crate docopt;
 extern crate histogram;
 extern crate hyper;
+extern crate lru_cache;
 extern crate mime;
 extern crate rustc_serialize;
 extern crate time;

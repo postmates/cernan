@@ -3,17 +3,17 @@
 //! Each bucket contains a set of hashmaps containing
 //! each set of metrics received by clients.
 
-use std::collections::HashMap;
 use super::metric::{Metric, MetricKind};
 use time;
 use hist::Histogram;
+use lru_cache::LruCache;
 
 /// Buckets stores all metrics until they are flushed.
 pub struct Buckets {
-    counters: HashMap<String, f64>,
-    gauges: HashMap<String, f64>,
-    timers: HashMap<String, Histogram>,
-    histograms: HashMap<String, Histogram>,
+    counters: LruCache<String, f64>,
+    gauges: LruCache<String, f64>,
+    timers: LruCache<String, Histogram>,
+    histograms: LruCache<String, Histogram>,
 
     server_start_time: time::Timespec,
     last_message: time::Timespec,
@@ -33,10 +33,10 @@ impl Buckets {
     /// ```
     pub fn new() -> Buckets {
         Buckets {
-            counters: HashMap::new(),
-            gauges: HashMap::new(),
-            timers: HashMap::new(),
-            histograms: HashMap::new(),
+            counters: LruCache::new(10000),
+            gauges: LruCache::new(10000),
+            timers: LruCache::new(10000),
+            histograms: LruCache::new(10000),
             bad_messages: 0,
             total_messages: 0,
             last_message: time::get_time(),
@@ -59,28 +59,38 @@ impl Buckets {
     /// ```
     pub fn add(&mut self, value: &Metric) {
         let name = value.name.to_owned();
+        // TODO there has to be a better way than value.name.to_owned()
+        // everything
         match value.kind {
             MetricKind::Counter(rate) => {
-                let counter = self.counters.entry(name).or_insert(0.0);
+                if !self.counters.contains_key(&name) {
+                    let _ = self.counters.insert(value.name.to_owned(), 0.0);
+                };
+                let counter = self.counters.get_mut(&name).expect("shouldn't happen but did, counter");
                 *counter = *counter + value.value * (1.0 / rate);
             }
             MetricKind::Gauge => {
                 self.gauges.insert(name, value.value);
             }
             MetricKind::Histogram => {
-                let hist = self.histograms.entry(name).or_insert(Histogram::new());
+                if !self.histograms.contains_key(&name) {
+                    let _ = self.histograms.insert(value.name.to_owned(), Histogram::new());
+                };
+                let hist = self.histograms.get_mut(&name).expect("shouldn't happen but did, histogram");
                 let _ = (*hist).increment(value.value);
             }
             MetricKind::Timer => {
-                let slot = self.timers.entry(name).or_insert(Histogram::new());
-                let _ = (*slot).increment(value.value);
+                if !self.timers.contains_key(&name) {
+                    let _ = self.timers.insert(value.name.to_owned(), Histogram::new());
+                };
+                let tm = self.timers.get_mut(&name).expect("shouldn't happen but did, timer");
+                let _ = (*tm).increment(value.value);
             }
         }
         self.last_message = time::get_time();
         self.total_messages += 1;
     }
 
-    /// Increment the bad message count by one.
     /// Also increments tht total message count.
     pub fn add_bad_message(&mut self) {
         self.total_messages += 1;
@@ -93,22 +103,22 @@ impl Buckets {
     }
 
     /// Get the counters as a borrowed reference.
-    pub fn counters(&self) -> &HashMap<String, f64> {
+    pub fn counters(&self) -> &LruCache<String, f64> {
         &self.counters
     }
 
     /// Get the gauges as a borrowed reference.
-    pub fn gauges(&self) -> &HashMap<String, f64> {
+    pub fn gauges(&self) -> &LruCache<String, f64> {
         &self.gauges
     }
 
     /// Get the histograms as a borrowed reference.
-    pub fn histograms(&self) -> &HashMap<String, Histogram> {
+    pub fn histograms(&self) -> &LruCache<String, Histogram> {
         &self.histograms
     }
 
     /// Get the timers as a borrowed reference.
-    pub fn timers(&self) -> &HashMap<String, Histogram> {
+    pub fn timers(&self) -> &LruCache<String, Histogram> {
         &self.timers
     }
 
@@ -122,23 +132,6 @@ impl Buckets {
     pub fn start_time(&self) -> time::Timespec {
         self.server_start_time
     }
-
-    // /// Resets the counters, timers and histograms to 0. Gauge values are
-    // /// preserved. This emulates the behavior of etsy/statsd with default
-    // /// configuration options.
-    // pub fn reset(&mut self) {
-    //     for (_, value) in self.counters.iter_mut() {
-    //         *value = 0.0;
-    //     }
-    //     for (_, value) in self.timers.iter_mut() {
-    //         *value = Histogram::new();
-    //     }
-    //     for (_, value) in self.histograms.iter_mut() {
-    //         *value = Histogram::new();
-    //     }
-    //     self.bad_messages = 0;
-    //     self.total_messages = 0;
-    // }
 }
 
 
@@ -195,11 +188,11 @@ mod test {
 
         assert!(buckets.counters.contains_key("some.metric"),
                 "Should contain the metric key");
-        assert_eq!(Some(&1.0), buckets.counters.get("some.metric"));
+        assert_eq!(Some(&mut 1.0), buckets.counters.get_mut("some.metric"));
 
         // Increment counter
         buckets.add(&metric);
-        assert_eq!(Some(&2.0), buckets.counters.get("some.metric"));
+        assert_eq!(Some(&mut 2.0), buckets.counters.get_mut("some.metric"));
         assert_eq!(1, buckets.counters().len());
         assert_eq!(0, buckets.gauges().len());
     }
@@ -210,11 +203,11 @@ mod test {
         let metric = Metric::new("some.metric", 1.0, MetricKind::Counter(0.1));
 
         buckets.add(&metric);
-        assert_eq!(Some(&10.0), buckets.counters.get("some.metric"));
+        assert_eq!(Some(&mut 10.0), buckets.counters.get_mut("some.metric"));
 
         let metric_two = Metric::new("some.metric", 1.0, MetricKind::Counter(0.5));
         buckets.add(&metric_two);
-        assert_eq!(Some(&12.0), buckets.counters.get("some.metric"));
+        assert_eq!(Some(&mut 12.0), buckets.counters.get_mut("some.metric"));
     }
 
     #[test]
@@ -224,7 +217,7 @@ mod test {
         buckets.add(&metric);
         assert!(buckets.gauges.contains_key("some.metric"),
                 "Should contain the metric key");
-        assert_eq!(Some(&11.5), buckets.gauges.get("some.metric"));
+        assert_eq!(Some(&mut 11.5), buckets.gauges.get_mut("some.metric"));
         assert_eq!(1, buckets.gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
@@ -237,40 +230,19 @@ mod test {
         assert!(buckets.timers.contains_key("some.metric"),
                 "Should contain the metric key");
 
-        assert_eq!(Result::Ok(11.5), buckets.timers.get("some.metric").expect("hwhap").min());
+        assert_eq!(Result::Ok(11.5), buckets.timers.get_mut("some.metric").expect("hwhap").min());
 
-        // let metric_two = Metric::new("some.metric", 99.5, MetricKind::Timer);
-        // buckets.add(&metric_two);
+        let metric_two = Metric::new("some.metric", 99.5, MetricKind::Timer);
+        buckets.add(&metric_two);
 
-        // let metric_three = Metric::new("other.metric", 811.5, MetricKind::Timer);
-        // buckets.add(&metric_three);
-        // assert!(buckets.timers.contains_key("some.metric"),
-        //         "Should contain the metric key");
-        // assert!(buckets.timers.contains_key("other.metric"),
-        //         "Should contain the metric key");
+        let metric_three = Metric::new("other.metric", 811.5, MetricKind::Timer);
+        buckets.add(&metric_three);
+        assert!(buckets.timers.contains_key("some.metric"),
+                "Should contain the metric key");
+        assert!(buckets.timers.contains_key("other.metric"),
+                "Should contain the metric key");
 
-        // assert_eq!(Some(&vec![11.5, 99.5]), buckets.timers.get("some.metric"));
-        // assert_eq!(Some(&vec![811.5]), buckets.timers.get("other.metric"));
+        // assert_eq!(Some(&mut vec![11.5, 99.5]), buckets.timers.get_mut("some.metric"));
+        // assert_eq!(Some(&mut vec![811.5]), buckets.timers.get_mut("other.metric"));
     }
-
-    // #[test]
-    // fn test_reset_metrics() {
-    //     let mut buckets = Buckets::new();
-    //     buckets.add(&Metric::new("some.timer", 11.5, MetricKind::Timer));
-    //     buckets.add(&Metric::new("some.counter", 14.9, MetricKind::Counter(1.0)));
-    //     buckets.add(&Metric::new("some.gauge", 0.9, MetricKind::Gauge));
-
-    //     buckets.reset();
-    //     assert!(buckets.timers.contains_key("some.timer"));
-    //     assert_eq!(Some(&vec![]), buckets.timers.get("some.timer"));
-
-    //     assert!(buckets.counters.contains_key("some.counter"));
-    //     assert_eq!(Some(&0.0), buckets.counters.get("some.counter"));
-
-    //     assert!(buckets.gauges.contains_key("some.gauge"));
-    //     assert_eq!(Some(&0.9), buckets.gauges.get("some.gauge"));
-
-    //     assert_eq!(0, buckets.total_messages);
-    //     assert_eq!(0, buckets.bad_messages);
-    // }
 }
