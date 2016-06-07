@@ -64,7 +64,8 @@ impl Buckets {
                 if !self.counters.contains_key(&name) {
                     let _ = self.counters.insert(value.name.to_owned(), 0.0);
                 };
-                let counter = self.counters.get_mut(&name).expect("shouldn't happen but did, counter");
+                let counter =
+                    self.counters.get_mut(&name).expect("shouldn't happen but did, counter");
                 *counter = *counter + value.value * (1.0 / rate);
             }
             MetricKind::Gauge => {
@@ -74,7 +75,8 @@ impl Buckets {
                 if !self.histograms.contains_key(&name) {
                     let _ = self.histograms.insert(value.name.to_owned(), Histogram::new());
                 };
-                let hist = self.histograms.get_mut(&name).expect("shouldn't happen but did, histogram");
+                let hist =
+                    self.histograms.get_mut(&name).expect("shouldn't happen but did, histogram");
                 let _ = (*hist).increment(value.value);
             }
             MetricKind::Timer => {
@@ -228,7 +230,8 @@ mod test {
         assert!(buckets.timers.contains_key("some.metric"),
                 "Should contain the metric key");
 
-        assert_eq!(Result::Ok(11.5), buckets.timers.get_mut("some.metric").expect("hwhap").min());
+        assert_eq!(Result::Ok(11.5),
+                   buckets.timers.get_mut("some.metric").expect("hwhap").min());
 
         let metric_two = Metric::new("some.metric", 99.5, MetricKind::Timer);
         buckets.add(&metric_two);

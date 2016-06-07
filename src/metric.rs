@@ -39,6 +39,7 @@ pub struct Metric {
     pub kind: MetricKind,
     pub name: String,
     pub value: f64,
+    pub source: Option<String>,
 }
 
 impl Metric {
@@ -46,10 +47,18 @@ impl Metric {
     ///
     /// Uses the Into trait to allow both str and String types.
     pub fn new<S: Into<String>>(name: S, value: f64, kind: MetricKind) -> Metric {
+        Metric::new_with_source(name, value, kind, None)
+    }
+    pub fn new_with_source<S: Into<String>>(name: S,
+                                            value: f64,
+                                            kind: MetricKind,
+                                            source: Option<S>)
+                                            -> Metric {
         Metric {
             name: name.into(),
             value: value,
             kind: kind,
+            source: source.map(|x| x.into()),
         }
     }
 
@@ -80,11 +89,22 @@ impl Metric {
         // track position in string
         let mut idx = 0;
 
+        // TODO must interpret in the backends, not here
+        // // Get the source
+        // let source = match line.find('-') {
+        //     Some(pos) => {
+        //         idx = pos + 1;
+        //         Some(&line[0..pos])
+        //     }
+        //     _ => None,
+        // };
+
         // Get the metric name
-        let name = match line.find(':') {
+        let name = match line[idx..].find(':') {
             Some(pos) => {
-                idx = pos + 1;
-                &line[0..pos]
+                let start = idx;
+                idx += pos + 1;
+                &line[start..idx - 1]
             }
             _ => "",
         };
@@ -194,18 +214,30 @@ mod tests {
                      Metric::new("thing.total", 12.0, MetricKind::Counter(1.0)));
         valid.insert("thing.total:5.6|c|@123",
                      Metric::new("thing.total", 5.6, MetricKind::Counter(123.0)));
+        valid.insert("source-thing.total:5.6|c|@123",
+                     Metric::new_with_source("source-thing.total",
+                                             5.6,
+                                             MetricKind::Counter(123.0),
+                                             None));
+        // TODO somday...
+        // valid.insert("source-thing.total:5.6|c|@123",
+        // Metric::new_with_source("thing.total", 5.6, MetricKind::Counter(123.0), Some("source")));
 
         for (input, expected) in valid.iter() {
-            let result = Metric::parse(*input);
-            assert!(result.is_ok());
+            match Metric::parse(*input) {
+                Ok(actual) => {
+                    assert_eq!(expected.name, actual[0].name);
+                    assert_eq!(expected.value, actual[0].value);
 
-            let actual = result.ok().unwrap();
-            assert_eq!(expected.name, actual[0].name);
-            assert_eq!(expected.value, actual[0].value);
-
-            // TODO this is a silly way to test
-            assert_eq!(format!("{:?}", expected.kind),
-                       format!("{:?}", actual[0].kind));
+                    // TODO this is a silly way to test
+                    assert_eq!(format!("{:?}", expected.kind),
+                               format!("{:?}", actual[0].kind));
+                }
+                Err(err) => {
+                    println!("{:?}", err);
+                    panic!();
+                }
+            }
         }
     }
 

@@ -25,25 +25,29 @@ impl Histogram {
         self.inner_hist.increment(u64_val)
     }
 
-    pub fn percentile(&self, percent: f64) ->  Result<f64, &'static str> {
+    pub fn percentile(&self, percent: f64) -> Result<f64, &'static str> {
         match self.inner_hist.percentile(percent) {
-            Result::Ok(val) => Result::Ok( (((val as f64) / self.scaling_factor) * 100.0).round() / 100.0 ),
-            Result::Err(why) => Result::Err(why)
+            Result::Ok(val) => {
+                Result::Ok((((val as f64) / self.scaling_factor) * 100.0).round() / 100.0)
+            }
+            Result::Err(why) => Result::Err(why),
         }
     }
 
-    pub fn min(&self) ->  Result<f64, &'static str> {
+    pub fn min(&self) -> Result<f64, &'static str> {
         self.percentile(0.0)
     }
 
-    pub fn max(&self) ->  Result<f64, &'static str> {
+    pub fn max(&self) -> Result<f64, &'static str> {
         self.percentile(100.0)
     }
 
     pub fn mean(&self) -> Result<f64, &'static str> {
         match self.inner_hist.mean() {
-            Result::Ok(val) => Result::Ok( (((val as f64) / self.scaling_factor) * 100.0).round() / 100.0 ),
-            Result::Err(why) => Result::Err(why)
+            Result::Ok(val) => {
+                Result::Ok((((val as f64) / self.scaling_factor) * 100.0).round() / 100.0)
+            }
+            Result::Err(why) => Result::Err(why),
         }
     }
 }

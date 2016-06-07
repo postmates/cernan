@@ -5,23 +5,35 @@
 
 use docopt::Docopt;
 
-static USAGE: &'static str = "
+static USAGE: &'static str =
+    "
 Usage: cernan [options]
        cernan --help
 
 Options:
-  -h, --help              Print help information.
+  -h, --help              Print help \
+     information.
   -p, --port=<p>          The UDP port to bind to [default: 8125].
-  --flush-interval=<p>    How frequently to flush metrics to the backends in seconds. [default: 10].
+  \
+     --flush-interval=<p>    How frequently to flush metrics to the backends in seconds. \
+     [default: 10].
   --console               Enable the console backend.
-  --wavefront             Enable the wavefront backend.
+  --wavefront             \
+     Enable the wavefront backend.
   --librato               Enable the librato backend.
-  --metric-source=<p>     The source that will be reported to supporting backends. [default: cernan]
+  \
+     --metric-source=<p>     The source that will be reported to supporting backends. [default: \
+     cernan]
   --wavefront-port=<p>    The port wavefront proxy is running on. [default: 2878].
-  --wavefront-host=<p>    The host wavefront proxy is running on. [default: 127.0.0.1].
-  --librato-username=<p>  The librato username for authentication. [default: statsd].
-  --librato-host=<p>      The librato host to report to. [default: https://metrics-api.librato.com/v1/metrics].
-  --librato-token=<p>     The librato token for authentication. [default: statsd].
+  \
+     --wavefront-host=<p>    The host wavefront proxy is running on. [default: 127.0.0.1].
+  \
+     --librato-username=<p>  The librato username for authentication. [default: statsd].
+  \
+     --librato-host=<p>      The librato host to report to. [default: \
+     https://metrics-api.librato.com/v1/metrics].
+  --librato-token=<p>     The librato token for \
+     authentication. [default: statsd].
 ";
 
 /// Holds the parsed command line arguments
