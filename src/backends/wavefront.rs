@@ -5,6 +5,7 @@ use std::str::FromStr;
 use std::fmt::Write;
 use std::io::Write as IoWrite;
 use time;
+use regex::Regex;
 
 #[derive(Debug)]
 pub struct Wavefront {
@@ -38,6 +39,12 @@ impl Wavefront {
         };
         let mut stats = String::new();
 
+        let re = Regex::new(r"(?x)
+((?P<source>.*)-)?  # the source
+(?P<metric>.*) # the metric
+")
+            .unwrap();
+
         write!(stats,
                "{} {} {} source={}\n",
                "cernan.bad_messages",
@@ -54,22 +61,134 @@ impl Wavefront {
             .unwrap();
 
         for (key, value) in buckets.counters().iter() {
+            let caps = re.captures(&key).unwrap();
             write!(stats,
                    "{} {} {} source={}\n",
-                   key,
+                   caps.name("metric").unwrap().to_string(),
                    value,
                    start,
-                   self.source)
+                   caps.name("source").map(|x| x.to_string()).unwrap_or(self.source.clone()))
                 .unwrap();
         }
 
         for (key, value) in buckets.gauges().iter() {
+            let caps = re.captures(&key).unwrap();
             write!(stats,
                    "{} {} {} source={}\n",
-                   key,
+                   caps.name("metric").unwrap().to_string(),
                    value,
                    start,
-                   self.source)
+                   caps.name("source").map(|x| x.to_string()).unwrap_or(self.source.clone()))
+                .unwrap();
+        }
+
+        for (key, value) in buckets.histograms().iter() {
+            let caps = re.captures(&key).unwrap();
+            let key = caps.name("metric").unwrap().to_string();
+            let source = caps.name("source").map(|x| x.to_string()).unwrap_or(self.source.clone());
+            write!(stats,
+                   "{}.min {} {} source={}\n",
+                   key,
+                   value.min().unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.max {} {} source={}\n",
+                   key,
+                   value.max().unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.mean {} {} source={}\n",
+                   key,
+                   value.mean().unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.50 {} {} source={}\n",
+                   key,
+                   value.percentile(50.0).unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.90 {} {} source={}\n",
+                   key,
+                   value.percentile(90.0).unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.99 {} {} source={}\n",
+                   key,
+                   value.percentile(99.0).unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.999 {} {} source={}\n",
+                   key,
+                   value.percentile(99.9).unwrap(),
+                   start,
+                   source)
+                .unwrap();
+        }
+
+        for (key, value) in buckets.timers().iter() {
+            let caps = re.captures(&key).unwrap();
+            let key = caps.name("metric").unwrap().to_string();
+            let source = caps.name("source").map(|x| x.to_string()).unwrap_or(self.source.clone());
+            write!(stats,
+                   "{}.min {} {} source={}\n",
+                   key,
+                   value.min().unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.max {} {} source={}\n",
+                   key,
+                   value.max().unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.mean {} {} source={}\n",
+                   key,
+                   value.mean().unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.50 {} {} source={}\n",
+                   key,
+                   value.percentile(50.0).unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.90 {} {} source={}\n",
+                   key,
+                   value.percentile(90.0).unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.99 {} {} source={}\n",
+                   key,
+                   value.percentile(99.0).unwrap(),
+                   start,
+                   source)
+                .unwrap();
+            write!(stats,
+                   "{}.999 {} {} source={}\n",
+                   key,
+                   value.percentile(99.9).unwrap(),
+                   start,
+                   source)
                 .unwrap();
         }
 
@@ -115,11 +234,18 @@ mod test {
         let result = wavefront.format_stats(&buckets, Some(10101));
         let lines: Vec<&str> = result.lines().collect();
 
-        assert_eq!(4, lines.len());
         println!("{:?}", lines);
+        assert_eq!(11, lines.len());
         assert!(lines[0].contains("cernan.bad_messages 0 10101 source=test-src"));
         assert!(lines[1].contains("cernan.total_messages 5 10101 source=test-src"));
         assert!(lines[2].contains("test.counter 1 10101 source=test-src"));
         assert!(lines[3].contains("test.gauge 3.211 10101 source=test-src"));
+        assert!(lines[4].contains("test.timer.min 1.1 10101 source=test-src"));
+        assert!(lines[5].contains("test.timer.max 12.1 10101 source=test-src"));
+        assert!(lines[6].contains("test.timer.mean 5.43 10101 source=test-src"));
+        assert!(lines[7].contains("test.timer.50 12.1 10101 source=test-src"));
+        assert!(lines[8].contains("test.timer.90 12.1 10101 source=test-src"));
+        assert!(lines[9].contains("test.timer.99 12.1 10101 source=test-src"));
+        assert!(lines[10].contains("test.timer.999 12.1 10101 source=test-src"));
     }
 }

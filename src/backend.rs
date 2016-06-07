@@ -31,8 +31,10 @@ pub fn factory(console: &bool,
                                                          metric_source)));
     }
     if *librato {
-        backends.push(Box::new(librato::Librato::new(librato_username, librato_token,
-                                                     metric_source, librato_host)));
+        backends.push(Box::new(librato::Librato::new(librato_username,
+                                                     librato_token,
+                                                     metric_source,
+                                                     librato_host)));
     }
     backends.into_boxed_slice()
 }

@@ -6,6 +6,7 @@ extern crate mime;
 extern crate rustc_serialize;
 extern crate time;
 extern crate url;
+extern crate regex;
 
 use backend::Backend;
 use std::str;
