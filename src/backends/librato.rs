@@ -42,13 +42,13 @@ impl ToJson for LCounter {
 }
 
 #[derive(Debug)]
-pub struct LGuage {
+pub struct LGauge {
     name: String,
     value: f64,
     source: Option<String>,
 }
 
-impl ToJson for LGuage {
+impl ToJson for LGauge {
     fn to_json(&self) -> Json {
         let mut d = BTreeMap::new();
         d.insert("name".to_string(), self.name.to_json());
@@ -66,7 +66,7 @@ impl ToJson for LGuage {
 
 #[derive(Debug)]
 pub struct LPayload {
-    guages: Vec<LGuage>,
+    gauges: Vec<LGauge>,
     counters: Vec<LCounter>,
     source: String,
     measure_time: i64,
@@ -75,7 +75,7 @@ pub struct LPayload {
 impl ToJson for LPayload {
     fn to_json(&self) -> Json {
         let mut d = BTreeMap::new();
-        d.insert("guages".to_string(), self.guages.to_json());
+        d.insert("gauges".to_string(), self.gauges.to_json());
         d.insert("counters".to_string(), self.counters.to_json());
         d.insert("source".to_string(), self.source.to_json());
         d.insert("measure_time".to_string(), self.measure_time.to_json());
@@ -114,7 +114,7 @@ impl Librato {
 ")
             .unwrap();
 
-        let mut guages = vec![];
+        let mut gauges = vec![];
         let mut counters = vec![];
 
         counters.push(LCounter {
@@ -138,7 +138,7 @@ impl Librato {
         }
         for (key, value) in buckets.gauges().iter() {
             let caps = re.captures(&key).unwrap();
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: caps.name("metric").unwrap().to_string(),
                 value: *value,
                 source: caps.name("source").map(|x| x.to_string()),
@@ -147,37 +147,37 @@ impl Librato {
 
         for (key, value) in buckets.histograms().iter() {
             let caps = re.captures(&key).unwrap();
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.min", caps.name("metric").unwrap().to_string()),
                 value: value.min().unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.max", caps.name("metric").unwrap().to_string()),
                 value: value.max().unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.mean", caps.name("metric").unwrap().to_string()),
                 value: value.mean().unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.50", caps.name("metric").unwrap().to_string()),
                 value: value.percentile(50.0).unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.90", caps.name("metric").unwrap().to_string()),
                 value: value.percentile(90.0).unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.99", caps.name("metric").unwrap().to_string()),
                 value: value.percentile(99.0).unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.999", caps.name("metric").unwrap().to_string()),
                 value: value.percentile(99.9).unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
@@ -186,37 +186,37 @@ impl Librato {
 
         for (key, value) in buckets.timers().iter() {
             let caps = re.captures(&key).unwrap();
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.min", caps.name("metric").unwrap().to_string()),
                 value: value.min().unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.max", caps.name("metric").unwrap().to_string()),
                 value: value.max().unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.mean", caps.name("metric").unwrap().to_string()),
                 value: value.mean().unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.50", caps.name("metric").unwrap().to_string()),
                 value: value.percentile(50.0).unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.90", caps.name("metric").unwrap().to_string()),
                 value: value.percentile(90.0).unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.99", caps.name("metric").unwrap().to_string()),
                 value: value.percentile(99.0).unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
             });
-            guages.push(LGuage {
+            gauges.push(LGauge {
                 name: format!("{}.999", caps.name("metric").unwrap().to_string()),
                 value: value.percentile(99.9).unwrap(),
                 source: caps.name("source").map(|x| x.to_string()),
@@ -224,7 +224,7 @@ impl Librato {
         }
 
         let obj = LPayload {
-            guages: guages,
+            gauges: gauges,
             counters: counters,
             source: self.source.clone(),
             measure_time: start,
@@ -311,7 +311,7 @@ mod test {
 
         assert_eq!("{\"counters\":[{\"name\":\"cernan.bad_messages\",\"value\":0.0},{\"name\":\
                     \"cernan.total_messages\",\"value\":6.0},{\"name\":\"test.counter\",\
-                    \"value\":1.0}],\"guages\":[{\"name\":\"test.gauge\",\"value\":3.211},\
+                    \"value\":1.0}],\"gauges\":[{\"name\":\"test.gauge\",\"value\":3.211},\
                     {\"name\":\"test.gauge.2\",\"source\":\"src\",\"value\":3.211},{\"name\":\
                     \"test.timer.min\",\"value\":1.1},{\"name\":\"test.timer.max\",\"value\":12.\
                     1},{\"name\":\"test.timer.mean\",\"value\":5.43},{\"name\":\"test.timer.50\",\
