@@ -54,8 +54,7 @@ pub struct Args {
 }
 
 pub fn parse_args() -> Args {
-    let args: Args = Docopt::new(USAGE)
+    Docopt::new(USAGE)
         .and_then(|d| d.decode())
-        .unwrap_or_else(|e| e.exit());
-    args
+        .unwrap_or_else(|e| e.exit())
 }

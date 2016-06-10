@@ -1,3 +1,8 @@
+// see bench_prs comment
+// #![feature(test)]
+// #[cfg(test)]
+// extern crate test;
+
 extern crate docopt;
 extern crate histogram;
 extern crate hyper;
@@ -8,7 +13,6 @@ extern crate time;
 extern crate url;
 extern crate regex;
 
-use backend::Backend;
 use std::str;
 use std::sync::mpsc::channel;
 use std::thread;
@@ -17,6 +21,9 @@ mod backend;
 mod buckets;
 mod cli;
 mod metric;
+mod metrics {
+    pub mod statsd;
+}
 mod server;
 mod hist;
 mod backends {
@@ -73,24 +80,23 @@ fn main() {
                 for backend in backends.iter_mut() {
                     backend.flush(&buckets);
                 }
-                // buckets.reset();
             }
 
             server::Event::UdpMessage(buf) => {
                 str::from_utf8(&buf)
                     .map(|val| {
-                        metric::Metric::parse(&val)
-                            .and_then(|metrics| {
+                        match metric::Metric::parse(&val) {
+                            Some(metrics) => {
                                 for metric in metrics.iter() {
                                     buckets.add(&metric);
                                 }
                                 Ok(metrics.len())
-                            })
-                            .or_else(|err| {
+                            }
+                            None => {
                                 buckets.add_bad_message();
-                                Err(err)
-                            })
-                            .ok();
+                                Err("could not interpret")
+                            }
+                        }
                     })
                     .ok();
             }

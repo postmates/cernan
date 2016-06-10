@@ -66,7 +66,7 @@ impl Buckets {
                 };
                 let counter =
                     self.counters.get_mut(&name).expect("shouldn't happen but did, counter");
-                *counter = *counter + value.value * (1.0 / rate);
+                *counter += value.value * (1.0 / rate);
             }
             MetricKind::Gauge => {
                 self.gauges.insert(name, value.value);
