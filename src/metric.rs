@@ -91,13 +91,13 @@ mod tests {
 
     #[test]
     fn test_metric_multiple() {
-        let res = Metric::parse("a.b:12.1|g\nb.c:13.2|c").unwrap();
+        let res = Metric::parse("a.b:12.1|g\nb_c:13.2|c").unwrap();
         assert_eq!(2, res.len());
 
         assert_eq!("a.b", res[0].name);
         assert_eq!(12.1, res[0].value);
 
-        assert_eq!("b.c", res[1].name);
+        assert_eq!("b_c", res[1].name);
         assert_eq!(13.2, res[1].value);
     }
 
