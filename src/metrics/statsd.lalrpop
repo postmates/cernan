@@ -1,0 +1,22 @@
+use std::str::FromStr;
+use metric::{MetricKind, Metric};
+
+grammar;
+
+Kind: MetricKind = {
+    "g" => MetricKind::Gauge,
+    "ms" => MetricKind::Timer,
+    "h" => MetricKind::Histogram,
+    "c" => MetricKind::Counter(1.0),
+    "c@" <Num> => MetricKind::Counter(<>),
+};
+
+MetricName: String = <s:r"[_A-Za-z\.-]+"> => String::from_str(s).unwrap();
+
+Num: f64 = <s:r"[-+]?[0-9]+\.?[0-9]*"> => f64::from_str(s).unwrap();
+
+MetricLine: Metric = {
+    <name:MetricName> ":" <val:Num> "|" <k:Kind> => Metric::new(name, val, k)
+};
+
+pub MetricPayload: Vec<Metric> = { (<MetricLine>)+ };

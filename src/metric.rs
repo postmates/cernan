@@ -1,40 +1,14 @@
-/// Internal metric representation
-///
-use std::fmt;
+use metrics::statsd;
 
-
-/// Enum of metric types
+#[derive(PartialEq, Debug)]
 pub enum MetricKind {
-    Counter(f64), // sample rate
+    Counter(f64),
     Gauge,
     Timer,
     Histogram,
 }
 
-impl fmt::Debug for MetricKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            MetricKind::Gauge => write!(f, "Gauge"),
-            MetricKind::Histogram => write!(f, "Histogram"),
-            MetricKind::Timer => write!(f, "Timer"),
-            MetricKind::Counter(s) => write!(f, "Counter(s={})", s),
-        }
-    }
-}
-
-
-/// Error types for parsing Metrics from strings.
-///
-#[derive(Debug)]
-pub enum ParseError {
-    // Error message, column
-    SyntaxError(&'static str, usize),
-}
-
-
-/// Metric value objects.
-///
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Metric {
     pub kind: MetricKind,
     pub name: String,
@@ -61,7 +35,6 @@ impl Metric {
             source: source.map(|x| x.into()),
         }
     }
-
     /// Valid message formats are:
     ///
     /// - `<str:metric_name>:<f64:value>|<str:type>`
@@ -69,192 +42,156 @@ impl Metric {
     ///
     /// Multiple metrics can be sent in a single UDP packet
     /// separated by newlines.
-    pub fn parse(source: &str) -> Result<Vec<Metric>, ParseError> {
-        let mut results: Vec<Metric> = Vec::new();
-
-        for line in source.lines() {
-            match Metric::parse_line(line) {
-                Ok(metric) => results.push(metric),
-                Err(e) => return Err(e),
-            }
-        }
-        if results.len() == 0 {
-            return Err(ParseError::SyntaxError("No metrics found", 0));
-        }
-        Ok(results)
-    }
-
-    /// Parses a metric from each line in a packet.
-    fn parse_line(line: &str) -> Result<Metric, ParseError> {
-        // track position in string
-        let mut idx = 0;
-
-        // TODO must interpret in the backends, not here
-        // // Get the source
-        // let source = match line.find('-') {
-        //     Some(pos) => {
-        //         idx = pos + 1;
-        //         Some(&line[0..pos])
-        //     }
-        //     _ => None,
-        // };
-
-        // Get the metric name
-        let name = match line[idx..].find(':') {
-            Some(pos) => {
-                let start = idx;
-                idx += pos + 1;
-                &line[start..idx - 1]
-            }
-            _ => "",
-        };
-        if name.is_empty() {
-            return Err(ParseError::SyntaxError("Metrics require a name.", idx));
-        }
-
-        // Get the float val
-        let value = match line[idx..].find('|') {
-            Some(pos) => {
-                let start = idx;
-                idx += pos + 1;
-                line[start..idx - 1].parse::<f64>().ok().unwrap()
-            }
-            _ => return Err(ParseError::SyntaxError("Metrics require a value.", idx)),
-        };
-        let kind_name = match line[idx..].find('|') {
-            Some(pos) => {
-                let start = idx;
-                idx += pos;
-                line[start..idx].to_string()
-            }
-            _ => line[idx..].to_string(),
-        };
-
-        // Get kind parts, use deref/ref tricks
-        // to get types to match
-        let kind = match &*kind_name {
-            "ms" => MetricKind::Timer,
-            "g" => MetricKind::Gauge,
-            "h" => MetricKind::Histogram,
-            "c" => {
-                let rate: f64 = match line[idx..].find('@') {
-                    Some(pos) => {
-                        idx += pos + 1;
-                        line[idx..].parse::<f64>().ok().unwrap()
-                    }
-                    _ => 1.0,
-                };
-                MetricKind::Counter(rate)
-            }
-            _ => return Err(ParseError::SyntaxError("Unknown metric type.", idx)),
-        };
-        Ok(Metric::new(name, value, kind))
+    pub fn parse(source: &str) -> Option<Vec<Metric>> {
+        statsd::parse_MetricPayload(source).ok()
     }
 }
 
-
-
-// Tests
-//
 #[cfg(test)]
 mod tests {
     use metric::{Metric, MetricKind};
-    use std::collections::HashMap;
+    use metrics::statsd;
+    //    use test::Bencher; // see bench_prs
 
     #[test]
-    fn test_metric_kind_debug_fmt() {
-        assert_eq!("Gauge", format!("{:?}", MetricKind::Gauge));
-        assert_eq!("Histogram", format!("{:?}", MetricKind::Histogram));
-        assert_eq!("Timer", format!("{:?}", MetricKind::Timer));
-        assert_eq!("Counter(s=6)", format!("{:?}", MetricKind::Counter(6.0)));
+    fn test_parse_metric_via_api() {
+        let pyld = "fst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@2";
+        let prs = Metric::parse(pyld);
+
+        assert!(prs.is_some());
+        let prs_pyld = prs.unwrap();
+
+        assert_eq!(prs_pyld[0], Metric::new("fst", -1.1, MetricKind::Timer));
+        assert_eq!(prs_pyld[1], Metric::new("snd", 2.2, MetricKind::Gauge));
+        assert_eq!(prs_pyld[2], Metric::new("thd", 3.3, MetricKind::Histogram));
+        assert_eq!(prs_pyld[3],
+                   Metric::new("fth", 4.0, MetricKind::Counter(1.0)));
+        assert_eq!(prs_pyld[4],
+                   Metric::new("fvth", 5.5, MetricKind::Counter(2.0)));
+    }
+
+    #[test]
+    fn test_parse_metric_payload() {
+        assert_eq!(statsd::parse_MetricPayload("foo.bar:12.3|ms").unwrap(),
+                   [Metric::new("foo.bar", 12.3, MetricKind::Timer)]);
+        assert_eq!(statsd::parse_MetricPayload("first:1.1|ms\nsnd:2.2|g\n").unwrap(),
+                   [Metric::new("first", 1.1, MetricKind::Timer),
+                    Metric::new("snd", 2.2, MetricKind::Gauge)]);
     }
 
     #[test]
     fn test_metric_parse_invalid_no_name() {
-        let res = Metric::parse("");
-        assert!(res.is_err(), "Should have an error");
-        assert!(!res.is_ok(), "Should have an error");
+        assert_eq!(None, Metric::parse(""));
     }
 
     #[test]
     fn test_metric_parse_invalid_no_value() {
-        let res = Metric::parse("foo:");
-        assert!(res.is_err(), "Should have an error");
-        assert!(!res.is_ok(), "Should have an error");
+        assert_eq!(None, Metric::parse("foo:"));
     }
 
     #[test]
     fn test_metric_multiple() {
-        let res = Metric::parse("a.b:12.1|g\nb.c:13.2|c").unwrap();
+        let res = Metric::parse("a.b:12.1|g\nb_c:13.2|c").unwrap();
         assert_eq!(2, res.len());
 
         assert_eq!("a.b", res[0].name);
         assert_eq!(12.1, res[0].value);
 
-        assert_eq!("b.c", res[1].name);
+        assert_eq!("b_c", res[1].name);
         assert_eq!(13.2, res[1].value);
     }
 
     #[test]
-    fn test_metric_valid() {
-        let mut valid = HashMap::new();
-        valid.insert("foo.test:12.3|ms\n",
-                     Metric::new("foo.test", 12.3, MetricKind::Timer));
-        valid.insert("foo.test:12.3|ms",
-                     Metric::new("foo.test", 12.3, MetricKind::Timer));
-        valid.insert("test:18.123|g",
-                     Metric::new("test", 18.123, MetricKind::Gauge));
-        valid.insert("test:18.123|g",
-                     Metric::new("test", 18.123, MetricKind::Gauge));
-        valid.insert("hist_test:18.123|h",
-                     Metric::new("hist_test", 18.123, MetricKind::Histogram));
-        valid.insert("hist_test:18.123|h",
-                     Metric::new("hist_test", 18.123, MetricKind::Histogram));
-        valid.insert("thing.total:12|c",
-                     Metric::new("thing.total", 12.0, MetricKind::Counter(1.0)));
-        valid.insert("thing.total:5.6|c|@123",
-                     Metric::new("thing.total", 5.6, MetricKind::Counter(123.0)));
-        valid.insert("source-thing.total:5.6|c|@123",
-                     Metric::new_with_source("source-thing.total",
-                                             5.6,
-                                             MetricKind::Counter(123.0),
-                                             None));
-        // TODO somday...
-        // valid.insert("source-thing.total:5.6|c|@123",
-        // Metric::new_with_source("thing.total", 5.6, MetricKind::Counter(123.0), Some("source")));
-
-        for (input, expected) in valid.iter() {
-            match Metric::parse(*input) {
-                Ok(actual) => {
-                    assert_eq!(expected.name, actual[0].name);
-                    assert_eq!(expected.value, actual[0].value);
-
-                    // TODO this is a silly way to test
-                    assert_eq!(format!("{:?}", expected.kind),
-                               format!("{:?}", actual[0].kind));
-                }
-                Err(err) => {
-                    println!("{:?}", err);
-                    panic!();
-                }
-            }
-        }
-    }
-
-    #[test]
     fn test_metric_invalid() {
-        let invalid = vec!["",
-                           "metric",
-                           "metric|11:",
-                           "metric|12",
-                           "metric:13|",
-                           "metric:14|c@1",
-                           ":|@",
-                           ":1.0|c"];
+        let invalid = vec!["", "metric", "metric|11:", "metric|12", "metric:13|", ":|@", ":1.0|c"];
         for input in invalid.iter() {
-            println!("{:?}", input);
             let result = Metric::parse(*input);
-            assert!(result.is_err());
+            assert!(result.is_none());
         }
     }
+
+    // Benchmarking requires a nightly rust compiler as the 'test' crate is not
+    // enabled by default. Dunno how to use feature flags yet so... gonna just
+    // comment this hot mess out.
+    //
+    // My machine reports that bench_prs is done in 92ns (+/- 5ns). Not bad.
+
+    // #[bench]
+    // fn bench_prs(b: &mut Bencher) {
+    //     let pyld = "zx4HyAkdvG7huGSnzo6Q8zTOvXIknvpamlhnvHsMMbk=:1|c\n\
+    //                 Y4Bdiu/QXHxtIojiX9BoqkgYRJBb3XSjm+J3MBOIgrs=:1|ms\n\
+    //                 RUiqIW2JBfcJ2GJtmk8IIomPfS3J6cnEvzywCM8cZe4=:1|g\n\
+    //                 llWoPejpG64f92NiWPmfJAbWBhcmpO3XreJ6wpMqF0c=:1|ms\n\
+    //                 P711QRWxqae6YFfLGJJSaoL0nQki7Lqw7+C7PZDrbDk=:1|c\n\
+    //                 kI+3B99qj5v8qlgIxiGA3MbSzwIIZWHIjho1Pf4wfN0=:1|ms\n\
+    //                 auaVrFU0SxVv3krrFcnFkO0HLA2fIrOGghISUuAYEI8=:1|ms\n\
+    //                 oE8bmBQVneQ+EYQ1eENvhXpR7gVcIxEZALh44B/JTb0=:1|g\n\
+    //                 PmvFGAaAzVeVSQOZ36yY2Z9PjuGoLzp87Ws1GbLMWUk=:1|h\n\
+    //                 gDan61yoL3Y2iClroFOgtrCoykMeWSxyzCgpleRXWf4=:1|g\n\
+    //                 8MhQyM7iQe2M+oOKHQDUoxemDHpt/oxU9AA1XIhDMaQ=:1|h\n\
+    //                 awMrx0B3xGUtjCokvuflg+vX7uKtEenx0FN1jNTYevQ=:1|g\n\
+    //                 6SChxeCuYHI6zKaOwa5FZ65nxY+MwVMl4PaxEsVabrw=:1|ms\n\
+    //                 h75DU0EjnCoqlfI4wOfPMFohol9WjxK7oJWQLMEoPfE=:1|c\n\
+    //                 O+daVVqZG2PoJVULhNGZDqbT9wGHwWkjM/JEDrek+fs=:1|g\n\
+    //                 8ugoT+52Mpi2Gai/rfJFJdkxsQ6r6Vc4PUQRCd5hwXo=:1|ms\n\
+    //                 1Z2nFxByzEdQWRUFzO0AqyGicLJ9VhjGw5suKYAwX14=:1|g\n\
+    //                 s6p3H6tycu373vqGQUznWcYqxPvSnydUKnFO5FpFpw0=:1|g\n\
+    //                 Y91xSYI5PbOnHW47UQd2zp5nQoVXmyXnmUjeEoenQuM=:1|ms\n\
+    //                 wUDIBy7yHaY/483FumSTJgy56oRkfK1jUQLV1ZY08YY=:1|g\n\
+    //                 0uNciXHoQQNSxFdkTLmD/ur1S++xIqTZihUgaN6fXF4=:1|c\n\
+    //                 X5UoRnAP+4mJu3d5ewZrIPIc1kSUJiuyjS11tiZ+W1M=:1|h\n\
+    //                 0weP/1Jps89hWXQblUCXrox/QEKrC79o7Ev1HOQf/Co=:1|ms\n\
+    //                 354hZbr2jbbEhrszmhZkw0SRZQjOVM/XSRZX5roUcco=:1|g\n\
+    //                 +e1LX1c7TW0WyhZi5nxMXUdxHTKV7Yo5JtL0iKVXYic=:1|ms\n\
+    //                 jHTgSscT9oHbVTdDkZ0vEb6oKYlx6WLRdWYexhbqqJs=:1|c\n\
+    //                 AkPhryt82Bmv0mgJeAX4+woajfoSWXpg6AnnwN5MyjA=:1|g\n\
+    //                 wK6tk2hQR7TAwzwg7tQtfnMkhvribiFmpLriFL3M4X8=:1|c\n\
+    //                 VJQ5NIZff5hRR1KGPmxWl43zT7ma6pVHN5U7/nSRGLM=:1|h\n\
+    //                 JmSjP/7xdCe7PHOevRBqGV0Dwn7wzjcd66rAAA586Js=:1|h\n\
+    //                 D+3Kl+Wqqm1GFceIfhwE+ZZKmxSRF43Sf0cy9LS56Wo=:1|h\n\
+    //                 EKMY1NJN8SEtarCNkU1/i4BUndegetyP1mCi/6tnkYw=:1|h\n\
+    //                 yP82/VEGAvWv3YAW2l6Y4H/3ldSeHDM85rRnE0SwCK8=:1|h\n\
+    //                 uSMgywUHDPLXE8QETushJgX/+H6f6+65NJiJeyQ+YjI=:1|ms\n\
+    //                 3k5T7LBioOj4nV73e/bOp/fKMcjNGBRjyWoE2H6x9Ow=:1|c\n\
+    //                 D0t7MH6/SmB7qZqP5gziDEjYHs67xhH/BgIWMPNHfDE=:1|g\n\
+    //                 robrcyfL3UizvdZDhKi3zSpz/DywA8FOP+zASCK+6Dk=:1|h\n\
+    //                 s+pDfjNbOUsy0o/TBsPgHCE/E2mmQsHK8Y3sWxgAa+Y=:1|ms\n\
+    //                 h9rwJsIbH2GdOT6Xu9GUw21VwS1gkc8ImVH49QlMA/w=:1|h\n\
+    //                 qTAgmPEycTwfxNLWNqfMgxhntmSah8zZbWPU2/JJ6Hk=:1|ms\n\
+    //                 BkMY8URiNnve9bAFW2shRrcnhHCRdiSoQm+hXhiTVvw=:1|g\n\
+    //                 wYvy59tY6U6mIxbF/qXDJcrF5xFC2qoYpsgG5W7qlrs=:1|g\n\
+    //                 cRQ6pQiTTzXSUSCrUsDrQsRObJB3yHnUYjukS+3IeYk=:1|g\n\
+    //                 TN9Hdl6DVWwB16EsD7ISLtLFlyriyDJoSWIRVQpPVeo=:1|ms\n\
+    //                 4xDNemA8wpV/KKSsGLtyu2fPSnRduMqGxjC96/B5maM=:1|ms\n\
+    //                 PhRyO0jH1bIwmc41dyxR4+JWUTM/UOTRIG1W1teaxCo=:1|c\n\
+    //                 +RKV6Sop3WWT4CdX9zjqGuX8aR+cQvOaqp+MsQzeWKc=:1|c\n\
+    //                 o7YLSwIjozy0Sbc2eWLvxtWHFcdgQo95dk9FPYxc5ec=:1|ms\n\
+    //                 t8eUeerzyR8NdAZCgaXoLW7iSGTQW5n6IYn19/ygQlk=:1|h\n\
+    //                 Jiv4SlitOgtMZO8trj9Z+ISK/9eomrLEy8A0/+RzNO8=:1|h\n\
+    //                 vzKzIbVNa+JAniJ0VzmfdhH2sb7hig8+bkYs81aEj8k=:1|c\n\
+    //                 DKi4McWiyBlt4BaGNaM6aE1NDk1F6S65I/9RfjXk5v0=:1|ms\n\
+    //                 vgqITgM+DHJmtBAtzQCSsgk7Ls8lIQMMa3f4Xz+udTw=:1|c\n\
+    //                 7rREqAsT2sEnS52hBA7Q/2UOyCX/6VS7SmILgGwT5sk=:1|c\n\
+    //                 zh0d1MbgzTRPD7Kuqp5ooLfjdteGs4KsZdqWPNvA4+Y=:1|c\n\
+    //                 fpPAvxVD35KoaW2GYqn1KMvwUJlta979vZl35NXEfgk=:1|h\n\
+    //                 ZO6SosbTOG0p4AmABKgUBj0RCfLLhgQTUpBbfbIPpmE=:1|c\n\
+    //                 1kNmuWejzBKSBg7HXMPwRCpQmm07BgvcUn+D5iixbtY=:1|h\n\
+    //                 55ehcp2TCN/kqDm+fgyp1+KqxxAAXyEOMn7p0w3XsbY=:1|h\n\
+    //                 vZtRxtrJ0sqzwTgSFIQezMtGy793kl35dsZPSXL0y8k=:1|c\n\
+    //                 I2mkKXd1wD+wDHFU8EjoVOAQtJxGPKyerpJfu0/QqBg=:1|h\n\
+    //                 q0SJKKp5AOh75hit5h1S+mqt8igVw41HgEDVQ2BpPFs=:1|ms\n\
+    //                 2L8IU/jsCpRz2m+oTdzLTl8BNhYty0/kIZaCdGKQUgs=:1|c\n\
+    //                 LFH8cHHyQACeHlWeqqEmZSW6f71IDu2Vp6k7oAga+R8=:1|h\n\
+    //                 MnvnNCF2Ue+NEyM/KGuSkQUcZimqafzIQUJ8hq7P2gA=:1|g\n\
+    //                 nxmLv87CwglPXxYZY8/BWMedQvpu4zdGcdgd0iiLIcc=:1|h\n\
+    //                 WR6SG0WXJ7Viz00u7ABuqqFZQC9xw0qGqkE6IBKxcmY=:1|c\n\
+    //                 XRzDqE3gS/DnYjShhj+j8PNVm/awAXrchgDJt4jMBmk=:1|g\n\
+    //                 RGsDIhnYn0L5VXY4RvamIR3lBJhuKaaMteMmEpPEHJM=:1|ms\n\
+    //                 2KvUfKtOb2N+9309VIvDYGau5wm6lCj8rlInEQLYloM=:1|c\n\
+    //                 0xzfkjzDSdq27Wf8/BjphGQSpewXCLdehAkyl/EiZNU=:1|c\n\
+    //                 aG/MehOevcIbW0JEmuCFV24TJXG6ig7rkOOMEXbaZaQ=:1|c\n\
+    //                 kxGitiVkhY6COUoHkVJcPdp0kXeIriHOY/G3yGhAx+8=:1|ms\n\
+    //                 BLkmbzEPpcm+q5HOwPfBP5DbcegKIn/TtkJ7r0tiMts=:1|ms\n";
+    //     b.iter(|| Metric::parse(pyld));
+    // }
 }
