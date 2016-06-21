@@ -72,6 +72,8 @@ mod tests {
 
     #[test]
     fn test_parse_metric_payload() {
+        assert_eq!(statsd::parse_MetricPayload("foo.bar.99:12.3|ms").unwrap(),
+                   [Metric::new("foo.bar.99", 12.3, MetricKind::Timer)]);
         assert_eq!(statsd::parse_MetricPayload("foo.bar:12.3|ms").unwrap(),
                    [Metric::new("foo.bar", 12.3, MetricKind::Timer)]);
         assert_eq!(statsd::parse_MetricPayload("first:1.1|ms\nsnd:2.2|g\n").unwrap(),
