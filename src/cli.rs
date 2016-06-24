@@ -22,8 +22,7 @@ Options:
      Enable the wavefront backend.
   --librato               Enable the librato backend.
   \
-     --metric-source=<p>     The source that will be reported to supporting backends. [default: \
-     cernan]
+  --tags=<p>     A comma separated list of tags to report to supporting backends. [default: source=cernan]
   --wavefront-port=<p>    The port wavefront proxy is running on. [default: 2878].
   \
      --wavefront-host=<p>    The host wavefront proxy is running on. [default: 127.0.0.1].
@@ -44,7 +43,7 @@ pub struct Args {
     pub flag_console: bool,
     pub flag_wavefront: bool,
     pub flag_librato: bool,
-    pub flag_metric_source: String,
+    pub flag_tags: String,
     pub flag_wavefront_port: u16,
     pub flag_wavefront_host: String,
     pub flag_librato_username: String,

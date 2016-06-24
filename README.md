@@ -36,12 +36,13 @@ that much. To backends use the CLI flags:
 --wavefront           Enable the wavefront backend.
 ```
 
-For backends which support it `cernan` can report the source of the metric. In
-AWS you might choose to set this to the instance ID. You may set the source like
-so:
+For backends which support it `cernan` can report metadata about the
+metric. These are called "tags" by some aggregators and `cernan` uses this
+terminology. In AWS you might choose to include your instance ID with each
+metric point, as well as the service name. You may set tags like so:
 
 ```
---metric-source=<p>     The source that will be reported to supporting backends. [default: cernan]
+--tags=<p>     A comma separated list of tags to report to supporting backends. [default: source=cernan]
 ```
 
 The librato backend has additional options for defining authentication:

@@ -39,7 +39,7 @@ fn main() {
     let mut backends = backend::factory(&args.flag_console,
                                         &args.flag_wavefront,
                                         &args.flag_librato,
-                                        &args.flag_metric_source,
+                                        &args.flag_tags,
                                         &args.flag_wavefront_host,
                                         &args.flag_wavefront_port,
                                         &args.flag_librato_username,

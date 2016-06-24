@@ -3,6 +3,8 @@ use backends::console;
 use backends::wavefront;
 use backends::librato;
 
+use regex::Regex;
+
 /// A 'backend' is a sink for metrics.
 pub trait Backend {
     fn flush(&mut self, buckets: &Buckets) -> ();
@@ -14,7 +16,7 @@ pub trait Backend {
 pub fn factory(console: &bool,
                wavefront: &bool,
                librato: &bool,
-               metric_source: &str,
+               tags: &str,
                wavefront_host: &str,
                wavefront_port: &u16,
                librato_username: &str,
@@ -26,11 +28,17 @@ pub fn factory(console: &bool,
         backends.push(Box::new(console::Console::new()));
     }
     if *wavefront {
+        let re = Regex::new(r",").unwrap();
+        let wf_tags : String = re.replace_all(tags, " ");
         backends.push(Box::new(wavefront::Wavefront::new(wavefront_host,
                                                          *wavefront_port,
-                                                         metric_source)));
+                                                         wf_tags)));
     }
     if *librato {
+        let re = Regex::new(r"(?x)(source=(?P<source>.*),+)?").unwrap();
+        let metric_source = re.captures(tags).unwrap().name("source").unwrap_or("cernan");
+        // librato does not support arbitrary tags, only a 'source' tag. We have
+        // to parse the source tag--if it exists--out and ship only that.
         backends.push(Box::new(librato::Librato::new(librato_username,
                                                      librato_token,
                                                      metric_source,
@@ -43,13 +51,23 @@ pub fn factory(console: &bool,
 #[cfg(test)]
 mod test {
     use super::*;
+    use regex::Regex;
+
+    #[test]
+    fn wavefront_tag_munging() {
+        let tags = "source=s,host=h,service=srv";
+        let re = Regex::new(r",").unwrap();
+        let wf_tags : String = re.replace_all(tags, " ");
+
+        assert_eq!("source=s host=h service=srv", wf_tags);
+    }
 
     #[test]
     fn factory_makes_wavefront() {
         let backends = factory(&false,
                                &true,
                                &false,
-                               "src",
+                               "source=src",
                                "127.0.0.1",
                                &2878,
                                "username",
@@ -63,7 +81,7 @@ mod test {
         let backends = factory(&false,
                                &false,
                                &true,
-                               "src",
+                               "source=src,host=h,service=s",
                                "127.0.0.1",
                                &2878,
                                "username",
@@ -77,7 +95,7 @@ mod test {
         let backends = factory(&true,
                                &false,
                                &false,
-                               "src",
+                               "source=src",
                                "127.0.0.1",
                                &2878,
                                "username",
@@ -91,7 +109,7 @@ mod test {
         let backends = factory(&true,
                                &true,
                                &true,
-                               "src",
+                               "source=src",
                                "127.0.0.1",
                                &2878,
                                "username",
