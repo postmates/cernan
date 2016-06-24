@@ -34,6 +34,7 @@ Options:
      https://metrics-api.librato.com/v1/metrics].
   --librato-token=<p>     The librato token for \
      authentication. [default: statsd].
+  --version
 ";
 
 /// Holds the parsed command line arguments
@@ -51,6 +52,7 @@ pub struct Args {
     pub flag_librato_token: String,
     pub flag_librato_host: String,
     pub flag_help: bool,
+    pub flag_version: bool,
 }
 
 pub fn parse_args() -> Args {

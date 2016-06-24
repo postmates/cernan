@@ -16,6 +16,7 @@ extern crate regex;
 use std::str;
 use std::sync::mpsc::channel;
 use std::thread;
+use std::process::exit;
 
 mod backend;
 mod buckets;
@@ -32,9 +33,15 @@ mod backends {
     pub mod wavefront;
 }
 
+const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 fn main() {
     let args = cli::parse_args();
+
+    if args.flag_version {
+        println!("cernan - {}", VERSION.unwrap_or("unknown"));
+        exit(0);
+    }
 
     let mut backends = backend::factory(&args.flag_console,
                                         &args.flag_wavefront,
