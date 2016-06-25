@@ -5,12 +5,11 @@ use std::str::FromStr;
 use std::fmt::Write;
 use std::io::Write as IoWrite;
 use time;
-use regex::Regex;
 
 #[derive(Debug)]
 pub struct Wavefront {
     addr: SocketAddrV4,
-    source: String,
+    tags: String,
 }
 
 impl Wavefront {
@@ -21,12 +20,12 @@ impl Wavefront {
     /// ```
     /// let wave = Wavefront::new(host, port, source);
     /// ```
-    pub fn new(host: &str, port: u16, source: &str) -> Wavefront {
+    pub fn new(host: &str, port: u16, tags: String) -> Wavefront {
         let ip = Ipv4Addr::from_str(&host).unwrap();
         let addr = SocketAddrV4::new(ip, port);
         Wavefront {
             addr: addr,
-            source: String::from_str(source).unwrap(),
+            tags: tags,
         }
     }
 
@@ -37,158 +36,144 @@ impl Wavefront {
             Some(x) => x,
             None => time::get_time().sec,
         };
+
         let mut stats = String::new();
-
-        let re = Regex::new(r"(?x)
-((?P<source>.*)-)?  # the source
-(?P<metric>.*) # the metric
-")
-            .unwrap();
-
         write!(stats,
-               "{} {} {} source={}\n",
+               "{} {} {} {}\n",
                "cernan.bad_messages",
                buckets.bad_messages(),
                start,
-               self.source)
+               self.tags)
             .unwrap();
         write!(stats,
-               "{} {} {} source={}\n",
+               "{} {} {} {}\n",
                "cernan.total_messages",
                buckets.total_messages(),
                start,
-               self.source)
+               self.tags)
             .unwrap();
 
         for (key, value) in buckets.counters().iter() {
-            let caps = re.captures(&key).unwrap();
             write!(stats,
-                   "{} {} {} source={}\n",
-                   caps.name("metric").unwrap().to_string(),
+                   "{} {} {} {}\n",
+                   key,
                    value,
                    start,
-                   caps.name("source").map(|x| x.to_string()).unwrap_or(self.source.clone()))
+                   self.tags)
                 .unwrap();
         }
 
         for (key, value) in buckets.gauges().iter() {
-            let caps = re.captures(&key).unwrap();
             write!(stats,
-                   "{} {} {} source={}\n",
-                   caps.name("metric").unwrap().to_string(),
+                   "{} {} {} {}\n",
+                   key,
                    value,
                    start,
-                   caps.name("source").map(|x| x.to_string()).unwrap_or(self.source.clone()))
+                   self.tags)
                 .unwrap();
         }
 
         for (key, value) in buckets.histograms().iter() {
-            let caps = re.captures(&key).unwrap();
-            let key = caps.name("metric").unwrap().to_string();
-            let source = caps.name("source").map(|x| x.to_string()).unwrap_or(self.source.clone());
             write!(stats,
-                   "{}.min {} {} source={}\n",
+                   "{}.min {} {} {}\n",
                    key,
                    value.min().unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.max {} {} source={}\n",
+                   "{}.max {} {} {}\n",
                    key,
                    value.max().unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.mean {} {} source={}\n",
+                   "{}.mean {} {} {}\n",
                    key,
                    value.mean().unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.50 {} {} source={}\n",
+                   "{}.50 {} {} {}\n",
                    key,
                    value.percentile(50.0).unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.90 {} {} source={}\n",
+                   "{}.90 {} {} {}\n",
                    key,
                    value.percentile(90.0).unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.99 {} {} source={}\n",
+                   "{}.99 {} {} {}\n",
                    key,
                    value.percentile(99.0).unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.999 {} {} source={}\n",
+                   "{}.999 {} {} {}\n",
                    key,
                    value.percentile(99.9).unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
         }
 
         for (key, value) in buckets.timers().iter() {
-            let caps = re.captures(&key).unwrap();
-            let key = caps.name("metric").unwrap().to_string();
-            let source = caps.name("source").map(|x| x.to_string()).unwrap_or(self.source.clone());
             write!(stats,
-                   "{}.min {} {} source={}\n",
+                   "{}.min {} {} {}\n",
                    key,
                    value.min().unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.max {} {} source={}\n",
+                   "{}.max {} {} {}\n",
                    key,
                    value.max().unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.mean {} {} source={}\n",
+                   "{}.mean {} {} {}\n",
                    key,
                    value.mean().unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.50 {} {} source={}\n",
+                   "{}.50 {} {} {}\n",
                    key,
                    value.percentile(50.0).unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.90 {} {} source={}\n",
+                   "{}.90 {} {} {}\n",
                    key,
                    value.percentile(90.0).unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.99 {} {} source={}\n",
+                   "{}.99 {} {} {}\n",
                    key,
                    value.percentile(99.0).unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
             write!(stats,
-                   "{}.999 {} {} source={}\n",
+                   "{}.999 {} {} {}\n",
                    key,
                    value.percentile(99.9).unwrap(),
                    start,
-                   source)
+                   self.tags)
                 .unwrap();
         }
 
@@ -230,7 +215,7 @@ mod test {
     #[test]
     fn test_format_wavefront_buckets_no_timers() {
         let buckets = make_buckets();
-        let wavefront = Wavefront::new("127.0.0.1", 2003, "test-src");
+        let wavefront = Wavefront::new("127.0.0.1", 2003, "source=test-src".to_string());
         let result = wavefront.format_stats(&buckets, Some(10101));
         let lines: Vec<&str> = result.lines().collect();
 
