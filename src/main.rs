@@ -100,6 +100,7 @@ fn main() {
                                 Ok(metrics.len())
                             }
                             None => {
+                                println!("BAD PACKET: {:?}", val);
                                 buckets.add_bad_message();
                                 Err("could not interpret")
                             }
