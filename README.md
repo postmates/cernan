@@ -5,6 +5,8 @@
 `cernan` is a telemetry and logging aggregation server. It exposes a statsd
 interface as of this writing. There are further ambitions.
 
+[![Build Status](https://travis-ci.com/postmates/cernan.svg?token=YZ973qi8DocmxHi3Nn48&branch=master)](https://travis-ci.com/postmates/cernan)
+
 # Usage
 
 The statsd server has several options to control which ports it runs on:
