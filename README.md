@@ -7,6 +7,30 @@ interface as of this writing. There are further ambitions.
 
 [![Build Status](https://travis-ci.com/postmates/cernan.svg?token=YZ973qi8DocmxHi3Nn48&branch=master)](https://travis-ci.com/postmates/cernan)
 
+# Installation
+
+The ambition is for `cernan` to be easily installed and run on development
+machines. The only slight rub is that you _will_ need to install rust. Should be
+as simple as:
+
+    > curl -sSf https://static.rust-lang.org/rustup.sh | sh
+
+Ensure that `~/.cargo/bin` is in your PATH. Then from the root of this project:
+
+    > cargo install
+
+Recent versions of OSX may have some goofy OpenSSL issues, which can be resolved
+by issuing
+
+    > brew install openssl
+
+and following the onscreen instructions. Run
+
+    > cargo run -- --console
+
+and you're good to go. `cargo install` will drop a binary in your path or you
+can `cargo run` from inside this project.
+
 # Usage
 
 The statsd server has several options to control which ports it runs on:
