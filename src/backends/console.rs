@@ -43,27 +43,34 @@ impl Backend for Console {
             fmt_line(&key, &value);
         }
 
-
         println!("  histograms:");
         for (key, value) in buckets.histograms() {
-            println!("    {}: {} min", key, value.query(0.0).unwrap().1);
-            println!("    {}: {} max", key, value.query(1.0).unwrap().1);
-
-            println!("    {}: {} 50th", key, value.query(0.5).unwrap().1);
-            println!("    {}: {} 90th", key, value.query(0.9).unwrap().1);
-            println!("    {}: {} 99th", key, value.query(0.99).unwrap().1);
-            println!("    {}: {} 99.9th", key, value.query(0.999).unwrap().1);
+            for tup in [("min", 0.0),
+                        ("max", 1.0),
+                        ("50", 0.5),
+                        ("90", 0.90),
+                        ("99", 0.99),
+                        ("999", 0.999)]
+                .iter() {
+                let stat: &str = tup.0;
+                let quant: f64 = tup.1;
+                println!("    {}: {} {}", key, stat, value.query(quant).unwrap().1);
+            }
         }
 
         println!("  timers:");
         for (key, value) in buckets.timers() {
-            println!("    {}: {} min", key, value.query(0.0).unwrap().1);
-            println!("    {}: {} max", key, value.query(1.0).unwrap().1);
-
-            println!("    {}: {} 50th", key, value.query(0.5).unwrap().1);
-            println!("    {}: {} 90th", key, value.query(0.9).unwrap().1);
-            println!("    {}: {} 99th", key, value.query(0.99).unwrap().1);
-            println!("    {}: {} 99.9th", key, value.query(0.999).unwrap().1);
+            for tup in [("min", 0.0),
+                        ("max", 1.0),
+                        ("50", 0.5),
+                        ("90", 0.90),
+                        ("99", 0.99),
+                        ("999", 0.999)]
+                .iter() {
+                let stat: &str = tup.0;
+                let quant: f64 = tup.1;
+                println!("    {}: {} {}", key, stat, value.query(quant).unwrap().1);
+            }
         }
 
     }

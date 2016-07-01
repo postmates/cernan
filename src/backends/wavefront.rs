@@ -62,93 +62,45 @@ impl Wavefront {
         }
 
         for (key, value) in buckets.histograms().iter() {
-            write!(stats,
-                   "{}.min {} {} {}\n",
-                   key,
-                   value.query(0.0).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.max {} {} {}\n",
-                   key,
-                   value.query(1.0).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.50 {} {} {}\n",
-                   key,
-                   value.query(0.5).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.90 {} {} {}\n",
-                   key,
-                   value.query(0.9).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.99 {} {} {}\n",
-                   key,
-                   value.query(0.99).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.999 {} {} {}\n",
-                   key,
-                   value.query(0.999).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
+            for tup in [("min", 0.0),
+                        ("max", 1.0),
+                        ("50", 0.5),
+                        ("90", 0.9),
+                        ("99", 0.99),
+                        ("999", 0.999)]
+                .iter() {
+                let stat: &str = tup.0;
+                let quant: f64 = tup.1;
+                write!(stats,
+                       "{}.{} {} {} {}\n",
+                       key,
+                       stat,
+                       value.query(quant).unwrap().1,
+                       start,
+                       self.tags)
+                    .unwrap();
+            }
         }
 
         for (key, value) in buckets.timers().iter() {
-            write!(stats,
-                   "{}.min {} {} {}\n",
-                   key,
-                   value.query(0.0).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.max {} {} {}\n",
-                   key,
-                   value.query(1.0).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.50 {} {} {}\n",
-                   key,
-                   value.query(0.5).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.90 {} {} {}\n",
-                   key,
-                   value.query(0.9).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.99 {} {} {}\n",
-                   key,
-                   value.query(0.99).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.999 {} {} {}\n",
-                   key,
-                   value.query(0.999).unwrap().1,
-                   start,
-                   self.tags)
-                .unwrap();
+            for tup in [("min", 0.0),
+                        ("max", 1.0),
+                        ("50", 0.5),
+                        ("90", 0.9),
+                        ("99", 0.99),
+                        ("999", 0.999)]
+                .iter() {
+                let stat: &str = tup.0;
+                let quant: f64 = tup.1;
+                write!(stats,
+                       "{}.{} {} {} {}\n",
+                       key,
+                       stat,
+                       value.query(quant).unwrap().1,
+                       start,
+                       self.tags)
+                    .unwrap();
+            }
         }
 
         stats

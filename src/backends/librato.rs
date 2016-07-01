@@ -8,7 +8,6 @@ use hyper::client::Client;
 use hyper::header::{ContentType, Authorization, Basic, Connection};
 use url;
 use mime::Mime;
-use regex::Regex;
 
 #[derive(Debug)]
 pub struct Librato {
@@ -22,7 +21,6 @@ pub struct Librato {
 pub struct LCounter {
     name: String,
     value: f64,
-    source: Option<String>,
 }
 
 impl ToJson for LCounter {
@@ -30,13 +28,6 @@ impl ToJson for LCounter {
         let mut d = BTreeMap::new();
         d.insert("name".to_string(), self.name.to_json());
         d.insert("value".to_string(), self.value.to_json());
-        match self.source {
-            Some(ref src) => {
-                d.insert("source".to_string(), src.to_json());
-                ()
-            }
-            None => (),
-        };
         Json::Object(d)
     }
 }
@@ -45,7 +36,6 @@ impl ToJson for LCounter {
 pub struct LGauge {
     name: String,
     value: f64,
-    source: Option<String>,
 }
 
 impl ToJson for LGauge {
@@ -53,13 +43,6 @@ impl ToJson for LGauge {
         let mut d = BTreeMap::new();
         d.insert("name".to_string(), self.name.to_json());
         d.insert("value".to_string(), self.value.to_json());
-        match self.source {
-            Some(ref src) => {
-                d.insert("source".to_string(), src.to_json());
-                ()
-            }
-            None => (),
-        };
         Json::Object(d)
     }
 }
@@ -108,109 +91,63 @@ impl Librato {
             None => time::get_time().sec,
         };
 
-        let re = Regex::new(r"(?x)
-((?P<source>.*)-)?  # the source
-(?P<metric>.*) # the metric
-")
-            .unwrap();
-
         let mut gauges = vec![];
         let mut counters = vec![];
 
         counters.push(LCounter {
             name: "cernan.bad_messages".to_string(),
             value: buckets.bad_messages() as f64,
-            source: None,
         });
         counters.push(LCounter {
             name: "cernan.total_messages".to_string(),
             value: buckets.total_messages() as f64,
-            source: None,
         });
 
         for (key, value) in buckets.counters().iter() {
-            let caps = re.captures(&key).unwrap();
             counters.push(LCounter {
-                name: caps.name("metric").unwrap().to_string(),
+                name: (*key).clone(),
                 value: *value,
-                source: caps.name("source").map(|x| x.to_string()),
             });
         }
         for (key, value) in buckets.gauges().iter() {
-            let caps = re.captures(&key).unwrap();
             gauges.push(LGauge {
-                name: caps.name("metric").unwrap().to_string(),
+                name: (*key).clone(),
                 value: *value,
-                source: caps.name("source").map(|x| x.to_string()),
             });
         }
 
         for (key, value) in buckets.histograms().iter() {
-            let caps = re.captures(&key).unwrap();
-            gauges.push(LGauge {
-                name: format!("{}.min", caps.name("metric").unwrap().to_string()),
-                value: value.query(0.0).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.max", caps.name("metric").unwrap().to_string()),
-                value: value.query(1.0).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.50", caps.name("metric").unwrap().to_string()),
-                value: value.query(0.50).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.90", caps.name("metric").unwrap().to_string()),
-                value: value.query(0.90).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.99", caps.name("metric").unwrap().to_string()),
-                value: value.query(0.99).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.999", caps.name("metric").unwrap().to_string()),
-                value: value.query(0.999).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
+            for tup in [("min", 0.0),
+                        ("max", 1.0),
+                        ("50", 0.5),
+                        ("90", 0.90),
+                        ("99", 0.99),
+                        ("999", 0.999)]
+                .iter() {
+                let stat: &str = tup.0;
+                let quant: f64 = tup.1;
+                gauges.push(LGauge {
+                    name: format!("{}.{}", *key, stat),
+                    value: value.query(quant).unwrap().1,
+                });
+            }
         }
 
         for (key, value) in buckets.timers().iter() {
-            let caps = re.captures(&key).unwrap();
-            gauges.push(LGauge {
-                name: format!("{}.min", caps.name("metric").unwrap().to_string()),
-                value: value.query(0.0).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.max", caps.name("metric").unwrap().to_string()),
-                value: value.query(1.0).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.50", caps.name("metric").unwrap().to_string()),
-                value: value.query(0.5).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.90", caps.name("metric").unwrap().to_string()),
-                value: value.query(0.9).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.99", caps.name("metric").unwrap().to_string()),
-                value: value.query(0.99).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.999", caps.name("metric").unwrap().to_string()),
-                value: value.query(0.999).unwrap().1,
-                source: caps.name("source").map(|x| x.to_string()),
-            });
+            for tup in [("min", 0.0),
+                        ("max", 1.0),
+                        ("50", 0.5),
+                        ("90", 0.90),
+                        ("99", 0.99),
+                        ("999", 0.999)]
+                .iter() {
+                let stat: &str = tup.0;
+                let quant: f64 = tup.1;
+                gauges.push(LGauge {
+                    name: format!("{}.{}", *key, stat),
+                    value: value.query(quant).unwrap().1,
+                });
+            }
         }
 
         let obj = LPayload {
@@ -240,7 +177,6 @@ impl Backend for Librato {
             .header(Connection::keep_alive())
             .send()
             .unwrap();
-        // assert_eq!(res.status, hyper::Ok);
     }
 }
 
@@ -248,7 +184,6 @@ impl Backend for Librato {
 mod test {
     use super::super::super::metric::{Metric, MetricKind};
     use super::super::super::buckets::Buckets;
-    use regex::Regex;
     use super::*;
 
     fn make_buckets() -> Buckets {
@@ -270,30 +205,6 @@ mod test {
     }
 
     #[test]
-    fn test_our_regex_with_source() {
-        let re = Regex::new(r"(?x)
-((?P<source>.*)-)?  # the source
-(?P<metric>.*) # the metric
-")
-            .unwrap();
-        let caps = re.captures("source-foo.bar.baz").unwrap();
-        assert_eq!(Some("source"), caps.name("source"));
-        assert_eq!(Some("foo.bar.baz"), caps.name("metric"));
-    }
-
-    #[test]
-    fn test_our_regex_no_source() {
-        let re = Regex::new(r"(?x)
-((?P<source>.*)-)?  # the source
-(?P<metric>.*) # the metric
-")
-            .unwrap();
-        let caps = re.captures("foo.bar.baz").unwrap();
-        assert_eq!(None, caps.name("source"));
-        assert_eq!(Some("foo.bar.baz"), caps.name("metric"));
-    }
-
-    #[test]
     fn test_format_librato_buckets_no_timers() {
         let buckets = make_buckets();
         let librato = Librato::new("user", "token", "test-src", "http://librato.example.com");
@@ -303,12 +214,11 @@ mod test {
         assert_eq!("{\"counters\":[{\"name\":\"cernan.bad_messages\",\"value\":0.0},{\"name\":\
                     \"cernan.total_messages\",\"value\":6.0},{\"name\":\"test.counter\",\
                     \"value\":1.0}],\"gauges\":[{\"name\":\"test.gauge\",\"value\":3.211},\
-                    {\"name\":\"test.gauge.2\",\"source\":\"src\",\"value\":3.211},{\"name\":\
-                    \"test.timer.min\",\"value\":1.101},{\"name\":\"test.timer.max\",\"value\":\
-                    12.101},{\"name\":\"test.timer.50\",\"value\":3.101},{\"name\":\"test.timer.\
-                    90\",\"value\":12.101},{\"name\":\"test.timer.99\",\"value\":12.101},\
-                    {\"name\":\"test.timer.999\",\"value\":12.101}],\"measure_time\":10101,\
-                    \"source\":\"test-src\"}",
+                    {\"name\":\"src-test.gauge.2\",\"value\":3.211},{\"name\":\"test.timer.min\",\
+                    \"value\":1.101},{\"name\":\"test.timer.max\",\"value\":12.101},{\"name\":\
+                    \"test.timer.50\",\"value\":3.101},{\"name\":\"test.timer.90\",\"value\":12.\
+                    101},{\"name\":\"test.timer.99\",\"value\":12.101},{\"name\":\"test.timer.\
+                    999\",\"value\":12.101}],\"measure_time\":10101,\"source\":\"test-src\"}",
                    result);
     }
 }
