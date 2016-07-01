@@ -54,23 +54,11 @@ impl Wavefront {
             .unwrap();
 
         for (key, value) in buckets.counters().iter() {
-            write!(stats,
-                   "{} {} {} {}\n",
-                   key,
-                   value,
-                   start,
-                   self.tags)
-                .unwrap();
+            write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
         }
 
         for (key, value) in buckets.gauges().iter() {
-            write!(stats,
-                   "{} {} {} {}\n",
-                   key,
-                   value,
-                   start,
-                   self.tags)
-                .unwrap();
+            write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
         }
 
         for (key, value) in buckets.histograms().iter() {

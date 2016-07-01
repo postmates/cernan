@@ -300,7 +300,15 @@ mod test {
         let result = librato.format_stats(&buckets, Some(10101));
 
         println!("{:?}", result);
-        assert_eq!("{\"counters\":[{\"name\":\"cernan.bad_messages\",\"value\":0.0},{\"name\":\"cernan.total_messages\",\"value\":6.0},{\"name\":\"test.counter\",\"value\":1.0}],\"gauges\":[{\"name\":\"test.gauge\",\"value\":3.211},{\"name\":\"test.gauge.2\",\"source\":\"src\",\"value\":3.211},{\"name\":\"test.timer.min\",\"value\":1.101},{\"name\":\"test.timer.max\",\"value\":12.101},{\"name\":\"test.timer.50\",\"value\":3.101},{\"name\":\"test.timer.90\",\"value\":12.101},{\"name\":\"test.timer.99\",\"value\":12.101},{\"name\":\"test.timer.999\",\"value\":12.101}],\"measure_time\":10101,\"source\":\"test-src\"}",
+        assert_eq!("{\"counters\":[{\"name\":\"cernan.bad_messages\",\"value\":0.0},{\"name\":\
+                    \"cernan.total_messages\",\"value\":6.0},{\"name\":\"test.counter\",\
+                    \"value\":1.0}],\"gauges\":[{\"name\":\"test.gauge\",\"value\":3.211},\
+                    {\"name\":\"test.gauge.2\",\"source\":\"src\",\"value\":3.211},{\"name\":\
+                    \"test.timer.min\",\"value\":1.101},{\"name\":\"test.timer.max\",\"value\":\
+                    12.101},{\"name\":\"test.timer.50\",\"value\":3.101},{\"name\":\"test.timer.\
+                    90\",\"value\":12.101},{\"name\":\"test.timer.99\",\"value\":12.101},\
+                    {\"name\":\"test.timer.999\",\"value\":12.101}],\"measure_time\":10101,\
+                    \"source\":\"test-src\"}",
                    result);
     }
 }

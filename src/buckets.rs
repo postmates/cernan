@@ -132,7 +132,6 @@ impl Buckets {
     pub fn start_time(&self) -> time::Timespec {
         self.server_start_time
     }
-
 }
 
 
