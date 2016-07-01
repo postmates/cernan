@@ -4,7 +4,7 @@
 // extern crate test;
 
 extern crate docopt;
-extern crate histogram;
+extern crate quantiles;
 extern crate hyper;
 extern crate lru_cache;
 extern crate mime;
@@ -26,7 +26,6 @@ mod metrics {
     pub mod statsd;
 }
 mod server;
-mod hist;
 mod backends {
     pub mod console;
     pub mod librato;

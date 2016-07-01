@@ -54,72 +54,53 @@ impl Wavefront {
             .unwrap();
 
         for (key, value) in buckets.counters().iter() {
-            write!(stats,
-                   "{} {} {} {}\n",
-                   key,
-                   value,
-                   start,
-                   self.tags)
-                .unwrap();
+            write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
         }
 
         for (key, value) in buckets.gauges().iter() {
-            write!(stats,
-                   "{} {} {} {}\n",
-                   key,
-                   value,
-                   start,
-                   self.tags)
-                .unwrap();
+            write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
         }
 
         for (key, value) in buckets.histograms().iter() {
             write!(stats,
                    "{}.min {} {} {}\n",
                    key,
-                   value.min().unwrap(),
+                   value.query(0.0).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
             write!(stats,
                    "{}.max {} {} {}\n",
                    key,
-                   value.max().unwrap(),
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.mean {} {} {}\n",
-                   key,
-                   value.mean().unwrap(),
+                   value.query(1.0).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
             write!(stats,
                    "{}.50 {} {} {}\n",
                    key,
-                   value.percentile(50.0).unwrap(),
+                   value.query(0.5).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
             write!(stats,
                    "{}.90 {} {} {}\n",
                    key,
-                   value.percentile(90.0).unwrap(),
+                   value.query(0.9).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
             write!(stats,
                    "{}.99 {} {} {}\n",
                    key,
-                   value.percentile(99.0).unwrap(),
+                   value.query(0.99).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
             write!(stats,
                    "{}.999 {} {} {}\n",
                    key,
-                   value.percentile(99.9).unwrap(),
+                   value.query(0.999).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
@@ -129,49 +110,42 @@ impl Wavefront {
             write!(stats,
                    "{}.min {} {} {}\n",
                    key,
-                   value.min().unwrap(),
+                   value.query(0.0).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
             write!(stats,
                    "{}.max {} {} {}\n",
                    key,
-                   value.max().unwrap(),
-                   start,
-                   self.tags)
-                .unwrap();
-            write!(stats,
-                   "{}.mean {} {} {}\n",
-                   key,
-                   value.mean().unwrap(),
+                   value.query(1.0).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
             write!(stats,
                    "{}.50 {} {} {}\n",
                    key,
-                   value.percentile(50.0).unwrap(),
+                   value.query(0.5).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
             write!(stats,
                    "{}.90 {} {} {}\n",
                    key,
-                   value.percentile(90.0).unwrap(),
+                   value.query(0.9).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
             write!(stats,
                    "{}.99 {} {} {}\n",
                    key,
-                   value.percentile(99.0).unwrap(),
+                   value.query(0.99).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
             write!(stats,
                    "{}.999 {} {} {}\n",
                    key,
-                   value.percentile(99.9).unwrap(),
+                   value.query(0.999).unwrap().1,
                    start,
                    self.tags)
                 .unwrap();
@@ -220,17 +194,16 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(11, lines.len());
+        assert_eq!(10, lines.len());
         assert!(lines[0].contains("cernan.bad_messages 0 10101 source=test-src"));
         assert!(lines[1].contains("cernan.total_messages 5 10101 source=test-src"));
         assert!(lines[2].contains("test.counter 1 10101 source=test-src"));
         assert!(lines[3].contains("test.gauge 3.211 10101 source=test-src"));
-        assert!(lines[4].contains("test.timer.min 1.1 10101 source=test-src"));
-        assert!(lines[5].contains("test.timer.max 12.1 10101 source=test-src"));
-        assert!(lines[6].contains("test.timer.mean 5.43 10101 source=test-src"));
-        assert!(lines[7].contains("test.timer.50 12.1 10101 source=test-src"));
-        assert!(lines[8].contains("test.timer.90 12.1 10101 source=test-src"));
-        assert!(lines[9].contains("test.timer.99 12.1 10101 source=test-src"));
-        assert!(lines[10].contains("test.timer.999 12.1 10101 source=test-src"));
+        assert!(lines[4].contains("test.timer.min 1.101 10101 source=test-src"));
+        assert!(lines[5].contains("test.timer.max 12.101 10101 source=test-src"));
+        assert!(lines[6].contains("test.timer.50 3.101 10101 source=test-src"));
+        assert!(lines[7].contains("test.timer.90 12.101 10101 source=test-src"));
+        assert!(lines[8].contains("test.timer.99 12.101 10101 source=test-src"));
+        assert!(lines[9].contains("test.timer.999 12.101 10101 source=test-src"));
     }
 }

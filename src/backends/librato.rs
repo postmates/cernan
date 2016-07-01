@@ -149,37 +149,32 @@ impl Librato {
             let caps = re.captures(&key).unwrap();
             gauges.push(LGauge {
                 name: format!("{}.min", caps.name("metric").unwrap().to_string()),
-                value: value.min().unwrap(),
+                value: value.query(0.0).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
             gauges.push(LGauge {
                 name: format!("{}.max", caps.name("metric").unwrap().to_string()),
-                value: value.max().unwrap(),
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.mean", caps.name("metric").unwrap().to_string()),
-                value: value.mean().unwrap(),
+                value: value.query(1.0).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
             gauges.push(LGauge {
                 name: format!("{}.50", caps.name("metric").unwrap().to_string()),
-                value: value.percentile(50.0).unwrap(),
+                value: value.query(0.50).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
             gauges.push(LGauge {
                 name: format!("{}.90", caps.name("metric").unwrap().to_string()),
-                value: value.percentile(90.0).unwrap(),
+                value: value.query(0.90).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
             gauges.push(LGauge {
                 name: format!("{}.99", caps.name("metric").unwrap().to_string()),
-                value: value.percentile(99.0).unwrap(),
+                value: value.query(0.99).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
             gauges.push(LGauge {
                 name: format!("{}.999", caps.name("metric").unwrap().to_string()),
-                value: value.percentile(99.9).unwrap(),
+                value: value.query(0.999).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
         }
@@ -188,37 +183,32 @@ impl Librato {
             let caps = re.captures(&key).unwrap();
             gauges.push(LGauge {
                 name: format!("{}.min", caps.name("metric").unwrap().to_string()),
-                value: value.min().unwrap(),
+                value: value.query(0.0).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
             gauges.push(LGauge {
                 name: format!("{}.max", caps.name("metric").unwrap().to_string()),
-                value: value.max().unwrap(),
-                source: caps.name("source").map(|x| x.to_string()),
-            });
-            gauges.push(LGauge {
-                name: format!("{}.mean", caps.name("metric").unwrap().to_string()),
-                value: value.mean().unwrap(),
+                value: value.query(1.0).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
             gauges.push(LGauge {
                 name: format!("{}.50", caps.name("metric").unwrap().to_string()),
-                value: value.percentile(50.0).unwrap(),
+                value: value.query(0.5).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
             gauges.push(LGauge {
                 name: format!("{}.90", caps.name("metric").unwrap().to_string()),
-                value: value.percentile(90.0).unwrap(),
+                value: value.query(0.9).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
             gauges.push(LGauge {
                 name: format!("{}.99", caps.name("metric").unwrap().to_string()),
-                value: value.percentile(99.0).unwrap(),
+                value: value.query(0.99).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
             gauges.push(LGauge {
                 name: format!("{}.999", caps.name("metric").unwrap().to_string()),
-                value: value.percentile(99.9).unwrap(),
+                value: value.query(0.999).unwrap().1,
                 source: caps.name("source").map(|x| x.to_string()),
             });
         }
@@ -309,15 +299,16 @@ mod test {
         let librato = Librato::new("user", "token", "test-src", "http://librato.example.com");
         let result = librato.format_stats(&buckets, Some(10101));
 
+        println!("{:?}", result);
         assert_eq!("{\"counters\":[{\"name\":\"cernan.bad_messages\",\"value\":0.0},{\"name\":\
                     \"cernan.total_messages\",\"value\":6.0},{\"name\":\"test.counter\",\
                     \"value\":1.0}],\"gauges\":[{\"name\":\"test.gauge\",\"value\":3.211},\
                     {\"name\":\"test.gauge.2\",\"source\":\"src\",\"value\":3.211},{\"name\":\
-                    \"test.timer.min\",\"value\":1.1},{\"name\":\"test.timer.max\",\"value\":12.\
-                    1},{\"name\":\"test.timer.mean\",\"value\":5.43},{\"name\":\"test.timer.50\",\
-                    \"value\":12.1},{\"name\":\"test.timer.90\",\"value\":12.1},{\"name\":\"test.\
-                    timer.99\",\"value\":12.1},{\"name\":\"test.timer.999\",\"value\":12.1}],\
-                    \"measure_time\":10101,\"source\":\"test-src\"}",
+                    \"test.timer.min\",\"value\":1.101},{\"name\":\"test.timer.max\",\"value\":\
+                    12.101},{\"name\":\"test.timer.50\",\"value\":3.101},{\"name\":\"test.timer.\
+                    90\",\"value\":12.101},{\"name\":\"test.timer.99\",\"value\":12.101},\
+                    {\"name\":\"test.timer.999\",\"value\":12.101}],\"measure_time\":10101,\
+                    \"source\":\"test-src\"}",
                    result);
     }
 }

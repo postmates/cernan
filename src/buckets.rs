@@ -5,15 +5,15 @@
 
 use super::metric::{Metric, MetricKind};
 use time;
-use hist::Histogram;
+use quantiles::CKMS;
 use lru_cache::LruCache;
 
 /// Buckets stores all metrics until they are flushed.
 pub struct Buckets {
     counters: LruCache<String, f64>,
     gauges: LruCache<String, f64>,
-    timers: LruCache<String, Histogram>,
-    histograms: LruCache<String, Histogram>,
+    timers: LruCache<String, CKMS<f64>>,
+    histograms: LruCache<String, CKMS<f64>>,
 
     server_start_time: time::Timespec,
     last_message: time::Timespec,
@@ -73,18 +73,18 @@ impl Buckets {
             }
             MetricKind::Histogram => {
                 if !self.histograms.contains_key(&name) {
-                    let _ = self.histograms.insert(value.name.to_owned(), Histogram::new());
+                    let _ = self.histograms.insert(value.name.to_owned(), CKMS::<f64>::new(0.001));
                 };
                 let hist =
                     self.histograms.get_mut(&name).expect("shouldn't happen but did, histogram");
-                let _ = (*hist).increment(value.value);
+                let _ = (*hist).insert(value.value);
             }
             MetricKind::Timer => {
                 if !self.timers.contains_key(&name) {
-                    let _ = self.timers.insert(value.name.to_owned(), Histogram::new());
+                    let _ = self.timers.insert(value.name.to_owned(), CKMS::new(0.001));
                 };
                 let tm = self.timers.get_mut(&name).expect("shouldn't happen but did, timer");
-                let _ = (*tm).increment(value.value);
+                let _ = (*tm).insert(value.value);
             }
         }
         self.last_message = time::get_time();
@@ -113,12 +113,12 @@ impl Buckets {
     }
 
     /// Get the histograms as a borrowed reference.
-    pub fn histograms(&self) -> &LruCache<String, Histogram> {
+    pub fn histograms(&self) -> &LruCache<String, CKMS<f64>> {
         &self.histograms
     }
 
     /// Get the timers as a borrowed reference.
-    pub fn timers(&self) -> &LruCache<String, Histogram> {
+    pub fn timers(&self) -> &LruCache<String, CKMS<f64>> {
         &self.timers
     }
 
@@ -230,8 +230,8 @@ mod test {
         assert!(buckets.timers.contains_key("some.metric"),
                 "Should contain the metric key");
 
-        assert_eq!(Result::Ok(11.5),
-                   buckets.timers.get_mut("some.metric").expect("hwhap").min());
+        assert_eq!(Some((1, 11.5)),
+                   buckets.timers.get_mut("some.metric").expect("hwhap").query(0.0));
 
         let metric_two = Metric::new("some.metric", 99.5, MetricKind::Timer);
         buckets.add(&metric_two);

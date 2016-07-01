@@ -29,7 +29,7 @@ pub fn factory(console: &bool,
     }
     if *wavefront {
         let re = Regex::new(r",").unwrap();
-        let wf_tags : String = re.replace_all(tags, " ");
+        let wf_tags: String = re.replace_all(tags, " ");
         backends.push(Box::new(wavefront::Wavefront::new(wavefront_host,
                                                          *wavefront_port,
                                                          wf_tags)));
@@ -57,7 +57,7 @@ mod test {
     fn wavefront_tag_munging() {
         let tags = "source=s,host=h,service=srv";
         let re = Regex::new(r",").unwrap();
-        let wf_tags : String = re.replace_all(tags, " ");
+        let wf_tags: String = re.replace_all(tags, " ");
 
         assert_eq!("source=s host=h service=srv", wf_tags);
     }

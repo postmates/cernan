@@ -22,14 +22,15 @@ Options:
      Enable the wavefront backend.
   --librato               Enable the librato backend.
   \
-  --tags=<p>     A comma separated list of tags to report to supporting backends. [default: source=cernan]
-  --wavefront-port=<p>    The port wavefront proxy is running on. [default: 2878].
-  \
-     --wavefront-host=<p>    The host wavefront proxy is running on. [default: 127.0.0.1].
-  \
-     --librato-username=<p>  The librato username for authentication. [default: statsd].
-  \
-     --librato-host=<p>      The librato host to report to. [default: \
+     --tags=<p>     A comma separated list of tags to report to supporting backends. [default: \
+     source=cernan]
+  --wavefront-port=<p>    The port wavefront proxy is running on. [default: \
+     2878].
+  --wavefront-host=<p>    The host wavefront proxy is running on. [default: \
+     127.0.0.1].
+  --librato-username=<p>  The librato username for authentication. [default: \
+     statsd].
+  --librato-host=<p>      The librato host to report to. [default: \
      https://metrics-api.librato.com/v1/metrics].
   --librato-token=<p>     The librato token for \
      authentication. [default: statsd].

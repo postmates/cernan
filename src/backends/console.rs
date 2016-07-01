@@ -46,26 +46,24 @@ impl Backend for Console {
 
         println!("  histograms:");
         for (key, value) in buckets.histograms() {
-            println!("    {}: {} min", key, value.min().unwrap());
-            println!("    {}: {} max", key, value.max().unwrap());
-            println!("    {}: {} mean", key, value.mean().unwrap());
+            println!("    {}: {} min", key, value.query(0.0).unwrap().1);
+            println!("    {}: {} max", key, value.query(1.0).unwrap().1);
 
-            println!("    {}: {} 50th", key, value.percentile(50.0).unwrap());
-            println!("    {}: {} 90th", key, value.percentile(90.0).unwrap());
-            println!("    {}: {} 99th", key, value.percentile(99.0).unwrap());
-            println!("    {}: {} 99.9th", key, value.percentile(99.9).unwrap());
+            println!("    {}: {} 50th", key, value.query(0.5).unwrap().1);
+            println!("    {}: {} 90th", key, value.query(0.9).unwrap().1);
+            println!("    {}: {} 99th", key, value.query(0.99).unwrap().1);
+            println!("    {}: {} 99.9th", key, value.query(0.999).unwrap().1);
         }
 
         println!("  timers:");
         for (key, value) in buckets.timers() {
-            println!("    {}: {} min", key, value.min().unwrap());
-            println!("    {}: {} max", key, value.max().unwrap());
-            println!("    {}: {} mean", key, value.mean().unwrap());
+            println!("    {}: {} min", key, value.query(0.0).unwrap().1);
+            println!("    {}: {} max", key, value.query(1.0).unwrap().1);
 
-            println!("    {}: {} 50th", key, value.percentile(50.0).unwrap());
-            println!("    {}: {} 90th", key, value.percentile(90.0).unwrap());
-            println!("    {}: {} 99th", key, value.percentile(99.0).unwrap());
-            println!("    {}: {} 99.9th", key, value.percentile(99.9).unwrap());
+            println!("    {}: {} 50th", key, value.query(0.5).unwrap().1);
+            println!("    {}: {} 90th", key, value.query(0.9).unwrap().1);
+            println!("    {}: {} 99th", key, value.query(0.99).unwrap().1);
+            println!("    {}: {} 99.9th", key, value.query(0.999).unwrap().1);
         }
 
     }
