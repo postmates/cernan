@@ -1,9 +1,8 @@
 use super::super::backend::Backend;
 use super::super::buckets::Buckets;
 use std::str::FromStr;
-use std::collections::BTreeMap;
 use time;
-use rustc_serialize::json::{Json, ToJson};
+use rustc_serialize::json;
 use hyper::client::Client;
 use hyper::header::{ContentType, Authorization, Basic, Connection};
 use url;
@@ -17,53 +16,24 @@ pub struct Librato {
     host: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, RustcEncodable)]
 pub struct LCounter {
     name: String,
     value: f64,
 }
 
-impl ToJson for LCounter {
-    fn to_json(&self) -> Json {
-        let mut d = BTreeMap::new();
-        d.insert("name".to_string(), self.name.to_json());
-        d.insert("value".to_string(), self.value.to_json());
-        Json::Object(d)
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, RustcEncodable)]
 pub struct LGauge {
     name: String,
     value: f64,
 }
 
-impl ToJson for LGauge {
-    fn to_json(&self) -> Json {
-        let mut d = BTreeMap::new();
-        d.insert("name".to_string(), self.name.to_json());
-        d.insert("value".to_string(), self.value.to_json());
-        Json::Object(d)
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, RustcEncodable)]
 pub struct LPayload {
     gauges: Vec<LGauge>,
     counters: Vec<LCounter>,
     source: String,
     measure_time: i64,
-}
-
-impl ToJson for LPayload {
-    fn to_json(&self) -> Json {
-        let mut d = BTreeMap::new();
-        d.insert("gauges".to_string(), self.gauges.to_json());
-        d.insert("counters".to_string(), self.counters.to_json());
-        d.insert("source".to_string(), self.source.to_json());
-        d.insert("measure_time".to_string(), self.measure_time.to_json());
-        Json::Object(d)
-    }
 }
 
 impl Librato {
@@ -127,7 +97,7 @@ impl Librato {
                 let stat: &str = tup.0;
                 let quant: f64 = tup.1;
                 gauges.push(LGauge {
-                    name: format!("{}.{}", *key, stat),
+                    name: format!("{}.{}", key, stat),
                     value: value.query(quant).unwrap().1,
                 });
             }
@@ -144,7 +114,7 @@ impl Librato {
                 let stat: &str = tup.0;
                 let quant: f64 = tup.1;
                 gauges.push(LGauge {
-                    name: format!("{}.{}", *key, stat),
+                    name: format!("{}.{}", key, stat),
                     value: value.query(quant).unwrap().1,
                 });
             }
@@ -156,7 +126,7 @@ impl Librato {
             source: self.source.clone(),
             measure_time: start,
         };
-        obj.to_json().to_string()
+        json::encode(&obj).unwrap()
     }
 }
 
@@ -211,14 +181,14 @@ mod test {
         let result = librato.format_stats(&buckets, Some(10101));
 
         println!("{:?}", result);
-        assert_eq!("{\"counters\":[{\"name\":\"cernan.bad_messages\",\"value\":0.0},{\"name\":\
-                    \"cernan.total_messages\",\"value\":6.0},{\"name\":\"test.counter\",\
-                    \"value\":1.0}],\"gauges\":[{\"name\":\"test.gauge\",\"value\":3.211},\
-                    {\"name\":\"src-test.gauge.2\",\"value\":3.211},{\"name\":\"test.timer.min\",\
-                    \"value\":1.101},{\"name\":\"test.timer.max\",\"value\":12.101},{\"name\":\
-                    \"test.timer.50\",\"value\":3.101},{\"name\":\"test.timer.90\",\"value\":12.\
-                    101},{\"name\":\"test.timer.99\",\"value\":12.101},{\"name\":\"test.timer.\
-                    999\",\"value\":12.101}],\"measure_time\":10101,\"source\":\"test-src\"}",
+        assert_eq!("{\"gauges\":[{\"name\":\"test.gauge\",\"value\":3.211},{\"name\":\"src-test.\
+                    gauge.2\",\"value\":3.211},{\"name\":\"test.timer.min\",\"value\":1.101},\
+                    {\"name\":\"test.timer.max\",\"value\":12.101},{\"name\":\"test.timer.50\",\
+                    \"value\":3.101},{\"name\":\"test.timer.90\",\"value\":12.101},{\"name\":\
+                    \"test.timer.99\",\"value\":12.101},{\"name\":\"test.timer.999\",\"value\":\
+                    12.101}],\"counters\":[{\"name\":\"cernan.bad_messages\",\"value\":0.0},\
+                    {\"name\":\"cernan.total_messages\",\"value\":6.0},{\"name\":\"test.\
+                    counter\",\"value\":1.0}],\"source\":\"test-src\",\"measure_time\":10101}",
                    result);
     }
 }
