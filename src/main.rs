@@ -48,6 +48,7 @@ fn main() {
                                         &args.flag_tags,
                                         &args.flag_wavefront_host,
                                         &args.flag_wavefront_port,
+                                        &args.flag_wavefront_skip_aggrs,
                                         &args.flag_librato_username,
                                         &args.flag_librato_token,
                                         &args.flag_librato_host);

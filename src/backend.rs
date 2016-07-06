@@ -19,6 +19,7 @@ pub fn factory(console: &bool,
                tags: &str,
                wavefront_host: &str,
                wavefront_port: &u16,
+               wavefront_skip_aggrs: &bool,
                librato_username: &str,
                librato_token: &str,
                librato_host: &str)
@@ -31,6 +32,7 @@ pub fn factory(console: &bool,
         let wf_tags: String = tags.replace(",", " ");
         backends.push(Box::new(wavefront::Wavefront::new(wavefront_host,
                                                          *wavefront_port,
+                                                         *wavefront_skip_aggrs,
                                                          wf_tags)));
     }
     if *librato {
@@ -69,6 +71,7 @@ mod test {
                                "source=src",
                                "127.0.0.1",
                                &2878,
+                               &false,
                                "username",
                                "token",
                                "http://librato.example.com/");
@@ -83,6 +86,7 @@ mod test {
                                "source=src,host=h,service=s",
                                "127.0.0.1",
                                &2878,
+                               &false,
                                "username",
                                "token",
                                "http://librato.example.com/");
@@ -97,6 +101,7 @@ mod test {
                                "source=src",
                                "127.0.0.1",
                                &2878,
+                               &false,
                                "username",
                                "token",
                                "http://librato.example.com/");
@@ -111,6 +116,7 @@ mod test {
                                "source=src",
                                "127.0.0.1",
                                &2878,
+                               &false,
                                "username",
                                "token",
                                "http://librato.example.com/");
