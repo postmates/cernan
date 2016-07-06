@@ -11,7 +11,7 @@ Kind: MetricKind = {
     "c@" <Num> => MetricKind::Counter(<>),
 };
 
-MetricName: String = <s:r"[A-Za-z][_A-Z0-9a-z\.-]*"> => String::from_str(s).unwrap();
+MetricName: String = <s:r"[A-Za-z][_A-Z0-9a-z+/=\.-]*"> => String::from_str(s).unwrap();
 
 Num: f64 = <s:r"[-+]?[0-9]+\.?[0-9]*"> => f64::from_str(s).unwrap();
 

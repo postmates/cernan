@@ -1,10 +1,12 @@
-use super::super::backend::Backend;
-use super::super::buckets::Buckets;
-use time;
+use backend::Backend;
+use buckets::Buckets;
+use metric::Metric;
+use chrono;
 
-#[derive(Debug)]
-pub struct Console;
-
+pub struct Console {
+    aggrs: Buckets,
+    points: Vec<Metric>,
+}
 
 impl Console {
     /// Create a Console formatter that prints to stdout
@@ -15,7 +17,10 @@ impl Console {
     /// let cons = Console::new();
     /// ```
     pub fn new() -> Console {
-        Console
+        Console {
+            aggrs: Buckets::new(),
+            points: Vec::new(),
+        }
     }
 }
 
@@ -26,25 +31,27 @@ fn fmt_line(key: &str, value: &f64) {
 
 
 impl Backend for Console {
-    fn flush(&mut self, buckets: &Buckets) {
-        let now = time::get_time();
-        println!("Flushing metrics: {}", time::at(now).rfc822().to_string());
+    fn deliver(&mut self, point: Metric) {
+        self.aggrs.add(&point);
+        self.points.push(point);
+    }
 
-        println!("  bad_messages: {}", buckets.bad_messages());
-        println!("  total_messages: {}", buckets.total_messages());
+    fn flush(&mut self) {
+        let now = chrono::UTC::now();
+        println!("Flushing metrics: {}", now.to_rfc3339());
 
         println!("  counters:");
-        for (key, value) in buckets.counters() {
+        for (key, value) in self.aggrs.counters() {
             fmt_line(&key, &value);
         }
 
         println!("  gauges:");
-        for (key, value) in buckets.gauges() {
+        for (key, value) in self.aggrs.gauges() {
             fmt_line(&key, &value);
         }
 
         println!("  histograms:");
-        for (key, value) in buckets.histograms() {
+        for (key, value) in self.aggrs.histograms() {
             for tup in [("min", 0.0),
                         ("max", 1.0),
                         ("50", 0.5),
@@ -59,7 +66,7 @@ impl Backend for Console {
         }
 
         println!("  timers:");
-        for (key, value) in buckets.timers() {
+        for (key, value) in self.aggrs.timers() {
             for tup in [("min", 0.0),
                         ("max", 1.0),
                         ("50", 0.5),

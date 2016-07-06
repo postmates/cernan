@@ -1,19 +1,20 @@
 use super::super::backend::Backend;
 use super::super::buckets::Buckets;
 use std::str::FromStr;
-use time;
 use rustc_serialize::json;
 use hyper::client::Client;
 use hyper::header::{ContentType, Authorization, Basic, Connection};
 use url;
+use chrono;
 use mime::Mime;
+use metric::Metric;
 
-#[derive(Debug)]
 pub struct Librato {
     username: String,
     auth_token: String,
     source: String,
     host: String,
+    aggrs: Buckets,
 }
 
 #[derive(Debug, RustcEncodable)]
@@ -50,43 +51,35 @@ impl Librato {
             auth_token: String::from_str(auth_token).unwrap(),
             source: String::from_str(source).unwrap(),
             host: String::from_str(host).unwrap(),
+            aggrs: Buckets::new(),
         }
     }
 
     /// Convert the buckets into a String pair vector for later conversion into
     /// a POST body
-    pub fn format_stats(&self, buckets: &Buckets, curtime: Option<i64>) -> String {
+    pub fn format_stats(&self, curtime: Option<i64>) -> String {
         let start = match curtime {
             Some(x) => x,
-            None => time::get_time().sec,
+            None => chrono::UTC::now().timestamp(),
         };
 
         let mut gauges = vec![];
         let mut counters = vec![];
 
-        counters.push(LCounter {
-            name: "cernan.bad_messages".to_string(),
-            value: buckets.bad_messages() as f64,
-        });
-        counters.push(LCounter {
-            name: "cernan.total_messages".to_string(),
-            value: buckets.total_messages() as f64,
-        });
-
-        for (key, value) in buckets.counters().iter() {
+        for (key, value) in self.aggrs.counters().iter() {
             counters.push(LCounter {
                 name: (*key).clone(),
                 value: *value,
             });
         }
-        for (key, value) in buckets.gauges().iter() {
+        for (key, value) in self.aggrs.gauges().iter() {
             gauges.push(LGauge {
                 name: (*key).clone(),
                 value: *value,
             });
         }
 
-        for (key, value) in buckets.histograms().iter() {
+        for (key, value) in self.aggrs.histograms().iter() {
             for tup in [("min", 0.0),
                         ("max", 1.0),
                         ("50", 0.5),
@@ -103,7 +96,7 @@ impl Librato {
             }
         }
 
-        for (key, value) in buckets.timers().iter() {
+        for (key, value) in self.aggrs.timers().iter() {
             for tup in [("min", 0.0),
                         ("max", 1.0),
                         ("50", 0.5),
@@ -131,10 +124,13 @@ impl Librato {
 }
 
 impl Backend for Librato {
-    fn flush(&mut self, buckets: &Buckets) {
+    fn deliver(&mut self, point: Metric) {
+        self.aggrs.add(&point);
+    }
 
+    fn flush(&mut self) {
         let client = Client::new();
-        let payload = self.format_stats(&buckets, Some(time::get_time().sec));
+        let payload = self.format_stats(None);
         let mime: Mime = "application/json".parse().unwrap();
         let uri = url::Url::parse(&(self.host)).ok().expect("malformed url");
         client.post(uri)
@@ -152,33 +148,20 @@ impl Backend for Librato {
 
 #[cfg(test)]
 mod test {
-    use super::super::super::metric::{Metric, MetricKind};
-    use super::super::super::buckets::Buckets;
+    use metric::{Metric, MetricKind};
+    use backend::Backend;
     use super::*;
-
-    fn make_buckets() -> Buckets {
-        let mut buckets = Buckets::new();
-        let m1 = Metric::new("test.counter", 1.0, MetricKind::Counter(1.0));
-        let m2 = Metric::new("test.gauge", 3.211, MetricKind::Gauge);
-        let m6 = Metric::new("src-test.gauge.2", 3.211, MetricKind::Gauge);
-
-        let m3 = Metric::new("test.timer", 12.101, MetricKind::Timer);
-        let m4 = Metric::new("test.timer", 1.101, MetricKind::Timer);
-        let m5 = Metric::new("test.timer", 3.101, MetricKind::Timer);
-        buckets.add(&m1);
-        buckets.add(&m2);
-        buckets.add(&m3);
-        buckets.add(&m4);
-        buckets.add(&m5);
-        buckets.add(&m6);
-        buckets
-    }
 
     #[test]
     fn test_format_librato_buckets_no_timers() {
-        let buckets = make_buckets();
-        let librato = Librato::new("user", "token", "test-src", "http://librato.example.com");
-        let result = librato.format_stats(&buckets, Some(10101));
+        let mut librato = Librato::new("user", "token", "test-src", "http://librato.example.com");
+        librato.deliver(Metric::new("test.counter", 1.0, MetricKind::Counter(1.0)));
+        librato.deliver(Metric::new("test.gauge", 3.211, MetricKind::Gauge));
+        librato.deliver(Metric::new("src-test.gauge.2", 3.211, MetricKind::Gauge));
+        librato.deliver(Metric::new("test.timer", 12.101, MetricKind::Timer));
+        librato.deliver(Metric::new("test.timer", 1.101, MetricKind::Timer));
+        librato.deliver(Metric::new("test.timer", 3.101, MetricKind::Timer));
+        let result = librato.format_stats(Some(10101));
 
         println!("{:?}", result);
         assert_eq!("{\"gauges\":[{\"name\":\"test.gauge\",\"value\":3.211},{\"name\":\"src-test.\
@@ -186,9 +169,8 @@ mod test {
                     {\"name\":\"test.timer.max\",\"value\":12.101},{\"name\":\"test.timer.50\",\
                     \"value\":3.101},{\"name\":\"test.timer.90\",\"value\":12.101},{\"name\":\
                     \"test.timer.99\",\"value\":12.101},{\"name\":\"test.timer.999\",\"value\":\
-                    12.101}],\"counters\":[{\"name\":\"cernan.bad_messages\",\"value\":0.0},\
-                    {\"name\":\"cernan.total_messages\",\"value\":6.0},{\"name\":\"test.\
-                    counter\",\"value\":1.0}],\"source\":\"test-src\",\"measure_time\":10101}",
+                    12.101}],\"counters\":[{\"name\":\"test.counter\",\"value\":1.0}],\"source\":\
+                    \"test-src\",\"measure_time\":10101}",
                    result);
     }
 }

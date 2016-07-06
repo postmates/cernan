@@ -1,15 +1,19 @@
-use super::super::backend::Backend;
-use super::super::buckets::Buckets;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::str::FromStr;
 use std::fmt::Write;
 use std::io::Write as IoWrite;
-use time;
+use chrono;
+use metric::Metric;
+use buckets::Buckets;
+use backend::Backend;
 
-#[derive(Debug)]
 pub struct Wavefront {
     addr: SocketAddrV4,
     tags: String,
+    // The wavefront implementation keeps an aggregate, depricated, and ships
+    // exact points. The aggregate is 'aggrs' and the exact points is 'points'.
+    aggrs: Buckets,
+    points: Vec<Metric>,
 }
 
 impl Wavefront {
@@ -26,42 +30,29 @@ impl Wavefront {
         Wavefront {
             addr: addr,
             tags: tags,
+            aggrs: Buckets::new(),
+            points: Vec::new(),
         }
     }
 
     /// Convert the buckets into a String that
     /// can be sent to the the wavefront proxy
-    pub fn format_stats(&self, buckets: &Buckets, curtime: Option<i64>) -> String {
+    pub fn format_stats(&self, curtime: Option<i64>) -> String {
         let start = match curtime {
             Some(x) => x,
-            None => time::get_time().sec,
+            None => chrono::UTC::now().timestamp(),
         };
-
         let mut stats = String::new();
-        write!(stats,
-               "{} {} {} {}\n",
-               "cernan.bad_messages",
-               buckets.bad_messages(),
-               start,
-               self.tags)
-            .unwrap();
-        write!(stats,
-               "{} {} {} {}\n",
-               "cernan.total_messages",
-               buckets.total_messages(),
-               start,
-               self.tags)
-            .unwrap();
 
-        for (key, value) in buckets.counters().iter() {
+        for (key, value) in self.aggrs.counters().iter() {
             write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
         }
 
-        for (key, value) in buckets.gauges().iter() {
+        for (key, value) in self.aggrs.gauges().iter() {
             write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
         }
 
-        for (key, value) in buckets.histograms().iter() {
+        for (key, value) in self.aggrs.histograms().iter() {
             for tup in [("min", 0.0),
                         ("max", 1.0),
                         ("50", 0.5),
@@ -82,7 +73,7 @@ impl Wavefront {
             }
         }
 
-        for (key, value) in buckets.timers().iter() {
+        for (key, value) in self.aggrs.timers().iter() {
             for tup in [("min", 0.0),
                         ("max", 1.0),
                         ("50", 0.5),
@@ -101,6 +92,16 @@ impl Wavefront {
                        self.tags)
                     .unwrap();
             }
+        }
+
+        for m in self.points.iter() {
+            write!(stats,
+                   "{} {} {} {}\n",
+                   m.name,
+                   m.value,
+                   m.time.timestamp(),
+                   self.tags)
+                .unwrap();
         }
 
         stats
@@ -108,54 +109,73 @@ impl Wavefront {
 }
 
 impl Backend for Wavefront {
-    fn flush(&mut self, buckets: &Buckets) {
-        let stats = self.format_stats(&buckets, Some(time::get_time().sec));
+    fn flush(&mut self) {
+        let stats = self.format_stats(None);
+        self.points.clear();
 
         let mut stream = TcpStream::connect(self.addr).unwrap();
         let _ = stream.write(stats.as_bytes());
+    }
+
+    fn deliver(&mut self, point: Metric) {
+        self.aggrs.add(&point);
+        self.points.push(point);
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::super::super::metric::{Metric, MetricKind};
-    use super::super::super::buckets::Buckets;
+    use metric::{Metric, MetricKind};
+    use backend::Backend;
+    use chrono::{UTC, TimeZone};
     use super::*;
-
-    fn make_buckets() -> Buckets {
-        let mut buckets = Buckets::new();
-        let m1 = Metric::new("test.counter", 1.0, MetricKind::Counter(1.0));
-        let m2 = Metric::new("test.gauge", 3.211, MetricKind::Gauge);
-
-        let m3 = Metric::new("test.timer", 12.101, MetricKind::Timer);
-        let m4 = Metric::new("test.timer", 1.101, MetricKind::Timer);
-        let m5 = Metric::new("test.timer", 3.101, MetricKind::Timer);
-        buckets.add(&m1);
-        buckets.add(&m2);
-        buckets.add(&m3);
-        buckets.add(&m4);
-        buckets.add(&m5);
-        buckets
-    }
 
     #[test]
     fn test_format_wavefront_buckets_no_timers() {
-        let buckets = make_buckets();
-        let wavefront = Wavefront::new("127.0.0.1", 2003, "source=test-src".to_string());
-        let result = wavefront.format_stats(&buckets, Some(10101));
+        let mut wavefront = Wavefront::new("127.0.0.1", 2003, "source=test-src".to_string());
+        let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12);
+        wavefront.deliver(Metric::new_with_source("test.counter",
+                                                  1.0,
+                                                  Some(dt),
+                                                  MetricKind::Counter(1.0),
+                                                  None));
+        wavefront.deliver(Metric::new_with_source("test.gauge",
+                                                  3.211,
+                                                  Some(dt),
+                                                  MetricKind::Gauge,
+                                                  None));
+        wavefront.deliver(Metric::new_with_source("test.timer",
+                                                  12.101,
+                                                  Some(dt),
+                                                  MetricKind::Timer,
+                                                  None));
+        wavefront.deliver(Metric::new_with_source("test.timer",
+                                                  1.101,
+                                                  Some(dt),
+                                                  MetricKind::Timer,
+                                                  None));
+        wavefront.deliver(Metric::new_with_source("test.timer",
+                                                  3.101,
+                                                  Some(dt),
+                                                  MetricKind::Timer,
+                                                  None));
+        let result = wavefront.format_stats(Some(10101));
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(10, lines.len());
-        assert!(lines[0].contains("cernan.bad_messages 0 10101 source=test-src"));
-        assert!(lines[1].contains("cernan.total_messages 5 10101 source=test-src"));
-        assert!(lines[2].contains("test.counter 1 10101 source=test-src"));
-        assert!(lines[3].contains("test.gauge 3.211 10101 source=test-src"));
-        assert!(lines[4].contains("test.timer.min 1.101 10101 source=test-src"));
-        assert!(lines[5].contains("test.timer.max 12.101 10101 source=test-src"));
-        assert!(lines[6].contains("test.timer.50 3.101 10101 source=test-src"));
-        assert!(lines[7].contains("test.timer.90 12.101 10101 source=test-src"));
-        assert!(lines[8].contains("test.timer.99 12.101 10101 source=test-src"));
-        assert!(lines[9].contains("test.timer.999 12.101 10101 source=test-src"));
+        assert_eq!(13, lines.len());
+        assert_eq!(lines[0], "test.counter 1 10101 source=test-src");
+        assert_eq!(lines[1], "test.gauge 3.211 10101 source=test-src");
+        assert_eq!(lines[2], "test.timer.min 1.101 10101 source=test-src");
+        assert_eq!(lines[3], "test.timer.max 12.101 10101 source=test-src");
+        assert_eq!(lines[4], "test.timer.50 3.101 10101 source=test-src");
+        assert_eq!(lines[5], "test.timer.90 12.101 10101 source=test-src");
+        assert_eq!(lines[6], "test.timer.99 12.101 10101 source=test-src");
+        assert_eq!(lines[7], "test.timer.999 12.101 10101 source=test-src");
+        assert_eq!(lines[8], "test.counter 1 645181811 source=test-src");
+        assert_eq!(lines[9], "test.gauge 3.211 645181811 source=test-src");
+        assert_eq!(lines[10], "test.timer 12.101 645181811 source=test-src");
+        assert_eq!(lines[11], "test.timer 1.101 645181811 source=test-src");
+        assert_eq!(lines[12], "test.timer 3.101 645181811 source=test-src");
     }
 }

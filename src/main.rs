@@ -9,7 +9,7 @@ extern crate hyper;
 extern crate lru_cache;
 extern crate mime;
 extern crate rustc_serialize;
-extern crate time;
+extern crate chrono;
 extern crate url;
 extern crate regex;
 
@@ -56,10 +56,7 @@ fn main() {
     let flush_send = event_send.clone();
     let udp_send = event_send.clone();
 
-    let mut buckets = buckets::Buckets::new();
-
-    println!("Starting cernan - {}",
-             time::at(buckets.start_time()).rfc822().to_string());
+    println!("Starting cernan");
     println!("Data server on 0.0.0.0:{}", args.flag_port);
 
     let port = args.flag_port;
@@ -84,7 +81,7 @@ fn main() {
                 // TODO improve this, limit here will be backend stalling and
                 // holding up all others
                 for backend in backends.iter_mut() {
-                    backend.flush(&buckets);
+                    backend.flush();
                 }
             }
 
@@ -94,13 +91,14 @@ fn main() {
                         match metric::Metric::parse(&val) {
                             Some(metrics) => {
                                 for metric in metrics.iter() {
-                                    buckets.add(&metric);
+                                    for backend in backends.iter_mut() {
+                                        backend.deliver(metric.clone());
+                                    }
                                 }
                                 Ok(metrics.len())
                             }
                             None => {
                                 println!("BAD PACKET: {:?}", val);
-                                buckets.add_bad_message();
                                 Err("could not interpret")
                             }
                         }
