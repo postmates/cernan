@@ -28,8 +28,7 @@ pub fn factory(console: &bool,
         backends.push(Box::new(console::Console::new()));
     }
     if *wavefront {
-        let re = Regex::new(r",").unwrap();
-        let wf_tags: String = re.replace_all(tags, " ");
+        let wf_tags: String = tags.replace(",", " ");
         backends.push(Box::new(wavefront::Wavefront::new(wavefront_host,
                                                          *wavefront_port,
                                                          wf_tags)));

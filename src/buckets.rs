@@ -67,14 +67,14 @@ impl Buckets {
                 };
                 let hist =
                     self.histograms.get_mut(&name).expect("shouldn't happen but did, histogram");
-                let _ = (*hist).insert(value.value);
+                (*hist).insert(value.value);
             }
             MetricKind::Timer => {
                 if !self.timers.contains_key(&name) {
                     let _ = self.timers.insert(value.name.to_owned(), CKMS::new(0.001));
                 };
                 let tm = self.timers.get_mut(&name).expect("shouldn't happen but did, timer");
-                let _ = (*tm).insert(value.value);
+                (*tm).insert(value.value);
             }
         }
     }

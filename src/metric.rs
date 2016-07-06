@@ -35,7 +35,7 @@ impl Metric {
             name: name.into(),
             value: value,
             kind: kind,
-            time: time.unwrap_or(UTC::now()),
+            time: time.unwrap_or_else(UTC::now),
             source: source.map(|x| x.into()),
         }
     }

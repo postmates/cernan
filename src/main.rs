@@ -88,9 +88,9 @@ fn main() {
             server::Event::UdpMessage(buf) => {
                 str::from_utf8(&buf)
                     .map(|val| {
-                        match metric::Metric::parse(&val) {
+                        match metric::Metric::parse(val) {
                             Some(metrics) => {
-                                for metric in metrics.iter() {
+                                for metric in &metrics {
                                     for backend in backends.iter_mut() {
                                         backend.deliver(metric.clone());
                                     }
