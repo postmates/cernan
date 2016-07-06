@@ -80,13 +80,12 @@ impl Librato {
         }
 
         for (key, value) in self.aggrs.histograms().iter() {
-            for tup in [("min", 0.0),
-                        ("max", 1.0),
-                        ("50", 0.5),
-                        ("90", 0.90),
-                        ("99", 0.99),
-                        ("999", 0.999)]
-                .iter() {
+            for tup in &[("min", 0.0),
+                         ("max", 1.0),
+                         ("50", 0.5),
+                         ("90", 0.90),
+                         ("99", 0.99),
+                         ("999", 0.999)] {
                 let stat: &str = tup.0;
                 let quant: f64 = tup.1;
                 gauges.push(LGauge {
@@ -97,13 +96,12 @@ impl Librato {
         }
 
         for (key, value) in self.aggrs.timers().iter() {
-            for tup in [("min", 0.0),
-                        ("max", 1.0),
-                        ("50", 0.5),
-                        ("90", 0.90),
-                        ("99", 0.99),
-                        ("999", 0.999)]
-                .iter() {
+            for tup in &[("min", 0.0),
+                         ("max", 1.0),
+                         ("50", 0.5),
+                         ("90", 0.90),
+                         ("99", 0.99),
+                         ("999", 0.999)] {
                 let stat: &str = tup.0;
                 let quant: f64 = tup.1;
                 gauges.push(LGauge {
@@ -132,7 +130,7 @@ impl Backend for Librato {
         let client = Client::new();
         let payload = self.format_stats(None);
         let mime: Mime = "application/json".parse().unwrap();
-        let uri = url::Url::parse(&(self.host)).ok().expect("malformed url");
+        let uri = url::Url::parse(&(self.host)).expect("malformed url");
         client.post(uri)
             .body(&payload)
             .header(ContentType(mime))

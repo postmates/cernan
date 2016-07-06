@@ -25,7 +25,7 @@ impl Wavefront {
     /// let wave = Wavefront::new(host, port, source);
     /// ```
     pub fn new(host: &str, port: u16, tags: String) -> Wavefront {
-        let ip = Ipv4Addr::from_str(&host).unwrap();
+        let ip = Ipv4Addr::from_str(host).unwrap();
         let addr = SocketAddrV4::new(ip, port);
         Wavefront {
             addr: addr,
@@ -53,13 +53,12 @@ impl Wavefront {
         }
 
         for (key, value) in self.aggrs.histograms().iter() {
-            for tup in [("min", 0.0),
-                        ("max", 1.0),
-                        ("50", 0.5),
-                        ("90", 0.9),
-                        ("99", 0.99),
-                        ("999", 0.999)]
-                .iter() {
+            for tup in &[("min", 0.0),
+                         ("max", 1.0),
+                         ("50", 0.5),
+                         ("90", 0.9),
+                         ("99", 0.99),
+                         ("999", 0.999)] {
                 let stat: &str = tup.0;
                 let quant: f64 = tup.1;
                 write!(stats,
@@ -74,13 +73,12 @@ impl Wavefront {
         }
 
         for (key, value) in self.aggrs.timers().iter() {
-            for tup in [("min", 0.0),
-                        ("max", 1.0),
-                        ("50", 0.5),
-                        ("90", 0.9),
-                        ("99", 0.99),
-                        ("999", 0.999)]
-                .iter() {
+            for tup in &[("min", 0.0),
+                         ("max", 1.0),
+                         ("50", 0.5),
+                         ("90", 0.9),
+                         ("99", 0.99),
+                         ("999", 0.999)] {
                 let stat: &str = tup.0;
                 let quant: f64 = tup.1;
                 write!(stats,
@@ -94,7 +92,7 @@ impl Wavefront {
             }
         }
 
-        for m in self.points.iter() {
+        for m in &self.points {
             write!(stats,
                    "{} {} {} {}\n",
                    m.name,
