@@ -1,6 +1,7 @@
 use metrics::statsd;
+use chrono::{UTC, DateTime};
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum MetricKind {
     Counter(f64),
     Gauge,
@@ -8,11 +9,12 @@ pub enum MetricKind {
     Histogram,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Metric {
     pub kind: MetricKind,
     pub name: String,
     pub value: f64,
+    pub time: DateTime<UTC>,
     pub source: Option<String>,
 }
 
@@ -21,10 +23,11 @@ impl Metric {
     ///
     /// Uses the Into trait to allow both str and String types.
     pub fn new<S: Into<String>>(name: S, value: f64, kind: MetricKind) -> Metric {
-        Metric::new_with_source(name, value, kind, None)
+        Metric::new_with_source(name, value, None, kind, None)
     }
     pub fn new_with_source<S: Into<String>>(name: S,
                                             value: f64,
+                                            time: Option<DateTime<UTC>>,
                                             kind: MetricKind,
                                             source: Option<S>)
                                             -> Metric {
@@ -32,6 +35,7 @@ impl Metric {
             name: name.into(),
             value: value,
             kind: kind,
+            time: time.unwrap_or(UTC::now()),
             source: source.map(|x| x.into()),
         }
     }
@@ -50,7 +54,6 @@ impl Metric {
 #[cfg(test)]
 mod tests {
     use metric::{Metric, MetricKind};
-    use metrics::statsd;
     //    use test::Bencher; // see bench_prs
 
     #[test]
@@ -61,24 +64,43 @@ mod tests {
         assert!(prs.is_some());
         let prs_pyld = prs.unwrap();
 
-        assert_eq!(prs_pyld[0], Metric::new("fst", -1.1, MetricKind::Timer));
-        assert_eq!(prs_pyld[1], Metric::new("snd", 2.2, MetricKind::Gauge));
-        assert_eq!(prs_pyld[2], Metric::new("thd", 3.3, MetricKind::Histogram));
-        assert_eq!(prs_pyld[3],
-                   Metric::new("fth", 4.0, MetricKind::Counter(1.0)));
-        assert_eq!(prs_pyld[4],
-                   Metric::new("fvth", 5.5, MetricKind::Counter(2.0)));
+        assert_eq!(prs_pyld[0].kind, MetricKind::Timer);
+        assert_eq!(prs_pyld[0].name, "fst");
+        assert_eq!(prs_pyld[0].value, -1.1);
+
+        assert_eq!(prs_pyld[1].kind, MetricKind::Gauge);
+        assert_eq!(prs_pyld[1].name, "snd");
+        assert_eq!(prs_pyld[1].value, 2.2);
+
+        assert_eq!(prs_pyld[2].kind, MetricKind::Histogram);
+        assert_eq!(prs_pyld[2].name, "thd");
+        assert_eq!(prs_pyld[2].value, 3.3);
+
+        assert_eq!(prs_pyld[3].kind, MetricKind::Counter(1.0));
+        assert_eq!(prs_pyld[3].name, "fth");
+        assert_eq!(prs_pyld[3].value, 4.0);
+
+        assert_eq!(prs_pyld[4].kind, MetricKind::Counter(2.0));
+        assert_eq!(prs_pyld[4].name, "fvth");
+        assert_eq!(prs_pyld[4].value, 5.5);
     }
 
     #[test]
-    fn test_parse_metric_payload() {
-        assert_eq!(statsd::parse_MetricPayload("foo.bar.99:12.3|ms").unwrap(),
-                   [Metric::new("foo.bar.99", 12.3, MetricKind::Timer)]);
-        assert_eq!(statsd::parse_MetricPayload("foo.bar:12.3|ms").unwrap(),
-                   [Metric::new("foo.bar", 12.3, MetricKind::Timer)]);
-        assert_eq!(statsd::parse_MetricPayload("first:1.1|ms\nsnd:2.2|g\n").unwrap(),
-                   [Metric::new("first", 1.1, MetricKind::Timer),
-                    Metric::new("snd", 2.2, MetricKind::Gauge)]);
+    fn test_metric_equal_in_name() {
+        let res = Metric::parse("A=:1|ms\n").unwrap();
+
+        assert_eq!("A=", res[0].name);
+        assert_eq!(1.0, res[0].value);
+        assert_eq!(MetricKind::Timer, res[0].kind);
+    }
+
+    #[test]
+    fn test_metric_slash_in_name() {
+        let res = Metric::parse("A/:1|ms\n").unwrap();
+
+        assert_eq!("A/", res[0].name);
+        assert_eq!(1.0, res[0].value);
+        assert_eq!(MetricKind::Timer, res[0].kind);
     }
 
     #[test]

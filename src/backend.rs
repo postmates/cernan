@@ -1,15 +1,15 @@
-use buckets::Buckets;
 use backends::console;
 use backends::wavefront;
 use backends::librato;
+use metric::Metric;
 
 use regex::Regex;
 
 /// A 'backend' is a sink for metrics.
 pub trait Backend {
-    fn flush(&mut self, buckets: &Buckets) -> ();
+    fn flush(&mut self) -> ();
+    fn deliver(&mut self, point: Metric) -> ();
 }
-
 
 /// Creates the collection of backends based on the paraemeters
 ///

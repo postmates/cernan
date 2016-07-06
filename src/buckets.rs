@@ -4,7 +4,6 @@
 //! each set of metrics received by clients.
 
 use super::metric::{Metric, MetricKind};
-use time;
 use quantiles::CKMS;
 use lru_cache::LruCache;
 
@@ -14,11 +13,6 @@ pub struct Buckets {
     gauges: LruCache<String, f64>,
     timers: LruCache<String, CKMS<f64>>,
     histograms: LruCache<String, CKMS<f64>>,
-
-    server_start_time: time::Timespec,
-    last_message: time::Timespec,
-    bad_messages: usize,
-    total_messages: usize,
 }
 
 impl Buckets {
@@ -37,10 +31,6 @@ impl Buckets {
             gauges: LruCache::new(10000),
             timers: LruCache::new(10000),
             histograms: LruCache::new(10000),
-            bad_messages: 0,
-            total_messages: 0,
-            last_message: time::get_time(),
-            server_start_time: time::get_time(),
         }
     }
 
@@ -87,19 +77,6 @@ impl Buckets {
                 let _ = (*tm).insert(value.value);
             }
         }
-        self.last_message = time::get_time();
-        self.total_messages += 1;
-    }
-
-    /// Also increments tht total message count.
-    pub fn add_bad_message(&mut self) {
-        self.total_messages += 1;
-        self.bad_messages += 1
-    }
-
-    /// Get the count of bad messages
-    pub fn bad_messages(&self) -> usize {
-        self.bad_messages
     }
 
     /// Get the counters as a borrowed reference.
@@ -121,17 +98,6 @@ impl Buckets {
     pub fn timers(&self) -> &LruCache<String, CKMS<f64>> {
         &self.timers
     }
-
-    /// Get the total number of messages this bucket has seen
-    /// (includes bad messages).
-    pub fn total_messages(&self) -> usize {
-        self.total_messages
-    }
-
-    /// Get the initialization time of the buckets.
-    pub fn start_time(&self) -> time::Timespec {
-        self.server_start_time
-    }
 }
 
 
@@ -141,43 +107,13 @@ impl Buckets {
 mod test {
     use super::*;
     use super::super::metric::{Metric, MetricKind};
-    use time;
-
-    #[test]
-    fn test_bad_messages() {
-        let mut buckets = Buckets::new();
-        buckets.add_bad_message();
-        assert_eq!(1, buckets.bad_messages());
-        assert_eq!(1, buckets.total_messages());
-
-        buckets.add_bad_message();
-        assert_eq!(2, buckets.bad_messages());
-        assert_eq!(2, buckets.total_messages());
-    }
 
     #[test]
     fn test_add_increments_total_messages() {
         let mut buckets = Buckets::new();
         // duff value to ensure it changes.
-        let original = time::strptime("2015-08-03 19:50:12", "%Y-%m-%d %H:%M:%S")
-            .unwrap()
-            .to_timespec();
-        buckets.last_message = original;
-
         let metric = Metric::new("some.metric", 1.0, MetricKind::Counter(1.0));
         buckets.add(&metric);
-        assert!(buckets.last_message > original);
-    }
-
-    #[test]
-    fn test_add_increments_last_message_timer() {
-        let mut buckets = Buckets::new();
-        let metric = Metric::new("some.metric", 1.0, MetricKind::Counter(1.0));
-        buckets.add(&metric);
-        assert_eq!(1, buckets.total_messages);
-
-        buckets.add(&metric);
-        assert_eq!(2, buckets.total_messages);
     }
 
     #[test]
