@@ -28,12 +28,14 @@ Options:
      2878].
   --wavefront-host=<p>    The host wavefront proxy is running on. [default: \
      127.0.0.1].
-  --librato-username=<p>  The librato username for authentication. [default: \
-     statsd].
-  --librato-host=<p>      The librato host to report to. [default: \
-     https://metrics-api.librato.com/v1/metrics].
-  --librato-token=<p>     The librato token for \
+  --wavefront-skip-aggrs   Send aggregate metrics to wavefront (librato \
+     compatibility)
+  --librato-username=<p>  The librato username for \
      authentication. [default: statsd].
+  --librato-host=<p>      The librato host to report to. \
+     [default: https://metrics-api.librato.com/v1/metrics].
+  --librato-token=<p>     The librato \
+     token for authentication. [default: statsd].
   --version
 ";
 
@@ -48,6 +50,7 @@ pub struct Args {
     pub flag_tags: String,
     pub flag_wavefront_port: u16,
     pub flag_wavefront_host: String,
+    pub flag_wavefront_skip_aggrs: bool,
     pub flag_librato_username: String,
     pub flag_librato_token: String,
     pub flag_librato_host: String,
