@@ -59,7 +59,7 @@ impl Buckets {
                     self.counters.get_mut(&name).expect("shouldn't happen but did, counter");
                 *counter += value.value * (1.0 / rate);
             }
-            MetricKind::Gauge => {
+            MetricKind::Gauge | MetricKind::Raw => {
                 self.gauges.insert(name, value.value);
             }
             MetricKind::Histogram => {

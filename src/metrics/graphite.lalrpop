@@ -1,0 +1,18 @@
+use std::str::FromStr;
+use metric::{MetricKind, Metric};
+use std::rc::Rc;
+use string_cache::Atom;
+use chrono::UTC;
+use chrono::TimeZone;
+
+grammar;
+
+MetricName: Atom = <s:r"[A-Za-z][_A-Z0-9a-z+/=\.-]*"> => Atom::from(s);
+
+Num: f64 = <s:r"[-+]?[0-9]+\.?[0-9]*"> => f64::from_str(s).unwrap();
+
+MetricLine: Rc<Metric> = {
+    <name:MetricName> <val:Num> <t:Num> => Rc::new(Metric::new_with_time(name, val, Some(UTC.timestamp(t as i64, 0)), MetricKind::Raw))
+};
+
+pub MetricPayload: Vec<Rc<Metric>> = { (<MetricLine>)+ };

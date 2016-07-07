@@ -1,4 +1,4 @@
-use metrics::statsd;
+use metrics::*;
 use chrono::{UTC, DateTime};
 use std::rc::Rc;
 use string_cache::Atom;
@@ -9,6 +9,7 @@ pub enum MetricKind {
     Gauge,
     Timer,
     Histogram,
+    Raw,
 }
 
 #[derive(PartialEq, Debug)]
@@ -32,7 +33,6 @@ impl Metric {
         }
     }
 
-    #[cfg(test)]
     pub fn new_with_time(name: Atom,
                          value: f64,
                          time: Option<DateTime<UTC>>,
@@ -54,8 +54,12 @@ impl Metric {
     ///
     /// Multiple metrics can be sent in a single UDP packet
     /// separated by newlines.
-    pub fn parse(source: &str) -> Option<Vec<Rc<Metric>>> {
+    pub fn parse_statsd(source: &str) -> Option<Vec<Rc<Metric>>> {
         statsd::parse_MetricPayload(source).ok()
+    }
+
+    pub fn parse_graphite(source: &str) -> Option<Vec<Rc<Metric>>> {
+        graphite::parse_MetricPayload(source).ok()
     }
 }
 
@@ -63,12 +67,37 @@ impl Metric {
 mod tests {
     use metric::{Metric, MetricKind};
     use string_cache::Atom;
+    use chrono::{UTC, TimeZone};
     //    use test::Bencher; // see bench_prs
+
+    #[test]
+    fn test_parse_graphite() {
+        let pyld = "fst 1 101\nsnd -2.0 202\nthr 3 303\n";
+        let prs = Metric::parse_graphite(pyld);
+
+        assert!(prs.is_some());
+        let prs_pyld = prs.unwrap();
+
+        assert_eq!(prs_pyld[0].kind, MetricKind::Raw);
+        assert_eq!(prs_pyld[0].name, Atom::from("fst"));
+        assert_eq!(prs_pyld[0].value, 1.0);
+        assert_eq!(prs_pyld[0].time, UTC.timestamp(101, 0));
+
+        assert_eq!(prs_pyld[1].kind, MetricKind::Raw);
+        assert_eq!(prs_pyld[1].name, Atom::from("snd"));
+        assert_eq!(prs_pyld[1].value, -2.0);
+        assert_eq!(prs_pyld[1].time, UTC.timestamp(202, 0));
+
+        assert_eq!(prs_pyld[2].kind, MetricKind::Raw);
+        assert_eq!(prs_pyld[2].name, Atom::from("thr"));
+        assert_eq!(prs_pyld[2].value, 3.0);
+        assert_eq!(prs_pyld[2].time, UTC.timestamp(303, 0));
+    }
 
     #[test]
     fn test_parse_metric_via_api() {
         let pyld = "fst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@2";
-        let prs = Metric::parse(pyld);
+        let prs = Metric::parse_statsd(pyld);
 
         assert!(prs.is_some());
         let prs_pyld = prs.unwrap();
@@ -96,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_metric_equal_in_name() {
-        let res = Metric::parse("A=:1|ms\n").unwrap();
+        let res = Metric::parse_statsd("A=:1|ms\n").unwrap();
 
         assert_eq!(Atom::from("A="), res[0].name);
         assert_eq!(1.0, res[0].value);
@@ -105,7 +134,7 @@ mod tests {
 
     #[test]
     fn test_metric_slash_in_name() {
-        let res = Metric::parse("A/:1|ms\n").unwrap();
+        let res = Metric::parse_statsd("A/:1|ms\n").unwrap();
 
         assert_eq!(Atom::from("A/"), res[0].name);
         assert_eq!(1.0, res[0].value);
@@ -114,17 +143,17 @@ mod tests {
 
     #[test]
     fn test_metric_parse_invalid_no_name() {
-        assert_eq!(None, Metric::parse(""));
+        assert_eq!(None, Metric::parse_statsd(""));
     }
 
     #[test]
     fn test_metric_parse_invalid_no_value() {
-        assert_eq!(None, Metric::parse("foo:"));
+        assert_eq!(None, Metric::parse_statsd("foo:"));
     }
 
     #[test]
     fn test_metric_multiple() {
-        let res = Metric::parse("a.b:12.1|g\nb_c:13.2|c").unwrap();
+        let res = Metric::parse_statsd("a.b:12.1|g\nb_c:13.2|c").unwrap();
         assert_eq!(2, res.len());
 
         assert_eq!(Atom::from("a.b"), res[0].name);
@@ -138,7 +167,7 @@ mod tests {
     fn test_metric_invalid() {
         let invalid = vec!["", "metric", "metric|11:", "metric|12", "metric:13|", ":|@", ":1.0|c"];
         for input in invalid.iter() {
-            let result = Metric::parse(*input);
+            let result = Metric::parse_statsd(*input);
             assert!(result.is_none());
         }
     }

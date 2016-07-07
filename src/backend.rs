@@ -24,9 +24,12 @@ pub fn factory(args: &ArgMatches) -> Vec<Box<Backend>> {
     if args.value_of("wavefront").is_some() {
         let wf_tags: String = tags.replace(",", " ");
         backends.push(Box::new(wavefront::Wavefront::new(args.value_of("wavefront-host").unwrap(),
-                                                         u16::from_str(args.value_of("wavefront-port").unwrap()).unwrap(),
-                                                         args.value_of("wavefront-skip-aggrs").is_some(),
-                                                         wf_tags)));
+                                                     u16::from_str(args.value_of("wavefront-port")
+                                                             .unwrap())
+                                                         .unwrap(),
+                                                     args.value_of("wavefront-skip-aggrs")
+                                                         .is_some(),
+                                                     wf_tags)));
     }
     if args.value_of("librato").is_some() {
         let re = Regex::new(r"(?x)(source=(?P<source>.*),+)?").unwrap();

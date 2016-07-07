@@ -5,7 +5,6 @@
 
 use clap::{Arg, App, ArgMatches};
 
-
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 pub fn parse_args<'a>() -> ArgMatches<'a> {
@@ -13,13 +12,18 @@ pub fn parse_args<'a>() -> ArgMatches<'a> {
         .version(VERSION.unwrap_or("unknown"))
         .author("Brian L. Troutwine <blt@postmates.com>")
         .about("telemetry aggregation and shipping, last up the ladder")
-        .arg(Arg::with_name("port")
-             .short("p")
-             .long("port")
-             .value_name("PORT")
-             .help("The UDP port to bind to.")
+        .arg(Arg::with_name("statsd-port")
+             .long("statsd-port")
+             .value_name("port")
+             .help("The UDP port to bind to for statsd traffic.")
              .takes_value(true)
              .default_value("8125"))
+        .arg(Arg::with_name("graphite-port")
+             .long("graphite-port")
+             .value_name("port")
+             .help("The TCP port to bind to for graphite traffic.")
+             .takes_value(true)
+             .default_value("2003"))
         .arg(Arg::with_name("flush-interval")
              .long("flush-interval")
              .value_name("FLSHINT")

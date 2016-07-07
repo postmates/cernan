@@ -21,6 +21,7 @@ mod cli;
 mod metric;
 mod metrics {
     pub mod statsd;
+    pub mod graphite;
 }
 mod server;
 mod backends {
@@ -36,11 +37,17 @@ fn main() {
 
     let (event_send, event_recv) = channel();
     let flush_send = event_send.clone();
-    let udp_send = event_send.clone();
+    let statsd_send = event_send.clone();
+    let graphite_send = event_send.clone();
 
-    let port = u16::from_str(args.value_of("port").unwrap()).unwrap();
+    let sport = u16::from_str(args.value_of("statsd-port").unwrap()).unwrap();
     thread::spawn(move || {
-        server::udp_server(udp_send, port);
+        server::udp_server(statsd_send, sport);
+    });
+
+    let gport = u16::from_str(args.value_of("graphite-port").unwrap()).unwrap();
+    thread::spawn(move || {
+        server::tcp_server(graphite_send, gport);
     });
 
     let flush_interval = u64::from_str(args.value_of("flush-interval").unwrap()).unwrap();
@@ -63,10 +70,31 @@ fn main() {
                 }
             }
 
+            server::Event::TcpMessage(buf) => {
+                str::from_utf8(&buf)
+                    .map(|val| {
+                        match metric::Metric::parse_graphite(val) {
+                            Some(metrics) => {
+                                for metric in &metrics {
+                                    for backend in &mut backends {
+                                        backend.deliver(metric.clone());
+                                    }
+                                }
+                                Ok(metrics.len())
+                            }
+                            None => {
+                                println!("BAD PACKET: {:?}", val);
+                                Err("could not interpret")
+                            }
+                        }
+                    })
+                    .ok();
+            }
+
             server::Event::UdpMessage(buf) => {
                 str::from_utf8(&buf)
                     .map(|val| {
-                        match metric::Metric::parse(val) {
+                        match metric::Metric::parse_statsd(val) {
                             Some(metrics) => {
                                 for metric in &metrics {
                                     for backend in &mut backends {
