@@ -1,14 +1,13 @@
-use backends::console;
-use backends::wavefront;
-use backends::librato;
+use backends::*;
 use metric::Metric;
 
 use regex::Regex;
+use std::rc::Rc;
 
 /// A 'backend' is a sink for metrics.
 pub trait Backend {
     fn flush(&mut self) -> ();
-    fn deliver(&mut self, point: Metric) -> ();
+    fn deliver(&mut self, point: Rc<Metric>) -> ();
 }
 
 /// Creates the collection of backends based on the paraemeters
@@ -23,7 +22,7 @@ pub fn factory(console: &bool,
                librato_username: &str,
                librato_token: &str,
                librato_host: &str)
-               -> Box<[Box<Backend>]> {
+               -> Vec<Box<Backend>> {
     let mut backends: Vec<Box<Backend>> = Vec::with_capacity(3);
     if *console {
         backends.push(Box::new(console::Console::new()));
@@ -45,7 +44,7 @@ pub fn factory(console: &bool,
                                                      metric_source,
                                                      librato_host)));
     }
-    backends.into_boxed_slice()
+    backends
 }
 
 

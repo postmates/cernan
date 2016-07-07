@@ -15,6 +15,7 @@ chrono = "0.2"
 url = "1.1.1"
 regex = "0.1"
 lalrpop-util = "0.11.0"
+string_cache = "0.2.21"
 
 [build-dependencies]
 lalrpop = "0.11.0"

@@ -13,7 +13,7 @@ pub enum Event {
 pub fn udp_server(chan: Sender<Event>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let socket = UdpSocket::bind(addr).ok().unwrap();
-    let mut buf = [0; 2048];
+    let mut buf = [0; 8192];
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
             Ok(r) => r,

@@ -2,10 +2,10 @@ use backend::Backend;
 use buckets::Buckets;
 use metric::Metric;
 use chrono;
+use std::rc::Rc;
 
 pub struct Console {
     aggrs: Buckets,
-    points: Vec<Metric>,
 }
 
 impl Console {
@@ -17,10 +17,7 @@ impl Console {
     /// let cons = Console::new();
     /// ```
     pub fn new() -> Console {
-        Console {
-            aggrs: Buckets::new(),
-            points: Vec::new(),
-        }
+        Console { aggrs: Buckets::new() }
     }
 }
 
@@ -31,9 +28,8 @@ fn fmt_line(key: &str, value: &f64) {
 
 
 impl Backend for Console {
-    fn deliver(&mut self, point: Metric) {
+    fn deliver(&mut self, point: Rc<Metric>) {
         self.aggrs.add(&point);
-        self.points.push(point);
     }
 
     fn flush(&mut self) {

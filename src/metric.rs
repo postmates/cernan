@@ -1,7 +1,9 @@
 use metrics::statsd;
 use chrono::{UTC, DateTime};
+use std::rc::Rc;
+use string_cache::Atom;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug)]
 pub enum MetricKind {
     Counter(f64),
     Gauge,
@@ -9,36 +11,42 @@ pub enum MetricKind {
     Histogram,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug)]
 pub struct Metric {
     pub kind: MetricKind,
-    pub name: String,
+    pub name: Atom,
     pub value: f64,
     pub time: DateTime<UTC>,
-    pub source: Option<String>,
 }
 
 impl Metric {
     /// Create a new metric
     ///
     /// Uses the Into trait to allow both str and String types.
-    pub fn new<S: Into<String>>(name: S, value: f64, kind: MetricKind) -> Metric {
-        Metric::new_with_source(name, value, None, kind, None)
-    }
-    pub fn new_with_source<S: Into<String>>(name: S,
-                                            value: f64,
-                                            time: Option<DateTime<UTC>>,
-                                            kind: MetricKind,
-                                            source: Option<S>)
-                                            -> Metric {
+    pub fn new(name: Atom, value: f64, kind: MetricKind) -> Metric {
         Metric {
-            name: name.into(),
+            name: name,
+            value: value,
+            kind: kind,
+            time: UTC::now(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn new_with_time(name: Atom,
+                         value: f64,
+                         time: Option<DateTime<UTC>>,
+                         kind: MetricKind)
+                         -> Metric {
+        Metric {
+            name: name,
             value: value,
             kind: kind,
             time: time.unwrap_or_else(UTC::now),
-            source: source.map(|x| x.into()),
         }
     }
+
+
     /// Valid message formats are:
     ///
     /// - `<str:metric_name>:<f64:value>|<str:type>`
@@ -46,7 +54,7 @@ impl Metric {
     ///
     /// Multiple metrics can be sent in a single UDP packet
     /// separated by newlines.
-    pub fn parse(source: &str) -> Option<Vec<Metric>> {
+    pub fn parse(source: &str) -> Option<Vec<Rc<Metric>>> {
         statsd::parse_MetricPayload(source).ok()
     }
 }
@@ -54,6 +62,7 @@ impl Metric {
 #[cfg(test)]
 mod tests {
     use metric::{Metric, MetricKind};
+    use string_cache::Atom;
     //    use test::Bencher; // see bench_prs
 
     #[test]
@@ -65,23 +74,23 @@ mod tests {
         let prs_pyld = prs.unwrap();
 
         assert_eq!(prs_pyld[0].kind, MetricKind::Timer);
-        assert_eq!(prs_pyld[0].name, "fst");
+        assert_eq!(prs_pyld[0].name, Atom::from("fst"));
         assert_eq!(prs_pyld[0].value, -1.1);
 
         assert_eq!(prs_pyld[1].kind, MetricKind::Gauge);
-        assert_eq!(prs_pyld[1].name, "snd");
+        assert_eq!(prs_pyld[1].name, Atom::from("snd"));
         assert_eq!(prs_pyld[1].value, 2.2);
 
         assert_eq!(prs_pyld[2].kind, MetricKind::Histogram);
-        assert_eq!(prs_pyld[2].name, "thd");
+        assert_eq!(prs_pyld[2].name, Atom::from("thd"));
         assert_eq!(prs_pyld[2].value, 3.3);
 
         assert_eq!(prs_pyld[3].kind, MetricKind::Counter(1.0));
-        assert_eq!(prs_pyld[3].name, "fth");
+        assert_eq!(prs_pyld[3].name, Atom::from("fth"));
         assert_eq!(prs_pyld[3].value, 4.0);
 
         assert_eq!(prs_pyld[4].kind, MetricKind::Counter(2.0));
-        assert_eq!(prs_pyld[4].name, "fvth");
+        assert_eq!(prs_pyld[4].name, Atom::from("fvth"));
         assert_eq!(prs_pyld[4].value, 5.5);
     }
 
@@ -89,7 +98,7 @@ mod tests {
     fn test_metric_equal_in_name() {
         let res = Metric::parse("A=:1|ms\n").unwrap();
 
-        assert_eq!("A=", res[0].name);
+        assert_eq!(Atom::from("A="), res[0].name);
         assert_eq!(1.0, res[0].value);
         assert_eq!(MetricKind::Timer, res[0].kind);
     }
@@ -98,7 +107,7 @@ mod tests {
     fn test_metric_slash_in_name() {
         let res = Metric::parse("A/:1|ms\n").unwrap();
 
-        assert_eq!("A/", res[0].name);
+        assert_eq!(Atom::from("A/"), res[0].name);
         assert_eq!(1.0, res[0].value);
         assert_eq!(MetricKind::Timer, res[0].kind);
     }
@@ -118,10 +127,10 @@ mod tests {
         let res = Metric::parse("a.b:12.1|g\nb_c:13.2|c").unwrap();
         assert_eq!(2, res.len());
 
-        assert_eq!("a.b", res[0].name);
+        assert_eq!(Atom::from("a.b"), res[0].name);
         assert_eq!(12.1, res[0].value);
 
-        assert_eq!("b_c", res[1].name);
+        assert_eq!(Atom::from("b_c"), res[1].name);
         assert_eq!(13.2, res[1].value);
     }
 
