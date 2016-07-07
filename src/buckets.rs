@@ -6,13 +6,14 @@
 use super::metric::{Metric, MetricKind};
 use quantiles::CKMS;
 use lru_cache::LruCache;
+use string_cache::Atom;
 
 /// Buckets stores all metrics until they are flushed.
 pub struct Buckets {
-    counters: LruCache<String, f64>,
-    gauges: LruCache<String, f64>,
-    timers: LruCache<String, CKMS<f64>>,
-    histograms: LruCache<String, CKMS<f64>>,
+    counters: LruCache<Atom, f64>,
+    gauges: LruCache<Atom, f64>,
+    timers: LruCache<Atom, CKMS<f64>>,
+    histograms: LruCache<Atom, CKMS<f64>>,
 }
 
 impl Buckets {
@@ -80,22 +81,22 @@ impl Buckets {
     }
 
     /// Get the counters as a borrowed reference.
-    pub fn counters(&self) -> &LruCache<String, f64> {
+    pub fn counters(&self) -> &LruCache<Atom, f64> {
         &self.counters
     }
 
     /// Get the gauges as a borrowed reference.
-    pub fn gauges(&self) -> &LruCache<String, f64> {
+    pub fn gauges(&self) -> &LruCache<Atom, f64> {
         &self.gauges
     }
 
     /// Get the histograms as a borrowed reference.
-    pub fn histograms(&self) -> &LruCache<String, CKMS<f64>> {
+    pub fn histograms(&self) -> &LruCache<Atom, CKMS<f64>> {
         &self.histograms
     }
 
     /// Get the timers as a borrowed reference.
-    pub fn timers(&self) -> &LruCache<String, CKMS<f64>> {
+    pub fn timers(&self) -> &LruCache<Atom, CKMS<f64>> {
         &self.timers
     }
 }
@@ -106,29 +107,32 @@ impl Buckets {
 #[cfg(test)]
 mod test {
     use super::*;
-    use super::super::metric::{Metric, MetricKind};
+    use metric::{Metric, MetricKind};
+    use string_cache::Atom;
 
     #[test]
     fn test_add_increments_total_messages() {
         let mut buckets = Buckets::new();
         // duff value to ensure it changes.
-        let metric = Metric::new("some.metric", 1.0, MetricKind::Counter(1.0));
+        let metric = Metric::new(Atom::from("some.metric"), 1.0, MetricKind::Counter(1.0));
         buckets.add(&metric);
     }
 
     #[test]
     fn test_add_counter_metric() {
         let mut buckets = Buckets::new();
-        let metric = Metric::new("some.metric", 1.0, MetricKind::Counter(1.0));
+        let mname = Atom::from("some.metric");
+        let metric = Metric::new(mname, 1.0, MetricKind::Counter(1.0));
         buckets.add(&metric);
 
-        assert!(buckets.counters.contains_key("some.metric"),
+        let rmname = Atom::from("some.metric");
+        assert!(buckets.counters.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(Some(&mut 1.0), buckets.counters.get_mut("some.metric"));
+        assert_eq!(Some(&mut 1.0), buckets.counters.get_mut(&rmname));
 
         // Increment counter
         buckets.add(&metric);
-        assert_eq!(Some(&mut 2.0), buckets.counters.get_mut("some.metric"));
+        assert_eq!(Some(&mut 2.0), buckets.counters.get_mut(&rmname));
         assert_eq!(1, buckets.counters().len());
         assert_eq!(0, buckets.gauges().len());
     }
@@ -136,24 +140,27 @@ mod test {
     #[test]
     fn test_add_counter_metric_sampled() {
         let mut buckets = Buckets::new();
-        let metric = Metric::new("some.metric", 1.0, MetricKind::Counter(0.1));
+        let metric = Metric::new(Atom::from("some.metric"), 1.0, MetricKind::Counter(0.1));
+
+        let rmname = Atom::from("some.metric");
 
         buckets.add(&metric);
-        assert_eq!(Some(&mut 10.0), buckets.counters.get_mut("some.metric"));
+        assert_eq!(Some(&mut 10.0), buckets.counters.get_mut(&rmname));
 
-        let metric_two = Metric::new("some.metric", 1.0, MetricKind::Counter(0.5));
+        let metric_two = Metric::new(Atom::from("some.metric"), 1.0, MetricKind::Counter(0.5));
         buckets.add(&metric_two);
-        assert_eq!(Some(&mut 12.0), buckets.counters.get_mut("some.metric"));
+        assert_eq!(Some(&mut 12.0), buckets.counters.get_mut(&rmname));
     }
 
     #[test]
     fn test_add_gauge_metric() {
         let mut buckets = Buckets::new();
-        let metric = Metric::new("some.metric", 11.5, MetricKind::Gauge);
+        let rmname = Atom::from("some.metric");
+        let metric = Metric::new(Atom::from("some.metric"), 11.5, MetricKind::Gauge);
         buckets.add(&metric);
-        assert!(buckets.gauges.contains_key("some.metric"),
+        assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(Some(&mut 11.5), buckets.gauges.get_mut("some.metric"));
+        assert_eq!(Some(&mut 11.5), buckets.gauges.get_mut(&rmname));
         assert_eq!(1, buckets.gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
@@ -161,22 +168,24 @@ mod test {
     #[test]
     fn test_add_timer_metric() {
         let mut buckets = Buckets::new();
-        let metric = Metric::new("some.metric", 11.5, MetricKind::Timer);
+        let rmname = Atom::from("some.metric");
+        let metric = Metric::new(Atom::from("some.metric"), 11.5, MetricKind::Timer);
         buckets.add(&metric);
-        assert!(buckets.timers.contains_key("some.metric"),
+        assert!(buckets.timers.contains_key(&rmname),
                 "Should contain the metric key");
 
         assert_eq!(Some((1, 11.5)),
-                   buckets.timers.get_mut("some.metric").expect("hwhap").query(0.0));
+                   buckets.timers.get_mut(&rmname).expect("hwhap").query(0.0));
 
-        let metric_two = Metric::new("some.metric", 99.5, MetricKind::Timer);
+        let metric_two = Metric::new(Atom::from("some.metric"), 99.5, MetricKind::Timer);
         buckets.add(&metric_two);
 
-        let metric_three = Metric::new("other.metric", 811.5, MetricKind::Timer);
+        let romname = Atom::from("other.metric");
+        let metric_three = Metric::new(Atom::from("other.metric"), 811.5, MetricKind::Timer);
         buckets.add(&metric_three);
-        assert!(buckets.timers.contains_key("some.metric"),
+        assert!(buckets.timers.contains_key(&romname),
                 "Should contain the metric key");
-        assert!(buckets.timers.contains_key("other.metric"),
+        assert!(buckets.timers.contains_key(&romname),
                 "Should contain the metric key");
 
         // assert_eq!(Some(&mut vec![11.5, 99.5]), buckets.timers.get_mut("some.metric"));

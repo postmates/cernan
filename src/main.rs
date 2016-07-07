@@ -1,8 +1,3 @@
-// see bench_prs comment
-// #![feature(test)]
-// #[cfg(test)]
-// extern crate test;
-
 extern crate docopt;
 extern crate quantiles;
 extern crate hyper;
@@ -12,6 +7,7 @@ extern crate rustc_serialize;
 extern crate chrono;
 extern crate url;
 extern crate regex;
+extern crate string_cache;
 
 use std::str;
 use std::sync::mpsc::channel;
@@ -81,7 +77,7 @@ fn main() {
             server::Event::TimerFlush => {
                 // TODO improve this, limit here will be backend stalling and
                 // holding up all others
-                for backend in backends.iter_mut() {
+                for backend in &mut backends {
                     backend.flush();
                 }
             }
@@ -92,7 +88,7 @@ fn main() {
                         match metric::Metric::parse(val) {
                             Some(metrics) => {
                                 for metric in &metrics {
-                                    for backend in backends.iter_mut() {
+                                    for backend in &mut backends {
                                         backend.deliver(metric.clone());
                                     }
                                 }
