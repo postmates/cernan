@@ -114,8 +114,8 @@ impl Wavefront {
 impl Backend for Wavefront {
     fn flush(&mut self) {
         let stats = self.format_stats(None);
+        debug!("wavefront - {}", stats);
         self.points.clear();
-
         let mut stream = TcpStream::connect(self.addr).unwrap();
         let _ = stream.write(stats.as_bytes());
     }

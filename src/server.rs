@@ -16,6 +16,7 @@ pub enum Event {
 pub fn udp_server(chan: Sender<Event>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let socket = UdpSocket::bind(addr).ok().unwrap();
+    info!("statsd server started on 127.0.0.1:{}", port);
     let mut buf = [0; 8192];
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
@@ -30,6 +31,7 @@ pub fn udp_server(chan: Sender<Event>, port: u16) {
 pub fn tcp_server(chan: Sender<Event>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let listener = TcpListener::bind(addr).unwrap();
+    info!("graphite server started on 127.0.0.1:{}", port);
     for stream in listener.incoming() {
         let newchan = chan.clone();
         if let Ok(stream) = stream {

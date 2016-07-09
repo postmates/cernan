@@ -130,6 +130,7 @@ impl Backend for Librato {
     fn flush(&mut self) {
         let client = Client::new();
         let payload = self.format_stats(None);
+        debug!("librato - {}", payload);
         let mime: Mime = "application/json".parse().unwrap();
         let uri = url::Url::parse(&(self.host)).expect("malformed url");
         client.post(uri)

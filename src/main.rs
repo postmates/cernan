@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate clap;
 extern crate quantiles;
 extern crate hyper;
@@ -9,11 +8,14 @@ extern crate chrono;
 extern crate url;
 extern crate regex;
 extern crate string_cache;
+extern crate fern;
+#[macro_use]
+extern crate log;
 
 use std::str;
 use std::sync::mpsc::channel;
 use std::thread;
-use std::str::FromStr;
+use chrono::UTC;
 
 mod backend;
 mod buckets;
@@ -33,24 +35,52 @@ mod backends {
 fn main() {
     let args = cli::parse_args();
 
-    let mut backends = backend::factory(&args);
+    let level = match args.verbose {
+        0 => log::LogLevelFilter::Error,
+        1 => log::LogLevelFilter::Warn,
+        2 => log::LogLevelFilter::Info,
+        3 => log::LogLevelFilter::Debug,
+        _ => log::LogLevelFilter::Trace,
+    };
+
+    let logger_config = fern::DispatchConfig {
+        format: Box::new(|msg: &str, level: &log::LogLevel, _location: &log::LogLocation| {
+            format!("[{}][{}] {}", level, UTC::now().to_rfc3339(), msg)
+        }),
+        output: vec![fern::OutputConfig::stdout(), fern::OutputConfig::file("output.log")],
+        level: level,
+    };
+
+    if let Err(e) = fern::init_global_logger(logger_config, log::LogLevelFilter::Trace) {
+        panic!("Failed to initialize global logger: {}", e);
+    }
+
+    info!("cernan - {}", args.version);
+
+    trace!("trace messages enabled");
+    debug!("debug messages enabled");
+    info!("info messages enabled");
+    warn!("warning messages enabled");
+    error!("error messages enabled");
+
+    let mut backends = backend::factory(args.clone());
 
     let (event_send, event_recv) = channel();
     let flush_send = event_send.clone();
     let statsd_send = event_send.clone();
     let graphite_send = event_send.clone();
 
-    let sport = u16::from_str(args.value_of("statsd-port").unwrap()).unwrap();
+    let sport = args.statsd_port;
     thread::spawn(move || {
         server::udp_server(statsd_send, sport);
     });
 
-    let gport = u16::from_str(args.value_of("graphite-port").unwrap()).unwrap();
+    let gport = args.graphite_port;
     thread::spawn(move || {
         server::tcp_server(graphite_send, gport);
     });
 
-    let flush_interval = u64::from_str(args.value_of("flush-interval").unwrap()).unwrap();
+    let flush_interval = args.flush_interval;
     thread::spawn(move || {
         server::flush_timer_loop(flush_send, flush_interval);
     });
