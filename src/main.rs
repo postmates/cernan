@@ -1,4 +1,5 @@
-extern crate docopt;
+#[macro_use]
+extern crate clap;
 extern crate quantiles;
 extern crate hyper;
 extern crate lru_cache;
@@ -12,7 +13,7 @@ extern crate string_cache;
 use std::str;
 use std::sync::mpsc::channel;
 use std::thread;
-use std::process::exit;
+use std::str::FromStr;
 
 mod backend;
 mod buckets;
@@ -28,41 +29,21 @@ mod backends {
     pub mod wavefront;
 }
 
-const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
-
 fn main() {
     let args = cli::parse_args();
 
-    if args.flag_version {
-        println!("cernan - {}", VERSION.unwrap_or("unknown"));
-        exit(0);
-    }
-
-    let mut backends = backend::factory(&args.flag_console,
-                                        &args.flag_wavefront,
-                                        &args.flag_librato,
-                                        &args.flag_tags,
-                                        &args.flag_wavefront_host,
-                                        &args.flag_wavefront_port,
-                                        &args.flag_wavefront_skip_aggrs,
-                                        &args.flag_librato_username,
-                                        &args.flag_librato_token,
-                                        &args.flag_librato_host);
+    let mut backends = backend::factory(&args);
 
     let (event_send, event_recv) = channel();
     let flush_send = event_send.clone();
     let udp_send = event_send.clone();
 
-    println!("Starting cernan");
-    println!("Data server on 0.0.0.0:{}", args.flag_port);
-
-    let port = args.flag_port;
+    let port = u16::from_str(args.value_of("port").unwrap()).unwrap();
     thread::spawn(move || {
         server::udp_server(udp_send, port);
     });
 
-    // Run the timer that flushes metrics to the backends.
-    let flush_interval = args.flag_flush_interval;
+    let flush_interval = u64::from_str(args.value_of("flush-interval").unwrap()).unwrap();
     thread::spawn(move || {
         server::flush_timer_loop(flush_send, flush_interval);
     });

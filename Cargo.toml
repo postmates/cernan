@@ -5,7 +5,6 @@ authors = ["Brian L. Troutwine <blt@postmates.com>"]
 build = "build.rs"
 
 [dependencies]
-docopt = "0.6.80"
 quantiles = "0.1.4"
 hyper = "0.9.6"
 lru-cache = "0.0.7"
@@ -16,6 +15,7 @@ url = "1.1.1"
 regex = "0.1"
 lalrpop-util = "0.11.0"
 string_cache = "0.2.21"
+clap = "2.9.2"
 
 [build-dependencies]
 lalrpop = "0.11.0"
