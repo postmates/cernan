@@ -3,63 +3,77 @@
 //! Used to parse the argv/config file into a struct that
 //! the server can consume and use as configuration data.
 
-use docopt::Docopt;
+use clap::{Arg, App, ArgMatches};
 
-static USAGE: &'static str =
-    "
-Usage: cernan [options]
-       cernan --help
 
-Options:
-  -h, --help              Print help \
-     information.
-  -p, --port=<p>          The UDP port to bind to [default: 8125].
-  \
-     --flush-interval=<p>    How frequently to flush metrics to the backends in seconds. \
-     [default: 10].
-  --console               Enable the console backend.
-  --wavefront             \
-     Enable the wavefront backend.
-  --librato               Enable the librato backend.
-  \
-     --tags=<p>     A comma separated list of tags to report to supporting backends. [default: \
-     source=cernan]
-  --wavefront-port=<p>    The port wavefront proxy is running on. [default: \
-     2878].
-  --wavefront-host=<p>    The host wavefront proxy is running on. [default: \
-     127.0.0.1].
-  --wavefront-skip-aggrs   Send aggregate metrics to wavefront (librato \
-     compatibility)
-  --librato-username=<p>  The librato username for \
-     authentication. [default: statsd].
-  --librato-host=<p>      The librato host to report to. \
-     [default: https://metrics-api.librato.com/v1/metrics].
-  --librato-token=<p>     The librato \
-     token for authentication. [default: statsd].
-  --version
-";
+const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
-/// Holds the parsed command line arguments
-#[derive(RustcDecodable, Debug)]
-pub struct Args {
-    pub flag_port: u16,
-    pub flag_flush_interval: u64,
-    pub flag_console: bool,
-    pub flag_wavefront: bool,
-    pub flag_librato: bool,
-    pub flag_tags: String,
-    pub flag_wavefront_port: u16,
-    pub flag_wavefront_host: String,
-    pub flag_wavefront_skip_aggrs: bool,
-    pub flag_librato_username: String,
-    pub flag_librato_token: String,
-    pub flag_librato_host: String,
-    pub flag_help: bool,
-    pub flag_version: bool,
-}
-
-pub fn parse_args() -> Args {
-    Docopt::new(USAGE)
-        .and_then(|d| d.decode())
-        .unwrap_or_else(|e| e.exit())
+pub fn parse_args<'a>() -> ArgMatches<'a> {
+    App::new("cernan")
+        .version(VERSION.unwrap_or("unknown"))
+        .author("Brian L. Troutwine <blt@postmates.com>")
+        .about("telemetry aggregation and shipping, last up the ladder")
+        .arg(Arg::with_name("port")
+             .short("p")
+             .long("port")
+             .value_name("PORT")
+             .help("The UDP port to bind to.")
+             .takes_value(true)
+             .default_value("8125"))
+        .arg(Arg::with_name("flush-interval")
+             .long("flush-interval")
+             .value_name("FLSHINT")
+             .help("How frequently to flush metrics to the backends in seconds.")
+             .takes_value(true)
+             .default_value("10"))
+        .arg(Arg::with_name("console")
+             .long("console")
+             .help("Enable the console backend."))
+        .arg(Arg::with_name("wavefront")
+             .long("wavefront")
+             .help("Enable the wavefront backend."))
+        .arg(Arg::with_name("librato")
+             .long("librato")
+             .help("Enable the librato backend."))
+        .arg(Arg::with_name("wavefront-port")
+             .long("wavefront-port")
+             .help("The port wavefront proxy is running on")
+             .requires("wavefront")
+             .takes_value(true)
+             .default_value("2878"))
+        .arg(Arg::with_name("wavefront-host")
+             .long("wavefront-host")
+             .help("The host wavefront proxy is running on")
+             .requires("wavefront")
+             .takes_value(true)
+             .default_value("127.0.0.1"))
+        .arg(Arg::with_name("wavefront-skip-aggrs")
+             .long("wavefront-skip-aggrs")
+             .requires("wavefront")
+             .help("Send aggregate metrics to wavefront")) // default false
+        .arg(Arg::with_name("librato-username")
+             .long("librato-username")
+             .help("The librato username for authentication.")
+             .requires("librato")
+             .takes_value(true)
+             .default_value("statsd"))
+        .arg(Arg::with_name("librato-host")
+             .long("librato-host")
+             .help("The librato host to report to.")
+             .requires("librato")
+             .takes_value(true)
+             .default_value("https://metrics-api.librato.com/v1/metrics"))
+        .arg(Arg::with_name("librato-token")
+             .long("librato-token")
+             .help("The librato token for authentication.")
+             .requires("librato")
+             .takes_value(true)
+             .default_value("statsd"))
+        .arg(Arg::with_name("tags")
+             .long("tags")
+             .help("A comma separated list of tags to report to supporting backends.")
+             .takes_value(true)
+             .use_delimiter(false)
+             .default_value("source=cernan"))
+        .get_matches()
 }
