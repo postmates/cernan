@@ -124,10 +124,12 @@ impl Librato {
 
 impl Backend for Librato {
     fn deliver(&mut self, point: Rc<Metric>) {
+        debug!("librato deliver");
         self.aggrs.add(&point);
     }
 
     fn flush(&mut self) {
+        debug!("librato flush");
         let client = Client::new();
         let payload = self.format_stats(None);
         debug!("librato - {}", payload);

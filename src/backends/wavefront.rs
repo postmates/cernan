@@ -113,6 +113,7 @@ impl Wavefront {
 
 impl Backend for Wavefront {
     fn flush(&mut self) {
+        debug!("wavefront flush");
         let stats = self.format_stats(None);
         debug!("wavefront - {}", stats);
         self.points.clear();
@@ -121,6 +122,7 @@ impl Backend for Wavefront {
     }
 
     fn deliver(&mut self, point: Rc<Metric>) {
+        debug!("wavefront deliver");
         if self.mk_aggrs {
             self.aggrs.add(&point);
         }

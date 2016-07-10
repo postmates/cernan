@@ -51,9 +51,13 @@ fn main() {
         level: level,
     };
 
-    if let Err(e) = fern::init_global_logger(logger_config, log::LogLevelFilter::Trace) {
-        panic!("Failed to initialize global logger: {}", e);
-    }
+    // In some running environments the logger will not initialize, such as
+    // under OSX's Instruments.
+    //
+    //   IO Error: Permission denied (os error 13)
+    //
+    // No sense of why.
+    let _ = fern::init_global_logger(logger_config, log::LogLevelFilter::Trace);
 
     info!("cernan - {}", args.version);
 
@@ -64,6 +68,7 @@ fn main() {
     error!("error messages enabled");
 
     let mut backends = backend::factory(args.clone());
+    debug!("total backends: {}", backends.len());
 
     let (event_send, event_recv) = channel();
     let flush_send = event_send.clone();
@@ -93,6 +98,7 @@ fn main() {
 
         match result {
             server::Event::TimerFlush => {
+                trace!("TimerFlush");
                 // TODO improve this, limit here will be backend stalling and
                 // holding up all others
                 for backend in &mut backends {
@@ -103,6 +109,7 @@ fn main() {
             server::Event::TcpMessage(buf) => {
                 str::from_utf8(&buf)
                     .map(|val| {
+                        debug!("graphite - {}", val);
                         match metric::Metric::parse_graphite(val) {
                             Some(metrics) => {
                                 for metric in &metrics {
@@ -113,7 +120,7 @@ fn main() {
                                 Ok(metrics.len())
                             }
                             None => {
-                                println!("BAD PACKET: {:?}", val);
+                                error!("BAD PACKET: {:?}", val);
                                 Err("could not interpret")
                             }
                         }
@@ -124,6 +131,7 @@ fn main() {
             server::Event::UdpMessage(buf) => {
                 str::from_utf8(&buf)
                     .map(|val| {
+                        debug!("statsd - {}", val);
                         match metric::Metric::parse_statsd(val) {
                             Some(metrics) => {
                                 for metric in &metrics {

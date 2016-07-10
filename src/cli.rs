@@ -99,9 +99,9 @@ pub fn parse_args() -> Args {
              .help("Turn on verbose output."))
         .get_matches();
 
-    let mk_wavefront = args.value_of("wavefront").is_some();
-    let mk_console = args.value_of("console").is_some();
-    let mk_librato = args.value_of("console").is_some();
+    let mk_wavefront = args.is_present("wavefront");
+    let mk_console = args.is_present("console");
+    let mk_librato = args.is_present("librato");
 
     let (wport, whost, wskpaggr) = if mk_wavefront {
         (Some(u16::from_str(args.value_of("wavefront-port").unwrap()).unwrap()),

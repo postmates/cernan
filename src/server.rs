@@ -5,6 +5,7 @@ use std::thread::sleep;
 use std::time::Duration;
 use std::thread;
 use std::io::prelude::*;
+use std::io::BufReader;
 
 pub enum Event {
     UdpMessage(Vec<u8>),
@@ -43,23 +44,15 @@ pub fn tcp_server(chan: Sender<Event>, port: u16) {
     }
 }
 
-fn handle_client(chan: Sender<Event>, mut stream: TcpStream) {
-    let mut buf;
-    loop {
-        // clear out the buffer so we don't send garbage
-        buf = [0; 8192];
-        let len = match stream.read(&mut buf) {
-            Err(e) => panic!("Got an error: {}", e),
-            Ok(m) => {
-                if m == 0 {
-                    // we've got an EOF
-                    break;
-                }
-                m
+fn handle_client(chan: Sender<Event>, stream: TcpStream) {
+    let line_reader = BufReader::new(stream);
+    for line in line_reader.lines() {
+        match line {
+            Ok(line) => {
+                chan.send(Event::TcpMessage(line.into_bytes())).unwrap();
             }
-        };
-        let bytes = Vec::from(&buf[..len]);
-        chan.send(Event::TcpMessage(bytes)).unwrap();
+            Err(_) => break,
+        }
     }
 }
 
