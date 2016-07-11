@@ -2,8 +2,9 @@
 
 ![cernan](Gene-Cernan-1-578x485.jpg)
 
-`cernan` is a telemetry and logging aggregation server. It exposes a statsd
-interface as of this writing. There are further ambitions.
+`cernan` is a telemetry and logging aggregation server. It exposes a statsd and
+graphite interface as of this writing. In the Glorious Future it will ingest
+logs as well.
 
 [![Build Status](https://travis-ci.com/postmates/cernan.svg?token=YZ973qi8DocmxHi3Nn48&branch=master)](https://travis-ci.com/postmates/cernan)
 
@@ -29,16 +30,20 @@ and following the onscreen instructions. Run
     > cargo run -- --console
 
 and you're good to go. `cargo install` will drop a binary in your path or you
-can `cargo run` from inside this project.
+can `cargo run` from inside this project. If you would like to debug your
+service--to determine if the telemetry you intend is issued--run cernan like
+
+    > cargo run -- --console -vvvv
+
+and full trace output will be reported to the tty.
 
 # Usage
 
-The statsd server has several options to control which ports it runs on:
+The cernan server has options to control which ports its interfaces run on:
 
 ```
--p, --port=<p>        The UDP port to bind to [default: 8125].
---admin-host=<p>      The host to bind the management server on. [default: 127.0.0.1]
---admin-port=<p>      The port to bind the management server to. [default: 8126]
+--statsd-port <port>        The UDP port to bind to for statsd traffic. [default: 8125]
+--graphite-port <port>      The TCP port to bind to for graphite traffic. [default: 2003]
 ```
 
 ## Changing how frequently metrics are output
@@ -74,21 +79,23 @@ metric point, as well as the service name. You may set tags like so:
 The librato backend has additional options for defining authentication:
 
 ```
---librato-username=<p>  The librato username for authentication. [default: ceran].
---librato-token=<p>     The librato token for authentication. [default: cernan_totally_valid_token].
+--librato-username=<p>        The librato username for authentication. [default: ceran].
+--librato-token=<p>        The librato token for authentication. [default: cernan_totally_valid_token].
+--librato-host <librato-host>       The librato host to report to. [default: https://metrics-api.librato.com/v1/metrics]
 ```
 
 The wavefront backend has additional options for defining where the wavefront
 proxy runs:
 
 ```
---wavefront-port=<p>    The port wavefront proxy is running on. [default: 2878].
---wavefront-host=<p>    The host wavefront proxy is running on. [default: 127.0.0.1].
+--wavefront-skip-aggrs    Send aggregate metrics to wavefront
+--wavefront-port=<p>      The port wavefront proxy is running on. [default: 2878].
+--wavefront-host=<p>      The host wavefront proxy is running on. [default: 127.0.0.1].
 ```
 
 ## Prior Art
 
-The inspiration for the intial `cernan` work leans very heavily on Mark Story's
+The inspiration for the intial `cernan` work leaned very heavily on Mark Story's
 [rust-stats-server](https://github.com/markstory/rust-statsd-server). I
 originally thought I might just adapt that project but ambitions grew. Thank you
 Mark!
