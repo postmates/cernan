@@ -23,6 +23,7 @@ Recent versions of OSX may have some goofy OpenSSL issues, which can be resolved
 by issuing
 
     > brew install openssl
+    > brew link --force openssl
 
 and following the onscreen instructions. Run
 
