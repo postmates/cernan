@@ -29,10 +29,12 @@ fn fmt_line(key: &str, value: &f64) {
 
 impl Backend for Console {
     fn deliver(&mut self, point: Rc<Metric>) {
+        debug!("console deliver");
         self.aggrs.add(&point);
     }
 
     fn flush(&mut self) {
+        debug!("console flush");
         let now = chrono::UTC::now();
         println!("Flushing metrics: {}", now.to_rfc3339());
 

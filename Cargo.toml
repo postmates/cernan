@@ -16,6 +16,8 @@ regex = "0.1"
 lalrpop-util = "0.11.0"
 string_cache = "0.2.21"
 clap = "2.9.2"
+fern = "0.3.5"
+log = "0.3.6"
 
 [build-dependencies]
 lalrpop = "0.11.0"

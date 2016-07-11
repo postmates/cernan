@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate clap;
 extern crate quantiles;
 extern crate hyper;
@@ -9,11 +8,14 @@ extern crate chrono;
 extern crate url;
 extern crate regex;
 extern crate string_cache;
+extern crate fern;
+#[macro_use]
+extern crate log;
 
 use std::str;
 use std::sync::mpsc::channel;
 use std::thread;
-use std::str::FromStr;
+use chrono::UTC;
 
 mod backend;
 mod buckets;
@@ -21,6 +23,7 @@ mod cli;
 mod metric;
 mod metrics {
     pub mod statsd;
+    pub mod graphite;
 }
 mod server;
 mod backends {
@@ -32,18 +35,57 @@ mod backends {
 fn main() {
     let args = cli::parse_args();
 
-    let mut backends = backend::factory(&args);
+    let level = match args.verbose {
+        0 => log::LogLevelFilter::Error,
+        1 => log::LogLevelFilter::Warn,
+        2 => log::LogLevelFilter::Info,
+        3 => log::LogLevelFilter::Debug,
+        _ => log::LogLevelFilter::Trace,
+    };
+
+    let logger_config = fern::DispatchConfig {
+        format: Box::new(|msg: &str, level: &log::LogLevel, _location: &log::LogLocation| {
+            format!("[{}][{}] {}", level, UTC::now().to_rfc3339(), msg)
+        }),
+        output: vec![fern::OutputConfig::stdout(), fern::OutputConfig::file("output.log")],
+        level: level,
+    };
+
+    // In some running environments the logger will not initialize, such as
+    // under OSX's Instruments.
+    //
+    //   IO Error: Permission denied (os error 13)
+    //
+    // No sense of why.
+    let _ = fern::init_global_logger(logger_config, log::LogLevelFilter::Trace);
+
+    info!("cernan - {}", args.version);
+
+    trace!("trace messages enabled");
+    debug!("debug messages enabled");
+    info!("info messages enabled");
+    warn!("warning messages enabled");
+    error!("error messages enabled");
+
+    let mut backends = backend::factory(args.clone());
+    debug!("total backends: {}", backends.len());
 
     let (event_send, event_recv) = channel();
     let flush_send = event_send.clone();
-    let udp_send = event_send.clone();
+    let statsd_send = event_send.clone();
+    let graphite_send = event_send.clone();
 
-    let port = u16::from_str(args.value_of("port").unwrap()).unwrap();
+    let sport = args.statsd_port;
     thread::spawn(move || {
-        server::udp_server(udp_send, port);
+        server::udp_server(statsd_send, sport);
     });
 
-    let flush_interval = u64::from_str(args.value_of("flush-interval").unwrap()).unwrap();
+    let gport = args.graphite_port;
+    thread::spawn(move || {
+        server::tcp_server(graphite_send, gport);
+    });
+
+    let flush_interval = args.flush_interval;
     thread::spawn(move || {
         server::flush_timer_loop(flush_send, flush_interval);
     });
@@ -56,6 +98,7 @@ fn main() {
 
         match result {
             server::Event::TimerFlush => {
+                trace!("TimerFlush");
                 // TODO improve this, limit here will be backend stalling and
                 // holding up all others
                 for backend in &mut backends {
@@ -63,10 +106,33 @@ fn main() {
                 }
             }
 
+            server::Event::TcpMessage(buf) => {
+                str::from_utf8(&buf)
+                    .map(|val| {
+                        debug!("graphite - {}", val);
+                        match metric::Metric::parse_graphite(val) {
+                            Some(metrics) => {
+                                for metric in &metrics {
+                                    for backend in &mut backends {
+                                        backend.deliver(metric.clone());
+                                    }
+                                }
+                                Ok(metrics.len())
+                            }
+                            None => {
+                                error!("BAD PACKET: {:?}", val);
+                                Err("could not interpret")
+                            }
+                        }
+                    })
+                    .ok();
+            }
+
             server::Event::UdpMessage(buf) => {
                 str::from_utf8(&buf)
                     .map(|val| {
-                        match metric::Metric::parse(val) {
+                        debug!("statsd - {}", val);
+                        match metric::Metric::parse_statsd(val) {
                             Some(metrics) => {
                                 for metric in &metrics {
                                     for backend in &mut backends {
