@@ -71,7 +71,7 @@ pub fn parse_args() -> Args {
              .default_value("127.0.0.1"))
         .arg(Arg::with_name("wavefront-skip-aggrs")
              .long("wavefront-skip-aggrs")
-             .help("Send aggregate metrics to wavefront")) // default false
+             .help("Skip sending aggregate metrics to wavefront")) // default false
         .arg(Arg::with_name("librato-username")
              .long("librato-username")
              .help("The librato username for authentication.")

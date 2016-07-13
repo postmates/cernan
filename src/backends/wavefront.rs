@@ -32,7 +32,7 @@ impl Wavefront {
         Wavefront {
             addr: addr,
             tags: tags,
-            mk_aggrs: !skip_aggrs,
+            mk_aggrs: skip_aggrs,
             aggrs: Buckets::new(),
             points: Vec::new(),
         }
@@ -141,7 +141,7 @@ mod test {
 
     #[test]
     fn test_format_wavefront() {
-        let mut wavefront = Wavefront::new("127.0.0.1", 2003, false, "source=test-src".to_string());
+        let mut wavefront = Wavefront::new("127.0.0.1", 2003, true, "source=test-src".to_string());
         let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12);
         wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.counter"),
                                                         1.0,
@@ -185,7 +185,7 @@ mod test {
 
     #[test]
     fn test_format_wavefront_skip_aggrs() {
-        let mut wavefront = Wavefront::new("127.0.0.1", 2003, true, "source=test-src".to_string());
+        let mut wavefront = Wavefront::new("127.0.0.1", 2003, false, "source=test-src".to_string());
         let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12);
         wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.counter"),
                                                         1.0,
