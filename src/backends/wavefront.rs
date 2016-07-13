@@ -113,12 +113,15 @@ impl Wavefront {
 
 impl Backend for Wavefront {
     fn flush(&mut self) {
-        debug!("wavefront flush");
-        let stats = self.format_stats(None);
-        debug!("wavefront - {}", stats);
-        self.points.clear();
-        let mut stream = TcpStream::connect(self.addr).unwrap();
-        let _ = stream.write(stats.as_bytes());
+        let res = TcpStream::connect(self.addr);
+        if res.is_ok() {
+            let mut stream = res.unwrap();
+            debug!("wavefront flush");
+            let stats = self.format_stats(None);
+            debug!("wavefront - {}", stats);
+            self.points.clear();
+            let _ = stream.write(stats.as_bytes());
+        }
     }
 
     fn deliver(&mut self, point: Rc<Metric>) {
