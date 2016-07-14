@@ -1,0 +1,19 @@
+statsd-port = 8125
+graphite-port = 2003
+flush-interval = 10
+
+[tags]
+source = "cernan"
+
+[backends]
+    [console]
+
+    [wavefront]
+    port = 2878
+    host = "127.0.0.1"
+    skip-aggrs = true
+
+    [librato]
+    host = "https://metrics-api.librato.com/v1/metrics"
+    username = "statsd"
+    token = "statsd"

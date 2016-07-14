@@ -1,3 +1,4 @@
+extern crate toml;
 extern crate clap;
 extern crate quantiles;
 extern crate hyper;
@@ -19,7 +20,7 @@ use chrono::UTC;
 
 mod backend;
 mod buckets;
-mod cli;
+mod config;
 mod metric;
 mod metrics {
     pub mod statsd;
@@ -33,7 +34,7 @@ mod backends {
 }
 
 fn main() {
-    let args = cli::parse_args();
+    let args = config::parse_args();
 
     let level = match args.verbose {
         0 => log::LogLevelFilter::Error,
@@ -60,6 +61,7 @@ fn main() {
     let _ = fern::init_global_logger(logger_config, log::LogLevelFilter::Trace);
 
     debug!("ARGS: {:?}", args);
+
     info!("cernan - {}", args.version);
 
     trace!("trace messages enabled");
