@@ -8,7 +8,7 @@ use std::str::FromStr;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Args {
     pub statsd_port: u16,
     pub graphite_port: u16,
@@ -112,9 +112,11 @@ pub fn parse_args() -> Args {
     };
 
     let (luser, lhost, ltoken) = if mk_librato {
-        (Some(args.value_of("librato-username").unwrap().to_string()),
-         Some(args.value_of("librato-token").unwrap().to_string()),
-         Some(args.value_of("librato-host").unwrap().to_string()))
+        (
+            Some(args.value_of("librato-username").unwrap().to_string()),
+            Some(args.value_of("librato-host").unwrap().to_string()),
+            Some(args.value_of("librato-token").unwrap().to_string()),
+        )
     } else {
         (None, None, None)
     };
