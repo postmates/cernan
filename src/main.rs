@@ -59,6 +59,7 @@ fn main() {
     // No sense of why.
     let _ = fern::init_global_logger(logger_config, log::LogLevelFilter::Trace);
 
+    debug!("ARGS: {:?}", args);
     info!("cernan - {}", args.version);
 
     trace!("trace messages enabled");
