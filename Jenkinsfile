@@ -39,4 +39,6 @@ node {
    sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust default nightly"
    sh "cargo clean"
    sh "cargo test"
+
+
 }
