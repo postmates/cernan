@@ -15,6 +15,7 @@ dependencies = [
  "regex 0.1.71 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-serialize 0.3.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "string_cache 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
+ "toml 0.1.30 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -581,6 +582,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "toml"
+version = "0.1.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "rustc-serialize 0.3.19 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "traitobject"
 version = "0.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -671,3 +680,4 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "winapi-build"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+

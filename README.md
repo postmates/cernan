@@ -40,32 +40,52 @@ and full trace output will be reported to the tty.
 
 # Usage
 
-The cernan server has options to control which ports its interfaces run on:
+The cernan server has a few command-line toggles to control its behaviour:
 
 ```
---statsd-port <port>        The UDP port to bind to for statsd traffic. [default: 8125]
---graphite-port <port>      The TCP port to bind to for graphite traffic. [default: 2003]
+-C, --config <config>    The config file to feed in.
+-v               Turn on verbose output.
+```
+
+The verbose flag `-v` allows multiples, each addition cranking up the verbosity
+by one. So:
+
+* `-v` -- error, warning
+* `-vv` -- error, warning, info
+* `-vvv` -- error, warning, info, debug
+* `-vvvv` -- error, warning, info, debug, trace
+
+The `--config` flag allows for more fine grained control of cernan via the
+config file.
+
+## Configuration
+
+The cernan server has options to control which ports its ingestion interfaces
+run on:
+
+```
+statsd-port=<INT>        The UDP port to bind to for statsd traffic. [default: 8125]
+graphite-port=<INT>      The TCP port to bind to for graphite traffic. [default: 2003]
 ```
 
 ## Changing how frequently metrics are output
 
 ```
---flush-interval=<p>  How frequently to flush metrics to the backends in seconds. [default: 10].
+flush-interval=<INT>  How frequently to flush metrics to the backends in seconds. [default: 10].
 ```
-
-On each flush interval event, derived metrics for timers are calculated. This
-duration is tracked as `statsd.processing_time`. You can use this metric to
-track how long statsd is spending generating derived metrics.
 
 ## Enabling the console or graphite backends
 
-By default no backends are enabled. In this mode the statsd server doesn't do
-that much. To backends use the CLI flags:
+By default no backends are enabled. In this mode cernan server doesn't do that
+much. Backends are configured in a `backends` table. To enable a backend with
+defaults it is sufficient to make a sub-table for it. In the following, all
+backends are enabled with their default:
 
 ```
---console             Enable the console backend.
---librato             Enable the librato backend.
---wavefront           Enable the wavefront backend.
+[backends]
+  [console]
+  [wavefront]
+  [librato]
 ```
 
 For backends which support it `cernan` can report metadata about the
@@ -74,25 +94,37 @@ terminology. In AWS you might choose to include your instance ID with each
 metric point, as well as the service name. You may set tags like so:
 
 ```
---tags=<p>     A comma separated list of tags to report to supporting backends. [default: source=cernan]
+[tags]
+source = cernan
 ```
+
+Each key / value pair will converted to the appropriate tag, depending on the
+backend.
+
+### librato
 
 The librato backend has additional options for defining authentication:
 
 ```
---librato-username=<p>        The librato username for authentication. [default: ceran].
---librato-token=<p>        The librato token for authentication. [default: cernan_totally_valid_token].
---librato-host <librato-host>       The librato host to report to. [default: https://metrics-api.librato.com/v1/metrics]
+username=<STRING>   The librato username for authentication. [default: ceran].
+token=<STRING>      The librato token for authentication. [default: cernan_totally_valid_token].
+host=<STRING>       The librato host to report to. [default: https://metrics-api.librato.com/v1/metrics]
 ```
+
+### wavefront
 
 The wavefront backend has additional options for defining where the wavefront
 proxy runs:
 
 ```
---wavefront-skip-aggrs    Send aggregate metrics to wavefront
---wavefront-port=<p>      The port wavefront proxy is running on. [default: 2878].
---wavefront-host=<p>      The host wavefront proxy is running on. [default: 127.0.0.1].
+skip-aggrs=<BOOL]  Send aggregate metrics to wavefront
+port=<INT>         The port wavefront proxy is running on. [default: 2878].
+host=<STRING>      The host wavefront proxy is running on. [default: 127.0.0.1].
 ```
+
+You may find an example configuration file in the top-level of this project,
+`example-config.toml`. The TOML specification is
+[here](https://github.com/toml-lang/toml).
 
 ## Prior Art
 
