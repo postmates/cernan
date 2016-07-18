@@ -19,6 +19,7 @@ clap = "2.10.0"
 fern = "0.3.5"
 log = "0.3.6"
 dns-lookup = "0.2.1"
+toml = "0.1.30"
 
 [build-dependencies]
 lalrpop = "0.12.0"

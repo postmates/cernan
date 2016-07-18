@@ -1,7 +1,7 @@
 use backends::*;
 use metric::Metric;
 
-use cli::Args;
+use config::Args;
 
 use regex::Regex;
 use std::rc::Rc;

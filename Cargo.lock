@@ -16,6 +16,7 @@ dependencies = [
  "regex 0.1.73 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-serialize 0.3.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "string_cache 0.2.23 (registry+https://github.com/rust-lang/crates.io-index)",
+ "toml 0.1.30 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -589,6 +590,14 @@ dependencies = [
  "kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "toml"
+version = "0.1.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "rustc-serialize 0.3.19 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
