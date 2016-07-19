@@ -13,7 +13,6 @@ extern crate fern;
 #[macro_use]
 extern crate log;
 
-use std::str;
 use std::sync::mpsc::channel;
 use std::thread;
 use chrono::UTC;
@@ -109,49 +108,22 @@ fn main() {
                 }
             }
 
-            server::Event::TcpMessage(buf) => {
-                str::from_utf8(&buf)
-                    .map(|val| {
-                        debug!("graphite - {}", val);
-                        match metric::Metric::parse_graphite(val) {
-                            Some(metrics) => {
-                                for metric in &metrics {
-                                    for backend in &mut backends {
-                                        backend.deliver(metric.clone());
-                                    }
-                                }
-                                Ok(metrics.len())
-                            }
-                            None => {
-                                error!("BAD PACKET: {:?}", val);
-                                Err("could not interpret")
-                            }
-                        }
-                    })
-                    .ok();
+            server::Event::Graphite(metrics) => {
+                for metric in &metrics {
+                    for backend in &mut backends {
+                        backend.deliver(metric.clone());
+                    }
+                }
             }
 
-            server::Event::UdpMessage(buf) => {
-                str::from_utf8(&buf)
-                    .map(|val| {
-                        debug!("statsd - {}", val);
-                        match metric::Metric::parse_statsd(val) {
-                            Some(metrics) => {
-                                for metric in &metrics {
-                                    for backend in &mut backends {
-                                        backend.deliver(metric.clone());
-                                    }
-                                }
-                                Ok(metrics.len())
-                            }
-                            None => {
-                                println!("BAD PACKET: {:?}", val);
-                                Err("could not interpret")
-                            }
-                        }
-                    })
-                    .ok();
+            server::Event::Statsd(metrics) => {
+                for metric in &metrics {
+                    for backend in &mut backends {
+                        backend.deliver(metric.clone());
+                    }
+                }
             }
+
         }
     }
 }

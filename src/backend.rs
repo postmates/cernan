@@ -4,12 +4,12 @@ use metric::Metric;
 use config::Args;
 
 use regex::Regex;
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// A 'backend' is a sink for metrics.
 pub trait Backend {
     fn flush(&mut self) -> ();
-    fn deliver(&mut self, point: Rc<Metric>) -> ();
+    fn deliver(&mut self, point: Arc<Metric>) -> ();
 }
 
 /// Creates the collection of backends based on the paraemeters

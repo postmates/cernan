@@ -6,29 +6,53 @@ use std::time::Duration;
 use std::thread;
 use std::io::prelude::*;
 use std::io::BufReader;
+use std::str;
+use std::sync::Arc;
+
+use metric;
 
 pub enum Event {
-    UdpMessage(Vec<u8>),
-    TcpMessage(Vec<u8>),
+    Graphite(Vec<Arc<metric::Metric>>),
+    Statsd(Vec<Arc<metric::Metric>>),
     TimerFlush,
 }
 
-/// statsd
+// flush timer
+pub fn flush_timer_loop(chan: Sender<Event>, interval: u64) {
+    let duration = Duration::new(interval, 0);
+    loop {
+        sleep(duration);
+        chan.send(Event::TimerFlush).unwrap();
+    }
+}
+
+// statsd
 pub fn udp_server(chan: Sender<Event>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let socket = UdpSocket::bind(addr).ok().unwrap();
     info!("statsd server started on 127.0.0.1:{}", port);
     let mut buf = [0; 8192];
     loop {
-        let (len, _) = match socket.recv_from(&mut buf) {
+        match socket.recv_from(&mut buf) {
             Ok(r) => r,
             Err(_) => panic!("Could not read UDP socket."),
         };
-        let bytes = Vec::from(&buf[..len]);
-        chan.send(Event::UdpMessage(bytes)).unwrap();
+        str::from_utf8(&buf)
+            .map(|val| {
+                trace!("statsd - {}", val);
+                match metric::Metric::parse_statsd(val) {
+                    Some(metrics) => {
+                        chan.send(Event::Statsd(metrics)).unwrap();
+                    }
+                    None => {
+                        error!("BAD PACKET: {:?}", val);
+                    }
+                }
+            }).ok();
     }
 }
 
+// graphite
 pub fn tcp_server(chan: Sender<Event>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let listener = TcpListener::bind(addr).unwrap();
@@ -49,18 +73,21 @@ fn handle_client(chan: Sender<Event>, stream: TcpStream) {
     for line in line_reader.lines() {
         match line {
             Ok(line) => {
-                chan.send(Event::TcpMessage(line.into_bytes())).unwrap();
+                let buf = line.into_bytes();
+                str::from_utf8(&buf)
+                    .map(|val| {
+                        debug!("graphite - {}", val);
+                        match metric::Metric::parse_graphite(val) {
+                            Some(metrics) => {
+                                chan.send(Event::Graphite(metrics)).unwrap();
+                            }
+                            None => {
+                                error!("BAD PACKET: {:?}", val);
+                            }
+                        }
+                    }).ok();
             }
             Err(_) => break,
         }
-    }
-}
-
-/// emit flush event into channel on a regular interval
-pub fn flush_timer_loop(chan: Sender<Event>, interval: u64) {
-    let duration = Duration::new(interval, 0);
-    loop {
-        sleep(duration);
-        chan.send(Event::TimerFlush).unwrap();
     }
 }
