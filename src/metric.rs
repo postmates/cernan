@@ -1,6 +1,6 @@
 use metrics::*;
 use chrono::{UTC, DateTime};
-use std::rc::Rc;
+use std::sync::Arc;
 use string_cache::Atom;
 
 #[derive(PartialEq, Debug)]
@@ -54,11 +54,11 @@ impl Metric {
     ///
     /// Multiple metrics can be sent in a single UDP packet
     /// separated by newlines.
-    pub fn parse_statsd(source: &str) -> Option<Vec<Rc<Metric>>> {
+    pub fn parse_statsd(source: &str) -> Option<Vec<Arc<Metric>>> {
         statsd::parse_MetricPayload(source).ok()
     }
 
-    pub fn parse_graphite(source: &str) -> Option<Vec<Rc<Metric>>> {
+    pub fn parse_graphite(source: &str) -> Option<Vec<Arc<Metric>>> {
         graphite::parse_MetricPayload(source).ok()
     }
 }

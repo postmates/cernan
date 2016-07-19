@@ -2,7 +2,7 @@ use backend::Backend;
 use buckets::Buckets;
 use metric::Metric;
 use chrono;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub struct Console {
     aggrs: Buckets,
@@ -28,7 +28,7 @@ fn fmt_line(key: &str, value: &f64) {
 
 
 impl Backend for Console {
-    fn deliver(&mut self, point: Rc<Metric>) {
+    fn deliver(&mut self, point: Arc<Metric>) {
         debug!("console deliver");
         self.aggrs.add(&point);
     }

@@ -6,7 +6,7 @@ use chrono;
 use metric::Metric;
 use buckets::Buckets;
 use backend::Backend;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub struct Wavefront {
     addr: SocketAddrV4,
@@ -15,7 +15,7 @@ pub struct Wavefront {
     // The wavefront implementation keeps an aggregate, depricated, and ships
     // exact points. The aggregate is 'aggrs' and the exact points is 'points'.
     aggrs: Buckets,
-    points: Vec<Rc<Metric>>,
+    points: Vec<Arc<Metric>>,
 }
 
 impl Wavefront {
@@ -124,7 +124,7 @@ impl Backend for Wavefront {
         }
     }
 
-    fn deliver(&mut self, point: Rc<Metric>) {
+    fn deliver(&mut self, point: Arc<Metric>) {
         debug!("wavefront deliver");
         if self.mk_aggrs {
             self.aggrs.add(&point);
@@ -138,7 +138,7 @@ mod test {
     use metric::{Metric, MetricKind};
     use backend::Backend;
     use chrono::{UTC, TimeZone};
-    use std::rc::Rc;
+    use std::sync::Arc;
     use string_cache::Atom;
     use super::*;
 
@@ -146,23 +146,23 @@ mod test {
     fn test_format_wavefront() {
         let mut wavefront = Wavefront::new("127.0.0.1", 2003, true, "source=test-src".to_string());
         let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12);
-        wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.counter"),
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.counter"),
                                                         1.0,
                                                         Some(dt),
                                                         MetricKind::Counter(1.0))));
-        wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.gauge"),
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.gauge"),
                                                         3.211,
                                                         Some(dt),
                                                         MetricKind::Gauge)));
-        wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.timer"),
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
                                                         12.101,
                                                         Some(dt),
                                                         MetricKind::Timer)));
-        wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.timer"),
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
                                                         1.101,
                                                         Some(dt),
                                                         MetricKind::Timer)));
-        wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.timer"),
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
                                                         3.101,
                                                         Some(dt),
                                                         MetricKind::Timer)));
@@ -190,23 +190,23 @@ mod test {
     fn test_format_wavefront_skip_aggrs() {
         let mut wavefront = Wavefront::new("127.0.0.1", 2003, false, "source=test-src".to_string());
         let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12);
-        wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.counter"),
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.counter"),
                                                         1.0,
                                                         Some(dt),
                                                         MetricKind::Counter(1.0))));
-        wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.gauge"),
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.gauge"),
                                                         3.211,
                                                         Some(dt),
                                                         MetricKind::Gauge)));
-        wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.timer"),
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
                                                         12.101,
                                                         Some(dt),
                                                         MetricKind::Timer)));
-        wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.timer"),
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
                                                         1.101,
                                                         Some(dt),
                                                         MetricKind::Timer)));
-        wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.timer"),
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
                                                         3.101,
                                                         Some(dt),
                                                         MetricKind::Timer)));
