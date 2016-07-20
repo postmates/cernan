@@ -48,7 +48,8 @@ pub fn udp_server(chan: Sender<Event>, port: u16) {
                         error!("BAD PACKET: {:?}", val);
                     }
                 }
-            }).ok();
+            })
+            .ok();
     }
 }
 
@@ -85,7 +86,8 @@ fn handle_client(chan: Sender<Event>, stream: TcpStream) {
                                 error!("BAD PACKET: {:?}", val);
                             }
                         }
-                    }).ok();
+                    })
+                    .ok();
             }
             Err(_) => break,
         }
