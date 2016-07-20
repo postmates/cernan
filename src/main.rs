@@ -15,6 +15,7 @@ extern crate dns_lookup;
 extern crate log;
 
 use std::str;
+use std::sync::Arc;
 use std::sync::mpsc::channel;
 use std::thread;
 use chrono::UTC;
@@ -108,59 +109,9 @@ fn main() {
             Err(e) => panic!(format!("Event channel has hung up: {:?}", e)),
         };
 
-        match result {
-            server::Event::TimerFlush => {
-                trace!("TimerFlush");
-                // TODO improve this, limit here will be backend stalling and
-                // holding up all others
-                for backend in &mut backends {
-                    backend.flush();
-                }
-            }
-
-            server::Event::TcpMessage(buf) => {
-                str::from_utf8(&buf)
-                    .map(|val| {
-                        debug!("graphite - {}", val);
-                        match metric::Metric::parse_graphite(val) {
-                            Some(metrics) => {
-                                for metric in &metrics {
-                                    for backend in &mut backends {
-                                        backend.deliver(metric.clone());
-                                    }
-                                }
-                                Ok(metrics.len())
-                            }
-                            None => {
-                                error!("BAD PACKET: {:?}", val);
-                                Err("could not interpret")
-                            }
-                        }
-                    })
-                    .ok();
-            }
-
-            server::Event::UdpMessage(buf) => {
-                str::from_utf8(&buf)
-                    .map(|val| {
-                        debug!("statsd - {}", val);
-                        match metric::Metric::parse_statsd(val) {
-                            Some(metrics) => {
-                                for metric in &metrics {
-                                    for backend in &mut backends {
-                                        backend.deliver(metric.clone());
-                                    }
-                                }
-                                Ok(metrics.len())
-                            }
-                            None => {
-                                println!("BAD PACKET: {:?}", val);
-                                Err("could not interpret")
-                            }
-                        }
-                    })
-                    .ok();
-            }
+        let arc_res = Arc::new(result);
+        for backend in &mut backends {
+            backend.send(arc_res.clone()).expect("oops, couldn't send!");
         }
     }
 }

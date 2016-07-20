@@ -105,9 +105,9 @@ pub fn parse_args() -> Args {
              .use_delimiter(false)
              .default_value("source=cernan"))
         .arg(Arg::with_name("verbose")
-             .short("v")
-             .multiple(true)
-             .help("Turn on verbose output."))
+            .short("v")
+            .multiple(true)
+            .help("Turn on verbose output."))
         .get_matches();
 
     let verb = if args.is_present("verbose") {

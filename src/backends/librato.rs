@@ -8,7 +8,7 @@ use url;
 use chrono;
 use mime::Mime;
 use metric::Metric;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub struct Librato {
     username: String,
@@ -123,7 +123,7 @@ impl Librato {
 }
 
 impl Backend for Librato {
-    fn deliver(&mut self, point: Rc<Metric>) {
+    fn deliver(&mut self, point: Arc<Metric>) {
         debug!("librato deliver");
         self.aggrs.add(&point);
     }
@@ -155,23 +155,23 @@ impl Backend for Librato {
 mod test {
     use metric::{Metric, MetricKind};
     use backend::Backend;
-    use std::rc::Rc;
+    use std::sync::Arc;
     use string_cache::Atom;
     use super::*;
 
     #[test]
     fn test_format_librato_buckets_no_timers() {
         let mut librato = Librato::new("user", "token", "test-src", "http://librato.example.com");
-        librato.deliver(Rc::new(Metric::new(Atom::from("test.counter"),
-                                            1.0,
-                                            MetricKind::Counter(1.0))));
-        librato.deliver(Rc::new(Metric::new(Atom::from("test.gauge"), 3.211, MetricKind::Gauge)));
-        librato.deliver(Rc::new(Metric::new(Atom::from("src-test.gauge.2"),
-                                            3.211,
-                                            MetricKind::Gauge)));
-        librato.deliver(Rc::new(Metric::new(Atom::from("test.timer"), 12.101, MetricKind::Timer)));
-        librato.deliver(Rc::new(Metric::new(Atom::from("test.timer"), 1.101, MetricKind::Timer)));
-        librato.deliver(Rc::new(Metric::new(Atom::from("test.timer"), 3.101, MetricKind::Timer)));
+        librato.deliver(Arc::new(Metric::new(Atom::from("test.counter"),
+                                             1.0,
+                                             MetricKind::Counter(1.0))));
+        librato.deliver(Arc::new(Metric::new(Atom::from("test.gauge"), 3.211, MetricKind::Gauge)));
+        librato.deliver(Arc::new(Metric::new(Atom::from("src-test.gauge.2"),
+                                             3.211,
+                                             MetricKind::Gauge)));
+        librato.deliver(Arc::new(Metric::new(Atom::from("test.timer"), 12.101, MetricKind::Timer)));
+        librato.deliver(Arc::new(Metric::new(Atom::from("test.timer"), 1.101, MetricKind::Timer)));
+        librato.deliver(Arc::new(Metric::new(Atom::from("test.timer"), 3.101, MetricKind::Timer)));
         let result = librato.format_stats(Some(10101));
 
         println!("{:?}", result);

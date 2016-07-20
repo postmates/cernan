@@ -4,38 +4,81 @@ use metric::Metric;
 use config::Args;
 
 use regex::Regex;
-use std::rc::Rc;
+use std::sync::Arc;
+
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::thread;
+
+use server;
 
 /// A 'backend' is a sink for metrics.
 pub trait Backend {
     fn flush(&mut self) -> ();
-    fn deliver(&mut self, point: Rc<Metric>) -> ();
+    fn deliver(&mut self, point: Arc<Metric>) -> ();
+    fn run(&mut self, recv: Receiver<Arc<server::Event>>) {
+        for event in recv.recv().iter() {
+            match *(*event) {
+                server::Event::TimerFlush => self.flush(),
+                server::Event::Graphite(ref metrics) => {
+                    for metric in metrics {
+                        self.deliver(metric.clone());
+                    }
+                }
+                server::Event::Statsd(ref metrics) => {
+                    for metric in metrics {
+                        self.deliver(metric.clone());
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Creates the collection of backends based on the paraemeters
 ///
-pub fn factory(args: Args) -> Vec<Box<Backend>> {
-    let mut backends: Vec<Box<Backend>> = Vec::with_capacity(3);
+pub fn factory(args: Args) -> Vec<Sender<Arc<server::Event>>> {
+    // create the channel
+    // spawn the thread
+
+    let mut backends = Vec::with_capacity(3);
 
     if args.console {
-        backends.push(Box::new(console::Console::new()));
+        let (send, recv) = channel();
+        thread::spawn(move || {
+            console::Console::new().run(recv);
+        });
+        backends.push(send);
     }
     if args.wavefront {
+        let (send, recv) = channel();
         let wf_tags: String = args.tags.replace(",", " ");
-        backends.push(Box::new(wavefront::Wavefront::new(&args.wavefront_host.unwrap(),
-                                                         args.wavefront_port.unwrap(),
-                                                         args.wavefront_skip_aggrs,
-                                                         wf_tags)));
+        let cp_args = args.clone();
+        thread::spawn(move || {
+            wavefront::Wavefront::new(&cp_args.wavefront_host.unwrap(),
+                                      cp_args.wavefront_port.unwrap(),
+                                      cp_args.wavefront_skip_aggrs,
+                                      wf_tags)
+                .run(recv);
+        });
+        backends.push(send);
     }
     if args.librato {
-        let re = Regex::new(r"(?x)(source=(?P<source>.*),+)?").unwrap();
-        let metric_source = re.captures(&args.tags).unwrap().name("source").unwrap_or("cernan");
+        let (send, recv) = channel();
+        let cp_args = args.clone();
+
         // librato does not support arbitrary tags, only a 'source' tag. We have
         // to parse the source tag--if it exists--out and ship only that.
-        backends.push(Box::new(librato::Librato::new(&args.librato_username.unwrap(),
-                                                     &args.librato_token.unwrap(),
-                                                     metric_source,
-                                                     &args.librato_host.unwrap())));
+        thread::spawn(move || {
+            let re = Regex::new(r"(?x)(source=(?P<source>.*),+)?").unwrap();
+            let metric_source =
+                re.captures(&cp_args.tags).unwrap().name("source").unwrap_or("cernan");
+            librato::Librato::new(&cp_args.librato_username.unwrap(),
+                                  &cp_args.librato_token.unwrap(),
+                                  metric_source,
+                                  &cp_args.librato_host.unwrap())
+                .run(recv);
+        });
+        backends.push(send);
     }
     backends
 }
