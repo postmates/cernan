@@ -37,15 +37,15 @@ pub fn parse_args() -> Args {
         .author("Brian L. Troutwine <blt@postmates.com>")
         .about("telemetry aggregation and shipping, last up the ladder")
         .arg(Arg::with_name("config-file")
-             .long("config")
-             .short("C")
-             .value_name("config")
-             .help("The config file to feed in.")
-             .takes_value(true))
+            .long("config")
+            .short("C")
+            .value_name("config")
+            .help("The config file to feed in.")
+            .takes_value(true))
         .arg(Arg::with_name("verbose")
-             .short("v")
-             .multiple(true)
-             .help("Turn on verbose output."))
+            .short("v")
+            .multiple(true)
+            .help("Turn on verbose output."))
         .get_matches();
 
     let verb = if args.is_present("verbose") {
@@ -69,13 +69,13 @@ pub fn parse_args() -> Args {
                 Some(tbl) => {
                     let mut tags = String::new();
                     let ttbl = tbl.as_table().unwrap();
-                    for (k,v) in (*ttbl).iter() {
+                    for (k, v) in (*ttbl).iter() {
                         write!(tags, "{}={},", k, v.as_str().unwrap()).unwrap();
                     }
                     tags.pop();
                     tags
-                },
-                None => "".to_string()
+                }
+                None => "".to_string(),
             };
 
             let mk_wavefront = value.lookup("backends.wavefront").is_some();
@@ -83,27 +83,42 @@ pub fn parse_args() -> Args {
             let mk_librato = value.lookup("backends.librato").is_some();
 
             let (wport, whost, wskpaggr) = if mk_wavefront {
-                (
-                    // wavefront port
-                    value.lookup("backends.wavefront.port").unwrap_or(&Value::Integer(2878)).as_integer().map(|i| i as u16),
-                    // wavefront host
-                    value.lookup("backends.wavefront.host").unwrap_or(&Value::String("127.0.0.1".to_string())).as_str().map(|s| s.to_string()),
-                    // wavefront skip aggrs
-                    value.lookup("backends.wavefront.skip-aggrs").unwrap_or(&Value::Boolean(false)).as_bool().unwrap_or(false),
-                )
+                (// wavefront port
+                 value.lookup("backends.wavefront.port")
+                    .unwrap_or(&Value::Integer(2878))
+                    .as_integer()
+                    .map(|i| i as u16),
+                 // wavefront host
+                 value.lookup("backends.wavefront.host")
+                    .unwrap_or(&Value::String("127.0.0.1".to_string()))
+                    .as_str()
+                    .map(|s| s.to_string()),
+                 // wavefront skip aggrs
+                 value.lookup("backends.wavefront.skip-aggrs")
+                    .unwrap_or(&Value::Boolean(false))
+                    .as_bool()
+                    .unwrap_or(false))
             } else {
                 (None, None, false)
             };
 
             let (luser, lhost, ltoken) = if mk_librato {
-                (
-                    // librato username
-                    value.lookup("backends.librato.username").unwrap_or(&Value::String("statsd".to_string())).as_str().map(|s| s.to_string()),
-                    // librato token
-                    value.lookup("backends.librato.token").unwrap_or(&Value::String("statsd".to_string())).as_str().map(|s| s.to_string()),
-                    // librato host
-                    value.lookup("backends.librato.host").unwrap_or(&Value::String("https://metrics-api.librato.com/v1/metrics".to_string())).as_str().map(|s| s.to_string()),
-                )
+                (// librato username
+                 value.lookup("backends.librato.username")
+                    .unwrap_or(&Value::String("statsd".to_string()))
+                    .as_str()
+                    .map(|s| s.to_string()),
+                 // librato token
+                 value.lookup("backends.librato.token")
+                    .unwrap_or(&Value::String("statsd".to_string()))
+                    .as_str()
+                    .map(|s| s.to_string()),
+                 // librato host
+                 value.lookup("backends.librato.host")
+                    .unwrap_or(&Value::String("https://metrics-api.librato.com/v1/metrics"
+                        .to_string()))
+                    .as_str()
+                    .map(|s| s.to_string()))
             } else {
                 (None, None, None)
             };
@@ -120,7 +135,8 @@ pub fn parse_args() -> Args {
                 flush_interval: value.lookup("flush-interval")
                     .unwrap_or(&Value::Integer(10))
                     .as_integer()
-                    .expect("flush-interval must be integer") as u64,
+                    .expect("flush-interval must be \
+                             integer") as u64,
                 console: mk_console,
                 wavefront: mk_wavefront,
                 librato: mk_librato,

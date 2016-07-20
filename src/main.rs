@@ -13,6 +13,7 @@ extern crate fern;
 #[macro_use]
 extern crate log;
 
+use std::sync::Arc;
 use std::sync::mpsc::channel;
 use std::thread;
 use chrono::UTC;
@@ -98,32 +99,11 @@ fn main() {
             Err(e) => panic!(format!("Event channel has hung up: {:?}", e)),
         };
 
-        match result {
-            server::Event::TimerFlush => {
-                trace!("TimerFlush");
-                // TODO improve this, limit here will be backend stalling and
-                // holding up all others
-                for backend in &mut backends {
-                    backend.flush();
-                }
-            }
-
-            server::Event::Graphite(metrics) => {
-                for metric in &metrics {
-                    for backend in &mut backends {
-                        backend.deliver(metric.clone());
-                    }
-                }
-            }
-
-            server::Event::Statsd(metrics) => {
-                for metric in &metrics {
-                    for backend in &mut backends {
-                        backend.deliver(metric.clone());
-                    }
-                }
-            }
-
+        let arc_res = Arc::new(result);
+        for backend in &mut backends {
+            // warning: this should not be cloned, is a dup of an existing vec
+            // which we'll dump soon
+            backend.send(arc_res.clone()).expect("oops, couldn't send!");
         }
     }
 }

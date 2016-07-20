@@ -147,25 +147,25 @@ mod test {
         let mut wavefront = Wavefront::new("127.0.0.1", 2003, true, "source=test-src".to_string());
         let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12);
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.counter"),
-                                                        1.0,
-                                                        Some(dt),
-                                                        MetricKind::Counter(1.0))));
+                                                         1.0,
+                                                         Some(dt),
+                                                         MetricKind::Counter(1.0))));
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.gauge"),
-                                                        3.211,
-                                                        Some(dt),
-                                                        MetricKind::Gauge)));
+                                                         3.211,
+                                                         Some(dt),
+                                                         MetricKind::Gauge)));
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                        12.101,
-                                                        Some(dt),
-                                                        MetricKind::Timer)));
+                                                         12.101,
+                                                         Some(dt),
+                                                         MetricKind::Timer)));
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                        1.101,
-                                                        Some(dt),
-                                                        MetricKind::Timer)));
+                                                         1.101,
+                                                         Some(dt),
+                                                         MetricKind::Timer)));
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                        3.101,
-                                                        Some(dt),
-                                                        MetricKind::Timer)));
+                                                         3.101,
+                                                         Some(dt),
+                                                         MetricKind::Timer)));
         let result = wavefront.format_stats(Some(10101));
         let lines: Vec<&str> = result.lines().collect();
 
@@ -191,25 +191,25 @@ mod test {
         let mut wavefront = Wavefront::new("127.0.0.1", 2003, false, "source=test-src".to_string());
         let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12);
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.counter"),
-                                                        1.0,
-                                                        Some(dt),
-                                                        MetricKind::Counter(1.0))));
+                                                         1.0,
+                                                         Some(dt),
+                                                         MetricKind::Counter(1.0))));
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.gauge"),
-                                                        3.211,
-                                                        Some(dt),
-                                                        MetricKind::Gauge)));
+                                                         3.211,
+                                                         Some(dt),
+                                                         MetricKind::Gauge)));
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                        12.101,
-                                                        Some(dt),
-                                                        MetricKind::Timer)));
+                                                         12.101,
+                                                         Some(dt),
+                                                         MetricKind::Timer)));
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                        1.101,
-                                                        Some(dt),
-                                                        MetricKind::Timer)));
+                                                         1.101,
+                                                         Some(dt),
+                                                         MetricKind::Timer)));
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                        3.101,
-                                                        Some(dt),
-                                                        MetricKind::Timer)));
+                                                         3.101,
+                                                         Some(dt),
+                                                         MetricKind::Timer)));
         let result = wavefront.format_stats(Some(10101));
         let lines: Vec<&str> = result.lines().collect();
 
