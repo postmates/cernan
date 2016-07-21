@@ -3,7 +3,6 @@ use metric::Metric;
 
 use config::Args;
 
-use regex::Regex;
 use std::sync::Arc;
 
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -32,6 +31,19 @@ pub trait Backend {
             }
         }
     }
+}
+
+pub fn librato_extract_source(tags: &str) -> &str {
+    for tag in tags.split(",") {
+        let mut tag_pieces = tag.split("=");
+        let name = tag_pieces.next();
+        let val = tag_pieces.next();
+
+        if name == Some("source") {
+            return val.unwrap()
+        }
+    }
+    "cernan"
 }
 
 /// Creates the collection of backends based on the paraemeters
@@ -69,9 +81,7 @@ pub fn factory(args: Args) -> Vec<Sender<Arc<server::Event>>> {
         // librato does not support arbitrary tags, only a 'source' tag. We have
         // to parse the source tag--if it exists--out and ship only that.
         thread::spawn(move || {
-            let re = Regex::new(r"(?x)(source=(?P<source>.*),+)?").unwrap();
-            let metric_source =
-                re.captures(&cp_args.tags).unwrap().name("source").unwrap_or("cernan");
+            let metric_source = librato_extract_source(&args.tags);
             librato::Librato::new(&cp_args.librato_username.unwrap(),
                                   &cp_args.librato_token.unwrap(),
                                   metric_source,
@@ -81,4 +91,17 @@ pub fn factory(args: Args) -> Vec<Sender<Arc<server::Event>>> {
         backends.push(send);
     }
     backends
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_librato_source_extraction() {
+        assert_eq!("cernan", librato_extract_source("flkjsdf"));
+        assert_eq!("testsrc", librato_extract_source("host=hs,source=testsrc"));
+        assert_eq!("testsrc", librato_extract_source("source=testsrc,host=hs"));
+        assert_eq!("testsrc", librato_extract_source("source=testsrc"));
+    }
 }

@@ -7,7 +7,6 @@ extern crate mime;
 extern crate rustc_serialize;
 extern crate chrono;
 extern crate url;
-extern crate regex;
 extern crate string_cache;
 extern crate fern;
 #[macro_use]
