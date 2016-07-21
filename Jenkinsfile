@@ -17,6 +17,11 @@ node {
    env.VERSION = readFile('ver.current').trim()
    echo "${env.VERSION}"
 
+   sh "awk -F'\"' '/version/ {print \$2}' Cargo.toml > semvar.current"
+   env.SEMVAR = readFile('semvar.current').trim()
+   echo "${env.SEMVAR}"
+
+
    stage 'Install Deps'
    env.LD_LIBRARY_PATH = "${env.WORKSPACE}/rust/rustc/lib:${env.LD_LIBRARY_PATH}"
    env.PATH = "${env.WORKSPACE}/rust/bin:${env.PATH}"
@@ -47,5 +52,6 @@ node {
     sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-${env.VERSION}"
     if (env.BRANCH_NAME == "stable") {
        sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan"
+       sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-${env.SEMVAR}"
     }
 }
