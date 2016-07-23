@@ -16,7 +16,7 @@ pub enum Event {
 /// statsd
 pub fn udp_server(chan: Sender<Event>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
-    let socket = UdpSocket::bind(addr).ok().unwrap();
+    let socket = UdpSocket::bind(addr).ok().expect("Unable to bind to UDP socket");
     info!("statsd server started on 127.0.0.1:{}", port);
     let mut buf = [0; 8192];
     loop {
@@ -25,13 +25,13 @@ pub fn udp_server(chan: Sender<Event>, port: u16) {
             Err(_) => panic!("Could not read UDP socket."),
         };
         let bytes = Vec::from(&buf[..len]);
-        chan.send(Event::UdpMessage(bytes)).unwrap();
+        chan.send(Event::UdpMessage(bytes)).expect("[UDP] Unable to write into chan!");
     }
 }
 
 pub fn tcp_server(chan: Sender<Event>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
-    let listener = TcpListener::bind(addr).unwrap();
+    let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
     info!("graphite server started on 127.0.0.1:{}", port);
     for stream in listener.incoming() {
         let newchan = chan.clone();
@@ -49,7 +49,7 @@ fn handle_client(chan: Sender<Event>, stream: TcpStream) {
     for line in line_reader.lines() {
         match line {
             Ok(line) => {
-                chan.send(Event::TcpMessage(line.into_bytes())).unwrap();
+                chan.send(Event::TcpMessage(line.into_bytes())).expect("[TCP] Unable to write to chan!");
             }
             Err(_) => break,
         }
@@ -61,6 +61,6 @@ pub fn flush_timer_loop(chan: Sender<Event>, interval: u64) {
     let duration = Duration::new(interval, 0);
     loop {
         sleep(duration);
-        chan.send(Event::TimerFlush).unwrap();
+        chan.send(Event::TimerFlush).expect("[FLUSH] Unable to write to chan!");
     }
 }
