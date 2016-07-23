@@ -113,14 +113,20 @@ impl Wavefront {
 
 impl Backend for Wavefront {
     fn flush(&mut self) {
-        let res = TcpStream::connect(self.addr);
-        if res.is_ok() {
-            let mut stream = res.unwrap();
-            debug!("wavefront flush");
-            let stats = self.format_stats(None);
-            debug!("wavefront - {}", stats);
-            self.points.clear();
-            let _ = stream.write(stats.as_bytes());
+        match TcpStream::connect(self.addr) {
+            Ok(mut stream) => {
+                debug!("wavefront flush");
+                let stats = self.format_stats(None);
+                debug!("wavefront - {}", stats);
+                match stream.write(stats.as_bytes()) {
+                    Ok(n) => {
+                        trace!("wrote {} bytes", n);
+                        self.points.clear();
+                    }
+                    Err(e) => debug!("WF failed to write: {}", e)
+                }
+            },
+            Err(e) => debug!("Unable to connect: {}", e),
         }
     }
 
