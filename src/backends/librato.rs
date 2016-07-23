@@ -135,7 +135,7 @@ impl Backend for Librato {
         debug!("librato - {}", payload);
         let mime: Mime = "application/json".parse().unwrap();
         let uri = url::Url::parse(&(self.host)).expect("malformed url");
-        client.post(uri)
+        let res = client.post(uri)
             .body(&payload)
             .header(ContentType(mime))
             .header(Authorization(Basic {
@@ -143,8 +143,11 @@ impl Backend for Librato {
                 password: Some(self.auth_token.clone()),
             }))
             .header(Connection::keep_alive())
-            .send()
-            .unwrap();
+            .send();
+        match res {
+            Ok(_) => trace!("Successfully wrote librato payload"),
+            Err(e) => debug!("Could not write librato payload with error {}", e),
+        }
     }
 }
 
