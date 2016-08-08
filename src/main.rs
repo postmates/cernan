@@ -76,17 +76,25 @@ fn main() {
 
     let (event_send, event_recv) = channel();
     let flush_send = event_send.clone();
-    let statsd_send = event_send.clone();
-    let graphite_send = event_send.clone();
+    let statsd_send_v4 = event_send.clone();
+    let statsd_send_v6 = event_send.clone();
+    let graphite_send_v4 = event_send.clone();
+    let graphite_send_v6 = event_send.clone();
 
     let sport = args.statsd_port;
     thread::spawn(move || {
-        server::udp_server(statsd_send, sport);
+        server::udp_server_v4(statsd_send_v4, sport);
+    });
+    thread::spawn(move || {
+        server::udp_server_v6(statsd_send_v6, sport);
     });
 
     let gport = args.graphite_port;
     thread::spawn(move || {
-        server::tcp_server(graphite_send, gport);
+        server::tcp_server_ipv6(graphite_send_v6, gport);
+    });
+    thread::spawn(move || {
+        server::tcp_server_ipv4(graphite_send_v4, gport);
     });
 
     let flush_interval = args.flush_interval;
