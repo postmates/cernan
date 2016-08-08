@@ -133,9 +133,9 @@ impl Backend for Wavefront {
                         trace!("wrote {} bytes", n);
                         self.points.clear();
                     }
-                    Err(e) => debug!("WF failed to write: {}", e)
+                    Err(e) => debug!("WF failed to write: {}", e),
                 }
-            },
+            }
             Err(e) => debug!("Unable to connect: {}", e),
         }
     }
