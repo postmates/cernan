@@ -13,14 +13,15 @@ rustc-serialize = "0.3.19"
 chrono = "0.2"
 url = "1.1.1"
 regex = "0.1"
-lalrpop-util = "0.11.0"
+lalrpop-util = "0.12.0"
 string_cache = "0.2.21"
-clap = "2.9.2"
+clap = "2.10.0"
 fern = "0.3.5"
 log = "0.3.6"
+dns-lookup = "0.2.1"
 
 [build-dependencies]
-lalrpop = "0.11.0"
+lalrpop = "0.12.0"
 
 [profile.release]
 lto = true

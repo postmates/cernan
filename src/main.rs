@@ -9,6 +9,7 @@ extern crate url;
 extern crate regex;
 extern crate string_cache;
 extern crate fern;
+extern crate dns_lookup;
 #[macro_use]
 extern crate log;
 

@@ -1,5 +1,4 @@
-use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
-use std::str::FromStr;
+use std::net::{IpAddr, SocketAddrV4, TcpStream};
 use std::fmt::Write;
 use std::io::Write as IoWrite;
 use chrono;
@@ -7,9 +6,10 @@ use metric::Metric;
 use buckets::Buckets;
 use backend::Backend;
 use std::rc::Rc;
+use dns_lookup;
 
 pub struct Wavefront {
-    addr: SocketAddrV4,
+    addr: SocketAddrV4, // TODO, support IPv6
     tags: String,
     mk_aggrs: bool,
     // The wavefront implementation keeps an aggregate, depricated, and ships
@@ -27,14 +27,24 @@ impl Wavefront {
     /// let wave = Wavefront::new(host, port, source);
     /// ```
     pub fn new(host: &str, port: u16, skip_aggrs: bool, tags: String) -> Wavefront {
-        let ip = Ipv4Addr::from_str(host).unwrap();
-        let addr = SocketAddrV4::new(ip, port);
-        Wavefront {
-            addr: addr,
-            tags: tags,
-            mk_aggrs: skip_aggrs,
-            aggrs: Buckets::new(),
-            points: Vec::new(),
+        match dns_lookup::lookup_host(host) {
+            Ok(mut lh) => {
+                let ip = lh.next().expect("No IPs associated with host").unwrap();
+                let addr = match ip {
+                    IpAddr::V4(ipv4) => SocketAddrV4::new(ipv4, port),
+                    IpAddr::V6(_) => panic!("IPv6 addresses not supported!"),
+                };
+                Wavefront {
+                    addr: addr,
+                    tags: tags,
+                    mk_aggrs: skip_aggrs,
+                    aggrs: Buckets::new(),
+                    points: Vec::new(),
+                }
+            }
+            Err(_) => {
+                panic!("Could not lookup host")
+            }
         }
     }
 
@@ -150,7 +160,7 @@ mod test {
 
     #[test]
     fn test_format_wavefront() {
-        let mut wavefront = Wavefront::new("127.0.0.1", 2003, true, "source=test-src".to_string());
+        let mut wavefront = Wavefront::new("localhost", 2003, true, "source=test-src".to_string());
         let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12);
         wavefront.deliver(Rc::new(Metric::new_with_time(Atom::from("test.counter"),
                                                         1.0,
