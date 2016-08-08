@@ -49,7 +49,8 @@ fn handle_client(chan: Sender<Event>, stream: TcpStream) {
     for line in line_reader.lines() {
         match line {
             Ok(line) => {
-                chan.send(Event::TcpMessage(line.into_bytes())).expect("[TCP] Unable to write to chan!");
+                chan.send(Event::TcpMessage(line.into_bytes()))
+                    .expect("[TCP] Unable to write to chan!");
             }
             Err(_) => break,
         }
