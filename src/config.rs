@@ -243,9 +243,12 @@ pub fn parse_args() -> Args {
             };
 
             Args {
-                statsd_port: u16::from_str(args.value_of("statsd-port").unwrap()).unwrap(),
-                graphite_port: u16::from_str(args.value_of("graphite-port").unwrap()).unwrap(),
-                flush_interval: u64::from_str(args.value_of("flush-interval").unwrap()).unwrap(),
+                statsd_port: u16::from_str(args.value_of("statsd-port").unwrap())
+                    .expect("statsd-port must be an integer"),
+                graphite_port: u16::from_str(args.value_of("graphite-port").unwrap())
+                    .expect("graphite-port must be an integer"),
+                flush_interval: u64::from_str(args.value_of("flush-interval").unwrap())
+                    .expect("flush-interval must be an integer"),
                 console: mk_console,
                 wavefront: mk_wavefront,
                 librato: mk_librato,
