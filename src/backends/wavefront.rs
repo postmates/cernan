@@ -42,9 +42,7 @@ impl Wavefront {
                     points: Vec::new(),
                 }
             }
-            Err(_) => {
-                panic!("Could not lookup host")
-            }
+            Err(_) => panic!("Could not lookup host"),
         }
     }
 
