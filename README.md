@@ -24,7 +24,8 @@ Recent versions of OSX may have some goofy OpenSSL issues, which can be resolved
 by issuing
 
     > brew install openssl
-    > brew link --force openssl
+    > export OPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include
+    > export DEP_OPENSSL_INCLUDE=/usr/local/opt/openssl/include
 
 and following the onscreen instructions. Run
 
