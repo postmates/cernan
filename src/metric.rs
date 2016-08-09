@@ -42,7 +42,7 @@ impl Metric {
             name: name,
             value: value,
             kind: kind,
-            time: time.unwrap_or_else(UTC::now),
+            time: time.unwrap_or(UTC::now()),
         }
     }
 
