@@ -104,14 +104,14 @@ fn main() {
     });
 
     loop {
-        let result = match event_recv.recv() {
-            Ok(res) => res,
+        match event_recv.recv() {
+            Ok(result) => {
+                let arc_res = Arc::new(result);
+                for backend in &mut backends {
+                    backend.send(arc_res.clone()).expect("oops, couldn't send!");
+                }
+            }
             Err(e) => panic!(format!("Event channel has hung up: {:?}", e)),
-        };
-
-        let arc_res = Arc::new(result);
-        for backend in &mut backends {
-            backend.send(arc_res.clone()).expect("oops, couldn't send!");
         }
     }
 }
