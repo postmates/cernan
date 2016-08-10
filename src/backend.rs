@@ -16,15 +16,17 @@ pub trait Backend {
     fn flush(&mut self) -> ();
     fn deliver(&mut self, point: Arc<Metric>) -> ();
     fn run(&mut self, recv: Receiver<Arc<server::Event>>) {
-        for event in recv.recv().iter() {
-            match *(*event) {
+        for event in recv.iter() {
+            match *event {
                 server::Event::TimerFlush => self.flush(),
                 server::Event::Graphite(ref metrics) => {
+                    debug!("Graphite Event!");
                     for metric in metrics {
                         self.deliver(metric.clone());
                     }
                 }
                 server::Event::Statsd(ref metrics) => {
+                    debug!("Statsd Event!");
                     for metric in metrics {
                         self.deliver(metric.clone());
                     }
@@ -37,9 +39,6 @@ pub trait Backend {
 /// Creates the collection of backends based on the paraemeters
 ///
 pub fn factory(args: Args) -> Vec<Sender<Arc<server::Event>>> {
-    // create the channel
-    // spawn the thread
-
     let mut backends = Vec::with_capacity(3);
 
     if args.console {

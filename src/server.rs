@@ -23,11 +23,11 @@ pub fn udp_server_v6(chan: Sender<Event>, port: u16) {
     info!("statsd server started on ::1 {}", port);
     let mut buf = [0; 8192];
     loop {
-        match socket.recv_from(&mut buf) {
+        let (len, _) = match socket.recv_from(&mut buf) {
             Ok(r) => r,
             Err(_) => panic!("Could not read UDP socket."),
         };
-        str::from_utf8(&buf)
+        str::from_utf8(&buf[..len])
             .map(|val| {
                 trace!("statsd - {}", val);
                 match metric::Metric::parse_statsd(val) {
@@ -49,11 +49,11 @@ pub fn udp_server_v4(chan: Sender<Event>, port: u16) {
     info!("statsd server started on 127.0.0.1:{}", port);
     let mut buf = [0; 8192];
     loop {
-        match socket.recv_from(&mut buf) {
+        let (len, _) = match socket.recv_from(&mut buf) {
             Ok(r) => r,
             Err(_) => panic!("Could not read UDP socket."),
         };
-        str::from_utf8(&buf)
+        str::from_utf8(&buf[..len])
             .map(|val| {
                 trace!("statsd - {}", val);
                 match metric::Metric::parse_statsd(val) {
