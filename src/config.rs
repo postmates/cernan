@@ -58,18 +58,18 @@ pub fn parse_args() -> Args {
         .arg(Arg::with_name("flush-interval")
              .long("flush-interval")
              .value_name("interval")
-             .help("How frequently to flush metrics to the backends in seconds.")
+             .help("How frequently to flush metrics to the sinks in seconds.")
              .takes_value(true)
              .default_value("10"))
         .arg(Arg::with_name("console")
              .long("console")
-             .help("Enable the console backend."))
+             .help("Enable the console sink."))
         .arg(Arg::with_name("wavefront")
              .long("wavefront")
-             .help("Enable the wavefront backend."))
+             .help("Enable the wavefront sink."))
         .arg(Arg::with_name("librato")
              .long("librato")
-             .help("Enable the librato backend."))
+             .help("Enable the librato sink."))
         .arg(Arg::with_name("wavefront-port")
              .long("wavefront-port")
              .help("The port wavefront proxy is running on")
@@ -100,7 +100,7 @@ pub fn parse_args() -> Args {
              .default_value("statsd"))
         .arg(Arg::with_name("tags")
              .long("tags")
-             .help("A comma separated list of tags to report to supporting backends.")
+             .help("A comma separated list of tags to report to supporting sinks.")
              .takes_value(true)
              .use_delimiter(false)
              .default_value("source=cernan"))
@@ -141,23 +141,23 @@ pub fn parse_args() -> Args {
                 None => "".to_string(),
             };
 
-            let mk_wavefront = value.lookup("backends.wavefront").is_some();
-            let mk_console = value.lookup("backends.console").is_some();
-            let mk_librato = value.lookup("backends.librato").is_some();
+            let mk_wavefront = value.lookup("sinks.wavefront").is_some();
+            let mk_console = value.lookup("sinks.console").is_some();
+            let mk_librato = value.lookup("sinks.librato").is_some();
 
             let (wport, whost, wskpaggr) = if mk_wavefront {
                 (// wavefront port
-                 value.lookup("backends.wavefront.port")
+                 value.lookup("sinks.wavefront.port")
                     .unwrap_or(&Value::Integer(2878))
                     .as_integer()
                     .map(|i| i as u16),
                  // wavefront host
-                 value.lookup("backends.wavefront.host")
+                 value.lookup("sinks.wavefront.host")
                     .unwrap_or(&Value::String("127.0.0.1".to_string()))
                     .as_str()
                     .map(|s| s.to_string()),
                  // wavefront skip aggrs
-                 value.lookup("backends.wavefront.skip-aggrs")
+                 value.lookup("sinks.wavefront.skip-aggrs")
                     .unwrap_or(&Value::Boolean(false))
                     .as_bool()
                     .unwrap_or(false))
@@ -167,17 +167,17 @@ pub fn parse_args() -> Args {
 
             let (luser, lhost, ltoken) = if mk_librato {
                 (// librato username
-                 value.lookup("backends.librato.username")
+                 value.lookup("sinks.librato.username")
                     .unwrap_or(&Value::String("statsd".to_string()))
                     .as_str()
                     .map(|s| s.to_string()),
                  // librato token
-                 value.lookup("backends.librato.token")
+                 value.lookup("sinks.librato.token")
                     .unwrap_or(&Value::String("statsd".to_string()))
                     .as_str()
                     .map(|s| s.to_string()),
                  // librato host
-                 value.lookup("backends.librato.host")
+                 value.lookup("sinks.librato.host")
                     .unwrap_or(&Value::String("https://metrics-api.librato.com/v1/metrics"
                         .to_string()))
                     .as_str()
