@@ -5,7 +5,7 @@ flush-interval = 10
 [tags]
 source = "cernan"
 
-[backends]
+[sinks]
     [console]
 
     [wavefront]

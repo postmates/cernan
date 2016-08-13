@@ -4,7 +4,7 @@ use std::io::Write as IoWrite;
 use chrono;
 use metric::Metric;
 use buckets::Buckets;
-use backend::Backend;
+use sink::Sink;
 use std::sync::Arc;
 use dns_lookup;
 
@@ -116,7 +116,7 @@ impl Wavefront {
     }
 }
 
-impl Backend for Wavefront {
+impl Sink for Wavefront {
     fn flush(&mut self) {
         match TcpStream::connect(self.addr) {
             Ok(mut stream) => {
@@ -147,7 +147,7 @@ impl Backend for Wavefront {
 #[cfg(test)]
 mod test {
     use metric::{Metric, MetricKind};
-    use backend::Backend;
+    use sink::Sink;
     use chrono::{UTC, TimeZone};
     use std::sync::Arc;
     use string_cache::Atom;

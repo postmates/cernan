@@ -1,4 +1,4 @@
-use backends::*;
+use sinks::*;
 use metric::Metric;
 
 use config::Args;
@@ -11,8 +11,8 @@ use std::thread;
 
 use server;
 
-/// A 'backend' is a sink for metrics.
-pub trait Backend {
+/// A 'sink' is a sink for metrics.
+pub trait Sink {
     fn flush(&mut self) -> ();
     fn deliver(&mut self, point: Arc<Metric>) -> ();
     fn run(&mut self, recv: Receiver<Arc<server::Event>>) {
@@ -36,17 +36,17 @@ pub trait Backend {
     }
 }
 
-/// Creates the collection of backends based on the paraemeters
+/// Creates the collection of sinks based on the paraemeters
 ///
 pub fn factory(args: Args) -> Vec<Sender<Arc<server::Event>>> {
-    let mut backends = Vec::with_capacity(3);
+    let mut sinks = Vec::with_capacity(3);
 
     if args.console {
         let (send, recv) = channel();
         thread::spawn(move || {
             console::Console::new().run(recv);
         });
-        backends.push(send);
+        sinks.push(send);
     }
     if args.wavefront {
         let (send, recv) = channel();
@@ -59,7 +59,7 @@ pub fn factory(args: Args) -> Vec<Sender<Arc<server::Event>>> {
                                       wf_tags)
                 .run(recv);
         });
-        backends.push(send);
+        sinks.push(send);
     }
     if args.librato {
         let (send, recv) = channel();
@@ -77,7 +77,7 @@ pub fn factory(args: Args) -> Vec<Sender<Arc<server::Event>>> {
                                   &cp_args.librato_host.unwrap())
                 .run(recv);
         });
-        backends.push(send);
+        sinks.push(send);
     }
-    backends
+    sinks
 }

@@ -71,24 +71,24 @@ graphite-port=<INT>      The TCP port to bind to for graphite traffic. [default:
 ## Changing how frequently metrics are output
 
 ```
-flush-interval=<INT>  How frequently to flush metrics to the backends in seconds. [default: 10].
+flush-interval=<INT>  How frequently to flush metrics to the sinks in seconds. [default: 10].
 ```
 
-## Enabling the console or graphite backends
+## Enabling the console or graphite sinks
 
-By default no backends are enabled. In this mode cernan server doesn't do that
-much. Backends are configured in a `backends` table. To enable a backend with
+By default no sinks are enabled. In this mode cernan server doesn't do that
+much. Sinks are configured in a `sinks` table. To enable a sink with
 defaults it is sufficient to make a sub-table for it. In the following, all
-backends are enabled with their default:
+sinks are enabled with their default:
 
 ```
-[backends]
+[sinks]
   [console]
   [wavefront]
   [librato]
 ```
 
-For backends which support it `cernan` can report metadata about the
+For sinks which support it `cernan` can report metadata about the
 metric. These are called "tags" by some aggregators and `cernan` uses this
 terminology. In AWS you might choose to include your instance ID with each
 metric point, as well as the service name. You may set tags like so:
@@ -99,11 +99,11 @@ source = cernan
 ```
 
 Each key / value pair will converted to the appropriate tag, depending on the
-backend.
+sink.
 
 ### librato
 
-The librato backend has additional options for defining authentication:
+The librato sink has additional options for defining authentication:
 
 ```
 username=<STRING>   The librato username for authentication. [default: ceran].
@@ -113,7 +113,7 @@ host=<STRING>       The librato host to report to. [default: https://metrics-api
 
 ### wavefront
 
-The wavefront backend has additional options for defining where the wavefront
+The wavefront sink has additional options for defining where the wavefront
 proxy runs:
 
 ```

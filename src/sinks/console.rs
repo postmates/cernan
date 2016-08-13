@@ -1,4 +1,4 @@
-use backend::Backend;
+use sink::Sink;
 use buckets::Buckets;
 use metric::Metric;
 use chrono;
@@ -27,7 +27,7 @@ fn fmt_line(key: &str, value: &f64) {
 }
 
 
-impl Backend for Console {
+impl Sink for Console {
     fn deliver(&mut self, point: Arc<Metric>) {
         debug!("console deliver");
         self.aggrs.add(&point);

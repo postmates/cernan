@@ -20,7 +20,7 @@ use std::sync::mpsc::channel;
 use std::thread;
 use chrono::UTC;
 
-mod backend;
+mod sink;
 mod buckets;
 mod config;
 mod metric;
@@ -29,7 +29,7 @@ mod metrics {
     pub mod graphite;
 }
 mod server;
-mod backends {
+mod sinks {
     pub mod console;
     pub mod librato;
     pub mod wavefront;
@@ -72,8 +72,8 @@ fn main() {
     warn!("warning messages enabled");
     error!("error messages enabled");
 
-    let mut backends = backend::factory(args.clone());
-    debug!("total backends: {}", backends.len());
+    let mut sinks = sink::factory(args.clone());
+    debug!("total sinks: {}", sinks.len());
 
     let (event_send, event_recv) = channel();
     let flush_send = event_send.clone();
@@ -107,9 +107,9 @@ fn main() {
         match event_recv.recv() {
             Ok(result) => {
                 let arc_res = Arc::new(result);
-                for backend in &mut backends {
+                for sink in &mut sinks {
                     let ar = arc_res.clone();
-                    match backend.send(ar).err() {
+                    match sink.send(ar).err() {
                         None => continue,
                         Some(e) => panic!("Hung up! {}", e),
                     }

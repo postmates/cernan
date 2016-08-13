@@ -1,4 +1,4 @@
-use backend::Backend;
+use sink::Sink;
 use buckets::Buckets;
 use std::str::FromStr;
 use rustc_serialize::json;
@@ -122,7 +122,7 @@ impl Librato {
     }
 }
 
-impl Backend for Librato {
+impl Sink for Librato {
     fn deliver(&mut self, point: Arc<Metric>) {
         debug!("librato deliver");
         self.aggrs.add(&point);
@@ -154,7 +154,7 @@ impl Backend for Librato {
 #[cfg(test)]
 mod test {
     use metric::{Metric, MetricKind};
-    use backend::Backend;
+    use sink::Sink;
     use std::sync::Arc;
     use string_cache::Atom;
     use super::*;
