@@ -11,11 +11,9 @@ use dns_lookup;
 pub struct Wavefront {
     addr: SocketAddr,
     tags: String,
-    mk_aggrs: bool,
     // The wavefront implementation keeps an aggregate, depricated, and ships
     // exact points. The aggregate is 'aggrs' and the exact points is 'points'.
     aggrs: Buckets,
-    points: Vec<Arc<Metric>>,
 }
 
 impl Wavefront {
@@ -26,7 +24,7 @@ impl Wavefront {
     /// ```
     /// let wave = Wavefront::new(host, port, source);
     /// ```
-    pub fn new(host: &str, port: u16, skip_aggrs: bool, tags: String) -> Wavefront {
+    pub fn new(host: &str, port: u16, tags: String) -> Wavefront {
         match dns_lookup::lookup_host(host) {
             Ok(mut lh) => {
                 let ip = lh.next().expect("No IPs associated with host").unwrap();
@@ -34,9 +32,7 @@ impl Wavefront {
                 Wavefront {
                     addr: addr,
                     tags: tags,
-                    mk_aggrs: skip_aggrs,
                     aggrs: Buckets::new(),
-                    points: Vec::new(),
                 }
             }
             Err(_) => panic!("Could not lookup host"),
@@ -52,64 +48,52 @@ impl Wavefront {
         };
         let mut stats = String::new();
 
-        if self.mk_aggrs {
-            for (key, value) in self.aggrs.counters().iter() {
-                write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
-            }
+        for (key, value) in self.aggrs.counters().iter() {
+            write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
+        }
 
-            for (key, value) in self.aggrs.gauges().iter() {
-                write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
-            }
+        for (key, value) in self.aggrs.gauges().iter() {
+            write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
+        }
 
-            for (key, value) in self.aggrs.histograms().iter() {
-                for tup in &[("min", 0.0),
-                             ("max", 1.0),
-                             ("50", 0.5),
-                             ("90", 0.9),
-                             ("99", 0.99),
-                             ("999", 0.999)] {
-                    let stat: &str = tup.0;
-                    let quant: f64 = tup.1;
-                    write!(stats,
-                           "{}.{} {} {} {}\n",
-                           key,
-                           stat,
-                           value.query(quant).unwrap().1,
-                           start,
-                           self.tags)
-                        .unwrap();
-                }
-            }
-
-            for (key, value) in self.aggrs.timers().iter() {
-                for tup in &[("min", 0.0),
-                             ("max", 1.0),
-                             ("50", 0.5),
-                             ("90", 0.9),
-                             ("99", 0.99),
-                             ("999", 0.999)] {
-                    let stat: &str = tup.0;
-                    let quant: f64 = tup.1;
-                    write!(stats,
-                           "{}.{} {} {} {}\n",
-                           key,
-                           stat,
-                           value.query(quant).unwrap().1,
-                           start,
-                           self.tags)
-                        .unwrap();
-                }
+        for (key, value) in self.aggrs.histograms().iter() {
+            for tup in &[("min", 0.0),
+                         ("max", 1.0),
+                         ("50", 0.5),
+                         ("90", 0.9),
+                         ("99", 0.99),
+                         ("999", 0.999)] {
+                let stat: &str = tup.0;
+                let quant: f64 = tup.1;
+                write!(stats,
+                       "{}.{} {} {} {}\n",
+                       key,
+                       stat,
+                       value.query(quant).unwrap().1,
+                       start,
+                       self.tags)
+                    .unwrap();
             }
         }
 
-        for m in &self.points {
-            write!(stats,
-                   "{} {} {} {}\n",
-                   m.name,
-                   m.value,
-                   m.time.timestamp(),
-                   self.tags)
-                .unwrap();
+        for (key, value) in self.aggrs.timers().iter() {
+            for tup in &[("min", 0.0),
+                         ("max", 1.0),
+                         ("50", 0.5),
+                         ("90", 0.9),
+                         ("99", 0.99),
+                         ("999", 0.999)] {
+                let stat: &str = tup.0;
+                let quant: f64 = tup.1;
+                write!(stats,
+                       "{}.{} {} {} {}\n",
+                       key,
+                       stat,
+                       value.query(quant).unwrap().1,
+                       start,
+                       self.tags)
+                    .unwrap();
+            }
         }
 
         stats
@@ -124,10 +108,7 @@ impl Sink for Wavefront {
                 let stats = self.format_stats(None);
                 debug!("wavefront - {}", stats);
                 match stream.write(stats.as_bytes()) {
-                    Ok(n) => {
-                        trace!("wrote {} bytes", n);
-                        self.points.clear();
-                    }
+                    Ok(n) => trace!("wrote {} bytes", n),
                     Err(e) => debug!("WF failed to write: {}", e),
                 }
             }
@@ -137,10 +118,7 @@ impl Sink for Wavefront {
 
     fn deliver(&mut self, point: Arc<Metric>) {
         debug!("wavefront deliver");
-        if self.mk_aggrs {
-            self.aggrs.add(&point);
-        }
-        self.points.push(point);
+        self.aggrs.add(&point);
     }
 }
 
@@ -155,7 +133,7 @@ mod test {
 
     #[test]
     fn test_format_wavefront() {
-        let mut wavefront = Wavefront::new("localhost", 2003, true, "source=test-src".to_string());
+        let mut wavefront = Wavefront::new("localhost", 2003, "source=test-src".to_string());
         let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12);
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.counter"),
                                                          1.0,
@@ -181,7 +159,7 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(13, lines.len());
+        assert_eq!(8, lines.len());
         assert_eq!(lines[0], "test.counter 1 10101 source=test-src");
         assert_eq!(lines[1], "test.gauge 3.211 10101 source=test-src");
         assert_eq!(lines[2], "test.timer.min 1.101 10101 source=test-src");
@@ -190,47 +168,5 @@ mod test {
         assert_eq!(lines[5], "test.timer.90 12.101 10101 source=test-src");
         assert_eq!(lines[6], "test.timer.99 12.101 10101 source=test-src");
         assert_eq!(lines[7], "test.timer.999 12.101 10101 source=test-src");
-        assert_eq!(lines[8], "test.counter 1 645181811 source=test-src");
-        assert_eq!(lines[9], "test.gauge 3.211 645181811 source=test-src");
-        assert_eq!(lines[10], "test.timer 12.101 645181811 source=test-src");
-        assert_eq!(lines[11], "test.timer 1.101 645181811 source=test-src");
-        assert_eq!(lines[12], "test.timer 3.101 645181811 source=test-src");
     }
-
-    #[test]
-    fn test_format_wavefront_skip_aggrs() {
-        let mut wavefront = Wavefront::new("127.0.0.1", 2003, false, "source=test-src".to_string());
-        let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12);
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.counter"),
-                                                         1.0,
-                                                         Some(dt),
-                                                         MetricKind::Counter(1.0))));
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.gauge"),
-                                                         3.211,
-                                                         Some(dt),
-                                                         MetricKind::Gauge)));
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                         12.101,
-                                                         Some(dt),
-                                                         MetricKind::Timer)));
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                         1.101,
-                                                         Some(dt),
-                                                         MetricKind::Timer)));
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                         3.101,
-                                                         Some(dt),
-                                                         MetricKind::Timer)));
-        let result = wavefront.format_stats(Some(10101));
-        let lines: Vec<&str> = result.lines().collect();
-
-        println!("{:?}", lines);
-        assert_eq!(5, lines.len());
-        assert_eq!(lines[0], "test.counter 1 645181811 source=test-src");
-        assert_eq!(lines[1], "test.gauge 3.211 645181811 source=test-src");
-        assert_eq!(lines[2], "test.timer 12.101 645181811 source=test-src");
-        assert_eq!(lines[3], "test.timer 1.101 645181811 source=test-src");
-        assert_eq!(lines[4], "test.timer 3.101 645181811 source=test-src");
-    }
-
 }

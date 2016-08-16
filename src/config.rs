@@ -23,7 +23,6 @@ pub struct Args {
     pub librato: bool,
     pub wavefront_port: Option<u16>,
     pub wavefront_host: Option<String>,
-    pub wavefront_skip_aggrs: bool,
     pub librato_username: Option<String>,
     pub librato_host: Option<String>,
     pub librato_token: Option<String>,
@@ -82,7 +81,7 @@ pub fn parse_args() -> Args {
              .default_value("127.0.0.1"))
         .arg(Arg::with_name("wavefront-skip-aggrs")
              .long("wavefront-skip-aggrs")
-             .help("Skip sending aggregate metrics to wavefront")) // default false
+             .help("Skip sending aggregate metrics to wavefront")) // NOT USED, REMOVE 0.4.x
         .arg(Arg::with_name("librato-username")
              .long("librato-username")
              .help("The librato username for authentication.")
@@ -145,7 +144,7 @@ pub fn parse_args() -> Args {
             let mk_console = value.lookup("sinks.console").is_some();
             let mk_librato = value.lookup("sinks.librato").is_some();
 
-            let (wport, whost, wskpaggr) = if mk_wavefront {
+            let (wport, whost) = if mk_wavefront {
                 (// wavefront port
                  value.lookup("sinks.wavefront.port")
                     .unwrap_or(&Value::Integer(2878))
@@ -155,14 +154,9 @@ pub fn parse_args() -> Args {
                  value.lookup("sinks.wavefront.host")
                     .unwrap_or(&Value::String("127.0.0.1".to_string()))
                     .as_str()
-                    .map(|s| s.to_string()),
-                 // wavefront skip aggrs
-                 value.lookup("sinks.wavefront.skip-aggrs")
-                    .unwrap_or(&Value::Boolean(false))
-                    .as_bool()
-                    .unwrap_or(false))
+                    .map(|s| s.to_string()))
             } else {
-                (None, None, false)
+                (None, None)
             };
 
             let (luser, lhost, ltoken) = if mk_librato {
@@ -205,7 +199,6 @@ pub fn parse_args() -> Args {
                 librato: mk_librato,
                 wavefront_port: wport,
                 wavefront_host: whost,
-                wavefront_skip_aggrs: wskpaggr,
                 librato_username: luser,
                 librato_host: lhost,
                 librato_token: ltoken,
@@ -220,12 +213,11 @@ pub fn parse_args() -> Args {
             let mk_console = args.is_present("console");
             let mk_librato = args.is_present("librato");
 
-            let (wport, whost, wskpaggr) = if mk_wavefront {
+            let (wport, whost) = if mk_wavefront {
                 (Some(u16::from_str(args.value_of("wavefront-port").unwrap()).unwrap()),
-                 Some(args.value_of("wavefront-host").unwrap().to_string()),
-                 args.value_of("wavefront-skip-aggrs").is_some())
+                 Some(args.value_of("wavefront-host").unwrap().to_string()))
             } else {
-                (None, None, false)
+                (None, None)
             };
 
             let (luser, lhost, ltoken) = if mk_librato {
@@ -254,7 +246,6 @@ pub fn parse_args() -> Args {
                 librato: mk_librato,
                 wavefront_port: wport,
                 wavefront_host: whost,
-                wavefront_skip_aggrs: wskpaggr,
                 librato_username: luser,
                 librato_host: lhost,
                 librato_token: ltoken,

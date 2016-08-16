@@ -40,11 +40,6 @@ node {
    sh "cargo clean"
    sh "cargo test"
 
-   stage 'Nightly Tests'
-   sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust default nightly"
-   sh "cargo clean"
-   sh "cargo test"
-
     stage 'Build Artifact'
     sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust default stable"
     sh "cargo build --release"
