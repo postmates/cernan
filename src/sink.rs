@@ -55,7 +55,6 @@ pub fn factory(args: Args) -> Vec<Sender<Arc<server::Event>>> {
         thread::spawn(move || {
             wavefront::Wavefront::new(&cp_args.wavefront_host.unwrap(),
                                       cp_args.wavefront_port.unwrap(),
-                                      cp_args.wavefront_skip_aggrs,
                                       wf_tags)
                 .run(recv);
         });
