@@ -59,8 +59,15 @@ impl Wavefront {
         for (key, value) in self.aggrs.histograms().iter() {
             for tup in &[("min", 0.0),
                          ("max", 1.0),
+                         ("2", 0.02),
+                         ("9", 0.09),
+                         ("25", 0.25),
                          ("50", 0.5),
-                         ("90", 0.9),
+                         ("75", 0.75),
+                         ("90", 0.90),
+                         ("91", 0.91),
+                         ("95", 0.95),
+                         ("98", 0.98),
                          ("99", 0.99),
                          ("999", 0.999)] {
                 let stat: &str = tup.0;
@@ -79,8 +86,15 @@ impl Wavefront {
         for (key, value) in self.aggrs.timers().iter() {
             for tup in &[("min", 0.0),
                          ("max", 1.0),
+                         ("2", 0.02),
+                         ("9", 0.09),
+                         ("25", 0.25),
                          ("50", 0.5),
-                         ("90", 0.9),
+                         ("75", 0.75),
+                         ("90", 0.90),
+                         ("91", 0.91),
+                         ("95", 0.95),
+                         ("98", 0.98),
                          ("99", 0.99),
                          ("999", 0.999)] {
                 let stat: &str = tup.0;
@@ -159,14 +173,21 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(8, lines.len());
+        assert_eq!(15, lines.len());
         assert_eq!(lines[0], "test.counter 1 10101 source=test-src");
         assert_eq!(lines[1], "test.gauge 3.211 10101 source=test-src");
         assert_eq!(lines[2], "test.timer.min 1.101 10101 source=test-src");
         assert_eq!(lines[3], "test.timer.max 12.101 10101 source=test-src");
-        assert_eq!(lines[4], "test.timer.50 3.101 10101 source=test-src");
-        assert_eq!(lines[5], "test.timer.90 12.101 10101 source=test-src");
-        assert_eq!(lines[6], "test.timer.99 12.101 10101 source=test-src");
-        assert_eq!(lines[7], "test.timer.999 12.101 10101 source=test-src");
+        assert_eq!(lines[4], "test.timer.2 1.101 10101 source=test-src");
+        assert_eq!(lines[5], "test.timer.9 1.101 10101 source=test-src");
+        assert_eq!(lines[6], "test.timer.25 1.101 10101 source=test-src");
+        assert_eq!(lines[7], "test.timer.50 3.101 10101 source=test-src");
+        assert_eq!(lines[8], "test.timer.75 3.101 10101 source=test-src");
+        assert_eq!(lines[9], "test.timer.90 12.101 10101 source=test-src");
+        assert_eq!(lines[10], "test.timer.91 12.101 10101 source=test-src");
+        assert_eq!(lines[11], "test.timer.95 12.101 10101 source=test-src");
+        assert_eq!(lines[12], "test.timer.98 12.101 10101 source=test-src");
+        assert_eq!(lines[13], "test.timer.99 12.101 10101 source=test-src");
+        assert_eq!(lines[14], "test.timer.999 12.101 10101 source=test-src");
     }
 }
