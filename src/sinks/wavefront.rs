@@ -81,6 +81,8 @@ impl Wavefront {
                        self.tags)
                     .unwrap();
             }
+            let count = value.count();
+            write!(stats, "{}.count {} {} {}\n", key, count, start, self.tags).unwrap();
         }
 
         for (key, value) in self.aggrs.timers().iter() {
@@ -108,6 +110,8 @@ impl Wavefront {
                        self.tags)
                     .unwrap();
             }
+            let count = value.count();
+            write!(stats, "{}.count {} {} {}\n", key, count, start, self.tags).unwrap();
         }
 
         stats
@@ -122,7 +126,10 @@ impl Sink for Wavefront {
                 let stats = self.format_stats(None);
                 debug!("wavefront - {}", stats);
                 match stream.write(stats.as_bytes()) {
-                    Ok(n) => trace!("wrote {} bytes", n),
+                    Ok(n) => {
+                        trace!("wrote {} bytes", n);
+                        self.aggrs.reset();
+                    }
                     Err(e) => debug!("WF failed to write: {}", e),
                 }
             }
@@ -173,7 +180,7 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(15, lines.len());
+        assert_eq!(16, lines.len());
         assert_eq!(lines[0], "test.counter 1 10101 source=test-src");
         assert_eq!(lines[1], "test.gauge 3.211 10101 source=test-src");
         assert_eq!(lines[2], "test.timer.min 1.101 10101 source=test-src");
@@ -189,5 +196,6 @@ mod test {
         assert_eq!(lines[12], "test.timer.98 12.101 10101 source=test-src");
         assert_eq!(lines[13], "test.timer.99 12.101 10101 source=test-src");
         assert_eq!(lines[14], "test.timer.999 12.101 10101 source=test-src");
+        assert_eq!(lines[15], "test.timer.count 3 10101 source=test-src");
     }
 }

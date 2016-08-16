@@ -69,7 +69,7 @@ impl Librato {
 
         for (key, value) in self.aggrs.counters().iter() {
             counters.push(LCounter {
-                name: key.as_ref().to_string(),
+                name: format!("{}", key),
                 value: *value,
             });
         }

@@ -5,7 +5,7 @@ authors = ["Brian L. Troutwine <blt@postmates.com>"]
 build = "build.rs"
 
 [dependencies]
-quantiles = "0.1.4"
+quantiles = "0.1.5"
 hyper = "0.9.6"
 lru-cache = "0.0.7"
 mime = "0.2.0"
