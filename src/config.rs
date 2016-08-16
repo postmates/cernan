@@ -59,7 +59,7 @@ pub fn parse_args() -> Args {
              .value_name("interval")
              .help("How frequently to flush metrics to the sinks in seconds.")
              .takes_value(true)
-             .default_value("10"))
+             .default_value("1"))
         .arg(Arg::with_name("console")
              .long("console")
              .help("Enable the console sink."))
@@ -190,7 +190,7 @@ pub fn parse_args() -> Args {
                     .as_integer()
                     .expect("graphite-port must be integer") as u16,
                 flush_interval: value.lookup("flush-interval")
-                    .unwrap_or(&Value::Integer(10))
+                    .unwrap_or(&Value::Integer(1))
                     .as_integer()
                     .expect("flush-interval must be \
                              integer") as u64,
