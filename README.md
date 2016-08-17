@@ -24,7 +24,8 @@ Recent versions of OSX may have some goofy OpenSSL issues, which can be resolved
 by issuing
 
     > brew install openssl
-    > brew link --force openssl
+    > export OPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include
+    > export DEP_OPENSSL_INCLUDE=/usr/local/opt/openssl/include
 
 and following the onscreen instructions. Run
 
@@ -117,7 +118,6 @@ The wavefront sink has additional options for defining where the wavefront
 proxy runs:
 
 ```
-skip-aggrs=<BOOL]  Send aggregate metrics to wavefront
 port=<INT>         The port wavefront proxy is running on. [default: 2878].
 host=<STRING>      The host wavefront proxy is running on. [default: 127.0.0.1].
 ```
