@@ -7,7 +7,7 @@ use chrono::TimeZone;
 
 grammar;
 
-MetricName: Atom = <s:r"[A-Za-z][_A-Z0-9a-z+/=\.-@%]*"> => Atom::from(s);
+MetricName: Atom = <s:r"[A-Za-z][_A-Z0-9a-z+/=\.@%-]*"> => Atom::from(s);
 
 Num: f64 = <s:r"[-+]?[0-9]+\.?[0-9]*"> => f64::from_str(s).unwrap();
 

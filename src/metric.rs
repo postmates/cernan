@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn test_parse_graphite() {
-        let pyld = "fst 1 101\nsnd -2.0 202\nthr 3 303\nfth@fth 4 404\nfv%fv 5 505\n";
+        let pyld = "fst 1 101\nsnd -2.0 202\nthr 3 303\nfth@fth 4 404\nfv%fv 5 505\ns-th 6 606\n";
         let prs = Metric::parse_graphite(pyld);
 
         assert!(prs.is_some());
@@ -102,6 +102,11 @@ mod tests {
         assert_eq!(prs_pyld[4].name, Atom::from("fv%fv"));
         assert_eq!(prs_pyld[4].value, 5.0);
         assert_eq!(prs_pyld[4].time, UTC.timestamp(505, 0));
+
+        assert_eq!(prs_pyld[5].kind, MetricKind::Raw);
+        assert_eq!(prs_pyld[5].name, Atom::from("s-th"));
+        assert_eq!(prs_pyld[5].value, 6.0);
+        assert_eq!(prs_pyld[5].time, UTC.timestamp(606, 0));
     }
 
     #[test]
