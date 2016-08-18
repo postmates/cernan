@@ -71,7 +71,7 @@ graphite-port=<INT>      The TCP port to bind to for graphite traffic. [default:
 ## Changing how frequently metrics are output
 
 ```
-flush-interval=<INT>  How frequently to flush metrics to the sinks in seconds. [default: 1].
+flush-interval=<INT>  How frequently to flush metrics to the sinks in seconds. [default: 10].
 ```
 
 ## Enabling the console or graphite sinks
