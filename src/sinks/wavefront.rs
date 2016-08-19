@@ -2,7 +2,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::fmt::Write;
 use std::io::Write as IoWrite;
 use chrono;
-use metric::Metric;
+use metric::{Metric, MetricQOS};
 use buckets::Buckets;
 use sink::Sink;
 use std::sync::Arc;
@@ -11,9 +11,10 @@ use dns_lookup;
 pub struct Wavefront {
     addr: SocketAddr,
     tags: String,
-    // The wavefront implementation keeps an aggregate, depricated, and ships
-    // exact points. The aggregate is 'aggrs' and the exact points is 'points'.
     aggrs: Buckets,
+    qos: MetricQOS,
+    snapshots: Vec<String>,
+    tot_snapshots: u64,
 }
 
 impl Wavefront {
@@ -24,7 +25,7 @@ impl Wavefront {
     /// ```
     /// let wave = Wavefront::new(host, port, source);
     /// ```
-    pub fn new(host: &str, port: u16, tags: String) -> Wavefront {
+    pub fn new(host: &str, port: u16, tags: String, qos: MetricQOS) -> Wavefront {
         match dns_lookup::lookup_host(host) {
             Ok(mut lh) => {
                 let ip = lh.next().expect("No IPs associated with host").unwrap();
@@ -33,6 +34,9 @@ impl Wavefront {
                     addr: addr,
                     tags: tags,
                     aggrs: Buckets::new(),
+                    qos: qos,
+                    snapshots: Vec::new(),
+                    tot_snapshots: 0,
                 }
             }
             Err(_) => panic!("Could not lookup host"),
@@ -48,70 +52,80 @@ impl Wavefront {
         };
         let mut stats = String::new();
 
-        for (key, value) in self.aggrs.counters().iter() {
-            write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
-        }
+        trace!("TOTSNP: {:?}, QOS: {:?}", self.tot_snapshots, self.qos);
 
-        for (key, value) in self.aggrs.gauges().iter() {
-            write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
-        }
-
-        for (key, value) in self.aggrs.histograms().iter() {
-            for tup in &[("min", 0.0),
-                         ("max", 1.0),
-                         ("2", 0.02),
-                         ("9", 0.09),
-                         ("25", 0.25),
-                         ("50", 0.5),
-                         ("75", 0.75),
-                         ("90", 0.90),
-                         ("91", 0.91),
-                         ("95", 0.95),
-                         ("98", 0.98),
-                         ("99", 0.99),
-                         ("999", 0.999)] {
-                let stat: &str = tup.0;
-                let quant: f64 = tup.1;
-                write!(stats,
-                       "{}.{} {} {} {}\n",
-                       key,
-                       stat,
-                       value.query(quant).unwrap().1,
-                       start,
-                       self.tags)
-                    .unwrap();
+        if (self.tot_snapshots % self.qos.counter) == 0 {
+            for (key, value) in self.aggrs.counters().iter() {
+                write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
             }
-            let count = value.count();
-            write!(stats, "{}.count {} {} {}\n", key, count, start, self.tags).unwrap();
         }
 
-        for (key, value) in self.aggrs.timers().iter() {
-            for tup in &[("min", 0.0),
-                         ("max", 1.0),
-                         ("2", 0.02),
-                         ("9", 0.09),
-                         ("25", 0.25),
-                         ("50", 0.5),
-                         ("75", 0.75),
-                         ("90", 0.90),
-                         ("91", 0.91),
-                         ("95", 0.95),
-                         ("98", 0.98),
-                         ("99", 0.99),
-                         ("999", 0.999)] {
-                let stat: &str = tup.0;
-                let quant: f64 = tup.1;
-                write!(stats,
-                       "{}.{} {} {} {}\n",
-                       key,
-                       stat,
-                       value.query(quant).unwrap().1,
-                       start,
-                       self.tags)
-                    .unwrap();
+        if (self.tot_snapshots % self.qos.gauge) == 0 {
+            for (key, value) in self.aggrs.gauges().iter() {
+                write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
             }
-            let count = value.count();
-            write!(stats, "{}.count {} {} {}\n", key, count, start, self.tags).unwrap();
+        }
+
+        if (self.tot_snapshots % self.qos.histogram) == 0 {
+            for (key, value) in self.aggrs.histograms().iter() {
+                for tup in &[("min", 0.0),
+                             ("max", 1.0),
+                             ("2", 0.02),
+                             ("9", 0.09),
+                             ("25", 0.25),
+                             ("50", 0.5),
+                             ("75", 0.75),
+                             ("90", 0.90),
+                             ("91", 0.91),
+                             ("95", 0.95),
+                             ("98", 0.98),
+                             ("99", 0.99),
+                             ("999", 0.999)] {
+                    let stat: &str = tup.0;
+                    let quant: f64 = tup.1;
+                    write!(stats,
+                           "{}.{} {} {} {}\n",
+                           key,
+                           stat,
+                           value.query(quant).unwrap().1,
+                           start,
+                           self.tags)
+                        .unwrap();
+                }
+                let count = value.count();
+                write!(stats, "{}.count {} {} {}\n", key, count, start, self.tags).unwrap();
+            }
+        }
+
+        if (self.tot_snapshots % self.qos.timer) == 0 {
+            for (key, value) in self.aggrs.timers().iter() {
+                for tup in &[("min", 0.0),
+                             ("max", 1.0),
+                             ("2", 0.02),
+                             ("9", 0.09),
+                             ("25", 0.25),
+                             ("50", 0.5),
+                             ("75", 0.75),
+                             ("90", 0.90),
+                             ("91", 0.91),
+                             ("95", 0.95),
+                             ("98", 0.98),
+                             ("99", 0.99),
+                             ("999", 0.999)] {
+                    let stat: &str = tup.0;
+                    let quant: f64 = tup.1;
+                    write!(stats,
+                           "{}.{} {} {} {}\n",
+                           key,
+                           stat,
+                           value.query(quant).unwrap().1,
+                           start,
+                           self.tags)
+                        .unwrap();
+                }
+                let count = value.count();
+                write!(stats, "{}.count {} {} {}\n", key, count, start, self.tags).unwrap();
+            }
         }
 
         stats
@@ -119,21 +133,32 @@ impl Wavefront {
 }
 
 impl Sink for Wavefront {
+    fn snapshot(&mut self) {
+        self.tot_snapshots = self.tot_snapshots.wrapping_add(1);
+        let stats = self.format_stats(None);
+        if stats.len() > 0 {
+            debug!("wavefront - {}", stats);
+            self.snapshots.push(stats);
+            trace!("snapshots : {:?}", self.snapshots);
+            self.aggrs.reset();
+        }
+    }
+
     fn flush(&mut self) {
-        match TcpStream::connect(self.addr) {
-            Ok(mut stream) => {
-                debug!("wavefront flush");
-                let stats = self.format_stats(None);
-                debug!("wavefront - {}", stats);
-                match stream.write(stats.as_bytes()) {
-                    Ok(n) => {
-                        trace!("wrote {} bytes", n);
-                        self.aggrs.reset();
+        if self.snapshots.len() > 0 {
+            match TcpStream::connect(self.addr) {
+                Ok(mut stream) => {
+                    debug!("wavefront flush");
+                    if self.snapshots
+                        .iter()
+                        .map(|s| stream.write(s.as_bytes()))
+                        .all(|res| res.is_ok()) {
+                        trace!("flushed to wavefront!");
+                        self.snapshots.clear();
                     }
-                    Err(e) => debug!("WF failed to write: {}", e),
                 }
+                Err(e) => debug!("Unable to connect: {}", e),
             }
-            Err(e) => debug!("Unable to connect: {}", e),
         }
     }
 
@@ -145,7 +170,7 @@ impl Sink for Wavefront {
 
 #[cfg(test)]
 mod test {
-    use metric::{Metric, MetricKind};
+    use metric::{Metric, MetricKind, MetricQOS};
     use sink::Sink;
     use chrono::{UTC, TimeZone};
     use std::sync::Arc;
@@ -154,8 +179,9 @@ mod test {
 
     #[test]
     fn test_format_wavefront() {
-        let mut wavefront = Wavefront::new("localhost", 2003, "source=test-src".to_string());
-        let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12);
+        let qos = MetricQOS::default();
+        let mut wavefront = Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos);
+        let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12).timestamp();
         wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.counter"),
                                                          1.0,
                                                          Some(dt),

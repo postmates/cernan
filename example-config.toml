@@ -1,18 +1,28 @@
+# cernan listens on two telemetry protocols, statsd and graphite. The following
+# two configuration items set the ports cernan will listen on.
 statsd-port = 8125
 graphite-port = 2003
+
+# There is one global timing interval on which cernan will sync from its sources
+# to its sinks. This value is in seconds.
 flush-interval = 10
 
 [tags]
 source = "cernan"
 
-[sinks]
-    [console]
+# Independent of our flush-interval, not all metric types need one metric per
+# second reporting. The quality-of-service value controls cernan's report
+# interval for type aggregations.
+[quality-of-service]
+gauge = 1
+counter = 1
+timer = 60
+histogram = 60
+raw = 1
 
-    [wavefront]
-    port = 2878
-    host = "127.0.0.1"
+# sinks
+[console]
 
-    [librato]
-    host = "https://metrics-api.librato.com/v1/metrics"
-    username = "statsd"
-    token = "statsd"
+[wavefront]
+port = 2878
+host = "127.0.0.1"

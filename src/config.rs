@@ -10,6 +10,7 @@ use toml::Value;
 use std::io::Read;
 use std::fmt::Write;
 use std::str::FromStr;
+use metric::MetricQOS;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
@@ -20,12 +21,9 @@ pub struct Args {
     pub flush_interval: u64,
     pub console: bool,
     pub wavefront: bool,
-    pub librato: bool,
     pub wavefront_port: Option<u16>,
     pub wavefront_host: Option<String>,
-    pub librato_username: Option<String>,
-    pub librato_host: Option<String>,
-    pub librato_token: Option<String>,
+    pub qos: MetricQOS,
     pub tags: String,
     pub verbose: u64,
     pub version: String,
@@ -66,9 +64,6 @@ pub fn parse_args() -> Args {
         .arg(Arg::with_name("wavefront")
              .long("wavefront")
              .help("Enable the wavefront sink."))
-        .arg(Arg::with_name("librato")
-             .long("librato")
-             .help("Enable the librato sink."))
         .arg(Arg::with_name("wavefront-port")
              .long("wavefront-port")
              .help("The port wavefront proxy is running on")
@@ -82,21 +77,6 @@ pub fn parse_args() -> Args {
         .arg(Arg::with_name("wavefront-skip-aggrs")
              .long("wavefront-skip-aggrs")
              .help("Skip sending aggregate metrics to wavefront")) // NOT USED, REMOVE 0.4.x
-        .arg(Arg::with_name("librato-username")
-             .long("librato-username")
-             .help("The librato username for authentication.")
-             .takes_value(true)
-             .default_value("statsd"))
-        .arg(Arg::with_name("librato-host")
-             .long("librato-host")
-             .help("The librato host to report to.")
-             .takes_value(true)
-             .default_value("https://metrics-api.librato.com/v1/metrics"))
-        .arg(Arg::with_name("librato-token")
-             .long("librato-token")
-             .help("The librato token for authentication.")
-             .takes_value(true)
-             .default_value("statsd"))
         .arg(Arg::with_name("tags")
              .long("tags")
              .help("A comma separated list of tags to report to supporting sinks.")
@@ -140,9 +120,28 @@ pub fn parse_args() -> Args {
                 None => "".to_string(),
             };
 
-            let mk_wavefront = value.lookup("sinks.wavefront").is_some();
-            let mk_console = value.lookup("sinks.console").is_some();
-            let mk_librato = value.lookup("sinks.librato").is_some();
+            let qos = match value.lookup("quality-of-service") {
+                Some(tbl) => {
+                    let ttbl = tbl.as_table().unwrap();
+                    let mut hm = MetricQOS::default();
+                    for (k, v) in (*ttbl).iter() {
+                        let rate = v.as_integer().expect("value must be an integer") as u64;
+                        match k.as_ref() {
+                            "gauge" => hm.gauge = rate,
+                            "counter" => hm.counter = rate,
+                            "timer" => hm.timer = rate,
+                            "histogram" => hm.histogram = rate,
+                            "raw" => hm.raw = rate,
+                            _ => panic!("Unknown quality-of-service value!"),
+                        };
+                    }
+                    hm
+                }
+                None => MetricQOS::default(),
+            };
+
+            let mk_wavefront = value.lookup("wavefront").is_some();
+            let mk_console = value.lookup("console").is_some();
 
             let (wport, whost) = if mk_wavefront {
                 (// wavefront port
@@ -158,27 +157,7 @@ pub fn parse_args() -> Args {
             } else {
                 (None, None)
             };
-
-            let (luser, lhost, ltoken) = if mk_librato {
-                (// librato username
-                 value.lookup("sinks.librato.username")
-                    .unwrap_or(&Value::String("statsd".to_string()))
-                    .as_str()
-                    .map(|s| s.to_string()),
-                 // librato token
-                 value.lookup("sinks.librato.token")
-                    .unwrap_or(&Value::String("statsd".to_string()))
-                    .as_str()
-                    .map(|s| s.to_string()),
-                 // librato host
-                 value.lookup("sinks.librato.host")
-                    .unwrap_or(&Value::String("https://metrics-api.librato.com/v1/metrics"
-                        .to_string()))
-                    .as_str()
-                    .map(|s| s.to_string()))
-            } else {
-                (None, None, None)
-            };
+            println!("WPORT: {:?}, WHOST: {:?}", wport, whost);
 
             Args {
                 statsd_port: value.lookup("statsd-port")
@@ -196,13 +175,10 @@ pub fn parse_args() -> Args {
                              integer") as u64,
                 console: mk_console,
                 wavefront: mk_wavefront,
-                librato: mk_librato,
                 wavefront_port: wport,
                 wavefront_host: whost,
-                librato_username: luser,
-                librato_host: lhost,
-                librato_token: ltoken,
                 tags: tags,
+                qos: qos,
                 verbose: verb,
                 version: VERSION.unwrap().to_string(),
             }
@@ -211,7 +187,6 @@ pub fn parse_args() -> Args {
         None => {
             let mk_wavefront = args.is_present("wavefront");
             let mk_console = args.is_present("console");
-            let mk_librato = args.is_present("librato");
 
             let (wport, whost) = if mk_wavefront {
                 (Some(u16::from_str(args.value_of("wavefront-port").unwrap()).unwrap()),
@@ -220,19 +195,13 @@ pub fn parse_args() -> Args {
                 (None, None)
             };
 
-            let (luser, lhost, ltoken) = if mk_librato {
-                (Some(args.value_of("librato-username").unwrap().to_string()),
-                 Some(args.value_of("librato-host").unwrap().to_string()),
-                 Some(args.value_of("librato-token").unwrap().to_string()))
-            } else {
-                (None, None, None)
-            };
-
             let verb = if args.is_present("verbose") {
                 args.occurrences_of("verbose")
             } else {
                 0
             };
+
+            let qos = MetricQOS::default();
 
             Args {
                 statsd_port: u16::from_str(args.value_of("statsd-port").unwrap())
@@ -243,13 +212,10 @@ pub fn parse_args() -> Args {
                     .expect("flush-interval must be an integer"),
                 console: mk_console,
                 wavefront: mk_wavefront,
-                librato: mk_librato,
                 wavefront_port: wport,
                 wavefront_host: whost,
-                librato_username: luser,
-                librato_host: lhost,
-                librato_token: ltoken,
                 tags: args.value_of("tags").unwrap().to_string(),
+                qos: qos,
                 verbose: verb,
                 version: VERSION.unwrap().to_string(),
             }

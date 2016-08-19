@@ -14,6 +14,7 @@ pub enum Event {
     Statsd(Vec<Arc<metric::Metric>>),
     Graphite(Vec<Arc<metric::Metric>>),
     TimerFlush,
+    Snapshot,
 }
 
 /// statsd
@@ -124,11 +125,23 @@ fn handle_client(chan: Sender<Event>, stream: TcpStream) {
     }
 }
 
-/// emit flush event into channel on a regular interval
+// emit flush event into channel on a regular interval
 pub fn flush_timer_loop(chan: Sender<Event>, interval: u64) {
     let duration = Duration::new(interval, 0);
     loop {
         sleep(duration);
         chan.send(Event::TimerFlush).expect("[FLUSH] Unable to write to chan!");
+    }
+}
+
+// emit snapshot event into channel on a regular interval
+//
+// A snapshot indicates to supporting backends that it is time to generate a
+// payload and store this in preparation for a future flush event.
+pub fn snapshot_loop(chan: Sender<Event>) {
+    let duration = Duration::new(1, 0);
+    loop {
+        sleep(duration);
+        chan.send(Event::Snapshot).expect("[SNAPSHOT] Unable to write to chan!");
     }
 }

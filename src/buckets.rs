@@ -56,9 +56,8 @@ impl Buckets {
     /// assert_eq!(Some(&mut 0.0), buckets.counters.get_mut(&rname));
     /// ```
     pub fn reset(&mut self) {
-        for (_, v) in self.counters.iter_mut() {
-            *v = 0.0;
-        }
+        self.counters.clear();
+        self.gauges.clear();
     }
 
     /// Adds a metric to the bucket storage.
@@ -180,7 +179,7 @@ mod test {
         assert_eq!(1, buckets.counters().len());
 
         buckets.reset();
-        assert_eq!(Some(&mut 0.0), buckets.counters.get_mut(&rmname));
+        assert_eq!(None, buckets.counters.get_mut(&rmname));
     }
 
     #[test]
