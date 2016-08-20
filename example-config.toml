@@ -25,4 +25,4 @@ raw = 1
 
 [wavefront]
 port = 2878
-host = "127.0.0.1"
+host = "10.10.10.1"

@@ -145,19 +145,18 @@ pub fn parse_args() -> Args {
 
             let (wport, whost) = if mk_wavefront {
                 (// wavefront port
-                 value.lookup("sinks.wavefront.port")
+                 value.lookup("wavefront.port")
                     .unwrap_or(&Value::Integer(2878))
                     .as_integer()
                     .map(|i| i as u16),
                  // wavefront host
-                 value.lookup("sinks.wavefront.host")
+                 value.lookup("wavefront.host")
                     .unwrap_or(&Value::String("127.0.0.1".to_string()))
                     .as_str()
                     .map(|s| s.to_string()))
             } else {
                 (None, None)
             };
-            println!("WPORT: {:?}, WHOST: {:?}", wport, whost);
 
             Args {
                 statsd_port: value.lookup("statsd-port")
