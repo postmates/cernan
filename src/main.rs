@@ -1,13 +1,8 @@
 extern crate toml;
 extern crate clap;
 extern crate quantiles;
-extern crate hyper;
 extern crate lru_cache;
-extern crate mime;
-extern crate rustc_serialize;
 extern crate chrono;
-extern crate url;
-extern crate regex;
 extern crate string_cache;
 extern crate fern;
 extern crate dns_lookup;
@@ -31,7 +26,6 @@ mod metrics {
 mod server;
 mod sinks {
     pub mod console;
-    pub mod librato;
     pub mod wavefront;
 }
 
@@ -77,6 +71,7 @@ fn main() {
 
     let (event_send, event_recv) = channel();
     let flush_send = event_send.clone();
+    let snapshot_send = event_send.clone();
     let statsd_send_v4 = event_send.clone();
     let statsd_send_v6 = event_send.clone();
     let graphite_send_v4 = event_send.clone();
@@ -101,6 +96,10 @@ fn main() {
     let flush_interval = args.flush_interval;
     thread::spawn(move || {
         server::flush_timer_loop(flush_send, flush_interval);
+    });
+
+    thread::spawn(move || {
+        server::snapshot_loop(snapshot_send);
     });
 
     loop {

@@ -33,6 +33,10 @@ impl Sink for Console {
         self.aggrs.add(&point);
     }
 
+    fn snapshot(&mut self) {
+        // nothing, intentionally
+    }
+
     fn flush(&mut self) {
         debug!("console flush start");
         let now = chrono::UTC::now();
@@ -40,12 +44,12 @@ impl Sink for Console {
 
         println!("  counters:");
         for (key, value) in self.aggrs.counters() {
-            fmt_line(key, value);
+            fmt_line(key, &value);
         }
 
         println!("  gauges:");
         for (key, value) in self.aggrs.gauges() {
-            fmt_line(key, value);
+            fmt_line(key, &value);
         }
 
         println!("  histograms:");
