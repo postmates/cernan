@@ -105,83 +105,7 @@ pub fn parse_args() -> Args {
 
             let mut buffer = String::new();
             fp.read_to_string(&mut buffer).unwrap();
-            let value: toml::Value = buffer.parse().unwrap();
-
-            let tags = match value.lookup("tags") {
-                Some(tbl) => {
-                    let mut tags = String::new();
-                    let ttbl = tbl.as_table().unwrap();
-                    for (k, v) in (*ttbl).iter() {
-                        write!(tags, "{}={},", k, v.as_str().unwrap()).unwrap();
-                    }
-                    tags.pop();
-                    tags
-                }
-                None => "".to_string(),
-            };
-
-            let qos = match value.lookup("quality-of-service") {
-                Some(tbl) => {
-                    let ttbl = tbl.as_table().unwrap();
-                    let mut hm = MetricQOS::default();
-                    for (k, v) in (*ttbl).iter() {
-                        let rate = v.as_integer().expect("value must be an integer") as u64;
-                        match k.as_ref() {
-                            "gauge" => hm.gauge = rate,
-                            "counter" => hm.counter = rate,
-                            "timer" => hm.timer = rate,
-                            "histogram" => hm.histogram = rate,
-                            "raw" => hm.raw = rate,
-                            _ => panic!("Unknown quality-of-service value!"),
-                        };
-                    }
-                    hm
-                }
-                None => MetricQOS::default(),
-            };
-
-            let mk_wavefront = value.lookup("wavefront").is_some();
-            let mk_console = value.lookup("console").is_some();
-
-            let (wport, whost) = if mk_wavefront {
-                (// wavefront port
-                 value.lookup("sinks.wavefront.port")
-                    .unwrap_or(&Value::Integer(2878))
-                    .as_integer()
-                    .map(|i| i as u16),
-                 // wavefront host
-                 value.lookup("sinks.wavefront.host")
-                    .unwrap_or(&Value::String("127.0.0.1".to_string()))
-                    .as_str()
-                    .map(|s| s.to_string()))
-            } else {
-                (None, None)
-            };
-            println!("WPORT: {:?}, WHOST: {:?}", wport, whost);
-
-            Args {
-                statsd_port: value.lookup("statsd-port")
-                    .unwrap_or(&Value::Integer(8125))
-                    .as_integer()
-                    .expect("statsd-port must be integer") as u16,
-                graphite_port: value.lookup("graphite-port")
-                    .unwrap_or(&Value::Integer(2003))
-                    .as_integer()
-                    .expect("graphite-port must be integer") as u16,
-                flush_interval: value.lookup("flush-interval")
-                    .unwrap_or(&Value::Integer(10))
-                    .as_integer()
-                    .expect("flush-interval must be \
-                             integer") as u64,
-                console: mk_console,
-                wavefront: mk_wavefront,
-                wavefront_port: wport,
-                wavefront_host: whost,
-                tags: tags,
-                qos: qos,
-                verbose: verb,
-                version: VERSION.unwrap().to_string(),
-            }
+            parse_config_file(buffer, verb)
         }
         // We read from CLI arguments
         None => {
@@ -220,5 +144,251 @@ pub fn parse_args() -> Args {
                 version: VERSION.unwrap().to_string(),
             }
         }
+    }
+}
+
+pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
+    let value: toml::Value = buffer.parse().unwrap();
+
+    let tags = match value.lookup("tags") {
+        Some(tbl) => {
+            let mut tags = String::new();
+            let ttbl = tbl.as_table().unwrap();
+            for (k, v) in (*ttbl).iter() {
+                write!(tags, "{}={},", k, v.as_str().unwrap()).unwrap();
+            }
+            tags.pop();
+            tags
+        }
+        None => "".to_string(),
+    };
+
+    let qos = match value.lookup("quality-of-service") {
+        Some(tbl) => {
+            let ttbl = tbl.as_table().unwrap();
+            let mut hm = MetricQOS::default();
+            for (k, v) in (*ttbl).iter() {
+                let rate = v.as_integer().expect("value must be an integer") as u64;
+                match k.as_ref() {
+                    "gauge" => hm.gauge = rate,
+                    "counter" => hm.counter = rate,
+                    "timer" => hm.timer = rate,
+                    "histogram" => hm.histogram = rate,
+                    "raw" => hm.raw = rate,
+                    _ => panic!("Unknown quality-of-service value!"),
+                };
+            }
+            hm
+        }
+        None => MetricQOS::default(),
+    };
+
+    let mk_wavefront = value.lookup("wavefront").is_some();
+    let mk_console = value.lookup("console").is_some();
+
+    let (wport, whost) = if mk_wavefront {
+        (// wavefront port
+         value.lookup("wavefront.port")
+            .unwrap_or(&Value::Integer(2878))
+            .as_integer()
+            .map(|i| i as u16),
+         // wavefront host
+         value.lookup("wavefront.host")
+            .unwrap_or(&Value::String("127.0.0.1".to_string()))
+            .as_str()
+            .map(|s| s.to_string()))
+    } else {
+        (None, None)
+    };
+
+    Args {
+        statsd_port: value.lookup("statsd-port")
+            .unwrap_or(&Value::Integer(8125))
+            .as_integer()
+            .expect("statsd-port must be integer") as u16,
+        graphite_port: value.lookup("graphite-port")
+            .unwrap_or(&Value::Integer(2003))
+            .as_integer()
+            .expect("graphite-port must be integer") as u16,
+        flush_interval: value.lookup("flush-interval")
+            .unwrap_or(&Value::Integer(10))
+            .as_integer()
+            .expect("flush-interval must be integer") as u64,
+        console: mk_console,
+        wavefront: mk_wavefront,
+        wavefront_port: wport,
+        wavefront_host: whost,
+        tags: tags,
+        qos: qos,
+        verbose: verbosity,
+        version: VERSION.unwrap().to_string(),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use metric::MetricQOS;
+
+    #[test]
+    fn config_file_default() {
+        let config = "".to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, 8125);
+        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, "");
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_file_wavefront() {
+        let config = r#"
+[wavefront]
+port = 3131
+host = "example.com"
+"#.to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, 8125);
+        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.wavefront, true);
+        assert_eq!(args.wavefront_host, Some("example.com".to_string()));
+        assert_eq!(args.wavefront_port, Some(3131));
+        assert_eq!(args.tags, "");
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_file_console() {
+        let config = r#"
+[console]
+"#.to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, 8125);
+        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, true);
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, "");
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_file_tags() {
+        let config = r#"
+[tags]
+source = "cernan"
+purpose = "serious_business"
+mission = "from_gad"
+"#.to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, 8125);
+        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, "mission=from_gad,purpose=serious_business,source=cernan");
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_file_qos() {
+        let config = r#"
+[quality-of-service]
+gauge = 110
+counter = 12
+timer = 605
+histogram = 609
+raw = 42
+"#.to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, 8125);
+        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, "");
+        assert_eq!(args.qos, MetricQOS {
+            gauge: 110,
+            counter: 12,
+            timer: 605,
+            histogram: 609,
+            raw: 42,
+        });
+        assert_eq!(args.verbose, 4);
+    }
+
+
+    #[test]
+    fn config_file_full() {
+        let config = r#"
+statsd-port = 1024
+graphite-port = 1034
+
+flush-interval = 128
+
+[wavefront]
+port = 3131
+host = "example.com"
+
+[console]
+
+[tags]
+source = "cernan"
+purpose = "serious_business"
+mission = "from_gad"
+
+[quality-of-service]
+gauge = 110
+counter = 12
+timer = 605
+histogram = 609
+raw = 42
+"#.to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, 1024);
+        assert_eq!(args.graphite_port, 1034);
+        assert_eq!(args.flush_interval, 128);
+        assert_eq!(args.console, true);
+        assert_eq!(args.wavefront, true);
+        assert_eq!(args.wavefront_host, Some("example.com".to_string()));
+        assert_eq!(args.wavefront_port, Some(3131));
+        assert_eq!(args.tags, "mission=from_gad,purpose=serious_business,source=cernan");
+        assert_eq!(args.qos, MetricQOS {
+            gauge: 110,
+            counter: 12,
+            timer: 605,
+            histogram: 609,
+            raw: 42,
+        });
+        assert_eq!(args.verbose, 4);
     }
 }
