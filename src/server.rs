@@ -9,6 +9,13 @@ use std::io::BufReader;
 use std::sync::Arc;
 use std::str;
 use metric;
+use std::fs::File;
+use std::io::SeekFrom;
+use std::path::PathBuf;
+
+use notify::{RecommendedWatcher, Error, Watcher};
+use notify::op::*;
+use std::sync::mpsc::channel;
 
 pub enum Event {
     Statsd(Vec<Arc<metric::Metric>>),
@@ -56,6 +63,55 @@ pub fn handle_udp(chan: Sender<Event>, socket: UdpSocket) {
                 }
             })
             .ok();
+    }
+}
+
+pub fn file_server(chan: Sender<Event>, path: PathBuf) {
+    let (tx, rx) = channel();
+    // NOTE on OSX fsevent will _not_ let us watch a file we don't own
+    // effectively. See
+    // https://developer.apple.com/library/mac/documentation/Darwin/Conceptual/FSEvents_ProgGuide/FileSystemEventSecurity/FileSystemEventSecurity.html
+    // for more details. If we must properly support _all_ files on OSX we will
+    // probably need to fall back to Pollwatcher for that operating system.
+    let w: Result<RecommendedWatcher, Error> = Watcher::new(tx);
+
+    let mut fp = File::open(&path).unwrap();
+    fp.seek(SeekFrom::End(0)).expect("could not seek to end of file");
+    let mut reader = BufReader::new(fp);
+
+    match w {
+        Ok(mut watcher) => {
+            watcher.watch(&path).expect("could not set up watch for path");
+
+            while let Ok(event) = rx.recv() {
+                trace!("EVENT: {:?}", event);
+                match event.op {
+                    Ok(op) => {
+                        if op.contains(CREATE) {
+                            let fp = File::open(&path).unwrap();
+                            reader = BufReader::new(fp);
+                        }
+                        if op.contains(WRITE) {
+                            loop {
+                                let mut line = String::new();
+                                match reader.read_line(&mut line) {
+                                    Ok(0) => break,
+                                    Ok(_) => {
+                                        let name = format!("{}.lines", path.to_str().unwrap());
+                                        let metric = metric::Metric::counter(&name);
+                                        let metrics = vec![Arc::new(metric)];
+                                        chan.send(Event::Statsd(metrics)).unwrap();
+                                    },
+                                    Err(err) => panic!(err)
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => panic!("Unknown file event error: {}", e)
+                }
+            }
+        }
+        Err(e) => panic!("Could not create file watcher: {}", e)
     }
 }
 

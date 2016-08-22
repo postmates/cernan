@@ -11,6 +11,7 @@ use std::io::Read;
 use std::fmt::Write;
 use std::str::FromStr;
 use metric::MetricQOS;
+use std::path::{Path,PathBuf};
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
@@ -25,6 +26,7 @@ pub struct Args {
     pub wavefront_host: Option<String>,
     pub qos: MetricQOS,
     pub tags: String,
+    pub files: Option<Vec<PathBuf>>,
     pub verbose: u64,
     pub version: String,
 }
@@ -140,6 +142,7 @@ pub fn parse_args() -> Args {
                 wavefront_host: whost,
                 tags: args.value_of("tags").unwrap().to_string(),
                 qos: qos,
+                files: None,
                 verbose: verb,
                 version: VERSION.unwrap().to_string(),
             }
@@ -201,6 +204,28 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         (None, None)
     };
 
+    let mut paths = Vec::new();
+    match value.lookup("file") {
+        Some(array) => {
+            for tbl in array.as_slice().unwrap() {
+                match tbl.lookup("path") {
+                    Some(pth) => {
+                        let path = Path::new(pth.as_str().unwrap());
+                        if !path.exists() {
+                            panic!("{} not found on disk!", path.to_str().unwrap());
+                        }
+                        if !path.is_file() {
+                            panic!("{} is found on disk but must be a file!", path.to_str().unwrap());
+                        }
+                        paths.push(path.to_path_buf())
+                    }
+                    None => continue
+                }
+            }
+        }
+        None => ()
+    }
+
     Args {
         statsd_port: value.lookup("statsd-port")
             .unwrap_or(&Value::Integer(8125))
@@ -220,6 +245,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         wavefront_host: whost,
         tags: tags,
         qos: qos,
+        files: Some(paths),
         verbose: verbosity,
         version: VERSION.unwrap().to_string(),
     }

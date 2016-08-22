@@ -20,6 +20,9 @@ timer = 60
 histogram = 60
 raw = 1
 
+[[file]]
+path = "/var/log/system.log"
+
 # sinks
 [console]
 
