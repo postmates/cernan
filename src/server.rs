@@ -22,32 +22,17 @@ pub fn udp_server_v6(chan: Sender<Event>, port: u16) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
     let socket = UdpSocket::bind(addr).ok().expect("Unable to bind to UDP socket");
     info!("statsd server started on ::1 {}", port);
-    let mut buf = [0; 8192];
-    loop {
-        let (len, _) = match socket.recv_from(&mut buf) {
-            Ok(r) => r,
-            Err(_) => panic!("Could not read UDP socket."),
-        };
-        str::from_utf8(&buf[..len])
-            .map(|val| {
-                trace!("statsd - {}", val);
-                match metric::Metric::parse_statsd(val) {
-                    Some(metrics) => {
-                        chan.send(Event::Statsd(metrics)).unwrap();
-                    }
-                    None => {
-                        error!("BAD PACKET: {:?}", val);
-                    }
-                }
-            })
-            .ok();
-    }
+    handle_udp(chan, socket);
 }
 
 pub fn udp_server_v4(chan: Sender<Event>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let socket = UdpSocket::bind(addr).ok().expect("Unable to bind to UDP socket");
     info!("statsd server started on 127.0.0.1:{}", port);
+    handle_udp(chan, socket);
+}
+
+pub fn handle_udp(chan: Sender<Event>, socket: UdpSocket) {
     let mut buf = [0; 8192];
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
@@ -58,10 +43,14 @@ pub fn udp_server_v4(chan: Sender<Event>, port: u16) {
             .map(|val| {
                 trace!("statsd - {}", val);
                 match metric::Metric::parse_statsd(val) {
-                    Some(metrics) => {
+                    Some(mut metrics) => {
+                        metrics.push(Arc::new(metric::Metric::counter("cernan.statsd.packet")));
                         chan.send(Event::Statsd(metrics)).unwrap();
                     }
                     None => {
+                        let metric = metric::Metric::counter("cernan.statsd.bad_packet");
+                        let metrics = vec![Arc::new(metric)];
+                        chan.send(Event::Statsd(metrics)).unwrap();
                         error!("BAD PACKET: {:?}", val);
                     }
                 }
@@ -111,9 +100,15 @@ fn handle_client(chan: Sender<Event>, stream: TcpStream) {
                         debug!("graphite - {}", val);
                         match metric::Metric::parse_graphite(val) {
                             Some(metrics) => {
+                                let metric = metric::Metric::counter("cernan.graphite.packet");
+                                let self_metrics = vec![Arc::new(metric)];
+                                chan.send(Event::Statsd(self_metrics)).unwrap();
                                 chan.send(Event::Graphite(metrics)).unwrap();
                             }
                             None => {
+                                let metric = metric::Metric::counter("cernan.graphite.bad_packet");
+                                let metrics = vec![Arc::new(metric)];
+                                chan.send(Event::Statsd(metrics)).unwrap();
                                 error!("BAD PACKET: {:?}", val);
                             }
                         }

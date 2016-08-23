@@ -42,6 +42,15 @@ pub struct Metric {
 }
 
 impl Metric {
+    pub fn counter(name: &str) -> Metric {
+        Metric {
+            name: Atom::from(name),
+            value: 1.0,
+            kind: MetricKind::Counter(1.0),
+            time: UTC::now().timestamp(),
+        }
+    }
+
     /// Create a new metric
     ///
     /// Uses the Into trait to allow both str and String types.
