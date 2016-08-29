@@ -6,6 +6,7 @@ extern crate chrono;
 extern crate string_cache;
 extern crate fern;
 extern crate dns_lookup;
+extern crate notify;
 #[macro_use]
 extern crate log;
 
@@ -101,6 +102,18 @@ fn main() {
     thread::spawn(move || {
         server::snapshot_loop(snapshot_send);
     });
+
+    match args.files {
+        Some(log_files) => {
+            for lf in log_files {
+                let lf_send = event_send.clone();
+                thread::spawn(move || {
+                    server::file_server(lf_send, lf);
+                });
+            }
+        }
+        None => ()
+    }
 
     loop {
         match event_recv.recv() {
