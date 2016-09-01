@@ -9,7 +9,6 @@ extern crate dns_lookup;
 extern crate notify;
 #[macro_use]
 extern crate log;
-extern crate byteorder;
 extern crate bincode;
 
 use std::str;

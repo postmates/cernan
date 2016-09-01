@@ -3,7 +3,6 @@ name = "cernan"
 version = "0.3.2"
 dependencies = [
  "bincode 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "byteorder 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.2.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "dns-lookup 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",

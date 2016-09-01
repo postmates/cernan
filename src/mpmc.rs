@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::{Path,PathBuf};
-use byteorder::{BigEndian,ReadBytesExt};
 use std::io::{Write,Read,SeekFrom,Seek};
 use std::time::Duration;
 use std::thread::sleep;
@@ -64,18 +63,20 @@ impl Receiver {
     pub fn recv(&mut self) -> Event {
         let ref mut fp = self.fp;
 
-        let mut buf = [0; 1_048_576]; // TODO 1MB hard-limit is a rough business
+        let mut sz_buf = [0; 4];
+        let mut payload_buf = [0; 1_048_576]; // TODO 1MB hard-limit is a rough business
         loop {
             // TODO Looking up prev_offset like this kind of stinks. We have to
             // make a syscall so we know our position in the file. What would be
             // better is to just keep track of the damned thing.
             let prev_offset = fp.seek(SeekFrom::Current(0)).expect("toasted");
 
-            match fp.read_u32::<BigEndian>() {
-                Ok(payload_size_in_bytes) => {
-                    match fp.read_exact(&mut buf[..payload_size_in_bytes as usize]) {
+            match fp.read_exact(&mut sz_buf) {
+                Ok(()) => {
+                    let payload_size_in_bytes = u8tou32abe(&sz_buf);
+                    match fp.read_exact(&mut payload_buf[..payload_size_in_bytes as usize]) {
                         Ok(()) => {
-                            match deserialize(&buf[..payload_size_in_bytes as usize]) {
+                            match deserialize(&payload_buf[..payload_size_in_bytes as usize]) {
                                 Ok(event) => return event,
                                 Err(e) => {
                                     debug!("Failed decoding. Skipping {:?}", e);
@@ -113,6 +114,14 @@ fn u32tou8abe(v: u32) -> [u8; 4] {
         (v >> 24) as u8,
         (v >> 16) as u8,
     ]
+}
+
+#[inline]
+fn u8tou32abe(v: &[u8]) -> u32 {
+    (v[3] as u32) +
+        ((v[2] as u32) << 8) +
+        ((v[1] as u32) << 24) +
+        ((v[0] as u32) << 16)
 }
 
 impl Sender {
