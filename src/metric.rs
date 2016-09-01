@@ -1,7 +1,8 @@
 use metrics::*;
 use chrono::UTC;
-use std::sync::Arc;
 use string_cache::Atom;
+
+include!(concat!(env!("OUT_DIR"), "/serde_types.rs"));
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct MetricQOS {
@@ -25,27 +26,9 @@ impl MetricQOS {
 }
 
 #[derive(PartialEq, Debug)]
-pub enum MetricKind {
-    Counter(f64),
-    Gauge,
-    DeltaGauge,
-    Timer,
-    Histogram,
-    Raw,
-}
-
-#[derive(PartialEq, Debug)]
 pub enum MetricSign {
     Positive,
     Negative,
-}
-
-#[derive(PartialEq, Debug)]
-pub struct Metric {
-    pub kind: MetricKind,
-    pub name: Atom,
-    pub value: f64,
-    pub time: i64,
 }
 
 impl Metric {
@@ -104,11 +87,11 @@ impl Metric {
     ///
     /// Multiple metrics can be sent in a single UDP packet
     /// separated by newlines.
-    pub fn parse_statsd(source: &str) -> Option<Vec<Arc<Metric>>> {
+    pub fn parse_statsd(source: &str) -> Option<Vec<Metric>> {
         statsd::parse_MetricPayload(source).ok()
     }
 
-    pub fn parse_graphite(source: &str) -> Option<Vec<Arc<Metric>>> {
+    pub fn parse_graphite(source: &str) -> Option<Vec<Metric>> {
         graphite::parse_MetricPayload(source).ok()
     }
 }

@@ -1,3 +1,5 @@
+data-directory = "data/"
+
 # cernan listens on two telemetry protocols, statsd and graphite. The following
 # two configuration items set the ports cernan will listen on.
 statsd-port = 8125
@@ -21,11 +23,11 @@ histogram = 60
 raw = 1
 
 [[file]]
-path = "/var/log/system.log"
+path = "example.log"
 
 # sinks
 [console]
 
 [wavefront]
 port = 2878
-host = "10.10.10.1"
+host = "127.0.0.1"
