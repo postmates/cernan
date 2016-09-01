@@ -16,7 +16,7 @@ use std::str;
 use std::thread;
 use chrono::UTC;
 
-mod mpmc_log;
+mod mpmc;
 mod sink;
 mod buckets;
 mod config;
@@ -61,7 +61,7 @@ fn main() {
     // No sense of why.
     let _ = fern::init_global_logger(logger_config, log::LogLevelFilter::Trace);
 
-    let (event_send, event_recv) = mpmc_log::channel(&args.data_directory);
+    let (event_send, event_recv) = mpmc::channel(&args.data_directory);
 
     info!("cernan - {}", args.version);
     let mut joins = Vec::new();

@@ -14,24 +14,24 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use notify::{RecommendedWatcher, Error, Watcher};
 use notify::op::*;
-use mpmc_log;
+use mpmc;
 
 /// statsd
-pub fn udp_server_v6(chan: mpmc_log::Sender, port: u16) {
+pub fn udp_server_v6(chan: mpmc::Sender, port: u16) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
     let socket = UdpSocket::bind(addr).ok().expect("Unable to bind to UDP socket");
     info!("statsd server started on ::1 {}", port);
     handle_udp(chan, socket);
 }
 
-pub fn udp_server_v4(chan: mpmc_log::Sender, port: u16) {
+pub fn udp_server_v4(chan: mpmc::Sender, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let socket = UdpSocket::bind(addr).ok().expect("Unable to bind to UDP socket");
     info!("statsd server started on 127.0.0.1:{}", port);
     handle_udp(chan, socket);
 }
 
-pub fn handle_udp(mut chan: mpmc_log::Sender, socket: UdpSocket) {
+pub fn handle_udp(mut chan: mpmc::Sender, socket: UdpSocket) {
     let mut buf = [0; 8192];
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
@@ -59,7 +59,7 @@ pub fn handle_udp(mut chan: mpmc_log::Sender, socket: UdpSocket) {
     }
 }
 
-pub fn file_server(mut chan: mpmc_log::Sender, path: PathBuf) {
+pub fn file_server(mut chan: mpmc::Sender, path: PathBuf) {
     let (tx, rx) = channel();
     // NOTE on OSX fsevent will _not_ let us watch a file we don't own
     // effectively. See
@@ -106,7 +106,7 @@ pub fn file_server(mut chan: mpmc_log::Sender, path: PathBuf) {
     }
 }
 
-pub fn tcp_server_ipv6(chan: mpmc_log::Sender, port: u16) {
+pub fn tcp_server_ipv6(chan: mpmc::Sender, port: u16) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
     info!("graphite server started on ::1 {}", port);
@@ -121,7 +121,7 @@ pub fn tcp_server_ipv6(chan: mpmc_log::Sender, port: u16) {
     }
 }
 
-pub fn tcp_server_ipv4(chan: mpmc_log::Sender, port: u16) {
+pub fn tcp_server_ipv4(chan: mpmc::Sender, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
     info!("graphite server started on 127.0.0.1:{}", port);
@@ -136,7 +136,7 @@ pub fn tcp_server_ipv4(chan: mpmc_log::Sender, port: u16) {
     }
 }
 
-fn handle_client(mut chan: mpmc_log::Sender, stream: TcpStream) {
+fn handle_client(mut chan: mpmc::Sender, stream: TcpStream) {
     let line_reader = BufReader::new(stream);
     for line in line_reader.lines() {
         match line {
@@ -168,7 +168,7 @@ fn handle_client(mut chan: mpmc_log::Sender, stream: TcpStream) {
 }
 
 // emit flush event into channel on a regular interval
-pub fn flush_timer_loop(mut chan: mpmc_log::Sender, interval: u64) {
+pub fn flush_timer_loop(mut chan: mpmc::Sender, interval: u64) {
     let duration = Duration::new(interval, 0);
     loop {
         sleep(duration);
@@ -180,7 +180,7 @@ pub fn flush_timer_loop(mut chan: mpmc_log::Sender, interval: u64) {
 //
 // A snapshot indicates to supporting backends that it is time to generate a
 // payload and store this in preparation for a future flush event.
-pub fn snapshot_loop(mut chan: mpmc_log::Sender) {
+pub fn snapshot_loop(mut chan: mpmc::Sender) {
     let duration = Duration::new(1, 0);
     loop {
         sleep(duration);
