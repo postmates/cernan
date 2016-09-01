@@ -2,7 +2,6 @@ use sink::Sink;
 use buckets::Buckets;
 use metric::Metric;
 use chrono;
-use std::sync::Arc;
 
 pub struct Console {
     aggrs: Buckets,
@@ -28,8 +27,7 @@ fn fmt_line(key: &str, value: &f64) {
 
 
 impl Sink for Console {
-    fn deliver(&mut self, point: Arc<Metric>) {
-        debug!("console deliver");
+    fn deliver(&mut self, point: Metric) {
         self.aggrs.add(&point);
     }
 
