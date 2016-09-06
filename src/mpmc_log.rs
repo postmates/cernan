@@ -139,9 +139,7 @@ impl Sender {
         t.insert(0, pyld_sz_bytes[3]);
 
         let ref mut fp = self.fp;
-//        fp.write_u32::<BigEndian>(payload_size_in_bytes).expect("failed to write payload_size");
         fp.write(&t[..]).expect("failed to write payload");
-//        fp.flush().expect("failed to flush data log file");
         Ok(())
     }
 }
