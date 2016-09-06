@@ -56,7 +56,7 @@ impl Wavefront {
 
         if (self.tot_snapshots % self.qos.counter) == 0 {
             for (key, value) in self.aggrs.counters().iter() {
-                write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
+                write!(stats, "{} {} {} {}\n", key, value / (self.qos.counter as f64), start, self.tags).unwrap();
             }
         }
 
