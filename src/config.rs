@@ -17,6 +17,7 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 #[derive(Clone, Debug)]
 pub struct Args {
+    pub data_directory: PathBuf,
     pub statsd_port: u16,
     pub graphite_port: u16,
     pub flush_interval: u64,
@@ -130,6 +131,7 @@ pub fn parse_args() -> Args {
             let qos = MetricQOS::default();
 
             Args {
+                data_directory: Path::new("/tmp/cernan-data").to_path_buf(),
                 statsd_port: u16::from_str(args.value_of("statsd-port").unwrap())
                     .expect("statsd-port must be an integer"),
                 graphite_port: u16::from_str(args.value_of("graphite-port").unwrap())
@@ -227,6 +229,10 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     }
 
     Args {
+        data_directory: value.lookup("data-directory")
+            .unwrap_or(&Value::String("/tmp/cernan-data".to_string()))
+            .as_str()
+            .map(|s| Path::new(s).to_path_buf()).unwrap(),
         statsd_port: value.lookup("statsd-port")
             .unwrap_or(&Value::Integer(8125))
             .as_integer()

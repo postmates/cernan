@@ -9,13 +9,14 @@ extern crate dns_lookup;
 extern crate notify;
 #[macro_use]
 extern crate log;
+extern crate byteorder;
+extern crate bincode;
 
 use std::str;
-use std::sync::Arc;
-use std::sync::mpsc::channel;
 use std::thread;
 use chrono::UTC;
 
+mod mpmc_log;
 mod sink;
 mod buckets;
 mod config;
@@ -29,6 +30,9 @@ mod sinks {
     pub mod console;
     pub mod wavefront;
 }
+
+use sinks::*;
+use sink::Sink;
 
 fn main() {
     let args = config::parse_args();
@@ -57,77 +61,74 @@ fn main() {
     // No sense of why.
     let _ = fern::init_global_logger(logger_config, log::LogLevelFilter::Trace);
 
-    debug!("ARGS: {:?}", args);
+    let (event_send, event_recv) = mpmc_log::channel(&args.data_directory);
 
     info!("cernan - {}", args.version);
+    let mut joins = Vec::new();
 
-    trace!("trace messages enabled");
-    debug!("debug messages enabled");
-    info!("info messages enabled");
-    warn!("warning messages enabled");
-    error!("error messages enabled");
+    if args.console {
+        let console_recv = event_recv.clone();
+        joins.push(thread::spawn(move || {
+            console::Console::new().run(console_recv);
+        }));
+    }
+    if args.wavefront {
+        let wf_tags: String = args.tags.replace(",", " ");
+        let cp_args = args.clone();
+        let wf_recv = event_recv.clone();
+        joins.push(thread::spawn(move || {
+            wavefront::Wavefront::new(&cp_args.wavefront_host.unwrap(),
+                                      cp_args.wavefront_port.unwrap(),
+                                      wf_tags,
+                                      cp_args.qos.clone())
+                .run(wf_recv);
+        }));
+    }
 
-    let mut sinks = sink::factory(args.clone());
-    debug!("total sinks: {}", sinks.len());
-
-    let (event_send, event_recv) = channel();
-    let flush_send = event_send.clone();
-    let snapshot_send = event_send.clone();
-    let statsd_send_v4 = event_send.clone();
-    let statsd_send_v6 = event_send.clone();
-    let graphite_send_v4 = event_send.clone();
-    let graphite_send_v6 = event_send.clone();
 
     let sport = args.statsd_port;
-    thread::spawn(move || {
+    let statsd_send_v4 = event_send.clone();
+    joins.push(thread::spawn(move || {
         server::udp_server_v4(statsd_send_v4, sport);
-    });
-    thread::spawn(move || {
+    }));
+    let statsd_send_v6 = event_send.clone();
+    joins.push(thread::spawn(move || {
         server::udp_server_v6(statsd_send_v6, sport);
-    });
+    }));
 
     let gport = args.graphite_port;
-    thread::spawn(move || {
+    let graphite_send_v6 = event_send.clone();
+    joins.push(thread::spawn(move || {
         server::tcp_server_ipv6(graphite_send_v6, gport);
-    });
-    thread::spawn(move || {
+    }));
+    let graphite_send_v4 = event_send.clone();
+    joins.push(thread::spawn(move || {
         server::tcp_server_ipv4(graphite_send_v4, gport);
-    });
+    }));
 
     let flush_interval = args.flush_interval;
-    thread::spawn(move || {
+    let flush_send = event_send.clone();
+    joins.push(thread::spawn(move || {
         server::flush_timer_loop(flush_send, flush_interval);
-    });
-
-    thread::spawn(move || {
-        server::snapshot_loop(snapshot_send);
-    });
+    }));
 
     match args.files {
         Some(log_files) => {
             for lf in log_files {
-                let lf_send = event_send.clone();
-                thread::spawn(move || {
-                    server::file_server(lf_send, lf);
-                });
+                let fp_send = event_send.clone();
+                joins.push(thread::spawn(move || {
+                    server::file_server(fp_send, lf);
+                }));
             }
         }
         None => ()
     }
 
-    loop {
-        match event_recv.recv() {
-            Ok(result) => {
-                let arc_res = Arc::new(result);
-                for sink in &mut sinks {
-                    let ar = arc_res.clone();
-                    match sink.send(ar).err() {
-                        None => continue,
-                        Some(e) => panic!("Hung up! {}", e),
-                    }
-                }
-            }
-            Err(e) => panic!(format!("Event channel has hung up: {:?}", e)),
-        }
+    joins.push(thread::spawn(move || {
+        server::snapshot_loop(event_send);
+    }));
+
+    for jh in joins {
+        jh.join().expect("Uh oh, child thread paniced!");
     }
 }
