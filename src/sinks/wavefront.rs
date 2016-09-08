@@ -224,4 +224,23 @@ mod test {
         assert_eq!(lines[14], "test.timer.999 12.101 10101 source=test-src");
         assert_eq!(lines[15], "test.timer.count 3 10101 source=test-src");
     }
+
+    #[test]
+    fn test_qos_counter_binning() {
+        let mut qos = MetricQOS::default();
+        qos.counter = 10;
+        let mut wavefront = Wavefront::new("localhost", 2003, "".to_string(), qos);
+
+        for i in 0..21 {
+            let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, i, 0).timestamp();
+            wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("c"),
+                                                             1.0,
+                                                             Some(dt),
+                                                             MetricKind::Counter(1.0))));
+            wavefront.snapshot();
+        }
+
+        println!("SNP: {:?}", wavefront.snapshots);
+        assert_eq!(2, wavefront.snapshots.len());
+    }
 }
