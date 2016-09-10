@@ -15,7 +15,7 @@ use std::str;
 use std::thread;
 use chrono::UTC;
 
-mod mpmc;
+mod mpsc;
 mod sink;
 mod buckets;
 mod config;
@@ -60,13 +60,13 @@ fn main() {
     // No sense of why.
     let _ = fern::init_global_logger(logger_config, log::LogLevelFilter::Trace);
 
-    let (event_send, event_recv) = mpmc::channel(&args.data_directory);
-
     info!("cernan - {}", args.version);
     let mut joins = Vec::new();
+    let mut sends = Vec::new();
 
     if args.console {
-        let console_recv = event_recv.clone();
+        let (console_send, console_recv) = mpsc::channel("console", &args.data_directory);
+        sends.push(console_send);
         joins.push(thread::spawn(move || {
             console::Console::new().run(console_recv);
         }));
@@ -74,7 +74,8 @@ fn main() {
     if args.wavefront {
         let wf_tags: String = args.tags.replace(",", " ");
         let cp_args = args.clone();
-        let wf_recv = event_recv.clone();
+        let (wf_send, wf_recv) = mpsc::channel("wf", &args.data_directory);
+        sends.push(wf_send);
         joins.push(thread::spawn(move || {
             wavefront::Wavefront::new(&cp_args.wavefront_host.unwrap(),
                                       cp_args.wavefront_port.unwrap(),
@@ -86,37 +87,37 @@ fn main() {
 
 
     let sport = args.statsd_port;
-    let statsd_send_v4 = event_send.clone();
+    let udp_server_v4_send = sends.clone();
     joins.push(thread::spawn(move || {
-        server::udp_server_v4(statsd_send_v4, sport);
+        server::udp_server_v4(udp_server_v4_send, sport);
     }));
-    let statsd_send_v6 = event_send.clone();
+    let udp_server_v6_send = sends.clone();
     joins.push(thread::spawn(move || {
-        server::udp_server_v6(statsd_send_v6, sport);
+        server::udp_server_v6(udp_server_v6_send, sport);
     }));
 
     let gport = args.graphite_port;
-    let graphite_send_v6 = event_send.clone();
+    let tcp_server_ipv6_sends = sends.clone();
     joins.push(thread::spawn(move || {
-        server::tcp_server_ipv6(graphite_send_v6, gport);
+        server::tcp_server_ipv6(tcp_server_ipv6_sends, gport);
     }));
-    let graphite_send_v4 = event_send.clone();
+    let tcp_server_ipv4_sends = sends.clone();
     joins.push(thread::spawn(move || {
-        server::tcp_server_ipv4(graphite_send_v4, gport);
+        server::tcp_server_ipv4(tcp_server_ipv4_sends, gport);
     }));
 
     let flush_interval = args.flush_interval;
-    let flush_send = event_send.clone();
+    let flush_interval_sends = sends.clone();
     joins.push(thread::spawn(move || {
-        server::flush_timer_loop(flush_send, flush_interval);
+        server::flush_timer_loop(flush_interval_sends, flush_interval);
     }));
 
     match args.files {
         Some(log_files) => {
             for lf in log_files {
-                let fp_send = event_send.clone();
+                let fp_sends = sends.clone();
                 joins.push(thread::spawn(move || {
-                    server::file_server(fp_send, lf);
+                    server::file_server(fp_sends, lf);
                 }));
             }
         }
@@ -124,7 +125,7 @@ fn main() {
     }
 
     joins.push(thread::spawn(move || {
-        server::snapshot_loop(event_send);
+        server::snapshot_loop(sends.clone());
     }));
 
     for jh in joins {

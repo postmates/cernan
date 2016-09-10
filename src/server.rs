@@ -14,24 +14,31 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use notify::{RecommendedWatcher, Error, Watcher};
 use notify::op::*;
-use mpmc;
+use mpsc;
+
+#[inline]
+fn send(chans: &mut Vec<mpsc::Sender>, event: &metric::Event) {
+    for mut chan in chans {
+        chan.send(event);
+    }
+}
 
 /// statsd
-pub fn udp_server_v6(chan: mpmc::Sender, port: u16) {
+pub fn udp_server_v6(chans: Vec<mpsc::Sender>, port: u16) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
     let socket = UdpSocket::bind(addr).ok().expect("Unable to bind to UDP socket");
     info!("statsd server started on ::1 {}", port);
-    handle_udp(chan, socket);
+    handle_udp(chans, socket);
 }
 
-pub fn udp_server_v4(chan: mpmc::Sender, port: u16) {
+pub fn udp_server_v4(chans: Vec<mpsc::Sender>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let socket = UdpSocket::bind(addr).ok().expect("Unable to bind to UDP socket");
     info!("statsd server started on 127.0.0.1:{}", port);
-    handle_udp(chan, socket);
+    handle_udp(chans, socket);
 }
 
-pub fn handle_udp(mut chan: mpmc::Sender, socket: UdpSocket) {
+pub fn handle_udp(mut chans: Vec<mpsc::Sender>, socket: UdpSocket) {
     let mut buf = [0; 8192];
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
@@ -43,14 +50,14 @@ pub fn handle_udp(mut chan: mpmc::Sender, socket: UdpSocket) {
                 match metric::Metric::parse_statsd(val) {
                     Some(metrics) => {
                         for m in metrics {
-                            chan.send(&metric::Event::Statsd(m)).expect("oops");
+                            send(&mut chans, &metric::Event::Statsd(m));
                         }
                         let metric = metric::Metric::counter("cernan.statsd.packet");
-                        chan.send(&metric::Event::Statsd(metric)).unwrap();
+                        send(&mut chans, &metric::Event::Statsd(metric));
                     }
                     None => {
                         let metric = metric::Metric::counter("cernan.statsd.bad_packet");
-                        chan.send(&metric::Event::Statsd(metric)).unwrap();
+                        send(&mut chans, &metric::Event::Statsd(metric));
                         error!("BAD PACKET: {:?}", val);
                     }
                 }
@@ -59,7 +66,7 @@ pub fn handle_udp(mut chan: mpmc::Sender, socket: UdpSocket) {
     }
 }
 
-pub fn file_server(mut chan: mpmc::Sender, path: PathBuf) {
+pub fn file_server(mut chans: Vec<mpsc::Sender>, path: PathBuf) {
     let (tx, rx) = channel();
     // NOTE on OSX fsevent will _not_ let us watch a file we don't own
     // effectively. See
@@ -91,7 +98,7 @@ pub fn file_server(mut chan: mpmc::Sender, path: PathBuf) {
                                     Ok(_) => {
                                         let name = format!("{}.lines", path.to_str().unwrap());
                                         let metric = metric::Metric::counter(&name);
-                                        chan.send(&metric::Event::Statsd(metric)).unwrap();
+                                        send(&mut chans, &metric::Event::Statsd(metric));
                                     },
                                     Err(err) => panic!(err)
                                 }
@@ -106,37 +113,35 @@ pub fn file_server(mut chan: mpmc::Sender, path: PathBuf) {
     }
 }
 
-pub fn tcp_server_ipv6(chan: mpmc::Sender, port: u16) {
+pub fn tcp_server_ipv6(chans: Vec<mpsc::Sender>, port: u16) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
     info!("graphite server started on ::1 {}", port);
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
-            let cchan = chan.clone();
+            let srv_chans = chans.clone();
             thread::spawn(move || {
-                // connection succeeded
-                handle_client(cchan, stream)
+                handle_client(srv_chans, stream)
             });
         }
     }
 }
 
-pub fn tcp_server_ipv4(chan: mpmc::Sender, port: u16) {
+pub fn tcp_server_ipv4(chans: Vec<mpsc::Sender>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
     info!("graphite server started on 127.0.0.1:{}", port);
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
-            let cchan = chan.clone();
+            let srv_chans = chans.clone();
             thread::spawn(move || {
-                // connection succeeded
-                handle_client(cchan, stream)
+                handle_client(srv_chans, stream)
             });
         }
     }
 }
 
-fn handle_client(mut chan: mpmc::Sender, stream: TcpStream) {
+fn handle_client(mut chans: Vec<mpsc::Sender>, stream: TcpStream) {
     let line_reader = BufReader::new(stream);
     for line in line_reader.lines() {
         match line {
@@ -148,14 +153,14 @@ fn handle_client(mut chan: mpmc::Sender, stream: TcpStream) {
                         match metric::Metric::parse_graphite(val) {
                             Some(metrics) => {
                                 let metric = metric::Metric::counter("cernan.graphite.packet");
-                                chan.send(&metric::Event::Statsd(metric)).unwrap();
+                                send(&mut chans, &metric::Event::Statsd(metric));
                                 for m in metrics {
-                                    chan.send(&metric::Event::Graphite(m)).unwrap();
+                                    send(&mut chans, &metric::Event::Graphite(m));
                                 }
                             }
                             None => {
                                 let metric = metric::Metric::counter("cernan.graphite.bad_packet");
-                                chan.send(&metric::Event::Statsd(metric)).unwrap();
+                                send(&mut chans, &metric::Event::Statsd(metric));
                                 error!("BAD PACKET: {:?}", val);
                             }
                         }
@@ -168,11 +173,11 @@ fn handle_client(mut chan: mpmc::Sender, stream: TcpStream) {
 }
 
 // emit flush event into channel on a regular interval
-pub fn flush_timer_loop(mut chan: mpmc::Sender, interval: u64) {
+pub fn flush_timer_loop(mut chans: Vec<mpsc::Sender>, interval: u64) {
     let duration = Duration::new(interval, 0);
     loop {
         sleep(duration);
-        chan.send(&metric::Event::TimerFlush).expect("[FLUSH] Unable to write to chan!");
+        send(&mut chans, &metric::Event::TimerFlush);
     }
 }
 
@@ -180,10 +185,10 @@ pub fn flush_timer_loop(mut chan: mpmc::Sender, interval: u64) {
 //
 // A snapshot indicates to supporting backends that it is time to generate a
 // payload and store this in preparation for a future flush event.
-pub fn snapshot_loop(mut chan: mpmc::Sender) {
+pub fn snapshot_loop(mut chans: Vec<mpsc::Sender>) {
     let duration = Duration::new(1, 0);
     loop {
         sleep(duration);
-        chan.send(&metric::Event::Snapshot).expect("[SNAPSHOT] Unable to write to chan!");
+        send(&mut chans, &metric::Event::Snapshot);
     }
 }

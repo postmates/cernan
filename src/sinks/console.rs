@@ -36,7 +36,6 @@ impl Sink for Console {
     }
 
     fn flush(&mut self) {
-        debug!("console flush start");
         let now = chrono::UTC::now();
         println!("Flushing metrics: {}", now.to_rfc3339());
 
@@ -77,6 +76,5 @@ impl Sink for Console {
                 println!("    {}: {} {}", key, stat, value.query(quant).unwrap().1);
             }
         }
-        debug!("console flush stop");
     }
 }

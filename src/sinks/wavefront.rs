@@ -136,7 +136,6 @@ impl Sink for Wavefront {
         self.tot_snapshots = self.tot_snapshots.wrapping_add(1);
         let stats = self.format_stats(None);
         if stats.len() > 0 {
-            debug!("wavefront - {}", stats);
             self.snapshots.push(stats);
             trace!("snapshots : {:?}", self.snapshots);
             self.aggrs.reset();
@@ -147,7 +146,6 @@ impl Sink for Wavefront {
         if self.snapshots.len() > 0 {
             match TcpStream::connect(self.addr) {
                 Ok(mut stream) => {
-                    debug!("wavefront flush");
                     if self.snapshots
                         .iter()
                         .map(|s| stream.write(s.as_bytes()))
@@ -230,10 +228,10 @@ mod test {
 
         for i in 0..21 {
             let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, i, 0).timestamp();
-            wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("c"),
+            wavefront.deliver(Metric::new_with_time(Atom::from("c"),
                                                              1.0,
                                                              Some(dt),
-                                                             MetricKind::Counter(1.0))));
+                                                             MetricKind::Counter(1.0)));
             wavefront.snapshot();
         }
 
