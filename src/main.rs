@@ -45,7 +45,7 @@ fn main() {
         format: Box::new(|msg: &str, level: &log::LogLevel, _location: &log::LogLocation| {
             format!("[{}][{}] {}", level, UTC::now().to_rfc3339(), msg)
         }),
-        output: vec![fern::OutputConfig::stdout(), fern::OutputConfig::file("output.log")],
+        output: vec![fern::OutputConfig::stdout()],
         level: level,
     };
 
