@@ -28,9 +28,16 @@ impl MetricQOS {
 pub enum MetricKind {
     Counter(f64),
     Gauge,
+    DeltaGauge,
     Timer,
     Histogram,
     Raw,
+}
+
+#[derive(PartialEq, Debug)]
+pub enum MetricSign {
+    Positive,
+    Negative,
 }
 
 #[derive(PartialEq, Debug)]
@@ -54,7 +61,24 @@ impl Metric {
     /// Create a new metric
     ///
     /// Uses the Into trait to allow both str and String types.
-    pub fn new(name: Atom, value: f64, kind: MetricKind) -> Metric {
+    pub fn new(name: Atom, raw_value: f64, raw_kind: MetricKind, sign: Option<MetricSign>) -> Metric {
+        let kind = match raw_kind {
+            MetricKind::Gauge => {
+                match sign {
+                    Some(MetricSign::Positive) => MetricKind::DeltaGauge,
+                    Some(MetricSign::Negative) => MetricKind::DeltaGauge,
+                    None => raw_kind,
+                }
+            },
+            _ => raw_kind,
+        };
+
+        let value = match sign {
+            None => raw_value,
+            Some(MetricSign::Positive) => raw_value,
+            Some(MetricSign::Negative) => -1.0 * raw_value,
+        };
+
         Metric {
             name: name,
             value: value,
@@ -137,31 +161,43 @@ mod tests {
 
     #[test]
     fn test_parse_metric_via_api() {
-        let pyld = "fst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@2";
+        let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@2\nsxth:-6.6|g\nsvth:+7.77|g";
         let prs = Metric::parse_statsd(pyld);
 
         assert!(prs.is_some());
         let prs_pyld = prs.unwrap();
 
-        assert_eq!(prs_pyld[0].kind, MetricKind::Timer);
-        assert_eq!(prs_pyld[0].name, Atom::from("fst"));
-        assert_eq!(prs_pyld[0].value, -1.1);
+        assert_eq!(prs_pyld[0].kind, MetricKind::Gauge);
+        assert_eq!(prs_pyld[0].name, Atom::from("zrth"));
+        assert_eq!(prs_pyld[0].value, 0.0);
 
-        assert_eq!(prs_pyld[1].kind, MetricKind::Gauge);
-        assert_eq!(prs_pyld[1].name, Atom::from("snd"));
-        assert_eq!(prs_pyld[1].value, 2.2);
+        assert_eq!(prs_pyld[1].kind, MetricKind::Timer);
+        assert_eq!(prs_pyld[1].name, Atom::from("fst"));
+        assert_eq!(prs_pyld[1].value, -1.1);
 
-        assert_eq!(prs_pyld[2].kind, MetricKind::Histogram);
-        assert_eq!(prs_pyld[2].name, Atom::from("thd"));
-        assert_eq!(prs_pyld[2].value, 3.3);
+        assert_eq!(prs_pyld[2].kind, MetricKind::DeltaGauge);
+        assert_eq!(prs_pyld[2].name, Atom::from("snd"));
+        assert_eq!(prs_pyld[2].value, 2.2);
 
-        assert_eq!(prs_pyld[3].kind, MetricKind::Counter(1.0));
-        assert_eq!(prs_pyld[3].name, Atom::from("fth"));
-        assert_eq!(prs_pyld[3].value, 4.0);
+        assert_eq!(prs_pyld[3].kind, MetricKind::Histogram);
+        assert_eq!(prs_pyld[3].name, Atom::from("thd"));
+        assert_eq!(prs_pyld[3].value, 3.3);
 
-        assert_eq!(prs_pyld[4].kind, MetricKind::Counter(2.0));
-        assert_eq!(prs_pyld[4].name, Atom::from("fvth"));
-        assert_eq!(prs_pyld[4].value, 5.5);
+        assert_eq!(prs_pyld[4].kind, MetricKind::Counter(1.0));
+        assert_eq!(prs_pyld[4].name, Atom::from("fth"));
+        assert_eq!(prs_pyld[4].value, 4.0);
+
+        assert_eq!(prs_pyld[5].kind, MetricKind::Counter(2.0));
+        assert_eq!(prs_pyld[5].name, Atom::from("fvth"));
+        assert_eq!(prs_pyld[5].value, 5.5);
+
+        assert_eq!(prs_pyld[6].kind, MetricKind::DeltaGauge);
+        assert_eq!(prs_pyld[6].name, Atom::from("sxth"));
+        assert_eq!(prs_pyld[6].value, -6.6);
+
+        assert_eq!(prs_pyld[7].kind, MetricKind::DeltaGauge);
+        assert_eq!(prs_pyld[7].name, Atom::from("svth"));
+        assert_eq!(prs_pyld[7].value, 7.77);
     }
 
     #[test]
