@@ -219,6 +219,19 @@ mod tests {
     }
 
     #[test]
+    fn test_metric_sample_gauge() {
+        let res = Metric::parse_statsd("foo:1|g@0.22\nbar:101|g@2\n").unwrap();
+
+        assert_eq!(Atom::from("foo"), res[0].name);
+        assert_eq!(1.0, res[0].value);
+        assert_eq!(MetricKind::Gauge, res[0].kind);
+
+        assert_eq!(Atom::from("bar"), res[1].name);
+        assert_eq!(101.0, res[1].value);
+        assert_eq!(MetricKind::Gauge, res[1].kind);
+    }
+
+    #[test]
     fn test_metric_parse_invalid_no_name() {
         assert_eq!(None, Metric::parse_statsd(""));
     }

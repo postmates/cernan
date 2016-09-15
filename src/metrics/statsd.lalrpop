@@ -7,6 +7,7 @@ grammar;
 
 Kind: MetricKind = {
     "g" => MetricKind::Gauge,
+    "g@" <Num> => MetricKind::Gauge,
     "ms" => MetricKind::Timer,
     "h" => MetricKind::Histogram,
     "c" => MetricKind::Counter(1.0),
