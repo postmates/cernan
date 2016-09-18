@@ -1,4 +1,4 @@
-#[derive(PartialEq, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub enum Event {
     Statsd(Metric),
     Graphite(Metric),
@@ -6,7 +6,7 @@ pub enum Event {
     Snapshot,
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub enum MetricKind {
     Counter(f64),
     Gauge,
@@ -16,7 +16,7 @@ pub enum MetricKind {
     Raw,
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct Metric {
     pub kind: MetricKind,
     pub name: Atom,

@@ -65,8 +65,11 @@ pub struct Receiver {
 // existing file and move on to the next file.
 //
 // File names always increase.
-
 pub fn channel(name: &str, data_dir: &Path) -> (Sender, Receiver) {
+    channel_with_max_bytes(name, data_dir, 1_048_576 * 10)
+}
+
+pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> (Sender, Receiver) {
     let root = data_dir.join(name);
     let snd_root = root.clone();
     let rcv_root = root.clone();
@@ -75,7 +78,7 @@ pub fn channel(name: &str, data_dir: &Path) -> (Sender, Receiver) {
         fs::create_dir_all(root).expect("could not create directory");
     }
 
-    let sender = Sender::new(&snd_root, 1_048_576 * 10, Arc::new(atomic::AtomicUsize::new(0)));
+    let sender = Sender::new(&snd_root, max_bytes * 10, Arc::new(atomic::AtomicUsize::new(0)));
     let receiver = Receiver::new(&rcv_root);
     (sender, receiver)
 }
@@ -276,5 +279,95 @@ impl Sender {
                 Err(e) => { debug!("Write error: {}", e); continue; }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    extern crate tempdir;
+    extern crate quickcheck;
+    extern crate rand;
+
+    use super::*;
+    use metric::{Event,Metric,MetricKind,MetricSign};
+    use self::quickcheck::{QuickCheck, TestResult, Arbitrary, Gen};
+    use self::rand::{Rand,Rng};
+    use string_cache::Atom;
+
+    impl Rand for MetricSign {
+        fn rand<R: Rng>(rng: &mut R) -> MetricSign {
+            let i : usize = rng.gen();
+            match i % 2 {
+                0 => MetricSign::Positive,
+                _ => MetricSign::Negative,
+            }
+        }
+    }
+
+    impl Rand for MetricKind {
+        fn rand<R: Rng>(rng: &mut R) -> MetricKind {
+            let i : usize = rng.gen();
+            match i % 6 {
+                0 => MetricKind::Counter(rng.gen()),
+                1 => MetricKind::Gauge,
+                2 => MetricKind::DeltaGauge,
+                3 => MetricKind::Timer,
+                4 => MetricKind::Histogram,
+                _ => MetricKind::Raw,
+            }
+        }
+    }
+
+    impl Rand for Event {
+        fn rand<R: Rng>(rng: &mut R) -> Event {
+            let i : usize = rng.gen();
+            match i % 4 {
+                0 => Event::TimerFlush,
+                1 => Event::Snapshot,
+                _ => {
+                    let name : String = rng.gen_ascii_chars().take(10).collect();
+                    let val : f64 = rng.gen();
+                    let kind : MetricKind = rng.gen();
+                    let sign : Option<MetricSign> = rng.gen();
+                    let m = Metric::new(Atom::from(name), val, kind, sign);
+                    Event::Statsd(m)
+                }
+            }
+        }
+    }
+
+    impl Arbitrary for Event {
+        fn arbitrary<G: Gen>(g: &mut G) -> Event { g.gen() }
+    }
+
+    #[test]
+    fn one_item_round_trip() {
+        let dir = tempdir::TempDir::new("cernan").unwrap();
+        let (mut snd, mut rcv) = channel("one_item_round_trip", dir.path());
+
+        snd.send(&Event::TimerFlush);
+
+        assert_eq!(Some(Event::TimerFlush), rcv.next());
+    }
+
+    #[test]
+    fn round_trip_order_preserved() {
+        fn rnd_trip(max_bytes: usize, evs: Vec<Event>) -> TestResult {
+            let dir = tempdir::TempDir::new("cernan").unwrap();
+            let (mut snd, mut rcv) = channel_with_max_bytes("round_trip_order_preserved", dir.path(), max_bytes);
+
+            for ev in evs.clone() {
+                snd.send(&ev);
+            }
+
+            for ev in evs {
+                assert_eq!(Some(ev), rcv.next());
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(1000)
+            .max_tests(10000)
+            .quickcheck(rnd_trip as fn(usize, Vec<Event>) -> TestResult);
     }
 }

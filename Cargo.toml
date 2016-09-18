@@ -19,6 +19,11 @@ notify = "2.6.3"
 serde = "0.8"
 bincode = "0.6.0"
 
+[dev-dependencies]
+tempdir = "0.3"
+quickcheck = "0.3"
+rand = "0.3"
+
 [build-dependencies]
 lalrpop = "0.12.0"
 serde_codegen = "0.8"
