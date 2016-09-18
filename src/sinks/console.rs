@@ -13,8 +13,14 @@ impl Console {
     }
 }
 
+impl Default for Console {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Print a single stats line.
-fn fmt_line(key: &str, value: &f64) {
+fn fmt_line(key: &str, value: f64) {
     println!("    {}: {}", key, value)
 }
 
@@ -34,12 +40,12 @@ impl Sink for Console {
 
         println!("  counters:");
         for (key, value) in self.aggrs.counters() {
-            fmt_line(key, &value);
+            fmt_line(key, *value);
         }
 
         println!("  gauges:");
         for (key, value) in self.aggrs.gauges() {
-            fmt_line(key, &value);
+            fmt_line(key, *value);
         }
 
         println!("  histograms:");

@@ -134,7 +134,7 @@ impl Sink for Wavefront {
     fn snapshot(&mut self) {
         self.tot_snapshots = self.tot_snapshots.wrapping_add(1);
         let stats = self.format_stats(None);
-        if stats.len() > 0 {
+        if !stats.is_empty() {
             self.snapshots.push(stats);
             trace!("snapshots : {:?}", self.snapshots);
             self.aggrs.reset();
@@ -142,7 +142,7 @@ impl Sink for Wavefront {
     }
 
     fn flush(&mut self) {
-        if self.snapshots.len() > 0 {
+        if !self.snapshots.is_empty() {
             match TcpStream::connect(self.addr) {
                 Ok(mut stream) => {
                     if self.snapshots

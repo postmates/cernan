@@ -232,7 +232,7 @@ impl Sender {
         t.insert(0, pyld_sz_bytes[1]);
         t.insert(0, pyld_sz_bytes[2]);
         t.insert(0, pyld_sz_bytes[3]);
-        self.bytes_written = self.bytes_written + t.len();
+        self.bytes_written += t.len();
         // The write loop
         //
         // We use a write loop to retry in the event of a collision between two
@@ -294,7 +294,7 @@ impl Sender {
                 self.bytes_written = 0;
                 (*self.global_seq_num).fetch_add(1, atomic::Ordering::AcqRel);
             }
-            let ref mut fp = self.fp;
+            let fp = &mut self.fp;
             match fp.write(&t[..]) {
                 Ok(_) => break,
                 Err(e) => {

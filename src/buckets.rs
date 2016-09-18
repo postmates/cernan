@@ -138,6 +138,11 @@ impl Buckets {
     }
 }
 
+impl Default for Buckets {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // Tests
 //

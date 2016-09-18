@@ -90,16 +90,13 @@ fn main() {
         cernan::server::flush_timer_loop(flush_interval_sends, flush_interval);
     }));
 
-    match args.files {
-        Some(log_files) => {
-            for lf in log_files {
-                let fp_sends = sends.clone();
-                joins.push(thread::spawn(move || {
-                    cernan::server::file_server(fp_sends, lf);
-                }));
-            }
+    if let Some(log_files) = args.files {
+        for lf in log_files {
+            let fp_sends = sends.clone();
+            joins.push(thread::spawn(move || {
+                cernan::server::file_server(fp_sends, lf);
+            }));
         }
-        None => (),
     }
 
     joins.push(thread::spawn(move || {

@@ -159,7 +159,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         Some(tbl) => {
             let mut tags = String::new();
             let ttbl = tbl.as_table().unwrap();
-            for (k, v) in (*ttbl).iter() {
+            for (k, v) in &(*ttbl) {
                 write!(tags, "{}={},", k, v.as_str().unwrap()).unwrap();
             }
             tags.pop();
@@ -172,7 +172,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         Some(tbl) => {
             let ttbl = tbl.as_table().unwrap();
             let mut hm = MetricQOS::default();
-            for (k, v) in (*ttbl).iter() {
+            for (k, v) in &(*ttbl) {
                 let rate = v.as_integer().expect("value must be an integer") as u64;
                 match k.as_ref() {
                     "gauge" => hm.gauge = rate,
@@ -207,26 +207,23 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     };
 
     let mut paths = Vec::new();
-    match value.lookup("file") {
-        Some(array) => {
-            for tbl in array.as_slice().unwrap() {
-                match tbl.lookup("path") {
-                    Some(pth) => {
-                        let path = Path::new(pth.as_str().unwrap());
-                        if !path.exists() {
-                            panic!("{} not found on disk!", path.to_str().unwrap());
-                        }
-                        if !path.is_file() {
-                            panic!("{} is found on disk but must be a file!",
-                                   path.to_str().unwrap());
-                        }
-                        paths.push(path.to_path_buf())
+    if let Some(array) = value.lookup("file") {
+        for tbl in array.as_slice().unwrap() {
+            match tbl.lookup("path") {
+                Some(pth) => {
+                    let path = Path::new(pth.as_str().unwrap());
+                    if !path.exists() {
+                        panic!("{} not found on disk!", path.to_str().unwrap());
                     }
-                    None => continue,
+                    if !path.is_file() {
+                        panic!("{} is found on disk but must be a file!",
+                               path.to_str().unwrap());
+                    }
+                    paths.push(path.to_path_buf())
                 }
+                None => continue,
             }
         }
-        None => (),
     }
 
     Args {

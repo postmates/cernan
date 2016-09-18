@@ -52,7 +52,7 @@ impl Metric {
         let kind = match raw_kind {
             MetricKind::Gauge => {
                 match sign {
-                    Some(MetricSign::Positive) => MetricKind::DeltaGauge,
+                    Some(MetricSign::Positive) |
                     Some(MetricSign::Negative) => MetricKind::DeltaGauge,
                     None => raw_kind,
                 }
@@ -61,7 +61,7 @@ impl Metric {
         };
 
         let value = match sign {
-            None => raw_value,
+            None |
             Some(MetricSign::Positive) => raw_value,
             Some(MetricSign::Negative) => -1.0 * raw_value,
         };

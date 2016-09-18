@@ -6,12 +6,12 @@ pub trait Sink {
     fn flush(&mut self) -> ();
     fn snapshot(&mut self) -> ();
     fn deliver(&mut self, point: Metric) -> ();
-    fn run(&mut self, mut recv: mpsc::Receiver) {
-        while let Some(event) = recv.next() {
+    fn run(&mut self, recv: mpsc::Receiver) {
+        for event in recv {
             match event {
                 Event::TimerFlush => self.flush(),
                 Event::Snapshot => self.snapshot(),
-                Event::Graphite(metric) => self.deliver(metric),
+                Event::Graphite(metric) |
                 Event::Statsd(metric) => self.deliver(metric),
             }
         }

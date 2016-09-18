@@ -26,14 +26,14 @@ fn send(chans: &mut Vec<mpsc::Sender>, event: &metric::Event) {
 /// statsd
 pub fn udp_server_v6(chans: Vec<mpsc::Sender>, port: u16) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
-    let socket = UdpSocket::bind(addr).ok().expect("Unable to bind to UDP socket");
+    let socket = UdpSocket::bind(addr).expect("Unable to bind to UDP socket");
     info!("statsd server started on ::1 {}", port);
     handle_udp(chans, socket);
 }
 
 pub fn udp_server_v4(chans: Vec<mpsc::Sender>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
-    let socket = UdpSocket::bind(addr).ok().expect("Unable to bind to UDP socket");
+    let socket = UdpSocket::bind(addr).expect("Unable to bind to UDP socket");
     info!("statsd server started on 127.0.0.1:{}", port);
     handle_udp(chans, socket);
 }
