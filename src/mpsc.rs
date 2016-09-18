@@ -74,7 +74,6 @@ pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> 
     let snd_root = root.clone();
     let rcv_root = root.clone();
     if !root.is_dir() {
-        debug!("MKDIR {:?}", root);
         fs::create_dir_all(root).expect("could not create directory");
     }
 
@@ -85,10 +84,9 @@ pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> 
 
 impl Receiver {
     pub fn new(root: &Path) -> Receiver {
-        let (_, queue_file) = fs::read_dir(root).unwrap().map(|de| {
+        let queue_file = fs::read_dir(root).unwrap().map(|de| {
             let d = de.unwrap();
-            let created = d.metadata().unwrap().created().unwrap();
-            (created, d.path())
+            d.path()
         }).max().unwrap();
 
         let queue_file1 = queue_file.clone();
@@ -179,10 +177,9 @@ impl Sender {
     pub fn new(data_dir: &Path, max_bytes: usize, global_seq_num: Arc<atomic::AtomicUsize>) -> Sender {
         let seq_num = match fs::read_dir(data_dir).unwrap().map(|de| {
             let d = de.unwrap();
-            let created = d.metadata().unwrap().created().unwrap();
-            (created, d.path())
+            d.path()
         }).max() {
-            Some((_, queue_file)) => {
+            Some(queue_file) => {
                 let seq_file_path = queue_file.file_name().unwrap();
                 seq_file_path.to_str().unwrap().parse::<usize>().unwrap()
             },
@@ -366,8 +363,8 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new()
-            .tests(1000)
-            .max_tests(10000)
+            .tests(100)
+            .max_tests(1000)
             .quickcheck(rnd_trip as fn(usize, Vec<Event>) -> TestResult);
     }
 }

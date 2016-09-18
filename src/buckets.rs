@@ -24,6 +24,8 @@ impl Buckets {
     /// # Examples
     ///
     /// ```
+    /// use cernan::buckets::Buckets;
+    ///
     /// let bucket = Buckets::new();
     /// assert_eq!(0, bucket.counters().len());
     /// ```
@@ -42,20 +44,19 @@ impl Buckets {
     /// # Examples
     ///
     /// ```
-    /// use buckets::Buckets;
-    /// use super::metric;
-    /// use std::str::FromStr;
+    /// extern crate cernan;
+    /// extern crate string_cache;
     ///
-    /// let metric = metric::Metric::FromStr("foo:1|c");
-    /// let mut bucket = Buckets::new();
-    /// let rname = Atom::from("foo");
+    /// let metric = cernan::metric::Metric::parse_statsd("foo:1|c").unwrap();
+    /// let mut buckets = cernan::buckets::Buckets::new();
+    /// let rname = string_cache::Atom::from("foo");
     ///
-    /// assert_eq!(None, buckets.counters.get_mut(&rname));
+    /// assert_eq!(true, buckets.counters().is_empty());
     ///
-    /// bucket.add(metric);
-    /// assert_eq!(Some(&mut 1.0), buckets.counters.get_mut(&rname));
+    /// buckets.add(&metric[0]);
+    /// assert_eq!(false, buckets.counters().is_empty());
     /// buckets.reset();
-    /// assert_eq!(Some(&mut 0.0), buckets.counters.get_mut(&rname));
+    /// assert_eq!(true, buckets.counters().is_empty());
     /// ```
     pub fn reset(&mut self) {
         self.counters.clear();
@@ -66,13 +67,11 @@ impl Buckets {
     ///
     /// # Examples
     /// ```
-    /// use buckets::Buckets;
-    /// use super::metric;
-    /// use std::str::FromStr;
+    /// extern crate cernan;
     ///
-    /// let metric = metric::Metric::FromStr("foo:1|c");
-    /// let mut bucket = Buckets::new();
-    /// bucket.add(metric);
+    /// let metric = cernan::metric::Metric::parse_statsd("foo:1|c").unwrap();
+    /// let mut bucket = cernan::buckets::Buckets::new();
+    /// bucket.add(&metric[0]);
     /// ```
     pub fn add(&mut self, value: &Metric) {
         let name = value.name.to_owned();

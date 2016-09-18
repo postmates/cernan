@@ -8,13 +8,6 @@ pub struct Console {
 }
 
 impl Console {
-    /// Create a Console formatter that prints to stdout
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let cons = Console::new();
-    /// ```
     pub fn new() -> Console {
         Console { aggrs: Buckets::new() }
     }

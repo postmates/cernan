@@ -17,13 +17,6 @@ pub struct Wavefront {
 }
 
 impl Wavefront {
-    /// Create a Wavefront formatter
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let wave = Wavefront::new(host, port, source);
-    /// ```
     pub fn new(host: &str, port: u16, tags: String, qos: MetricQOS) -> Wavefront {
         match dns_lookup::lookup_host(host) {
             Ok(mut lh) => {
