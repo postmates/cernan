@@ -99,17 +99,17 @@ pub fn file_server(mut chans: Vec<mpsc::Sender>, path: PathBuf) {
                                         let name = format!("{}.lines", path.to_str().unwrap());
                                         let metric = metric::Metric::counter(&name);
                                         send(&mut chans, &metric::Event::Statsd(metric));
-                                    },
-                                    Err(err) => panic!(err)
+                                    }
+                                    Err(err) => panic!(err),
                                 }
                             }
                         }
                     }
-                    Err(e) => panic!("Unknown file event error: {}", e)
+                    Err(e) => panic!("Unknown file event error: {}", e),
                 }
             }
         }
-        Err(e) => panic!("Could not create file watcher: {}", e)
+        Err(e) => panic!("Could not create file watcher: {}", e),
     }
 }
 
@@ -120,9 +120,7 @@ pub fn tcp_server_ipv6(chans: Vec<mpsc::Sender>, port: u16) {
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
             let srv_chans = chans.clone();
-            thread::spawn(move || {
-                handle_client(srv_chans, stream)
-            });
+            thread::spawn(move || handle_client(srv_chans, stream));
         }
     }
 }
@@ -134,9 +132,7 @@ pub fn tcp_server_ipv4(chans: Vec<mpsc::Sender>, port: u16) {
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
             let srv_chans = chans.clone();
-            thread::spawn(move || {
-                handle_client(srv_chans, stream)
-            });
+            thread::spawn(move || handle_client(srv_chans, stream));
         }
     }
 }

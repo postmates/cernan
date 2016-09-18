@@ -1,4 +1,4 @@
-use metric::{Metric,Event};
+use metric::{Metric, Event};
 use mpsc;
 
 /// A 'sink' is a sink for metrics.

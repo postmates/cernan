@@ -44,7 +44,11 @@ impl Metric {
     /// Create a new metric
     ///
     /// Uses the Into trait to allow both str and String types.
-    pub fn new(name: Atom, raw_value: f64, raw_kind: MetricKind, sign: Option<MetricSign>) -> Metric {
+    pub fn new(name: Atom,
+               raw_value: f64,
+               raw_kind: MetricKind,
+               sign: Option<MetricSign>)
+               -> Metric {
         let kind = match raw_kind {
             MetricKind::Gauge => {
                 match sign {
@@ -52,7 +56,7 @@ impl Metric {
                     Some(MetricSign::Negative) => MetricKind::DeltaGauge,
                     None => raw_kind,
                 }
-            },
+            }
             _ => raw_kind,
         };
 
@@ -144,7 +148,8 @@ mod tests {
 
     #[test]
     fn test_parse_metric_via_api() {
-        let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@2\nsxth:-6.6|g\nsvth:+7.77|g";
+        let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@2\nsxth:-6.\
+                    6|g\nsvth:+7.77|g";
         let prs = Metric::parse_statsd(pyld);
 
         assert!(prs.is_some());

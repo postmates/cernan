@@ -1,35 +1,27 @@
 use std::fs;
-use std::path::{Path,PathBuf};
-use std::io::{ErrorKind,Write,Read,SeekFrom,Seek};
+use std::path::{Path, PathBuf};
+use std::io::{ErrorKind, Write, Read, SeekFrom, Seek};
 use metric::Event;
-use bincode::serde::{serialize,deserialize};
+use bincode::serde::{serialize, deserialize};
 use bincode::SizeLimit;
-use std::sync::{atomic,Arc};
-use std::{thread,time};
+use std::sync::{atomic, Arc};
+use std::{thread, time};
 
 #[inline]
 fn u32tou8abe(v: u32) -> [u8; 4] {
-    [
-        v as u8,
-        (v >> 8) as u8,
-        (v >> 24) as u8,
-        (v >> 16) as u8,
-    ]
+    [v as u8, (v >> 8) as u8, (v >> 24) as u8, (v >> 16) as u8]
 }
 
 #[inline]
 fn u8tou32abe(v: &[u8]) -> u32 {
-    (v[3] as u32) +
-        ((v[2] as u32) << 8) +
-        ((v[1] as u32) << 24) +
-        ((v[0] as u32) << 16)
+    (v[3] as u32) + ((v[2] as u32) << 8) + ((v[1] as u32) << 24) + ((v[0] as u32) << 16)
 }
 
 #[derive(Debug)]
 pub struct Sender {
     root: PathBuf, // directory we store our queues in
     path: PathBuf, // active fp filename
-    fp: fs::File,  // active fp
+    fp: fs::File, // active fp
     bytes_written: usize,
     max_bytes: usize,
     global_seq_num: Arc<atomic::AtomicUsize>,
@@ -45,7 +37,7 @@ impl Clone for Sender {
 #[derive(Debug)]
 pub struct Receiver {
     root: PathBuf, // directory we store our queues in
-    fp: fs::File,  // active fp
+    fp: fs::File, // active fp
     seq_num: usize,
 }
 
@@ -77,23 +69,32 @@ pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> 
         fs::create_dir_all(root).expect("could not create directory");
     }
 
-    let sender = Sender::new(&snd_root, max_bytes * 10, Arc::new(atomic::AtomicUsize::new(0)));
+    let sender = Sender::new(&snd_root,
+                             max_bytes * 10,
+                             Arc::new(atomic::AtomicUsize::new(0)));
     let receiver = Receiver::new(&rcv_root);
     (sender, receiver)
 }
 
 impl Receiver {
     pub fn new(root: &Path) -> Receiver {
-        let queue_file = fs::read_dir(root).unwrap().map(|de| {
-            let d = de.unwrap();
-            d.path()
-        }).max().unwrap();
+        let queue_file = fs::read_dir(root)
+            .unwrap()
+            .map(|de| {
+                let d = de.unwrap();
+                d.path()
+            })
+            .max()
+            .unwrap();
 
         let queue_file1 = queue_file.clone();
         let seq_file_path = queue_file1.file_name().unwrap();
 
-        let seq_num : usize = seq_file_path.to_str().unwrap().parse::<usize>().unwrap();
-        let mut fp = fs::OpenOptions::new().read(true).open(queue_file).expect("RECEIVER could not open file");
+        let seq_num: usize = seq_file_path.to_str().unwrap().parse::<usize>().unwrap();
+        let mut fp = fs::OpenOptions::new()
+            .read(true)
+            .open(queue_file)
+            .expect("RECEIVER could not open file");
         fp.seek(SeekFrom::End(0)).expect("could not get to end of file");
 
         Receiver {
@@ -132,7 +133,9 @@ impl Iterator for Receiver {
                             }
                         }
                         Err(e) => {
-                            panic!("Error, on-disk payload of advertised size not available! Recv failed with error {:?}", e);
+                            panic!("Error, on-disk payload of advertised size not available! \
+                                    Recv failed with error {:?}",
+                                   e);
                         }
                     }
                 }
@@ -151,13 +154,16 @@ impl Iterator for Receiver {
                                     // situation where the next log file doesn't
                                     // exist yet.
                                     match fs::OpenOptions::new().read(true).open(&lg) {
-                                        Ok(fp) => { self.fp = fp; break; }
-                                        Err(_) => continue
+                                        Ok(fp) => {
+                                            self.fp = fp;
+                                            break;
+                                        }
+                                        Err(_) => continue,
                                     }
                                 }
                             }
                             // There's payloads to come--else the file would be
-                            // read-only--so we wait for 10ms and try again.
+                            // read-only. We wait for 10ms and try again.
                             else {
                                 let dur = time::Duration::from_millis(10);
                                 thread::sleep(dur);
@@ -174,21 +180,31 @@ impl Iterator for Receiver {
 }
 
 impl Sender {
-    pub fn new(data_dir: &Path, max_bytes: usize, global_seq_num: Arc<atomic::AtomicUsize>) -> Sender {
-        let seq_num = match fs::read_dir(data_dir).unwrap().map(|de| {
-            let d = de.unwrap();
-            d.path()
-        }).max() {
+    pub fn new(data_dir: &Path,
+               max_bytes: usize,
+               global_seq_num: Arc<atomic::AtomicUsize>)
+               -> Sender {
+        let seq_num = match fs::read_dir(data_dir)
+            .unwrap()
+            .map(|de| {
+                let d = de.unwrap();
+                d.path()
+            })
+            .max() {
             Some(queue_file) => {
                 let seq_file_path = queue_file.file_name().unwrap();
                 seq_file_path.to_str().unwrap().parse::<usize>().unwrap()
-            },
+            }
             None => 0,
         };
 
         let log = data_dir.join(format!("{}", seq_num));
         let snd_log = log.clone();
-        let fp = fs::OpenOptions::new().append(true).create(true).open(log).expect("SENDER NEW could not open file");
+        let fp = fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(log)
+            .expect("SENDER NEW could not open file");
         Sender {
             root: data_dir.to_path_buf(),
             path: snd_log,
@@ -211,7 +227,7 @@ impl Sender {
         // <= usize. That's very likely to hold true for machines--for
         // now?--that cernan will run on. However! Once the u32 atomics land in
         // stable we'll be in business.
-        let pyld_sz_bytes : [u8; 4] = u32tou8abe(t.len() as u32);
+        let pyld_sz_bytes: [u8; 4] = u32tou8abe(t.len() as u32);
         t.insert(0, pyld_sz_bytes[0]);
         t.insert(0, pyld_sz_bytes[1]);
         t.insert(0, pyld_sz_bytes[2]);
@@ -240,7 +256,10 @@ impl Sender {
                 self.path = self.root.join(format!("{}", self.seq_num));
                 match fs::OpenOptions::new().append(true).create(false).open(&self.path) {
                     Ok(fp) => self.fp = fp,
-                    Err(e) => { debug!("sender could not catch up with {}", e); continue }
+                    Err(e) => {
+                        debug!("sender could not catch up with {}", e);
+                        continue;
+                    }
                 }
                 self.bytes_written = 0;
             }
@@ -254,16 +273,21 @@ impl Sender {
                 permissions.set_readonly(true);
                 match fs::set_permissions(&self.path, permissions) {
                     Ok(()) => trace!("set path read-only"),
-                    Err(e) => match e.kind() {
-                        ErrorKind::NotFound => continue,
-                        _ => panic!("failed to set read-only : {:?}", e),
+                    Err(e) => {
+                        match e.kind() {
+                            ErrorKind::NotFound => continue,
+                            _ => panic!("failed to set read-only : {:?}", e),
+                        }
                     }
                 }
                 // open new fp
                 self.path = self.root.join(format!("{}", self.seq_num));
                 loop {
                     match fs::OpenOptions::new().append(true).create(true).open(&self.path) {
-                        Ok(fp) => { self.fp = fp; break; },
+                        Ok(fp) => {
+                            self.fp = fp;
+                            break;
+                        }
                         Err(_) => continue,
                     }
                 }
@@ -273,7 +297,10 @@ impl Sender {
             let ref mut fp = self.fp;
             match fp.write(&t[..]) {
                 Ok(_) => break,
-                Err(e) => { debug!("Write error: {}", e); continue; }
+                Err(e) => {
+                    debug!("Write error: {}", e);
+                    continue;
+                }
             }
         }
     }
@@ -286,14 +313,14 @@ mod test {
     extern crate rand;
 
     use super::*;
-    use metric::{Event,Metric,MetricKind,MetricSign};
+    use metric::{Event, Metric, MetricKind, MetricSign};
     use self::quickcheck::{QuickCheck, TestResult, Arbitrary, Gen};
-    use self::rand::{Rand,Rng};
+    use self::rand::{Rand, Rng};
     use string_cache::Atom;
 
     impl Rand for MetricSign {
         fn rand<R: Rng>(rng: &mut R) -> MetricSign {
-            let i : usize = rng.gen();
+            let i: usize = rng.gen();
             match i % 2 {
                 0 => MetricSign::Positive,
                 _ => MetricSign::Negative,
@@ -303,7 +330,7 @@ mod test {
 
     impl Rand for MetricKind {
         fn rand<R: Rng>(rng: &mut R) -> MetricKind {
-            let i : usize = rng.gen();
+            let i: usize = rng.gen();
             match i % 6 {
                 0 => MetricKind::Counter(rng.gen()),
                 1 => MetricKind::Gauge,
@@ -317,15 +344,15 @@ mod test {
 
     impl Rand for Event {
         fn rand<R: Rng>(rng: &mut R) -> Event {
-            let i : usize = rng.gen();
+            let i: usize = rng.gen();
             match i % 4 {
                 0 => Event::TimerFlush,
                 1 => Event::Snapshot,
                 _ => {
-                    let name : String = rng.gen_ascii_chars().take(10).collect();
-                    let val : f64 = rng.gen();
-                    let kind : MetricKind = rng.gen();
-                    let sign : Option<MetricSign> = rng.gen();
+                    let name: String = rng.gen_ascii_chars().take(10).collect();
+                    let val: f64 = rng.gen();
+                    let kind: MetricKind = rng.gen();
+                    let sign: Option<MetricSign> = rng.gen();
                     let m = Metric::new(Atom::from(name), val, kind, sign);
                     Event::Statsd(m)
                 }
@@ -334,7 +361,9 @@ mod test {
     }
 
     impl Arbitrary for Event {
-        fn arbitrary<G: Gen>(g: &mut G) -> Event { g.gen() }
+        fn arbitrary<G: Gen>(g: &mut G) -> Event {
+            g.gen()
+        }
     }
 
     #[test]
@@ -351,7 +380,8 @@ mod test {
     fn round_trip_order_preserved() {
         fn rnd_trip(max_bytes: usize, evs: Vec<Event>) -> TestResult {
             let dir = tempdir::TempDir::new("cernan").unwrap();
-            let (mut snd, mut rcv) = channel_with_max_bytes("round_trip_order_preserved", dir.path(), max_bytes);
+            let (mut snd, mut rcv) =
+                channel_with_max_bytes("round_trip_order_preserved", dir.path(), max_bytes);
 
             for ev in evs.clone() {
                 snd.send(&ev);
@@ -366,5 +396,28 @@ mod test {
             .tests(100)
             .max_tests(1000)
             .quickcheck(rnd_trip as fn(usize, Vec<Event>) -> TestResult);
+    }
+
+    #[test]
+    fn round_trip_order_preserved_small_max_bytes() {
+        fn rnd_trip(evs: Vec<Event>) -> TestResult {
+            let max_bytes: usize = 128;
+            let dir = tempdir::TempDir::new("cernan").unwrap();
+            let (mut snd, mut rcv) =
+                channel_with_max_bytes("small_max_bytes", dir.path(), max_bytes);
+
+            for ev in evs.clone() {
+                snd.send(&ev);
+            }
+
+            for ev in evs {
+                assert_eq!(Some(ev), rcv.next());
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(100)
+            .max_tests(1000)
+            .quickcheck(rnd_trip as fn(Vec<Event>) -> TestResult);
     }
 }

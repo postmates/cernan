@@ -56,9 +56,9 @@ fn main() {
         sends.push(wf_send);
         joins.push(thread::spawn(move || {
             cernan::sinks::wavefront::Wavefront::new(&cp_args.wavefront_host.unwrap(),
-                                      cp_args.wavefront_port.unwrap(),
-                                      wf_tags,
-                                      cp_args.qos.clone())
+                                                     cp_args.wavefront_port.unwrap(),
+                                                     wf_tags,
+                                                     cp_args.qos.clone())
                 .run(wf_recv);
         }));
     }
@@ -99,7 +99,7 @@ fn main() {
                 }));
             }
         }
-        None => ()
+        None => (),
     }
 
     joins.push(thread::spawn(move || {
