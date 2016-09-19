@@ -24,6 +24,8 @@ impl Buckets {
     /// # Examples
     ///
     /// ```
+    /// use cernan::buckets::Buckets;
+    ///
     /// let bucket = Buckets::new();
     /// assert_eq!(0, bucket.counters().len());
     /// ```
@@ -42,20 +44,19 @@ impl Buckets {
     /// # Examples
     ///
     /// ```
-    /// use buckets::Buckets;
-    /// use super::metric;
-    /// use std::str::FromStr;
+    /// extern crate cernan;
+    /// extern crate string_cache;
     ///
-    /// let metric = metric::Metric::FromStr("foo:1|c");
-    /// let mut bucket = Buckets::new();
-    /// let rname = Atom::from("foo");
+    /// let metric = cernan::metric::Metric::parse_statsd("foo:1|c").unwrap();
+    /// let mut buckets = cernan::buckets::Buckets::new();
+    /// let rname = string_cache::Atom::from("foo");
     ///
-    /// assert_eq!(None, buckets.counters.get_mut(&rname));
+    /// assert_eq!(true, buckets.counters().is_empty());
     ///
-    /// bucket.add(metric);
-    /// assert_eq!(Some(&mut 1.0), buckets.counters.get_mut(&rname));
+    /// buckets.add(&metric[0]);
+    /// assert_eq!(false, buckets.counters().is_empty());
     /// buckets.reset();
-    /// assert_eq!(Some(&mut 0.0), buckets.counters.get_mut(&rname));
+    /// assert_eq!(true, buckets.counters().is_empty());
     /// ```
     pub fn reset(&mut self) {
         self.counters.clear();
@@ -66,13 +67,11 @@ impl Buckets {
     ///
     /// # Examples
     /// ```
-    /// use buckets::Buckets;
-    /// use super::metric;
-    /// use std::str::FromStr;
+    /// extern crate cernan;
     ///
-    /// let metric = metric::Metric::FromStr("foo:1|c");
-    /// let mut bucket = Buckets::new();
-    /// bucket.add(metric);
+    /// let metric = cernan::metric::Metric::parse_statsd("foo:1|c").unwrap();
+    /// let mut bucket = cernan::buckets::Buckets::new();
+    /// bucket.add(&metric[0]);
     /// ```
     pub fn add(&mut self, value: &Metric) {
         let name = value.name.to_owned();
@@ -81,12 +80,14 @@ impl Buckets {
                 if !self.counters.contains_key(&name) {
                     let _ = self.counters.insert(value.name.to_owned(), 0.0);
                 };
-                let counter = self.counters.get_mut(&name).expect("shouldn't happen but did, counter");
+                let counter =
+                    self.counters.get_mut(&name).expect("shouldn't happen but did, counter");
                 *counter += value.value * (1.0 / rate);
             }
             MetricKind::DeltaGauge => {
                 if self.gauges.contains_key(&name) {
-                    let gauge = self.gauges.get_mut(&name).expect("shouldn't happen but did, gauge");
+                    let gauge =
+                        self.gauges.get_mut(&name).expect("shouldn't happen but did, gauge");
                     *gauge += value.value;
                 } else {
                     self.gauges.insert(name, value.value);
@@ -146,6 +147,11 @@ impl Buckets {
     }
 }
 
+impl Default for Buckets {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // Tests
 //
@@ -159,7 +165,10 @@ mod test {
     fn test_add_increments_total_messages() {
         let mut buckets = Buckets::new();
         // duff value to ensure it changes.
-        let metric = Metric::new(Atom::from("some.metric"), 1.0, MetricKind::Counter(1.0), None);
+        let metric = Metric::new(Atom::from("some.metric"),
+                                 1.0,
+                                 MetricKind::Counter(1.0),
+                                 None);
         buckets.add(&metric);
     }
 
@@ -206,14 +215,20 @@ mod test {
     #[test]
     fn test_add_counter_metric_sampled() {
         let mut buckets = Buckets::new();
-        let metric = Metric::new(Atom::from("some.metric"), 1.0, MetricKind::Counter(0.1), None);
+        let metric = Metric::new(Atom::from("some.metric"),
+                                 1.0,
+                                 MetricKind::Counter(0.1),
+                                 None);
 
         let rmname = Atom::from("some.metric");
 
         buckets.add(&metric);
         assert_eq!(Some(&mut 10.0), buckets.counters.get_mut(&rmname));
 
-        let metric_two = Metric::new(Atom::from("some.metric"), 1.0, MetricKind::Counter(0.5), None);
+        let metric_two = Metric::new(Atom::from("some.metric"),
+                                     1.0,
+                                     MetricKind::Counter(0.5),
+                                     None);
         buckets.add(&metric_two);
         assert_eq!(Some(&mut 12.0), buckets.counters.get_mut(&rmname));
     }
@@ -237,7 +252,10 @@ mod test {
         let rmname = Atom::from("some.metric");
         let metric = Metric::new(Atom::from("some.metric"), 100.0, MetricKind::Gauge, None);
         buckets.add(&metric);
-        let delta_metric = Metric::new(Atom::from("some.metric"), 11.5, MetricKind::Gauge, Some(MetricSign::Negative));
+        let delta_metric = Metric::new(Atom::from("some.metric"),
+                                       11.5,
+                                       MetricKind::Gauge,
+                                       Some(MetricSign::Negative));
         buckets.add(&delta_metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
@@ -252,7 +270,10 @@ mod test {
         let rmname = Atom::from("some.metric");
         let metric = Metric::new(Atom::from("some.metric"), 100.0, MetricKind::Gauge, None);
         buckets.add(&metric);
-        let delta_metric = Metric::new(Atom::from("some.metric"), 11.5, MetricKind::Gauge, Some(MetricSign::Negative));
+        let delta_metric = Metric::new(Atom::from("some.metric"),
+                                       11.5,
+                                       MetricKind::Gauge,
+                                       Some(MetricSign::Negative));
         buckets.add(&delta_metric);
         let reset_metric = Metric::new(Atom::from("some.metric"), 2007.3, MetricKind::Gauge, None);
         buckets.add(&reset_metric);

@@ -2,34 +2,31 @@ use sink::Sink;
 use buckets::Buckets;
 use metric::Metric;
 use chrono;
-use std::sync::Arc;
 
 pub struct Console {
     aggrs: Buckets,
 }
 
 impl Console {
-    /// Create a Console formatter that prints to stdout
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let cons = Console::new();
-    /// ```
     pub fn new() -> Console {
         Console { aggrs: Buckets::new() }
     }
 }
 
+impl Default for Console {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Print a single stats line.
-fn fmt_line(key: &str, value: &f64) {
+fn fmt_line(key: &str, value: f64) {
     println!("    {}: {}", key, value)
 }
 
 
 impl Sink for Console {
-    fn deliver(&mut self, point: Arc<Metric>) {
-        debug!("console deliver");
+    fn deliver(&mut self, point: Metric) {
         self.aggrs.add(&point);
     }
 
@@ -38,24 +35,23 @@ impl Sink for Console {
     }
 
     fn flush(&mut self) {
-        debug!("console flush start");
         let now = chrono::UTC::now();
         println!("Flushing metrics: {}", now.to_rfc3339());
 
         println!("  counters:");
         for (key, value) in self.aggrs.counters() {
-            fmt_line(key, &value);
+            fmt_line(key, *value);
         }
 
         println!("  gauges:");
         for (key, value) in self.aggrs.gauges() {
-            fmt_line(key, &value);
+            fmt_line(key, *value);
         }
 
         println!("  raws:");
         for (key, value) in self.aggrs.raws() {
             for m in value {
-                fmt_line(key, &m.value);
+                fmt_line(key, m.value);
             }
         }
 
@@ -86,6 +82,5 @@ impl Sink for Console {
                 println!("    {}: {} {}", key, stat, value.query(quant).unwrap().1);
             }
         }
-        debug!("console flush stop");
     }
 }

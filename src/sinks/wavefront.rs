@@ -5,7 +5,6 @@ use chrono;
 use metric::{Metric, MetricQOS};
 use buckets::Buckets;
 use sink::Sink;
-use std::sync::Arc;
 use dns_lookup;
 
 pub struct Wavefront {
@@ -18,13 +17,6 @@ pub struct Wavefront {
 }
 
 impl Wavefront {
-    /// Create a Wavefront formatter
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let wave = Wavefront::new(host, port, source);
-    /// ```
     pub fn new(host: &str, port: u16, tags: String, qos: MetricQOS) -> Wavefront {
         match dns_lookup::lookup_host(host) {
             Ok(mut lh) => {
@@ -56,7 +48,13 @@ impl Wavefront {
 
         if (self.tot_snapshots % self.qos.counter) == 0 {
             for (key, value) in self.aggrs.counters().iter() {
-                write!(stats, "{} {} {} {}\n", key, value / (self.qos.counter as f64), start, self.tags).unwrap();
+                write!(stats,
+                       "{} {} {} {}\n",
+                       key,
+                       value / (self.qos.counter as f64),
+                       start,
+                       self.tags)
+                    .unwrap();
             }
         }
 
@@ -143,8 +141,7 @@ impl Sink for Wavefront {
     fn snapshot(&mut self) {
         self.tot_snapshots = self.tot_snapshots.wrapping_add(1);
         let stats = self.format_stats(None);
-        if stats.len() > 0 {
-            debug!("wavefront - {}", stats);
+        if !stats.is_empty() {
             self.snapshots.push(stats);
             trace!("snapshots : {:?}", self.snapshots);
             self.aggrs.reset();
@@ -152,10 +149,9 @@ impl Sink for Wavefront {
     }
 
     fn flush(&mut self) {
-        if self.snapshots.len() > 0 {
+        if !self.snapshots.is_empty() {
             match TcpStream::connect(self.addr) {
                 Ok(mut stream) => {
-                    debug!("wavefront flush");
                     if self.snapshots
                         .iter()
                         .map(|s| stream.write(s.as_bytes()))
@@ -169,8 +165,7 @@ impl Sink for Wavefront {
         }
     }
 
-    fn deliver(&mut self, point: Arc<Metric>) {
-        debug!("wavefront deliver");
+    fn deliver(&mut self, point: Metric) {
         self.aggrs.add(&point);
     }
 }
@@ -180,7 +175,6 @@ mod test {
     use metric::{Metric, MetricKind, MetricQOS};
     use sink::Sink;
     use chrono::{UTC, TimeZone};
-    use std::sync::Arc;
     use string_cache::Atom;
     use super::*;
 
@@ -189,34 +183,34 @@ mod test {
         let qos = MetricQOS::default();
         let mut wavefront = Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos);
         let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12).timestamp();
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.counter"),
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                1.0,
+                                                Some(dt),
+                                                MetricKind::Counter(1.0)));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+                                                3.211,
+                                                Some(dt),
+                                                MetricKind::Gauge));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
+                                                12.101,
+                                                Some(dt),
+                                                MetricKind::Timer));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
+                                                1.101,
+                                                Some(dt),
+                                                MetricKind::Timer));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
+                                                3.101,
+                                                Some(dt),
+                                                MetricKind::Timer));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.raw"),
                                                          1.0,
                                                          Some(dt),
-                                                         MetricKind::Counter(1.0))));
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.gauge"),
-                                                         3.211,
-                                                         Some(dt),
-                                                         MetricKind::Gauge)));
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                         12.101,
-                                                         Some(dt),
-                                                         MetricKind::Timer)));
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                         1.101,
-                                                         Some(dt),
-                                                         MetricKind::Timer)));
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.timer"),
-                                                         3.101,
-                                                         Some(dt),
-                                                         MetricKind::Timer)));
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.raw"),
+                                                         MetricKind::Raw));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.raw"),
                                                          1.0,
                                                          Some(dt),
-                                                         MetricKind::Raw)));
-        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.raw"),
-                                                         1.0,
-                                                         Some(dt),
-                                                         MetricKind::Raw)));
+                                                         MetricKind::Raw));
         let result = wavefront.format_stats(Some(10101));
         let lines: Vec<&str> = result.lines().collect();
 
@@ -250,10 +244,10 @@ mod test {
 
         for i in 0..21 {
             let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, i, 0).timestamp();
-            wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("c"),
-                                                             1.0,
-                                                             Some(dt),
-                                                             MetricKind::Counter(1.0))));
+            wavefront.deliver(Metric::new_with_time(Atom::from("c"),
+                                                    1.0,
+                                                    Some(dt),
+                                                    MetricKind::Counter(1.0)));
             wavefront.snapshot();
         }
 

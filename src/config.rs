@@ -11,12 +11,13 @@ use std::io::Read;
 use std::fmt::Write;
 use std::str::FromStr;
 use metric::MetricQOS;
-use std::path::{Path,PathBuf};
+use std::path::{Path, PathBuf};
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 #[derive(Clone, Debug)]
 pub struct Args {
+    pub data_directory: PathBuf,
     pub statsd_port: u16,
     pub graphite_port: u16,
     pub flush_interval: u64,
@@ -130,6 +131,7 @@ pub fn parse_args() -> Args {
             let qos = MetricQOS::default();
 
             Args {
+                data_directory: Path::new("/tmp/cernan-data").to_path_buf(),
                 statsd_port: u16::from_str(args.value_of("statsd-port").unwrap())
                     .expect("statsd-port must be an integer"),
                 graphite_port: u16::from_str(args.value_of("graphite-port").unwrap())
@@ -157,7 +159,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         Some(tbl) => {
             let mut tags = String::new();
             let ttbl = tbl.as_table().unwrap();
-            for (k, v) in (*ttbl).iter() {
+            for (k, v) in &(*ttbl) {
                 write!(tags, "{}={},", k, v.as_str().unwrap()).unwrap();
             }
             tags.pop();
@@ -170,7 +172,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         Some(tbl) => {
             let ttbl = tbl.as_table().unwrap();
             let mut hm = MetricQOS::default();
-            for (k, v) in (*ttbl).iter() {
+            for (k, v) in &(*ttbl) {
                 let rate = v.as_integer().expect("value must be an integer") as u64;
                 match k.as_ref() {
                     "gauge" => hm.gauge = rate,
@@ -205,28 +207,31 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     };
 
     let mut paths = Vec::new();
-    match value.lookup("file") {
-        Some(array) => {
-            for tbl in array.as_slice().unwrap() {
-                match tbl.lookup("path") {
-                    Some(pth) => {
-                        let path = Path::new(pth.as_str().unwrap());
-                        if !path.exists() {
-                            panic!("{} not found on disk!", path.to_str().unwrap());
-                        }
-                        if !path.is_file() {
-                            panic!("{} is found on disk but must be a file!", path.to_str().unwrap());
-                        }
-                        paths.push(path.to_path_buf())
+    if let Some(array) = value.lookup("file") {
+        for tbl in array.as_slice().unwrap() {
+            match tbl.lookup("path") {
+                Some(pth) => {
+                    let path = Path::new(pth.as_str().unwrap());
+                    if !path.exists() {
+                        panic!("{} not found on disk!", path.to_str().unwrap());
                     }
-                    None => continue
+                    if !path.is_file() {
+                        panic!("{} is found on disk but must be a file!",
+                               path.to_str().unwrap());
+                    }
+                    paths.push(path.to_path_buf())
                 }
+                None => continue,
             }
         }
-        None => ()
     }
 
     Args {
+        data_directory: value.lookup("data-directory")
+            .unwrap_or(&Value::String("/tmp/cernan-data".to_string()))
+            .as_str()
+            .map(|s| Path::new(s).to_path_buf())
+            .unwrap(),
         statsd_port: value.lookup("statsd-port")
             .unwrap_or(&Value::Integer(8125))
             .as_integer()
@@ -280,7 +285,8 @@ mod test {
 [wavefront]
 port = 3131
 host = "example.com"
-"#.to_string();
+"#
+            .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -300,7 +306,8 @@ host = "example.com"
     fn config_file_console() {
         let config = r#"
 [console]
-"#.to_string();
+"#
+            .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -323,7 +330,8 @@ host = "example.com"
 source = "cernan"
 purpose = "serious_business"
 mission = "from_gad"
-"#.to_string();
+"#
+            .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -334,7 +342,8 @@ mission = "from_gad"
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, "mission=from_gad,purpose=serious_business,source=cernan");
+        assert_eq!(args.tags,
+                   "mission=from_gad,purpose=serious_business,source=cernan");
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -348,7 +357,8 @@ counter = 12
 timer = 605
 histogram = 609
 raw = 42
-"#.to_string();
+"#
+            .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -360,13 +370,14 @@ raw = 42
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, "");
-        assert_eq!(args.qos, MetricQOS {
-            gauge: 110,
-            counter: 12,
-            timer: 605,
-            histogram: 609,
-            raw: 42,
-        });
+        assert_eq!(args.qos,
+                   MetricQOS {
+                       gauge: 110,
+                       counter: 12,
+                       timer: 605,
+                       histogram: 609,
+                       raw: 42,
+                   });
         assert_eq!(args.verbose, 4);
     }
 
@@ -396,7 +407,8 @@ counter = 12
 timer = 605
 histogram = 609
 raw = 42
-"#.to_string();
+"#
+            .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -407,14 +419,16 @@ raw = 42
         assert_eq!(args.wavefront, true);
         assert_eq!(args.wavefront_host, Some("example.com".to_string()));
         assert_eq!(args.wavefront_port, Some(3131));
-        assert_eq!(args.tags, "mission=from_gad,purpose=serious_business,source=cernan");
-        assert_eq!(args.qos, MetricQOS {
-            gauge: 110,
-            counter: 12,
-            timer: 605,
-            histogram: 609,
-            raw: 42,
-        });
+        assert_eq!(args.tags,
+                   "mission=from_gad,purpose=serious_business,source=cernan");
+        assert_eq!(args.qos,
+                   MetricQOS {
+                       gauge: 110,
+                       counter: 12,
+                       timer: 605,
+                       histogram: 609,
+                       raw: 42,
+                   });
         assert_eq!(args.verbose, 4);
     }
 }

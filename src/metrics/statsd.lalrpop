@@ -1,6 +1,5 @@
 use std::str::FromStr;
 use metric::{MetricKind, MetricSign, Metric};
-use std::sync::Arc;
 use string_cache::Atom;
 
 grammar;
@@ -23,9 +22,9 @@ Sign: Option<MetricSign> = {
 
 Num: f64 = <s:r"[0-9]+\.?[0-9]*"> => f64::from_str(s).unwrap();
 
-MetricLine: Arc<Metric> = {
-    <name:MetricName> ":" <sign: Sign> <val:Num> "|" <k:Kind> => Arc::new(Metric::new(name, val, k, sign)),
-    <name:MetricName> ":" <val:Num> "|" <k:Kind> => Arc::new(Metric::new(name, val, k, None))
+MetricLine: Metric = {
+    <name:MetricName> ":" <sign: Sign> <val:Num> "|" <k:Kind> => Metric::new(name, val, k, sign),
+    <name:MetricName> ":" <val:Num> "|" <k:Kind> => Metric::new(name, val, k, None)
 };
 
-pub MetricPayload: Vec<Arc<Metric>> = { (<MetricLine>)+ };
+pub MetricPayload: Vec<Metric> = { (<MetricLine>)+ };

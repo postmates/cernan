@@ -1,7 +1,8 @@
 use metrics::*;
 use chrono::UTC;
-use std::sync::Arc;
 use string_cache::Atom;
+
+include!(concat!(env!("OUT_DIR"), "/serde_types.rs"));
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct MetricQOS {
@@ -24,28 +25,10 @@ impl MetricQOS {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
-pub enum MetricKind {
-    Counter(f64),
-    Gauge,
-    DeltaGauge,
-    Timer,
-    Histogram,
-    Raw,
-}
-
 #[derive(PartialEq, Debug)]
 pub enum MetricSign {
     Positive,
     Negative,
-}
-
-#[derive(PartialEq, Debug, Clone)]
-pub struct Metric {
-    pub kind: MetricKind,
-    pub name: Atom,
-    pub value: f64,
-    pub time: i64,
 }
 
 impl Metric {
@@ -61,20 +44,24 @@ impl Metric {
     /// Create a new metric
     ///
     /// Uses the Into trait to allow both str and String types.
-    pub fn new(name: Atom, raw_value: f64, raw_kind: MetricKind, sign: Option<MetricSign>) -> Metric {
+    pub fn new(name: Atom,
+               raw_value: f64,
+               raw_kind: MetricKind,
+               sign: Option<MetricSign>)
+               -> Metric {
         let kind = match raw_kind {
             MetricKind::Gauge => {
                 match sign {
-                    Some(MetricSign::Positive) => MetricKind::DeltaGauge,
+                    Some(MetricSign::Positive) |
                     Some(MetricSign::Negative) => MetricKind::DeltaGauge,
                     None => raw_kind,
                 }
-            },
+            }
             _ => raw_kind,
         };
 
         let value = match sign {
-            None => raw_value,
+            None |
             Some(MetricSign::Positive) => raw_value,
             Some(MetricSign::Negative) => -1.0 * raw_value,
         };
@@ -104,11 +91,11 @@ impl Metric {
     ///
     /// Multiple metrics can be sent in a single UDP packet
     /// separated by newlines.
-    pub fn parse_statsd(source: &str) -> Option<Vec<Arc<Metric>>> {
+    pub fn parse_statsd(source: &str) -> Option<Vec<Metric>> {
         statsd::parse_MetricPayload(source).ok()
     }
 
-    pub fn parse_graphite(source: &str) -> Option<Vec<Arc<Metric>>> {
+    pub fn parse_graphite(source: &str) -> Option<Vec<Metric>> {
         graphite::parse_MetricPayload(source).ok()
     }
 }
@@ -161,7 +148,8 @@ mod tests {
 
     #[test]
     fn test_parse_metric_via_api() {
-        let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@2\nsxth:-6.6|g\nsvth:+7.77|g";
+        let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@2\nsxth:-6.\
+                    6|g\nsvth:+7.77|g";
         let prs = Metric::parse_statsd(pyld);
 
         assert!(prs.is_some());
