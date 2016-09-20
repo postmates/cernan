@@ -128,6 +128,13 @@ impl Wavefront {
             }
         }
 
+        // Raw points have no QOS as we can make no valid aggregation of them.
+        for (key, value) in self.aggrs.raws().iter() {
+            for m in value {
+                write!(stats, "{} {} {} {}\n", key, m.value, start, self.tags).unwrap();
+            }
+        }
+
         stats
     }
 }
@@ -202,11 +209,19 @@ mod test {
                                                          3.101,
                                                          Some(dt),
                                                          MetricKind::Timer)));
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.raw"),
+                                                         1.0,
+                                                         Some(dt),
+                                                         MetricKind::Raw)));
+        wavefront.deliver(Arc::new(Metric::new_with_time(Atom::from("test.raw"),
+                                                         1.0,
+                                                         Some(dt),
+                                                         MetricKind::Raw)));
         let result = wavefront.format_stats(Some(10101));
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(16, lines.len());
+        assert_eq!(18, lines.len());
         assert_eq!(lines[0], "test.counter 1 10101 source=test-src");
         assert_eq!(lines[1], "test.gauge 3.211 10101 source=test-src");
         assert_eq!(lines[2], "test.timer.min 1.101 10101 source=test-src");
@@ -223,6 +238,8 @@ mod test {
         assert_eq!(lines[13], "test.timer.99 12.101 10101 source=test-src");
         assert_eq!(lines[14], "test.timer.999 12.101 10101 source=test-src");
         assert_eq!(lines[15], "test.timer.count 3 10101 source=test-src");
+        assert_eq!(lines[16], "test.raw 1 10101 source=test-src");
+        assert_eq!(lines[17], "test.raw 1 10101 source=test-src");
     }
 
     #[test]

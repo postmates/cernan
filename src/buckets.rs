@@ -12,7 +12,7 @@ use string_cache::Atom;
 pub struct Buckets {
     counters: LruCache<Atom, f64>,
     gauges: LruCache<Atom, f64>,
-    raws: LruCache<Atom, f64>,
+    raws: LruCache<Atom, Vec<Metric>>,
     timers: LruCache<Atom, CKMS<f64>>,
     histograms: LruCache<Atom, CKMS<f64>>,
 }
@@ -96,7 +96,11 @@ impl Buckets {
                 self.gauges.insert(name, value.value);
             }
             MetricKind::Raw => {
-                self.raws.insert(name, value.value);
+                if !self.raws.contains_key(&name) {
+                    let _ = self.raws.insert(value.name.to_owned(), Default::default());
+                };
+                let raw = self.raws.get_mut(&name).expect("shouldn't happen but did, raw");
+                (*raw).push((*value).clone());
             }
             MetricKind::Histogram => {
                 if !self.histograms.contains_key(&name) {
@@ -124,6 +128,11 @@ impl Buckets {
     /// Get the gauges as a borrowed reference.
     pub fn gauges(&self) -> &LruCache<Atom, f64> {
         &self.gauges
+    }
+
+    /// Get the gauges as a borrowed reference.
+    pub fn raws(&self) -> &LruCache<Atom, Vec<Metric>> {
+        &self.raws
     }
 
     /// Get the histograms as a borrowed reference.

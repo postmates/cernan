@@ -52,6 +52,13 @@ impl Sink for Console {
             fmt_line(key, &value);
         }
 
+        println!("  raws:");
+        for (key, value) in self.aggrs.raws() {
+            for m in value {
+                fmt_line(key, &m.value);
+            }
+        }
+
         println!("  histograms:");
         for (key, value) in self.aggrs.histograms() {
             for tup in &[("min", 0.0),
