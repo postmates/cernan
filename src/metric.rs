@@ -13,8 +13,8 @@ pub struct MetricQOS {
     pub raw: u64,
 }
 
-impl MetricQOS {
-    pub fn default() -> MetricQOS {
+impl Default for MetricQOS {
+    fn default() -> MetricQOS {
         MetricQOS {
             counter: 1,
             gauge: 1,
@@ -102,10 +102,89 @@ impl Metric {
 
 #[cfg(test)]
 mod tests {
-    use metric::{Metric, MetricKind};
+    extern crate rand;
+    extern crate quickcheck;
+
+    use metric::{Metric, MetricKind, MetricSign, MetricQOS, Event};
+    use self::quickcheck::{Arbitrary,Gen};
     use string_cache::Atom;
     use chrono::{UTC, TimeZone};
-    //    use test::Bencher; // see bench_prs
+    use self::rand::{Rand, Rng};
+
+    impl Rand for MetricSign {
+        fn rand<R: Rng>(rng: &mut R) -> MetricSign {
+            let i: usize = rng.gen();
+            match i % 2 {
+                0 => MetricSign::Positive,
+                _ => MetricSign::Negative,
+            }
+        }
+    }
+
+    impl Rand for MetricKind {
+        fn rand<R: Rng>(rng: &mut R) -> MetricKind {
+            let i: usize = rng.gen();
+            match i % 6 {
+                0 => MetricKind::Counter(rng.gen()),
+                1 => MetricKind::Gauge,
+                2 => MetricKind::DeltaGauge,
+                3 => MetricKind::Timer,
+                4 => MetricKind::Histogram,
+                _ => MetricKind::Raw,
+            }
+        }
+    }
+
+    impl Rand for Metric {
+        fn rand<R: Rng>(rng: &mut R) -> Metric {
+            let name: String = rng.gen_ascii_chars().take(10).collect();
+            let val: f64 = rng.gen();
+            let kind: MetricKind = rng.gen();
+            let sign: Option<MetricSign> = rng.gen();
+            Metric::new(Atom::from(name), val, kind, sign)
+        }
+    }
+
+    impl Rand for MetricQOS {
+        fn rand<R: Rng>(rng: &mut R) -> MetricQOS {
+            MetricQOS {
+                counter: rng.gen(),
+                gauge: rng.gen(),
+                timer: rng.gen(),
+                histogram: rng.gen(),
+                raw: rng.gen(),
+            }
+        }
+    }
+
+    impl Rand for Event {
+        fn rand<R: Rng>(rng: &mut R) -> Event {
+            let i: usize = rng.gen();
+            match i % 4 {
+                0 => Event::TimerFlush,
+                1 => Event::Snapshot,
+                _ => Event::Statsd(rng.gen()),
+            }
+        }
+    }
+
+    impl Arbitrary for MetricQOS {
+        fn arbitrary<G: Gen>(g: &mut G) -> MetricQOS {
+            g.gen()
+        }
+    }
+
+    impl Arbitrary for Metric {
+        fn arbitrary<G: Gen>(g: &mut G) -> Metric {
+            g.gen()
+        }
+    }
+
+    impl Arbitrary for Event {
+        fn arbitrary<G: Gen>(g: &mut G) -> Event {
+            g.gen()
+        }
+    }
 
     #[test]
     fn test_parse_graphite() {

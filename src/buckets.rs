@@ -3,18 +3,45 @@
 //! Each bucket contains a set of hashmaps containing
 //! each set of metrics received by clients.
 
-use super::metric::{Metric, MetricKind};
+use super::metric::{Metric, MetricKind, MetricQOS};
 use quantiles::CKMS;
 use lru_cache::LruCache;
 use string_cache::Atom;
 
 /// Buckets stores all metrics until they are flushed.
 pub struct Buckets {
+    qos: MetricQOS,
+
     counters: LruCache<Atom, f64>,
     gauges: LruCache<Atom, f64>,
     raws: LruCache<Atom, Vec<Metric>>,
     timers: LruCache<Atom, CKMS<f64>>,
     histograms: LruCache<Atom, CKMS<f64>>,
+}
+
+impl Default for Buckets {
+    /// Create a default Buckets
+    ///
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::buckets::Buckets;
+    ///
+    /// let bucket = Buckets::default();
+    /// assert_eq!(0, bucket.counters().len());
+    /// ```
+    fn default() -> Buckets {
+        Buckets {
+            qos: MetricQOS::default(),
+
+            counters: LruCache::new(10000),
+            gauges: LruCache::new(10000),
+            raws: LruCache::new(10000),
+            timers: LruCache::new(10000),
+            histograms: LruCache::new(10000),
+        }
+    }
 }
 
 impl Buckets {
@@ -25,18 +52,15 @@ impl Buckets {
     ///
     /// ```
     /// use cernan::buckets::Buckets;
+    /// use cernan::metric::MetricQOS;
     ///
-    /// let bucket = Buckets::new();
+    /// let bucket = Buckets::new(MetricQOS::default());
     /// assert_eq!(0, bucket.counters().len());
     /// ```
-    pub fn new() -> Buckets {
-        Buckets {
-            counters: LruCache::new(10000),
-            gauges: LruCache::new(10000),
-            raws: LruCache::new(10000),
-            timers: LruCache::new(10000),
-            histograms: LruCache::new(10000),
-        }
+    pub fn new(qos: MetricQOS) -> Buckets {
+        let mut b = Buckets::default();
+        b.qos = qos;
+        b
     }
 
     /// Resets appropriate aggregates
@@ -48,7 +72,7 @@ impl Buckets {
     /// extern crate string_cache;
     ///
     /// let metric = cernan::metric::Metric::parse_statsd("foo:1|c").unwrap();
-    /// let mut buckets = cernan::buckets::Buckets::new();
+    /// let mut buckets = cernan::buckets::Buckets::default();
     /// let rname = string_cache::Atom::from("foo");
     ///
     /// assert_eq!(true, buckets.counters().is_empty());
@@ -70,7 +94,7 @@ impl Buckets {
     /// extern crate cernan;
     ///
     /// let metric = cernan::metric::Metric::parse_statsd("foo:1|c").unwrap();
-    /// let mut bucket = cernan::buckets::Buckets::new();
+    /// let mut bucket = cernan::buckets::Buckets::default();
     /// bucket.add(&metric[0]);
     /// ```
     pub fn add(&mut self, value: &Metric) {
@@ -147,23 +171,21 @@ impl Buckets {
     }
 }
 
-impl Default for Buckets {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 // Tests
 //
 #[cfg(test)]
 mod test {
+    extern crate quickcheck;
+
     use super::*;
-    use metric::{Metric, MetricKind, MetricSign};
+    use self::quickcheck::{TestResult,QuickCheck};
+    use metric::{Metric, MetricKind, MetricSign, MetricQOS};
     use string_cache::Atom;
+    use std::collections::{HashSet,HashMap};
 
     #[test]
     fn test_add_increments_total_messages() {
-        let mut buckets = Buckets::new();
+        let mut buckets = Buckets::default();
         // duff value to ensure it changes.
         let metric = Metric::new(Atom::from("some.metric"),
                                  1.0,
@@ -174,7 +196,7 @@ mod test {
 
     #[test]
     fn test_add_counter_metric() {
-        let mut buckets = Buckets::new();
+        let mut buckets = Buckets::default();
         let mname = Atom::from("some.metric");
         let metric = Metric::new(mname, 1.0, MetricKind::Counter(1.0), None);
         buckets.add(&metric);
@@ -193,7 +215,7 @@ mod test {
 
     #[test]
     fn test_add_counter_metric_reset() {
-        let mut buckets = Buckets::new();
+        let mut buckets = Buckets::default();
         let mname = Atom::from("some.metric");
         let metric = Metric::new(mname, 1.0, MetricKind::Counter(1.0), None);
         buckets.add(&metric);
@@ -214,7 +236,7 @@ mod test {
 
     #[test]
     fn test_add_counter_metric_sampled() {
-        let mut buckets = Buckets::new();
+        let mut buckets = Buckets::default();
         let metric = Metric::new(Atom::from("some.metric"),
                                  1.0,
                                  MetricKind::Counter(0.1),
@@ -235,7 +257,7 @@ mod test {
 
     #[test]
     fn test_add_gauge_metric() {
-        let mut buckets = Buckets::new();
+        let mut buckets = Buckets::default();
         let rmname = Atom::from("some.metric");
         let metric = Metric::new(Atom::from("some.metric"), 11.5, MetricKind::Gauge, None);
         buckets.add(&metric);
@@ -248,7 +270,7 @@ mod test {
 
     #[test]
     fn test_add_delta_gauge_metric() {
-        let mut buckets = Buckets::new();
+        let mut buckets = Buckets::default();
         let rmname = Atom::from("some.metric");
         let metric = Metric::new(Atom::from("some.metric"), 100.0, MetricKind::Gauge, None);
         buckets.add(&metric);
@@ -266,7 +288,7 @@ mod test {
 
     #[test]
     fn test_add_delta_gauge_metric_reset() {
-        let mut buckets = Buckets::new();
+        let mut buckets = Buckets::default();
         let rmname = Atom::from("some.metric");
         let metric = Metric::new(Atom::from("some.metric"), 100.0, MetricKind::Gauge, None);
         buckets.add(&metric);
@@ -286,7 +308,7 @@ mod test {
 
     #[test]
     fn test_add_timer_metric() {
-        let mut buckets = Buckets::new();
+        let mut buckets = Buckets::default();
         let rmname = Atom::from("some.metric");
         let metric = Metric::new(Atom::from("some.metric"), 11.5, MetricKind::Timer, None);
         buckets.add(&metric);
@@ -310,4 +332,185 @@ mod test {
         // assert_eq!(Some(&mut vec![11.5, 99.5]), buckets.timers.get_mut("some.metric"));
         // assert_eq!(Some(&mut vec![811.5]), buckets.timers.get_mut("other.metric"));
     }
+
+    #[test]
+    fn unique_names_preserved_counters() {
+        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::new(qos);
+
+            for m in ms.clone() {
+                bucket.add(&m);
+            }
+
+            let cnts : HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+                match m.kind {
+                    MetricKind::Counter(_) => { acc.insert(m.name.clone()); acc }
+                    _ => acc
+                }
+            });
+            let b_cnts : HashSet<Atom> = bucket.counters().iter().fold(HashSet::default(), |mut acc, (k, _)| {
+                acc.insert(k.clone()); acc
+            });
+            assert_eq!(cnts, b_cnts);
+
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(100)
+            .max_tests(1000)
+            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+    }
+
+    #[test]
+    fn unique_names_preserved_gauges() {
+        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::new(qos);
+
+            for m in ms.clone() {
+                bucket.add(&m);
+            }
+
+            let gauges : HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+                match m.kind {
+                    MetricKind::Gauge | MetricKind::DeltaGauge => { acc.insert(m.name.clone()); acc }
+                    _ => acc
+                }
+            });
+            let b_gauges : HashSet<Atom> = bucket.gauges().iter().fold(HashSet::default(), |mut acc, (k, _)| {
+                acc.insert(k.clone()); acc
+            });
+            assert_eq!(gauges, b_gauges);
+
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(100)
+            .max_tests(1000)
+            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+    }
+
+    #[test]
+    fn unique_names_preserved_histograms() {
+        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::new(qos);
+
+            for m in ms.clone() {
+                bucket.add(&m);
+            }
+
+            let hist : HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+                match m.kind {
+                    MetricKind::Histogram => { acc.insert(m.name.clone()); acc }
+                    _ => acc
+                }
+            });
+            let b_hist : HashSet<Atom> = bucket.histograms().iter().fold(HashSet::default(), |mut acc, (k, _)| {
+                acc.insert(k.clone()); acc
+            });
+            assert_eq!(hist, b_hist);
+
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(100)
+            .max_tests(1000)
+            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+    }
+
+    #[test]
+    fn unique_names_preserved_timers() {
+        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::new(qos);
+
+            for m in ms.clone() {
+                bucket.add(&m);
+            }
+
+            let tm : HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+                match m.kind {
+                    MetricKind::Timer => { acc.insert(m.name.clone()); acc }
+                    _ => acc
+                }
+            });
+            let b_tm : HashSet<Atom> = bucket.timers().iter().fold(HashSet::default(), |mut acc, (k, _)| {
+                acc.insert(k.clone()); acc
+            });
+            assert_eq!(tm, b_tm);
+
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(100)
+            .max_tests(1000)
+            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+    }
+
+    #[test]
+    fn test_counter_summations() {
+        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::new(qos);
+
+            for m in ms.clone() {
+                bucket.add(&m);
+            }
+
+            let mut cnts : HashMap<Atom, f64> = HashMap::default();
+            for m in ms.iter().filter(|m| match m.kind {
+                MetricKind::Counter(_) => true,
+                _ => false
+            }) {
+                let c = cnts.entry(m.name.clone()).or_insert(0.0);
+                match m.kind {
+                    MetricKind::Counter(rate) => *c += m.value * (1.0 / rate),
+                    _ => unreachable!(),
+                }
+            }
+
+            assert_eq!(bucket.counters().len(), cnts.len());
+            for (k,v) in bucket.counters().iter() {
+                assert_eq!(cnts.get(k).unwrap(), v);
+            }
+
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(10000)
+            .max_tests(100000)
+            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+    }
+
+    #[test]
+    fn test_gauge_behaviour() {
+        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::new(qos);
+
+            for m in ms.clone() {
+                bucket.add(&m);
+            }
+
+            let mut cnts : HashMap<Atom, f64> = HashMap::default();
+            for m in ms {
+                match m.kind {
+                    MetricKind::Gauge => { cnts.insert(m.name.clone(), m.value); () },
+                    MetricKind::DeltaGauge => {
+                        let c = cnts.entry(m.name.clone()).or_insert(0.0);
+                        *c += m.value
+                    },
+                    _ => continue,
+                }
+            }
+
+            assert_eq!(bucket.gauges().len(), cnts.len());
+            for (k,v) in bucket.gauges().iter() {
+                assert_eq!(cnts.get(k).unwrap(), v);
+            }
+
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(10000)
+            .max_tests(100000)
+            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+    }
+
 }

@@ -25,7 +25,7 @@ impl Wavefront {
                 Wavefront {
                     addr: addr,
                     tags: tags,
-                    aggrs: Buckets::new(),
+                    aggrs: Buckets::default(),
                     qos: qos,
                     snapshots: Vec::new(),
                     tot_snapshots: 0,

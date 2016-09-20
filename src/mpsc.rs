@@ -310,61 +310,10 @@ impl Sender {
 mod test {
     extern crate tempdir;
     extern crate quickcheck;
-    extern crate rand;
 
     use super::*;
-    use metric::{Event, Metric, MetricKind, MetricSign};
-    use self::quickcheck::{QuickCheck, TestResult, Arbitrary, Gen};
-    use self::rand::{Rand, Rng};
-    use string_cache::Atom;
-
-    impl Rand for MetricSign {
-        fn rand<R: Rng>(rng: &mut R) -> MetricSign {
-            let i: usize = rng.gen();
-            match i % 2 {
-                0 => MetricSign::Positive,
-                _ => MetricSign::Negative,
-            }
-        }
-    }
-
-    impl Rand for MetricKind {
-        fn rand<R: Rng>(rng: &mut R) -> MetricKind {
-            let i: usize = rng.gen();
-            match i % 6 {
-                0 => MetricKind::Counter(rng.gen()),
-                1 => MetricKind::Gauge,
-                2 => MetricKind::DeltaGauge,
-                3 => MetricKind::Timer,
-                4 => MetricKind::Histogram,
-                _ => MetricKind::Raw,
-            }
-        }
-    }
-
-    impl Rand for Event {
-        fn rand<R: Rng>(rng: &mut R) -> Event {
-            let i: usize = rng.gen();
-            match i % 4 {
-                0 => Event::TimerFlush,
-                1 => Event::Snapshot,
-                _ => {
-                    let name: String = rng.gen_ascii_chars().take(10).collect();
-                    let val: f64 = rng.gen();
-                    let kind: MetricKind = rng.gen();
-                    let sign: Option<MetricSign> = rng.gen();
-                    let m = Metric::new(Atom::from(name), val, kind, sign);
-                    Event::Statsd(m)
-                }
-            }
-        }
-    }
-
-    impl Arbitrary for Event {
-        fn arbitrary<G: Gen>(g: &mut G) -> Event {
-            g.gen()
-        }
-    }
+    use metric::Event;
+    use self::quickcheck::{QuickCheck, TestResult};
 
     #[test]
     fn one_item_round_trip() {

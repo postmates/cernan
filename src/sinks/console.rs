@@ -9,7 +9,7 @@ pub struct Console {
 
 impl Console {
     pub fn new() -> Console {
-        Console { aggrs: Buckets::new() }
+        Console { aggrs: Buckets::default() }
     }
 }
 
