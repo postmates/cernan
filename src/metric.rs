@@ -24,7 +24,7 @@ impl MetricQOS {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum MetricKind {
     Counter(f64),
     Gauge,
@@ -40,7 +40,7 @@ pub enum MetricSign {
     Negative,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Metric {
     pub kind: MetricKind,
     pub name: Atom,
