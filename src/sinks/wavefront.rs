@@ -49,13 +49,7 @@ impl Wavefront {
         for (key, value) in self.aggrs.counters().iter() {
             for m in value {
                 if (m.time - counter_last_sample) >= (self.qos.counter as i64) {
-                    write!(stats,
-                           "{} {} {} {}\n",
-                           key,
-                           m.value,
-                           m.time,
-                           self.tags)
-                        .unwrap();
+                    write!(stats, "{} {} {} {}\n", key, m.value, m.time, self.tags).unwrap();
                     counter_last_sample = m.time;
                 }
             }
@@ -194,7 +188,7 @@ mod test {
         let lines_0: Vec<&str> = result_0.lines().collect();
         println!("{:?}", lines_0);
         assert_eq!(14, lines_0.len());
-	assert_eq!(lines_0[0], "test.histogram.min 1 645185471 source=test-src");
+        assert_eq!(lines_0[0], "test.histogram.min 1 645185471 source=test-src");
         assert_eq!(lines_0[1], "test.histogram.max 1 645185471 source=test-src");
         assert_eq!(lines_0[2], "test.histogram.2 1 645185471 source=test-src");
         assert_eq!(lines_0[3], "test.histogram.9 1 645185471 source=test-src");
@@ -206,8 +200,10 @@ mod test {
         assert_eq!(lines_0[9], "test.histogram.95 1 645185471 source=test-src");
         assert_eq!(lines_0[10], "test.histogram.98 1 645185471 source=test-src");
         assert_eq!(lines_0[11], "test.histogram.99 1 645185471 source=test-src");
-        assert_eq!(lines_0[12], "test.histogram.999 1 645185471 source=test-src");
-        assert_eq!(lines_0[13], "test.histogram.count 1 645185471 source=test-src");
+        assert_eq!(lines_0[12],
+                   "test.histogram.999 1 645185471 source=test-src");
+        assert_eq!(lines_0[13],
+                   "test.histogram.count 1 645185471 source=test-src");
 
         // time dt_1
         let result_1 = wavefront.format_stats(Some(dt_1));
@@ -220,7 +216,7 @@ mod test {
         let lines_2: Vec<&str> = result_2.lines().collect();
         println!("{:?}", lines_2);
         assert_eq!(14, lines_2.len());
-	assert_eq!(lines_2[0], "test.histogram.min 1 645185473 source=test-src");
+        assert_eq!(lines_2[0], "test.histogram.min 1 645185473 source=test-src");
         assert_eq!(lines_2[1], "test.histogram.max 1 645185473 source=test-src");
         assert_eq!(lines_2[2], "test.histogram.2 1 645185473 source=test-src");
         assert_eq!(lines_2[3], "test.histogram.9 1 645185473 source=test-src");
@@ -232,8 +228,10 @@ mod test {
         assert_eq!(lines_2[9], "test.histogram.95 1 645185473 source=test-src");
         assert_eq!(lines_2[10], "test.histogram.98 1 645185473 source=test-src");
         assert_eq!(lines_2[11], "test.histogram.99 1 645185473 source=test-src");
-        assert_eq!(lines_2[12], "test.histogram.999 1 645185473 source=test-src");
-        assert_eq!(lines_2[13], "test.histogram.count 1 645185473 source=test-src");
+        assert_eq!(lines_2[12],
+                   "test.histogram.999 1 645185473 source=test-src");
+        assert_eq!(lines_2[13],
+                   "test.histogram.count 1 645185473 source=test-src");
     }
 
     #[test]
@@ -257,7 +255,7 @@ mod test {
         let lines_0: Vec<&str> = result_0.lines().collect();
         println!("{:?}", lines_0);
         assert_eq!(14, lines_0.len());
-	assert_eq!(lines_0[0], "test.timer.min 1 645185471 source=test-src");
+        assert_eq!(lines_0[0], "test.timer.min 1 645185471 source=test-src");
         assert_eq!(lines_0[1], "test.timer.max 1 645185471 source=test-src");
         assert_eq!(lines_0[2], "test.timer.2 1 645185471 source=test-src");
         assert_eq!(lines_0[3], "test.timer.9 1 645185471 source=test-src");
@@ -283,7 +281,7 @@ mod test {
         let lines_2: Vec<&str> = result_2.lines().collect();
         println!("{:?}", lines_2);
         assert_eq!(14, lines_2.len());
-	assert_eq!(lines_2[0], "test.timer.min 1 645185473 source=test-src");
+        assert_eq!(lines_2[0], "test.timer.min 1 645185473 source=test-src");
         assert_eq!(lines_2[1], "test.timer.max 1 645185473 source=test-src");
         assert_eq!(lines_2[2], "test.timer.2 1 645185473 source=test-src");
         assert_eq!(lines_2[3], "test.timer.9 1 645185473 source=test-src");
@@ -376,27 +374,33 @@ mod test {
         wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
                                                 3.211,
                                                 Some(dt_0),
-                                                MetricKind::Gauge, None));
+                                                MetricKind::Gauge,
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
                                                 12.101,
                                                 Some(dt_0),
-                                                MetricKind::Timer, None));
+                                                MetricKind::Timer,
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
                                                 1.101,
                                                 Some(dt_0),
-                                                MetricKind::Timer, None));
+                                                MetricKind::Timer,
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
                                                 3.101,
                                                 Some(dt_0),
-                                                MetricKind::Timer, None));
+                                                MetricKind::Timer,
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.raw"),
-                                                         1.0,
-                                                         Some(dt_0),
-                                                         MetricKind::Raw, None));
+                                                1.0,
+                                                Some(dt_0),
+                                                MetricKind::Raw,
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.raw"),
-                                                         2.0,
-                                                         Some(dt_1),
-                                                         MetricKind::Raw, None));
+                                                2.0,
+                                                Some(dt_1),
+                                                MetricKind::Raw,
+                                                None));
         let result = wavefront.format_stats(Some(10101));
         let lines: Vec<&str> = result.lines().collect();
 

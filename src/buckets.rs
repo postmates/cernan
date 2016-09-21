@@ -67,7 +67,7 @@ impl Buckets {
         for (_, v) in self.gauges.iter_mut() {
             let len = v.len();
             if len > 0 {
-                v.swap(0, len-1);
+                v.swap(0, len - 1);
                 v.truncate(1);
             }
         }
@@ -95,17 +95,17 @@ impl Buckets {
 
                     match (*counter).binary_search_by_key(&value.time, |ref m| m.time) {
                         Ok(idx) => {
-                            (*counter)[idx].value += value.value * (1.0/rate);
+                            (*counter)[idx].value += value.value * (1.0 / rate);
                         }
                         Err(idx) => {
                             let mut v = value;
-                            v.value *= 1.0/rate;
+                            v.value *= 1.0 / rate;
                             (*counter).insert(idx, v);
                         }
                     }
                 } else {
                     let mut v = value;
-                    v.value *= 1.0/rate;
+                    v.value *= 1.0 / rate;
                     self.counters.insert(name, vec![v]);
                 }
             }
@@ -123,7 +123,8 @@ impl Buckets {
             }
             MetricKind::Gauge => {
                 if self.gauges.contains_key(&name) {
-                    let gauge = self.gauges.get_mut(&name).expect("shouldn't happen but did, gauge");
+                    let gauge =
+                        self.gauges.get_mut(&name).expect("shouldn't happen but did, gauge");
                     match (*gauge).binary_search_by_key(&value.time, |ref m| m.time) {
                         Ok(idx) => (*gauge)[idx].value = value.value,
                         Err(idx) => (*gauge).insert(idx, value),
@@ -196,10 +197,10 @@ mod test {
     extern crate quickcheck;
 
     use super::*;
-    use self::quickcheck::{TestResult,QuickCheck};
+    use self::quickcheck::{TestResult, QuickCheck};
     use metric::{Metric, MetricKind, MetricSign};
     use string_cache::Atom;
-    use std::collections::{HashSet,HashMap};
+    use std::collections::{HashSet, HashMap};
     use chrono::{UTC, TimeZone};
 
     #[test]
@@ -382,10 +383,26 @@ mod test {
         let dt_0 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 0, 0).timestamp();
         let dt_1 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 1, 0).timestamp();
 
-        buckets.add(Metric::new_with_time(Atom::from("some.metric"), 1.0, Some(dt_0), MetricKind::Raw, None));
-        buckets.add(Metric::new_with_time(Atom::from("some.metric"), 2.0, Some(dt_0), MetricKind::Raw, None));
-        buckets.add(Metric::new_with_time(Atom::from("some.metric"), 3.0, Some(dt_0), MetricKind::Raw, None));
-        buckets.add(Metric::new_with_time(Atom::from("some.metric"), 4.0, Some(dt_1), MetricKind::Raw, None));
+        buckets.add(Metric::new_with_time(Atom::from("some.metric"),
+                                          1.0,
+                                          Some(dt_0),
+                                          MetricKind::Raw,
+                                          None));
+        buckets.add(Metric::new_with_time(Atom::from("some.metric"),
+                                          2.0,
+                                          Some(dt_0),
+                                          MetricKind::Raw,
+                                          None));
+        buckets.add(Metric::new_with_time(Atom::from("some.metric"),
+                                          3.0,
+                                          Some(dt_0),
+                                          MetricKind::Raw,
+                                          None));
+        buckets.add(Metric::new_with_time(Atom::from("some.metric"),
+                                          4.0,
+                                          Some(dt_1),
+                                          MetricKind::Raw,
+                                          None));
 
         let mname = Atom::from("some.metric");
         assert!(buckets.raws.contains_key(&mname),
@@ -407,15 +424,20 @@ mod test {
                 bucket.add(m);
             }
 
-            let cnts : HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+            let cnts: HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
                 match m.kind {
-                    MetricKind::Counter(_) => { acc.insert(m.name.clone()); acc }
-                    _ => acc
+                    MetricKind::Counter(_) => {
+                        acc.insert(m.name.clone());
+                        acc
+                    }
+                    _ => acc,
                 }
             });
-            let b_cnts : HashSet<Atom> = bucket.counters().iter().fold(HashSet::default(), |mut acc, (k, _)| {
-                acc.insert(k.clone()); acc
-            });
+            let b_cnts: HashSet<Atom> =
+                bucket.counters().iter().fold(HashSet::default(), |mut acc, (k, _)| {
+                    acc.insert(k.clone());
+                    acc
+                });
             assert_eq!(cnts, b_cnts);
 
             TestResult::passed()
@@ -435,15 +457,20 @@ mod test {
                 bucket.add(m);
             }
 
-            let gauges : HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+            let gauges: HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
                 match m.kind {
-                    MetricKind::Gauge | MetricKind::DeltaGauge => { acc.insert(m.name.clone()); acc }
-                    _ => acc
+                    MetricKind::Gauge | MetricKind::DeltaGauge => {
+                        acc.insert(m.name.clone());
+                        acc
+                    }
+                    _ => acc,
                 }
             });
-            let b_gauges : HashSet<Atom> = bucket.gauges().iter().fold(HashSet::default(), |mut acc, (k, _)| {
-                acc.insert(k.clone()); acc
-            });
+            let b_gauges: HashSet<Atom> =
+                bucket.gauges().iter().fold(HashSet::default(), |mut acc, (k, _)| {
+                    acc.insert(k.clone());
+                    acc
+                });
             assert_eq!(gauges, b_gauges);
 
             TestResult::passed()
@@ -463,15 +490,20 @@ mod test {
                 bucket.add(m);
             }
 
-            let hist : HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+            let hist: HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
                 match m.kind {
-                    MetricKind::Histogram => { acc.insert(m.name.clone()); acc }
-                    _ => acc
+                    MetricKind::Histogram => {
+                        acc.insert(m.name.clone());
+                        acc
+                    }
+                    _ => acc,
                 }
             });
-            let b_hist : HashSet<Atom> = bucket.histograms().iter().fold(HashSet::default(), |mut acc, (k, _)| {
-                acc.insert(k.clone()); acc
-            });
+            let b_hist: HashSet<Atom> =
+                bucket.histograms().iter().fold(HashSet::default(), |mut acc, (k, _)| {
+                    acc.insert(k.clone());
+                    acc
+                });
             assert_eq!(hist, b_hist);
 
             TestResult::passed()
@@ -491,15 +523,20 @@ mod test {
                 bucket.add(m);
             }
 
-            let tm : HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+            let tm: HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
                 match m.kind {
-                    MetricKind::Timer => { acc.insert(m.name.clone()); acc }
-                    _ => acc
+                    MetricKind::Timer => {
+                        acc.insert(m.name.clone());
+                        acc
+                    }
+                    _ => acc,
                 }
             });
-            let b_tm : HashSet<Atom> = bucket.timers().iter().fold(HashSet::default(), |mut acc, (k, _)| {
-                acc.insert(k.clone()); acc
-            });
+            let b_tm: HashSet<Atom> =
+                bucket.timers().iter().fold(HashSet::default(), |mut acc, (k, _)| {
+                    acc.insert(k.clone());
+                    acc
+                });
             assert_eq!(tm, b_tm);
 
             TestResult::passed()
@@ -522,7 +559,7 @@ mod test {
 
             assert_eq!(0, bucket.counters.len());
             assert_eq!(0, bucket.raws.len());
-            for (_,v) in bucket.gauges() {
+            for (_, v) in bucket.gauges() {
                 assert_eq!(1, v.len());
             }
 
@@ -541,7 +578,8 @@ mod test {
         let m = Metric::counter("test.counter");
         buckets.add(m.clone());
 
-        assert_eq!(Some(&mut vec![m]), buckets.counters.get_mut(&Atom::from("test.counter")));
+        assert_eq!(Some(&mut vec![m]),
+                   buckets.counters.get_mut(&Atom::from("test.counter")));
     }
 
     #[test]
@@ -553,14 +591,14 @@ mod test {
                 bucket.add(m);
             }
 
-            let mut cnts : HashMap<Atom, Vec<(i64, f64)>> = HashMap::default();
+            let mut cnts: HashMap<Atom, Vec<(i64, f64)>> = HashMap::default();
             for m in ms {
                 match m.kind {
                     MetricKind::Counter(rate) => {
                         let c = cnts.entry(m.name.clone()).or_insert(vec![]);
-                        match c.binary_search_by_key(&m.time, |&(a,_)| a) {
+                        match c.binary_search_by_key(&m.time, |&(a, _)| a) {
                             Ok(idx) => c[idx].1 += m.value * (1.0 / rate),
-                            Err(idx) => c.insert(idx, (m.time, m.value * (1.0/rate))),
+                            Err(idx) => c.insert(idx, (m.time, m.value * (1.0 / rate))),
                         }
                     }
                     _ => continue,
@@ -569,7 +607,7 @@ mod test {
 
             assert_eq!(bucket.counters().len(), cnts.len());
 
-            for (k,v) in bucket.counters().iter() {
+            for (k, v) in bucket.counters().iter() {
                 let mut v = v.clone();
                 v.sort_by_key(|ref m| m.time);
 
@@ -599,29 +637,29 @@ mod test {
                 bucket.add(m);
             }
 
-            let mut cnts : HashMap<Atom, Vec<(i64,f64)>> = HashMap::default();
+            let mut cnts: HashMap<Atom, Vec<(i64, f64)>> = HashMap::default();
             for m in ms {
                 match m.kind {
                     MetricKind::Gauge => {
                         let c = cnts.entry(m.name.clone()).or_insert(vec![]);
-                        match c.binary_search_by_key(&m.time, |&(a,_)| a) {
+                        match c.binary_search_by_key(&m.time, |&(a, _)| a) {
                             Ok(idx) => c[idx] = (m.time, m.value),
                             Err(idx) => c.insert(idx, (m.time, m.value)),
                         }
-                    },
+                    }
                     MetricKind::DeltaGauge => {
                         let c = cnts.entry(m.name.clone()).or_insert(vec![]);
-                        match c.binary_search_by_key(&m.time, |&(a,_)| a) {
+                        match c.binary_search_by_key(&m.time, |&(a, _)| a) {
                             Ok(idx) => c[idx].1 += m.value,
                             Err(idx) => c.insert(idx, (m.time, m.value)),
                         }
-                    },
+                    }
                     _ => continue,
                 }
             }
 
             assert_eq!(bucket.gauges().len(), cnts.len());
-            for (k,v) in bucket.gauges().iter() {
+            for (k, v) in bucket.gauges().iter() {
                 let mut v = v.clone();
                 v.sort_by_key(|ref m| m.time);
 

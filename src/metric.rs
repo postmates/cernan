@@ -74,7 +74,12 @@ impl Metric {
         }
     }
 
-    pub fn new_with_time(name: Atom, value: f64, time: Option<i64>, kind: MetricKind, _: Option<MetricSign>) -> Metric {
+    pub fn new_with_time(name: Atom,
+                         value: f64,
+                         time: Option<i64>,
+                         kind: MetricKind,
+                         _: Option<MetricSign>)
+                         -> Metric {
         Metric {
             name: name,
             value: value,
@@ -106,7 +111,7 @@ mod tests {
     extern crate quickcheck;
 
     use metric::{Metric, MetricKind, MetricSign, MetricQOS, Event};
-    use self::quickcheck::{Arbitrary,Gen};
+    use self::quickcheck::{Arbitrary, Gen};
     use string_cache::Atom;
     use chrono::{UTC, TimeZone};
     use self::rand::{Rand, Rng};
