@@ -47,6 +47,7 @@ pub fn handle_udp(mut chans: Vec<mpsc::Sender>, socket: UdpSocket) {
         };
         str::from_utf8(&buf[..len])
             .map(|val| {
+                trace!("statsd - {}", val);
                 match metric::Metric::parse_statsd(val) {
                     Some(metrics) => {
                         for m in metrics {
@@ -145,7 +146,7 @@ fn handle_client(mut chans: Vec<mpsc::Sender>, stream: TcpStream) {
                 let buf = line.into_bytes();
                 str::from_utf8(&buf)
                     .map(|val| {
-                        debug!("graphite - {}", val);
+                        trace!("graphite - {}", val);
                         match metric::Metric::parse_graphite(val) {
                             Some(metrics) => {
                                 let metric = metric::Metric::counter("cernan.graphite.packet");
