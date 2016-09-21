@@ -64,6 +64,13 @@ impl Buckets {
     pub fn reset(&mut self) {
         self.counters.clear();
         self.raws.clear();
+        for (_, v) in self.gauges.iter_mut() {
+            let len = v.len();
+            if len > 0 {
+                v.swap(0, len-1);
+                v.truncate(1);
+            }
+        }
     }
 
     /// Adds a metric to the bucket storage.
@@ -468,6 +475,30 @@ mod test {
                 acc.insert(k.clone()); acc
             });
             assert_eq!(tm, b_tm);
+
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(100)
+            .max_tests(1000)
+            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+    }
+
+    #[test]
+    fn test_reset_clears_space() {
+        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::default();
+
+            for m in ms {
+                bucket.add(m);
+            }
+            bucket.reset();
+
+            assert_eq!(0, bucket.counters.len());
+            assert_eq!(0, bucket.raws.len());
+            for (_,v) in bucket.gauges() {
+                assert_eq!(1, v.len());
+            }
 
             TestResult::passed()
         }
