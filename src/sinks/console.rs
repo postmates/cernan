@@ -82,5 +82,9 @@ impl Sink for Console {
                 println!("    {}: {} {}", key, stat, value.query(quant).unwrap().1);
             }
         }
+
+        self.aggrs.reset();
+        self.aggrs.reset_timers();
+        self.aggrs.reset_histograms();
     }
 }
