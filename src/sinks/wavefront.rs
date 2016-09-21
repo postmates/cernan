@@ -14,7 +14,9 @@ pub struct Wavefront {
     qos: MetricQOS,
 
     timer_last_sample: i64,
+    reset_timer: bool,
     histogram_last_sample: i64,
+    reset_histogram: bool,
 }
 
 impl Wavefront {
@@ -29,7 +31,9 @@ impl Wavefront {
                     aggrs: Buckets::default(),
                     qos: qos,
                     timer_last_sample: 0,
+                    reset_timer: false,
                     histogram_last_sample: 0,
+                    reset_histogram: false,
                 }
             }
             Err(_) => panic!("Could not lookup host"),
@@ -95,6 +99,7 @@ impl Wavefront {
                 write!(stats, "{}.count {} {} {}\n", key, count, start, self.tags).unwrap();
             }
             self.histogram_last_sample = start;
+            self.reset_histogram = true;
         }
 
         if (start - self.timer_last_sample) >= (self.qos.timer as i64) {
@@ -127,6 +132,7 @@ impl Wavefront {
                 write!(stats, "{}.count {} {} {}\n", key, count, start, self.tags).unwrap();
             }
             self.timer_last_sample = start;
+            self.reset_timer = true;
         }
 
         // Raw points have no QOS as we can make no valid aggregation of them.
@@ -148,6 +154,12 @@ impl Sink for Wavefront {
                 if res.is_ok() {
                     trace!("flushed to wavefront!");
                     self.aggrs.reset();
+                    if self.reset_histogram {
+                        self.aggrs.reset_histograms();
+                    }
+                    if self.reset_timer {
+                        self.aggrs.reset_timers();
+                    }
                 }
             }
             Err(e) => debug!("Unable to connect: {}", e),

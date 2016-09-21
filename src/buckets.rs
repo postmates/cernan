@@ -71,7 +71,13 @@ impl Buckets {
                 v.truncate(1);
             }
         }
+    }
+
+    pub fn reset_histograms(&mut self) {
         self.histograms.clear();
+    }
+
+    pub fn reset_timers(&mut self) {
         self.timers.clear();
     }
 
@@ -262,7 +268,7 @@ mod test {
         let metric = Metric::new(mname, 1.0, MetricKind::Histogram, None);
         buckets.add(metric.clone());
 
-        buckets.reset();
+        buckets.reset_histograms();
         assert!(buckets.histograms.get_mut(&name).is_none());
     }
 
@@ -274,7 +280,7 @@ mod test {
         let metric = Metric::new(mname, 1.0, MetricKind::Timer, None);
         buckets.add(metric.clone());
 
-        buckets.reset();
+        buckets.reset_timers();
         assert!(buckets.histograms.get_mut(&name).is_none());
     }
 
