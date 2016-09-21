@@ -99,10 +99,6 @@ fn main() {
         }
     }
 
-    joins.push(thread::spawn(move || {
-        cernan::server::snapshot_loop(sends.clone());
-    }));
-
     for jh in joins {
         jh.join().expect("Uh oh, child thread paniced!");
     }

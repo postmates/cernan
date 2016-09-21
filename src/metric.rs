@@ -74,7 +74,7 @@ impl Metric {
         }
     }
 
-    pub fn new_with_time(name: Atom, value: f64, time: Option<i64>, kind: MetricKind) -> Metric {
+    pub fn new_with_time(name: Atom, value: f64, time: Option<i64>, kind: MetricKind, _: Option<MetricSign>) -> Metric {
         Metric {
             name: name,
             value: value,
@@ -113,10 +113,11 @@ mod tests {
 
     impl Rand for MetricSign {
         fn rand<R: Rng>(rng: &mut R) -> MetricSign {
-            let i: usize = rng.gen();
+            let i: usize = rng.gen_range(0, 2);
             match i % 2 {
                 0 => MetricSign::Positive,
-                _ => MetricSign::Negative,
+                1 => MetricSign::Negative,
+                _ => unreachable!(),
             }
         }
     }
@@ -125,7 +126,7 @@ mod tests {
         fn rand<R: Rng>(rng: &mut R) -> MetricKind {
             let i: usize = rng.gen();
             match i % 6 {
-                0 => MetricKind::Counter(rng.gen()),
+                0 => MetricKind::Counter(rng.gen_range(-2.0, 2.0)),
                 1 => MetricKind::Gauge,
                 2 => MetricKind::DeltaGauge,
                 3 => MetricKind::Timer,
@@ -137,22 +138,23 @@ mod tests {
 
     impl Rand for Metric {
         fn rand<R: Rng>(rng: &mut R) -> Metric {
-            let name: String = rng.gen_ascii_chars().take(10).collect();
+            let name: String = rng.gen_ascii_chars().take(2).collect();
             let val: f64 = rng.gen();
             let kind: MetricKind = rng.gen();
             let sign: Option<MetricSign> = rng.gen();
-            Metric::new(Atom::from(name), val, kind, sign)
+            let time: i64 = rng.gen_range(0, 100);
+            Metric::new_with_time(Atom::from(name), val, Some(time), kind, sign)
         }
     }
 
     impl Rand for MetricQOS {
         fn rand<R: Rng>(rng: &mut R) -> MetricQOS {
             MetricQOS {
-                counter: rng.gen(),
-                gauge: rng.gen(),
-                timer: rng.gen(),
-                histogram: rng.gen(),
-                raw: rng.gen(),
+                counter: rng.gen_range(1, 60),
+                gauge: rng.gen_range(1, 60),
+                timer: rng.gen_range(1, 60),
+                histogram: rng.gen_range(1, 60),
+                raw: rng.gen_range(1, 60),
             }
         }
     }
@@ -162,7 +164,6 @@ mod tests {
             let i: usize = rng.gen();
             match i % 4 {
                 0 => Event::TimerFlush,
-                1 => Event::Snapshot,
                 _ => Event::Statsd(rng.gen()),
             }
         }

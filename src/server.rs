@@ -176,15 +176,3 @@ pub fn flush_timer_loop(mut chans: Vec<mpsc::Sender>, interval: u64) {
         send(&mut chans, &metric::Event::TimerFlush);
     }
 }
-
-// emit snapshot event into channel on a regular interval
-//
-// A snapshot indicates to supporting backends that it is time to generate a
-// payload and store this in preparation for a future flush event.
-pub fn snapshot_loop(mut chans: Vec<mpsc::Sender>) {
-    let duration = Duration::new(1, 0);
-    loop {
-        sleep(duration);
-        send(&mut chans, &metric::Event::Snapshot);
-    }
-}
