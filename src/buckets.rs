@@ -3,15 +3,13 @@
 //! Each bucket contains a set of hashmaps containing
 //! each set of metrics received by clients.
 
-use super::metric::{Metric, MetricKind, MetricQOS};
+use super::metric::{Metric, MetricKind};
 use quantiles::CKMS;
 use lru_cache::LruCache;
 use string_cache::Atom;
 
 /// Buckets stores all metrics until they are flushed.
 pub struct Buckets {
-    qos: MetricQOS,
-
     counters: LruCache<Atom, Vec<Metric>>,
     gauges: LruCache<Atom, Vec<Metric>>,
     raws: LruCache<Atom, Vec<Metric>>,
@@ -34,8 +32,6 @@ impl Default for Buckets {
     /// ```
     fn default() -> Buckets {
         Buckets {
-            qos: MetricQOS::default(),
-
             counters: LruCache::new(10000),
             gauges: LruCache::new(10000),
             raws: LruCache::new(10000),
@@ -46,24 +42,6 @@ impl Default for Buckets {
 }
 
 impl Buckets {
-    /// Create a new Buckets
-    ///
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::buckets::Buckets;
-    /// use cernan::metric::MetricQOS;
-    ///
-    /// let bucket = Buckets::new(MetricQOS::default());
-    /// assert_eq!(0, bucket.counters().len());
-    /// ```
-    pub fn new(qos: MetricQOS) -> Buckets {
-        let mut b = Buckets::default();
-        b.qos = qos;
-        b
-    }
-
     /// Resets appropriate aggregates
     ///
     /// # Examples
@@ -106,16 +84,14 @@ impl Buckets {
                     let counter =
                         self.counters.get_mut(&name).expect("shouldn't happen but did, counter");
 
-                    match (*counter).len() {
-                        0 => (*counter).push(value),
-                        n => {
-                            if (*counter)[n-1].time == value.time {
-                                (*counter)[n-1].value += value.value * (1.0/rate);
-                            } else {
-                                let mut v = value;
-                                v.value *= 1.0/rate;
-                                (*counter).push(v)
-                            }
+                    match (*counter).binary_search_by_key(&value.time, |ref m| m.time) {
+                        Ok(idx) => {
+                            (*counter)[idx].value += value.value * (1.0/rate);
+                        }
+                        Err(idx) => {
+                            let mut v = value;
+                            v.value *= 1.0/rate;
+                            (*counter).insert(idx, v);
                         }
                     }
                 } else {
@@ -128,16 +104,9 @@ impl Buckets {
                 if self.gauges.contains_key(&name) {
                     let gauge =
                         self.gauges.get_mut(&name).expect("shouldn't happen but did, gauge");
-
-                    match (*gauge).len() {
-                        0 => (*gauge).push(value),
-                        n => {
-                            if (*gauge)[n-1].time == value.time {
-                                (*gauge)[n-1].value += value.value;
-                            } else {
-                                (*gauge).push(value)
-                            }
-                        }
+                    match (*gauge).binary_search_by_key(&value.time, |ref m| m.time) {
+                        Ok(idx) => (*gauge)[idx].value += value.value,
+                        Err(idx) => (*gauge).insert(idx, value),
                     }
                 } else {
                     self.gauges.insert(name, vec![value]);
@@ -146,15 +115,9 @@ impl Buckets {
             MetricKind::Gauge => {
                 if self.gauges.contains_key(&name) {
                     let gauge = self.gauges.get_mut(&name).expect("shouldn't happen but did, gauge");
-                    match (*gauge).len() {
-                        0 => (*gauge).push(value),
-                        n => {
-                            if (*gauge)[n-1].time == value.time {
-                                (*gauge)[n-1].value = value.value;
-                            } else {
-                                (*gauge).push(value)
-                            }
-                        }
+                    match (*gauge).binary_search_by_key(&value.time, |ref m| m.time) {
+                        Ok(idx) => (*gauge)[idx].value = value.value,
+                        Err(idx) => (*gauge).insert(idx, value),
                     }
                 } else {
                     self.gauges.insert(name, vec![value]);
@@ -168,15 +131,9 @@ impl Buckets {
                 // We only want to keep one raw point per second per name. If
                 // someone pushes more than one point in a second interval we'll
                 // overwrite the value of the metric already in-vector.
-                match (*raw).len() {
-                    0 => (*raw).push(value),
-                    n => {
-                        if (*raw)[n-1].time == value.time {
-                            (*raw)[n-1].value = value.value;
-                        } else {
-                            (*raw).push(value)
-                        }
-                    }
+                match (*raw).binary_search_by_key(&value.time, |ref m| m.time) {
+                    Ok(idx) => (*raw)[idx].value = value.value,
+                    Err(idx) => (*raw).insert(idx, value),
                 }
             }
             MetricKind::Histogram => {
@@ -231,7 +188,7 @@ mod test {
 
     use super::*;
     use self::quickcheck::{TestResult,QuickCheck};
-    use metric::{Metric, MetricKind, MetricSign, MetricQOS};
+    use metric::{Metric, MetricKind, MetricSign};
     use string_cache::Atom;
     use std::collections::{HashSet,HashMap};
     use chrono::{UTC, TimeZone};
@@ -410,8 +367,8 @@ mod test {
 
     #[test]
     fn unique_names_preserved_counters() {
-        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
-            let mut bucket = Buckets::new(qos);
+        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::default();
 
             for m in ms.clone() {
                 bucket.add(m);
@@ -433,13 +390,13 @@ mod test {
         QuickCheck::new()
             .tests(100)
             .max_tests(1000)
-            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
     fn unique_names_preserved_gauges() {
-        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
-            let mut bucket = Buckets::new(qos);
+        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::default();
 
             for m in ms.clone() {
                 bucket.add(m);
@@ -461,13 +418,13 @@ mod test {
         QuickCheck::new()
             .tests(100)
             .max_tests(1000)
-            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
     fn unique_names_preserved_histograms() {
-        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
-            let mut bucket = Buckets::new(qos);
+        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::default();
 
             for m in ms.clone() {
                 bucket.add(m);
@@ -489,13 +446,13 @@ mod test {
         QuickCheck::new()
             .tests(100)
             .max_tests(1000)
-            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
     fn unique_names_preserved_timers() {
-        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
-            let mut bucket = Buckets::new(qos);
+        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::default();
 
             for m in ms.clone() {
                 bucket.add(m);
@@ -517,13 +474,13 @@ mod test {
         QuickCheck::new()
             .tests(100)
             .max_tests(1000)
-            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
     fn test_counter_summations() {
-        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
-            let mut bucket = Buckets::new(qos);
+        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::default();
 
             for m in ms.clone() {
                 bucket.add(m);
@@ -563,13 +520,13 @@ mod test {
         QuickCheck::new()
             .tests(10000)
             .max_tests(100000)
-            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
     fn test_gauge_behaviour() {
-        fn qos_ret(qos: MetricQOS, ms: Vec<Metric>) -> TestResult {
-            let mut bucket = Buckets::new(qos);
+        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::default();
 
             for m in ms.clone() {
                 bucket.add(m);
@@ -615,6 +572,6 @@ mod test {
         QuickCheck::new()
             .tests(10000)
             .max_tests(100000)
-            .quickcheck(qos_ret as fn(MetricQOS, Vec<Metric>) -> TestResult);
+            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 }
