@@ -71,6 +71,8 @@ impl Buckets {
                 v.truncate(1);
             }
         }
+        self.histograms.clear();
+        self.timers.clear();
     }
 
     /// Adds a metric to the bucket storage.
@@ -249,6 +251,30 @@ mod test {
 
         buckets.reset();
         assert_eq!(None, buckets.counters.get_mut(&rmname));
+    }
+
+    #[test]
+    fn test_add_histogram_metric_reset() {
+        let mut buckets = Buckets::default();
+        let name = Atom::from("some.metric");
+        let mname = name.clone();
+        let metric = Metric::new(mname, 1.0, MetricKind::Histogram, None);
+        buckets.add(metric.clone());
+
+        buckets.reset();
+        assert!(buckets.histograms.get_mut(&name).is_none());
+    }
+
+    #[test]
+    fn test_add_timer_metric_reset() {
+        let mut buckets = Buckets::default();
+        let name = Atom::from("some.metric");
+        let mname = name.clone();
+        let metric = Metric::new(mname, 1.0, MetricKind::Timer, None);
+        buckets.add(metric.clone());
+
+        buckets.reset();
+        assert!(buckets.histograms.get_mut(&name).is_none());
     }
 
     #[test]
@@ -506,6 +532,16 @@ mod test {
             .tests(100)
             .max_tests(1000)
             .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+    }
+
+    #[test]
+    fn test_counter_insertion() {
+        let mut buckets = Buckets::default();
+
+        let m = Metric::counter("test.counter");
+        buckets.add(m.clone());
+
+        assert_eq!(Some(&mut vec![m]), buckets.counters.get_mut(&Atom::from("test.counter")));
     }
 
     #[test]
