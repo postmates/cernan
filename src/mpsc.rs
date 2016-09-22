@@ -111,7 +111,6 @@ impl Iterator for Receiver {
 
     fn next(&mut self) -> Option<Event> {
         let mut sz_buf = [0; 4];
-        let mut payload_buf = [0; 1_048_576]; // TODO 1MB hard-limit is a rough business
 
         // The receive loop
         //
@@ -125,9 +124,10 @@ impl Iterator for Receiver {
             match self.fp.read_exact(&mut sz_buf) {
                 Ok(()) => {
                     let payload_size_in_bytes = u8tou32abe(&sz_buf);
-                    match self.fp.read_exact(&mut payload_buf[..payload_size_in_bytes as usize]) {
+                    let mut payload_buf = vec![0; (payload_size_in_bytes as usize)];
+                    match self.fp.read_exact(&mut payload_buf) {
                         Ok(()) => {
-                            match deserialize(&payload_buf[..payload_size_in_bytes as usize]) {
+                            match deserialize(&payload_buf) {
                                 Ok(event) => return Some(event),
                                 Err(e) => panic!("Failed decoding. Skipping {:?}", e),
                             }
@@ -142,6 +142,9 @@ impl Iterator for Receiver {
                 Err(e) => {
                     match e.kind() {
                         ErrorKind::UnexpectedEof => {
+                            let dur = time::Duration::from_millis(10);
+                            thread::sleep(dur);
+
                             let metadata = self.fp.metadata().unwrap();
                             if metadata.permissions().readonly() {
                                 let old_log = self.root.join(format!("{}", self.seq_num));
@@ -161,12 +164,6 @@ impl Iterator for Receiver {
                                         Err(_) => continue,
                                     }
                                 }
-                            }
-                            // There's payloads to come--else the file would be
-                            // read-only. We wait for 10ms and try again.
-                            else {
-                                let dur = time::Duration::from_millis(10);
-                                thread::sleep(dur);
                             }
                         }
                         _ => {
