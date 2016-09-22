@@ -578,14 +578,33 @@ mod test {
     }
 
     #[test]
+    fn test_gauge_insertion() {
+        let mut buckets = Buckets::default();
+
+        let m0 = Metric::new(Atom::from("test.gauge_0"), 1.0, MetricKind::Gauge, None);
+        let m1 = Metric::new(Atom::from("test.gauge_1"), 1.0, MetricKind::Gauge, None);
+        buckets.add(m0.clone());
+        buckets.add(m1.clone());
+
+        assert_eq!(Some(&mut vec![m0]),
+                   buckets.gauges.get_mut(&Atom::from("test.gauge_0")));
+        assert_eq!(Some(&mut vec![m1]),
+                   buckets.gauges.get_mut(&Atom::from("test.gauge_1")));
+    }
+
+    #[test]
     fn test_counter_insertion() {
         let mut buckets = Buckets::default();
 
-        let m = Metric::counter("test.counter");
-        buckets.add(m.clone());
+        let m0 = Metric::counter("test.counter_0");
+        let m1 = Metric::counter("test.counter_1");
+        buckets.add(m0.clone());
+        buckets.add(m1.clone());
 
-        assert_eq!(Some(&mut vec![m]),
-                   buckets.counters.get_mut(&Atom::from("test.counter")));
+        assert_eq!(Some(&mut vec![m0]),
+                   buckets.counters.get_mut(&Atom::from("test.counter_0")));
+        assert_eq!(Some(&mut vec![m1]),
+                   buckets.counters.get_mut(&Atom::from("test.counter_1")));
     }
 
     #[test]

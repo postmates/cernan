@@ -49,8 +49,8 @@ impl Wavefront {
         };
         let mut stats = String::new();
 
-        let mut counter_last_sample = 0;
         for (key, value) in self.aggrs.counters().iter() {
+            let mut counter_last_sample = 0;
             for m in value {
                 if (m.time - counter_last_sample) >= (self.qos.counter as i64) {
                     write!(stats, "{} {} {} {}\n", key, m.value, m.time, self.tags).unwrap();
@@ -59,8 +59,8 @@ impl Wavefront {
             }
         }
 
-        let mut gauge_last_sample = 0;
         for (key, value) in self.aggrs.gauges().iter() {
+            let mut gauge_last_sample = 0;
             for m in value {
                 if (m.time - gauge_last_sample) >= (self.qos.gauge as i64) {
                     write!(stats, "{} {} {} {}\n", key, m.value, m.time, self.tags).unwrap();
@@ -326,6 +326,11 @@ mod test {
                                                 Some(dt_0),
                                                 MetricKind::Gauge,
                                                 None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.some_other_gauge"),
+                                                1.0,
+                                                Some(dt_0),
+                                                MetricKind::Gauge,
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
                                                 2.0,
                                                 Some(dt_1),
@@ -356,10 +361,72 @@ mod test {
         assert_eq!(645185475, dt_4); // exist
 
         println!("{:?}", lines);
-        assert_eq!(3, lines.len());
-        assert_eq!(lines[0], "test.gauge 1 645185471 source=test-src");
-        assert_eq!(lines[1], "test.gauge 3 645185473 source=test-src");
-        assert_eq!(lines[2], "test.gauge 5 645185475 source=test-src");
+        assert_eq!(4, lines.len());
+        assert_eq!(lines[0],
+                   "test.some_other_gauge 1 645185471 source=test-src");
+        assert_eq!(lines[1], "test.gauge 1 645185471 source=test-src");
+        assert_eq!(lines[2], "test.gauge 3 645185473 source=test-src");
+        assert_eq!(lines[3], "test.gauge 5 645185475 source=test-src");
+    }
+
+    #[test]
+    fn test_counter_qos_ellision() {
+        let mut qos = MetricQOS::default();
+        qos.counter = 2;
+
+        let mut wavefront = Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos);
+        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
+        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
+        let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
+        let dt_3 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 14, 0).timestamp();
+        let dt_4 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 15, 0).timestamp();
+
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                1.0,
+                                                Some(dt_0),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.some_other_counter"),
+                                                1.0,
+                                                Some(dt_0),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                2.0,
+                                                Some(dt_1),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                3.0,
+                                                Some(dt_2),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                4.0,
+                                                Some(dt_3),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                5.0,
+                                                Some(dt_4),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        let result = wavefront.format_stats(Some(10101));
+        let lines: Vec<&str> = result.lines().collect();
+
+        assert_eq!(645185471, dt_0); // exist
+        assert_eq!(645185472, dt_1); // elided
+        assert_eq!(645185473, dt_2); // exist
+        assert_eq!(645185474, dt_3); // elided
+        assert_eq!(645185475, dt_4); // exist
+
+        println!("{:?}", lines);
+        assert_eq!(4, lines.len());
+        assert_eq!(lines[0],
+                   "test.some_other_counter 1 645185471 source=test-src");
+        assert_eq!(lines[1], "test.counter 1 645185471 source=test-src");
+        assert_eq!(lines[2], "test.counter 3 645185473 source=test-src");
+        assert_eq!(lines[3], "test.counter 5 645185475 source=test-src");
     }
 
     #[test]
