@@ -58,7 +58,7 @@ pub struct Receiver {
 //
 // File names always increase.
 pub fn channel(name: &str, data_dir: &Path) -> (Sender, Receiver) {
-    channel_with_max_bytes(name, data_dir, 1_048_576 * 10)
+    channel_with_max_bytes(name, data_dir, 1_048_576 * 100)
 }
 
 pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> (Sender, Receiver) {
