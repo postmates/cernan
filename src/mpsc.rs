@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::io::{ErrorKind, Write, Read, SeekFrom, Seek};
+use std::io::{BufReader, ErrorKind, Write, Read, SeekFrom, Seek};
 use metric::Event;
 use bincode::serde::{serialize, deserialize};
 use bincode::SizeLimit;
@@ -37,7 +37,7 @@ impl Clone for Sender {
 #[derive(Debug)]
 pub struct Receiver {
     root: PathBuf, // directory we store our queues in
-    fp: fs::File, // active fp
+    fp: BufReader<fs::File>, // active fp
     seq_num: usize,
 }
 
@@ -99,7 +99,7 @@ impl Receiver {
 
         Receiver {
             root: root.to_path_buf(),
-            fp: fp,
+            fp: BufReader::new(fp),
             seq_num: seq_num,
         }
     }
@@ -145,7 +145,7 @@ impl Iterator for Receiver {
                             let dur = time::Duration::from_millis(10);
                             thread::sleep(dur);
 
-                            let metadata = self.fp.metadata().unwrap();
+                            let metadata = self.fp.get_ref().metadata().unwrap();
                             if metadata.permissions().readonly() {
                                 let old_log = self.root.join(format!("{}", self.seq_num));
                                 fs::remove_file(old_log).expect("could not remove log");
@@ -158,7 +158,7 @@ impl Iterator for Receiver {
                                     // exist yet.
                                     match fs::OpenOptions::new().read(true).open(&lg) {
                                         Ok(fp) => {
-                                            self.fp = fp;
+                                            self.fp = BufReader::new(fp);
                                             break;
                                         }
                                         Err(_) => continue,
