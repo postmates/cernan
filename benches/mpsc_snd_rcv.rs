@@ -55,3 +55,18 @@ fn bench_snd_rcv(b: &mut Bencher) {
         }
     });
 }
+
+#[bench]
+fn bench_all_snd_all_rcv(b: &mut Bencher) {
+    b.iter(|| {
+        let dir = tempdir::TempDir::new("cernan").unwrap();
+        let (mut snd, mut rcv) = mpsc::channel("bench_snd", dir.path());
+
+        for _ in 0..1000 {
+            snd.send(&Event::TimerFlush);
+        }
+        for _ in 0..1000 {
+            rcv.next().unwrap();
+        }
+    });
+}
