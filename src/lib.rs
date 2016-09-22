@@ -23,4 +23,5 @@ pub mod server;
 pub mod sinks {
     pub mod console;
     pub mod wavefront;
+    pub mod null;
 }

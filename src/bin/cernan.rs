@@ -49,6 +49,13 @@ fn main() {
             cernan::sinks::console::Console::new().run(console_recv);
         }));
     }
+    if args.null {
+        let (null_send, null_recv) = cernan::mpsc::channel("null", &args.data_directory);
+        sends.push(null_send);
+        joins.push(thread::spawn(move || {
+            cernan::sinks::null::Null::new().run(null_recv);
+        }));
+    }
     if args.wavefront {
         let wf_tags: String = args.tags.replace(",", " ");
         let cp_args = args.clone();
