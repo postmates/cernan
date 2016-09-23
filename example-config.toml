@@ -28,6 +28,8 @@ path = "example.log"
 # sinks
 [console]
 
+[null]
+
 [wavefront]
 port = 2878
 host = "127.0.0.1"

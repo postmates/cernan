@@ -12,8 +12,11 @@ pub struct Wavefront {
     tags: String,
     aggrs: Buckets,
     qos: MetricQOS,
-    snapshots: Vec<String>,
-    tot_snapshots: u64,
+
+    timer_last_sample: i64,
+    reset_timer: bool,
+    histogram_last_sample: i64,
+    reset_histogram: bool,
 }
 
 impl Wavefront {
@@ -25,10 +28,12 @@ impl Wavefront {
                 Wavefront {
                     addr: addr,
                     tags: tags,
-                    aggrs: Buckets::new(),
+                    aggrs: Buckets::default(),
                     qos: qos,
-                    snapshots: Vec::new(),
-                    tot_snapshots: 0,
+                    timer_last_sample: 0,
+                    reset_timer: false,
+                    histogram_last_sample: 0,
+                    reset_histogram: false,
                 }
             }
             Err(_) => panic!("Could not lookup host"),
@@ -37,34 +42,34 @@ impl Wavefront {
 
     /// Convert the buckets into a String that
     /// can be sent to the the wavefront proxy
-    pub fn format_stats(&self, curtime: Option<i64>) -> String {
+    pub fn format_stats(&mut self, curtime: Option<i64>) -> String {
         let start = match curtime {
             Some(x) => x,
             None => chrono::UTC::now().timestamp(),
         };
         let mut stats = String::new();
 
-        trace!("TOTSNP: {:?}, QOS: {:?}", self.tot_snapshots, self.qos);
-
-        if (self.tot_snapshots % self.qos.counter) == 0 {
-            for (key, value) in self.aggrs.counters().iter() {
-                write!(stats,
-                       "{} {} {} {}\n",
-                       key,
-                       value / (self.qos.counter as f64),
-                       start,
-                       self.tags)
-                    .unwrap();
+        for (key, value) in self.aggrs.counters().iter() {
+            let mut counter_last_sample = 0;
+            for m in value {
+                if (m.time - counter_last_sample) >= (self.qos.counter as i64) {
+                    write!(stats, "{} {} {} {}\n", key, m.value, m.time, self.tags).unwrap();
+                    counter_last_sample = m.time;
+                }
             }
         }
 
-        if (self.tot_snapshots % self.qos.gauge) == 0 {
-            for (key, value) in self.aggrs.gauges().iter() {
-                write!(stats, "{} {} {} {}\n", key, value, start, self.tags).unwrap();
+        for (key, value) in self.aggrs.gauges().iter() {
+            let mut gauge_last_sample = 0;
+            for m in value {
+                if (m.time - gauge_last_sample) >= (self.qos.gauge as i64) {
+                    write!(stats, "{} {} {} {}\n", key, m.value, m.time, self.tags).unwrap();
+                    gauge_last_sample = m.time;
+                }
             }
         }
 
-        if (self.tot_snapshots % self.qos.histogram) == 0 {
+        if (start - self.histogram_last_sample) >= (self.qos.histogram as i64) {
             for (key, value) in self.aggrs.histograms().iter() {
                 for tup in &[("min", 0.0),
                              ("max", 1.0),
@@ -93,9 +98,11 @@ impl Wavefront {
                 let count = value.count();
                 write!(stats, "{}.count {} {} {}\n", key, count, start, self.tags).unwrap();
             }
+            self.histogram_last_sample = start;
+            self.reset_histogram = true;
         }
 
-        if (self.tot_snapshots % self.qos.timer) == 0 {
+        if (start - self.timer_last_sample) >= (self.qos.timer as i64) {
             for (key, value) in self.aggrs.timers().iter() {
                 for tup in &[("min", 0.0),
                              ("max", 1.0),
@@ -124,12 +131,14 @@ impl Wavefront {
                 let count = value.count();
                 write!(stats, "{}.count {} {} {}\n", key, count, start, self.tags).unwrap();
             }
+            self.timer_last_sample = start;
+            self.reset_timer = true;
         }
 
         // Raw points have no QOS as we can make no valid aggregation of them.
         for (key, value) in self.aggrs.raws().iter() {
             for m in value {
-                write!(stats, "{} {} {} {}\n", key, m.value, start, self.tags).unwrap();
+                write!(stats, "{} {} {} {}\n", key, m.value, m.time, self.tags).unwrap();
             }
         }
 
@@ -138,35 +147,27 @@ impl Wavefront {
 }
 
 impl Sink for Wavefront {
-    fn snapshot(&mut self) {
-        self.tot_snapshots = self.tot_snapshots.wrapping_add(1);
-        let stats = self.format_stats(None);
-        if !stats.is_empty() {
-            self.snapshots.push(stats);
-            trace!("snapshots : {:?}", self.snapshots);
-            self.aggrs.reset();
-        }
-    }
-
     fn flush(&mut self) {
-        if !self.snapshots.is_empty() {
-            match TcpStream::connect(self.addr) {
-                Ok(mut stream) => {
-                    if self.snapshots
-                        .iter()
-                        .map(|s| stream.write(s.as_bytes()))
-                        .all(|res| res.is_ok()) {
-                        trace!("flushed to wavefront!");
-                        self.snapshots.clear();
+        match TcpStream::connect(self.addr) {
+            Ok(mut stream) => {
+                let res = stream.write(self.format_stats(None).as_bytes());
+                if res.is_ok() {
+                    trace!("flushed to wavefront!");
+                    self.aggrs.reset();
+                    if self.reset_histogram {
+                        self.aggrs.reset_histograms();
+                    }
+                    if self.reset_timer {
+                        self.aggrs.reset_timers();
                     }
                 }
-                Err(e) => debug!("Unable to connect: {}", e),
             }
+            Err(e) => debug!("Unable to connect: {}", e),
         }
     }
 
     fn deliver(&mut self, point: Metric) {
-        self.aggrs.add(&point);
+        self.aggrs.add(point);
     }
 }
 
@@ -179,79 +180,328 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_histogram_qos_ellision() {
+        let mut qos = MetricQOS::default();
+        qos.histogram = 2;
+
+        let mut wavefront = Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos);
+        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
+        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
+        let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
+
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.histogram"),
+                                                1.0,
+                                                Some(dt_0),
+                                                MetricKind::Histogram,
+                                                None));
+
+        // time dt_0
+        let result_0 = wavefront.format_stats(Some(dt_0));
+        let lines_0: Vec<&str> = result_0.lines().collect();
+        println!("{:?}", lines_0);
+        assert_eq!(14, lines_0.len());
+        assert_eq!(lines_0[0], "test.histogram.min 1 645185471 source=test-src");
+        assert_eq!(lines_0[1], "test.histogram.max 1 645185471 source=test-src");
+        assert_eq!(lines_0[2], "test.histogram.2 1 645185471 source=test-src");
+        assert_eq!(lines_0[3], "test.histogram.9 1 645185471 source=test-src");
+        assert_eq!(lines_0[4], "test.histogram.25 1 645185471 source=test-src");
+        assert_eq!(lines_0[5], "test.histogram.50 1 645185471 source=test-src");
+        assert_eq!(lines_0[6], "test.histogram.75 1 645185471 source=test-src");
+        assert_eq!(lines_0[7], "test.histogram.90 1 645185471 source=test-src");
+        assert_eq!(lines_0[8], "test.histogram.91 1 645185471 source=test-src");
+        assert_eq!(lines_0[9], "test.histogram.95 1 645185471 source=test-src");
+        assert_eq!(lines_0[10], "test.histogram.98 1 645185471 source=test-src");
+        assert_eq!(lines_0[11], "test.histogram.99 1 645185471 source=test-src");
+        assert_eq!(lines_0[12],
+                   "test.histogram.999 1 645185471 source=test-src");
+        assert_eq!(lines_0[13],
+                   "test.histogram.count 1 645185471 source=test-src");
+
+        // time dt_1
+        let result_1 = wavefront.format_stats(Some(dt_1));
+        let lines_1: Vec<&str> = result_1.lines().collect();
+        println!("{:?}", lines_1);
+        assert_eq!(0, lines_1.len());
+
+        // time dt_2
+        let result_2 = wavefront.format_stats(Some(dt_2));
+        let lines_2: Vec<&str> = result_2.lines().collect();
+        println!("{:?}", lines_2);
+        assert_eq!(14, lines_2.len());
+        assert_eq!(lines_2[0], "test.histogram.min 1 645185473 source=test-src");
+        assert_eq!(lines_2[1], "test.histogram.max 1 645185473 source=test-src");
+        assert_eq!(lines_2[2], "test.histogram.2 1 645185473 source=test-src");
+        assert_eq!(lines_2[3], "test.histogram.9 1 645185473 source=test-src");
+        assert_eq!(lines_2[4], "test.histogram.25 1 645185473 source=test-src");
+        assert_eq!(lines_2[5], "test.histogram.50 1 645185473 source=test-src");
+        assert_eq!(lines_2[6], "test.histogram.75 1 645185473 source=test-src");
+        assert_eq!(lines_2[7], "test.histogram.90 1 645185473 source=test-src");
+        assert_eq!(lines_2[8], "test.histogram.91 1 645185473 source=test-src");
+        assert_eq!(lines_2[9], "test.histogram.95 1 645185473 source=test-src");
+        assert_eq!(lines_2[10], "test.histogram.98 1 645185473 source=test-src");
+        assert_eq!(lines_2[11], "test.histogram.99 1 645185473 source=test-src");
+        assert_eq!(lines_2[12],
+                   "test.histogram.999 1 645185473 source=test-src");
+        assert_eq!(lines_2[13],
+                   "test.histogram.count 1 645185473 source=test-src");
+    }
+
+    #[test]
+    fn test_timer_qos_ellision() {
+        let mut qos = MetricQOS::default();
+        qos.timer = 2;
+
+        let mut wavefront = Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos);
+        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
+        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
+        let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
+
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
+                                                1.0,
+                                                Some(dt_0),
+                                                MetricKind::Timer,
+                                                None));
+
+        // time dt_0
+        let result_0 = wavefront.format_stats(Some(dt_0));
+        let lines_0: Vec<&str> = result_0.lines().collect();
+        println!("{:?}", lines_0);
+        assert_eq!(14, lines_0.len());
+        assert_eq!(lines_0[0], "test.timer.min 1 645185471 source=test-src");
+        assert_eq!(lines_0[1], "test.timer.max 1 645185471 source=test-src");
+        assert_eq!(lines_0[2], "test.timer.2 1 645185471 source=test-src");
+        assert_eq!(lines_0[3], "test.timer.9 1 645185471 source=test-src");
+        assert_eq!(lines_0[4], "test.timer.25 1 645185471 source=test-src");
+        assert_eq!(lines_0[5], "test.timer.50 1 645185471 source=test-src");
+        assert_eq!(lines_0[6], "test.timer.75 1 645185471 source=test-src");
+        assert_eq!(lines_0[7], "test.timer.90 1 645185471 source=test-src");
+        assert_eq!(lines_0[8], "test.timer.91 1 645185471 source=test-src");
+        assert_eq!(lines_0[9], "test.timer.95 1 645185471 source=test-src");
+        assert_eq!(lines_0[10], "test.timer.98 1 645185471 source=test-src");
+        assert_eq!(lines_0[11], "test.timer.99 1 645185471 source=test-src");
+        assert_eq!(lines_0[12], "test.timer.999 1 645185471 source=test-src");
+        assert_eq!(lines_0[13], "test.timer.count 1 645185471 source=test-src");
+
+        // time dt_1
+        let result_1 = wavefront.format_stats(Some(dt_1));
+        let lines_1: Vec<&str> = result_1.lines().collect();
+        println!("{:?}", lines_1);
+        assert_eq!(0, lines_1.len());
+
+        // time dt_2
+        let result_2 = wavefront.format_stats(Some(dt_2));
+        let lines_2: Vec<&str> = result_2.lines().collect();
+        println!("{:?}", lines_2);
+        assert_eq!(14, lines_2.len());
+        assert_eq!(lines_2[0], "test.timer.min 1 645185473 source=test-src");
+        assert_eq!(lines_2[1], "test.timer.max 1 645185473 source=test-src");
+        assert_eq!(lines_2[2], "test.timer.2 1 645185473 source=test-src");
+        assert_eq!(lines_2[3], "test.timer.9 1 645185473 source=test-src");
+        assert_eq!(lines_2[4], "test.timer.25 1 645185473 source=test-src");
+        assert_eq!(lines_2[5], "test.timer.50 1 645185473 source=test-src");
+        assert_eq!(lines_2[6], "test.timer.75 1 645185473 source=test-src");
+        assert_eq!(lines_2[7], "test.timer.90 1 645185473 source=test-src");
+        assert_eq!(lines_2[8], "test.timer.91 1 645185473 source=test-src");
+        assert_eq!(lines_2[9], "test.timer.95 1 645185473 source=test-src");
+        assert_eq!(lines_2[10], "test.timer.98 1 645185473 source=test-src");
+        assert_eq!(lines_2[11], "test.timer.99 1 645185473 source=test-src");
+        assert_eq!(lines_2[12], "test.timer.999 1 645185473 source=test-src");
+        assert_eq!(lines_2[13], "test.timer.count 1 645185473 source=test-src");
+    }
+
+    #[test]
+    fn test_gauge_qos_ellision() {
+        let mut qos = MetricQOS::default();
+        qos.gauge = 2;
+
+        let mut wavefront = Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos);
+        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
+        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
+        let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
+        let dt_3 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 14, 0).timestamp();
+        let dt_4 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 15, 0).timestamp();
+
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+                                                1.0,
+                                                Some(dt_0),
+                                                MetricKind::Gauge,
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.some_other_gauge"),
+                                                1.0,
+                                                Some(dt_0),
+                                                MetricKind::Gauge,
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+                                                2.0,
+                                                Some(dt_1),
+                                                MetricKind::Gauge,
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+                                                3.0,
+                                                Some(dt_2),
+                                                MetricKind::Gauge,
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+                                                4.0,
+                                                Some(dt_3),
+                                                MetricKind::Gauge,
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+                                                5.0,
+                                                Some(dt_4),
+                                                MetricKind::Gauge,
+                                                None));
+        let result = wavefront.format_stats(Some(10101));
+        let lines: Vec<&str> = result.lines().collect();
+
+        assert_eq!(645185471, dt_0); // exist
+        assert_eq!(645185472, dt_1); // elided
+        assert_eq!(645185473, dt_2); // exist
+        assert_eq!(645185474, dt_3); // elided
+        assert_eq!(645185475, dt_4); // exist
+
+        println!("{:?}", lines);
+        assert_eq!(4, lines.len());
+        assert_eq!(lines[0],
+                   "test.some_other_gauge 1 645185471 source=test-src");
+        assert_eq!(lines[1], "test.gauge 1 645185471 source=test-src");
+        assert_eq!(lines[2], "test.gauge 3 645185473 source=test-src");
+        assert_eq!(lines[3], "test.gauge 5 645185475 source=test-src");
+    }
+
+    #[test]
+    fn test_counter_qos_ellision() {
+        let mut qos = MetricQOS::default();
+        qos.counter = 2;
+
+        let mut wavefront = Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos);
+        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
+        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
+        let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
+        let dt_3 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 14, 0).timestamp();
+        let dt_4 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 15, 0).timestamp();
+
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                1.0,
+                                                Some(dt_0),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.some_other_counter"),
+                                                1.0,
+                                                Some(dt_0),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                2.0,
+                                                Some(dt_1),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                3.0,
+                                                Some(dt_2),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                4.0,
+                                                Some(dt_3),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                5.0,
+                                                Some(dt_4),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        let result = wavefront.format_stats(Some(10101));
+        let lines: Vec<&str> = result.lines().collect();
+
+        assert_eq!(645185471, dt_0); // exist
+        assert_eq!(645185472, dt_1); // elided
+        assert_eq!(645185473, dt_2); // exist
+        assert_eq!(645185474, dt_3); // elided
+        assert_eq!(645185475, dt_4); // exist
+
+        println!("{:?}", lines);
+        assert_eq!(4, lines.len());
+        assert_eq!(lines[0],
+                   "test.some_other_counter 1 645185471 source=test-src");
+        assert_eq!(lines[1], "test.counter 1 645185471 source=test-src");
+        assert_eq!(lines[2], "test.counter 3 645185473 source=test-src");
+        assert_eq!(lines[3], "test.counter 5 645185475 source=test-src");
+    }
+
+    #[test]
     fn test_format_wavefront() {
         let qos = MetricQOS::default();
         let mut wavefront = Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos);
-        let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12).timestamp();
+        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12).timestamp();
+        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 13).timestamp();
         wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
-                                                1.0,
-                                                Some(dt),
-                                                MetricKind::Counter(1.0)));
+                                                -1.0,
+                                                Some(dt_0),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                2.0,
+                                                Some(dt_0),
+                                                MetricKind::Counter(1.0),
+                                                None));
+        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+                                                3.0,
+                                                Some(dt_1),
+                                                MetricKind::Counter(1.0),
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
                                                 3.211,
-                                                Some(dt),
-                                                MetricKind::Gauge));
+                                                Some(dt_0),
+                                                MetricKind::Gauge,
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
                                                 12.101,
-                                                Some(dt),
-                                                MetricKind::Timer));
+                                                Some(dt_0),
+                                                MetricKind::Timer,
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
                                                 1.101,
-                                                Some(dt),
-                                                MetricKind::Timer));
+                                                Some(dt_0),
+                                                MetricKind::Timer,
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
                                                 3.101,
-                                                Some(dt),
-                                                MetricKind::Timer));
+                                                Some(dt_0),
+                                                MetricKind::Timer,
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.raw"),
-                                                         1.0,
-                                                         Some(dt),
-                                                         MetricKind::Raw));
+                                                1.0,
+                                                Some(dt_0),
+                                                MetricKind::Raw,
+                                                None));
         wavefront.deliver(Metric::new_with_time(Atom::from("test.raw"),
-                                                         1.0,
-                                                         Some(dt),
-                                                         MetricKind::Raw));
+                                                2.0,
+                                                Some(dt_1),
+                                                MetricKind::Raw,
+                                                None));
         let result = wavefront.format_stats(Some(10101));
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(18, lines.len());
-        assert_eq!(lines[0], "test.counter 1 10101 source=test-src");
-        assert_eq!(lines[1], "test.gauge 3.211 10101 source=test-src");
-        assert_eq!(lines[2], "test.timer.min 1.101 10101 source=test-src");
-        assert_eq!(lines[3], "test.timer.max 12.101 10101 source=test-src");
-        assert_eq!(lines[4], "test.timer.2 1.101 10101 source=test-src");
-        assert_eq!(lines[5], "test.timer.9 1.101 10101 source=test-src");
-        assert_eq!(lines[6], "test.timer.25 1.101 10101 source=test-src");
-        assert_eq!(lines[7], "test.timer.50 3.101 10101 source=test-src");
-        assert_eq!(lines[8], "test.timer.75 3.101 10101 source=test-src");
-        assert_eq!(lines[9], "test.timer.90 12.101 10101 source=test-src");
-        assert_eq!(lines[10], "test.timer.91 12.101 10101 source=test-src");
-        assert_eq!(lines[11], "test.timer.95 12.101 10101 source=test-src");
-        assert_eq!(lines[12], "test.timer.98 12.101 10101 source=test-src");
-        assert_eq!(lines[13], "test.timer.99 12.101 10101 source=test-src");
-        assert_eq!(lines[14], "test.timer.999 12.101 10101 source=test-src");
-        assert_eq!(lines[15], "test.timer.count 3 10101 source=test-src");
-        assert_eq!(lines[16], "test.raw 1 10101 source=test-src");
-        assert_eq!(lines[17], "test.raw 1 10101 source=test-src");
-    }
-
-    #[test]
-    fn test_qos_counter_binning() {
-        let mut qos = MetricQOS::default();
-        qos.counter = 10;
-        let mut wavefront = Wavefront::new("localhost", 2003, "".to_string(), qos);
-
-        for i in 0..21 {
-            let dt = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, i, 0).timestamp();
-            wavefront.deliver(Metric::new_with_time(Atom::from("c"),
-                                                    1.0,
-                                                    Some(dt),
-                                                    MetricKind::Counter(1.0)));
-            wavefront.snapshot();
-        }
-
-        println!("SNP: {:?}", wavefront.snapshots);
-        assert_eq!(2, wavefront.snapshots.len());
+        assert_eq!(19, lines.len());
+        assert_eq!(lines[0], "test.counter 1 645181811 source=test-src");
+        assert_eq!(lines[1], "test.counter 3 645185472 source=test-src");
+        assert_eq!(lines[2], "test.gauge 3.211 645181811 source=test-src");
+        assert_eq!(lines[3], "test.timer.min 1.101 10101 source=test-src");
+        assert_eq!(lines[4], "test.timer.max 12.101 10101 source=test-src");
+        assert_eq!(lines[5], "test.timer.2 1.101 10101 source=test-src");
+        assert_eq!(lines[6], "test.timer.9 1.101 10101 source=test-src");
+        assert_eq!(lines[7], "test.timer.25 1.101 10101 source=test-src");
+        assert_eq!(lines[8], "test.timer.50 3.101 10101 source=test-src");
+        assert_eq!(lines[9], "test.timer.75 3.101 10101 source=test-src");
+        assert_eq!(lines[10], "test.timer.90 12.101 10101 source=test-src");
+        assert_eq!(lines[11], "test.timer.91 12.101 10101 source=test-src");
+        assert_eq!(lines[12], "test.timer.95 12.101 10101 source=test-src");
+        assert_eq!(lines[13], "test.timer.98 12.101 10101 source=test-src");
+        assert_eq!(lines[14], "test.timer.99 12.101 10101 source=test-src");
+        assert_eq!(lines[15], "test.timer.999 12.101 10101 source=test-src");
+        assert_eq!(lines[16], "test.timer.count 3 10101 source=test-src");
+        assert_eq!(lines[17], "test.raw 1 645181811 source=test-src");
     }
 }

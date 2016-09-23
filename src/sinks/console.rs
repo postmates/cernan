@@ -9,7 +9,7 @@ pub struct Console {
 
 impl Console {
     pub fn new() -> Console {
-        Console { aggrs: Buckets::new() }
+        Console { aggrs: Buckets::default() }
     }
 }
 
@@ -27,11 +27,7 @@ fn fmt_line(key: &str, value: f64) {
 
 impl Sink for Console {
     fn deliver(&mut self, point: Metric) {
-        self.aggrs.add(&point);
-    }
-
-    fn snapshot(&mut self) {
-        // nothing, intentionally
+        self.aggrs.add(point);
     }
 
     fn flush(&mut self) {
@@ -40,12 +36,16 @@ impl Sink for Console {
 
         println!("  counters:");
         for (key, value) in self.aggrs.counters() {
-            fmt_line(key, *value);
+            for m in value {
+                fmt_line(key, m.value);
+            }
         }
 
         println!("  gauges:");
         for (key, value) in self.aggrs.gauges() {
-            fmt_line(key, *value);
+            for m in value {
+                fmt_line(key, m.value);
+            }
         }
 
         println!("  raws:");
@@ -82,5 +82,9 @@ impl Sink for Console {
                 println!("    {}: {} {}", key, stat, value.query(quant).unwrap().1);
             }
         }
+
+        self.aggrs.reset();
+        self.aggrs.reset_timers();
+        self.aggrs.reset_histograms();
     }
 }

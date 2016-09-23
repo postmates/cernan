@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::io::{ErrorKind, Write, Read, SeekFrom, Seek};
+use std::io::{BufReader, ErrorKind, Write, Read, SeekFrom, Seek};
 use metric::Event;
 use bincode::serde::{serialize, deserialize};
 use bincode::SizeLimit;
@@ -37,7 +37,7 @@ impl Clone for Sender {
 #[derive(Debug)]
 pub struct Receiver {
     root: PathBuf, // directory we store our queues in
-    fp: fs::File, // active fp
+    fp: BufReader<fs::File>, // active fp
     seq_num: usize,
 }
 
@@ -58,7 +58,7 @@ pub struct Receiver {
 //
 // File names always increase.
 pub fn channel(name: &str, data_dir: &Path) -> (Sender, Receiver) {
-    channel_with_max_bytes(name, data_dir, 1_048_576 * 10)
+    channel_with_max_bytes(name, data_dir, 1_048_576 * 100)
 }
 
 pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> (Sender, Receiver) {
@@ -70,7 +70,7 @@ pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> 
     }
 
     let sender = Sender::new(&snd_root,
-                             max_bytes * 10,
+                             max_bytes,
                              Arc::new(atomic::AtomicUsize::new(0)));
     let receiver = Receiver::new(&rcv_root);
     (sender, receiver)
@@ -99,7 +99,7 @@ impl Receiver {
 
         Receiver {
             root: root.to_path_buf(),
-            fp: fp,
+            fp: BufReader::new(fp),
             seq_num: seq_num,
         }
     }
@@ -111,7 +111,6 @@ impl Iterator for Receiver {
 
     fn next(&mut self) -> Option<Event> {
         let mut sz_buf = [0; 4];
-        let mut payload_buf = [0; 1_048_576]; // TODO 1MB hard-limit is a rough business
 
         // The receive loop
         //
@@ -125,9 +124,10 @@ impl Iterator for Receiver {
             match self.fp.read_exact(&mut sz_buf) {
                 Ok(()) => {
                     let payload_size_in_bytes = u8tou32abe(&sz_buf);
-                    match self.fp.read_exact(&mut payload_buf[..payload_size_in_bytes as usize]) {
+                    let mut payload_buf = vec![0; (payload_size_in_bytes as usize)];
+                    match self.fp.read_exact(&mut payload_buf) {
                         Ok(()) => {
-                            match deserialize(&payload_buf[..payload_size_in_bytes as usize]) {
+                            match deserialize(&payload_buf) {
                                 Ok(event) => return Some(event),
                                 Err(e) => panic!("Failed decoding. Skipping {:?}", e),
                             }
@@ -142,7 +142,10 @@ impl Iterator for Receiver {
                 Err(e) => {
                     match e.kind() {
                         ErrorKind::UnexpectedEof => {
-                            let metadata = self.fp.metadata().unwrap();
+                            let dur = time::Duration::from_millis(10);
+                            thread::sleep(dur);
+
+                            let metadata = self.fp.get_ref().metadata().unwrap();
                             if metadata.permissions().readonly() {
                                 let old_log = self.root.join(format!("{}", self.seq_num));
                                 fs::remove_file(old_log).expect("could not remove log");
@@ -155,18 +158,12 @@ impl Iterator for Receiver {
                                     // exist yet.
                                     match fs::OpenOptions::new().read(true).open(&lg) {
                                         Ok(fp) => {
-                                            self.fp = fp;
+                                            self.fp = BufReader::new(fp);
                                             break;
                                         }
                                         Err(_) => continue,
                                     }
                                 }
-                            }
-                            // There's payloads to come--else the file would be
-                            // read-only. We wait for 10ms and try again.
-                            else {
-                                let dur = time::Duration::from_millis(10);
-                                thread::sleep(dur);
                             }
                         }
                         _ => {
@@ -310,61 +307,10 @@ impl Sender {
 mod test {
     extern crate tempdir;
     extern crate quickcheck;
-    extern crate rand;
 
     use super::*;
-    use metric::{Event, Metric, MetricKind, MetricSign};
-    use self::quickcheck::{QuickCheck, TestResult, Arbitrary, Gen};
-    use self::rand::{Rand, Rng};
-    use string_cache::Atom;
-
-    impl Rand for MetricSign {
-        fn rand<R: Rng>(rng: &mut R) -> MetricSign {
-            let i: usize = rng.gen();
-            match i % 2 {
-                0 => MetricSign::Positive,
-                _ => MetricSign::Negative,
-            }
-        }
-    }
-
-    impl Rand for MetricKind {
-        fn rand<R: Rng>(rng: &mut R) -> MetricKind {
-            let i: usize = rng.gen();
-            match i % 6 {
-                0 => MetricKind::Counter(rng.gen()),
-                1 => MetricKind::Gauge,
-                2 => MetricKind::DeltaGauge,
-                3 => MetricKind::Timer,
-                4 => MetricKind::Histogram,
-                _ => MetricKind::Raw,
-            }
-        }
-    }
-
-    impl Rand for Event {
-        fn rand<R: Rng>(rng: &mut R) -> Event {
-            let i: usize = rng.gen();
-            match i % 4 {
-                0 => Event::TimerFlush,
-                1 => Event::Snapshot,
-                _ => {
-                    let name: String = rng.gen_ascii_chars().take(10).collect();
-                    let val: f64 = rng.gen();
-                    let kind: MetricKind = rng.gen();
-                    let sign: Option<MetricSign> = rng.gen();
-                    let m = Metric::new(Atom::from(name), val, kind, sign);
-                    Event::Statsd(m)
-                }
-            }
-        }
-    }
-
-    impl Arbitrary for Event {
-        fn arbitrary<G: Gen>(g: &mut G) -> Event {
-            g.gen()
-        }
-    }
+    use metric::Event;
+    use self::quickcheck::{QuickCheck, TestResult};
 
     #[test]
     fn one_item_round_trip() {

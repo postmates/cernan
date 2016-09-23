@@ -3,7 +3,6 @@ pub enum Event {
     Statsd(Metric),
     Graphite(Metric),
     TimerFlush,
-    Snapshot,
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]

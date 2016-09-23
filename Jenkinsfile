@@ -42,11 +42,13 @@ node {
 
     stage 'Build Artifact'
     sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust default stable"
-    sh "cargo build --release"
+    sh "RUSTFLAGS=\"-C target-cpu=native\" cargo build --release"
 
     sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-${env.VERSION}"
     if (env.BRANCH_NAME == "stable") {
        sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan"
        sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-${env.SEMVAR}"
+    } else {
+       sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-unstable"
     }
 }

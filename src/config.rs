@@ -22,6 +22,7 @@ pub struct Args {
     pub graphite_port: u16,
     pub flush_interval: u64,
     pub console: bool,
+    pub null: bool,
     pub wavefront: bool,
     pub wavefront_port: Option<u16>,
     pub wavefront_host: Option<String>,
@@ -113,6 +114,7 @@ pub fn parse_args() -> Args {
         // We read from CLI arguments
         None => {
             let mk_wavefront = args.is_present("wavefront");
+            let mk_null = args.is_present("null");
             let mk_console = args.is_present("console");
 
             let (wport, whost) = if mk_wavefront {
@@ -139,6 +141,7 @@ pub fn parse_args() -> Args {
                 flush_interval: u64::from_str(args.value_of("flush-interval").unwrap())
                     .expect("flush-interval must be an integer"),
                 console: mk_console,
+                null: mk_null,
                 wavefront: mk_wavefront,
                 wavefront_port: wport,
                 wavefront_host: whost,
@@ -189,6 +192,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     };
 
     let mk_wavefront = value.lookup("wavefront").is_some();
+    let mk_null = value.lookup("null").is_some();
     let mk_console = value.lookup("console").is_some();
 
     let (wport, whost) = if mk_wavefront {
@@ -245,6 +249,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             .as_integer()
             .expect("flush-interval must be integer") as u64,
         console: mk_console,
+        null: mk_null,
         wavefront: mk_wavefront,
         wavefront_port: wport,
         wavefront_host: whost,
@@ -271,6 +276,7 @@ mod test {
         assert_eq!(args.graphite_port, 2003);
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
@@ -294,6 +300,7 @@ host = "example.com"
         assert_eq!(args.graphite_port, 2003);
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
         assert_eq!(args.wavefront, true);
         assert_eq!(args.wavefront_host, Some("example.com".to_string()));
         assert_eq!(args.wavefront_port, Some(3131));
@@ -315,6 +322,29 @@ host = "example.com"
         assert_eq!(args.graphite_port, 2003);
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, true);
+        assert_eq!(args.null, false);
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, "");
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_file_null() {
+        let config = r#"
+[null]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, 8125);
+        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.null, true);
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
@@ -339,6 +369,7 @@ mission = "from_gad"
         assert_eq!(args.graphite_port, 2003);
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
@@ -366,6 +397,7 @@ raw = 42
         assert_eq!(args.graphite_port, 2003);
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
@@ -396,6 +428,8 @@ host = "example.com"
 
 [console]
 
+[null]
+
 [tags]
 source = "cernan"
 purpose = "serious_business"
@@ -416,6 +450,7 @@ raw = 42
         assert_eq!(args.graphite_port, 1034);
         assert_eq!(args.flush_interval, 128);
         assert_eq!(args.console, true);
+        assert_eq!(args.null, true);
         assert_eq!(args.wavefront, true);
         assert_eq!(args.wavefront_host, Some("example.com".to_string()));
         assert_eq!(args.wavefront_port, Some(3131));
