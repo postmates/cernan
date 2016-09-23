@@ -4,6 +4,16 @@ use string_cache::Atom;
 
 include!(concat!(env!("OUT_DIR"), "/serde_types.rs"));
 
+impl LogLine {
+    pub fn new(path: Atom, value: String) -> LogLine {
+        LogLine {
+            path: path,
+            value: value,
+            time: UTC::now().timestamp(),
+        }
+    }
+}
+
 #[derive(PartialEq, Clone, Debug)]
 pub struct MetricQOS {
     pub counter: u64,

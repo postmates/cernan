@@ -1,7 +1,15 @@
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
+pub struct LogLine {
+    pub path: Atom,
+    pub value: String,
+    pub time: i64,
+}
+
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub enum Event {
     Statsd(Metric),
     Graphite(Metric),
+    Log(Vec<LogLine>),
     TimerFlush,
 }
 

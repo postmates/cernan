@@ -1,6 +1,6 @@
 use sink::Sink;
 use buckets::Buckets;
-use metric::Metric;
+use metric::{Metric,LogLine};
 use chrono;
 
 pub struct Console {
@@ -28,6 +28,10 @@ fn fmt_line(key: &str, value: f64) {
 impl Sink for Console {
     fn deliver(&mut self, point: Metric) {
         self.aggrs.add(point);
+    }
+
+    fn deliver_lines(&mut self, _: Vec<LogLine>) {
+        // nothing, intentionally
     }
 
     fn flush(&mut self) {

@@ -10,6 +10,7 @@ use metric;
 use std::fs::File;
 use std::io::SeekFrom;
 use std::path::PathBuf;
+use string_cache::Atom;
 
 use std::sync::mpsc::channel;
 use notify::{RecommendedWatcher, Error, Watcher};
@@ -92,6 +93,7 @@ pub fn file_server(mut chans: Vec<mpsc::Sender>, path: PathBuf) {
                             reader = BufReader::new(fp);
                         }
                         if op.contains(WRITE) {
+                            let mut lines = Vec::new();
                             loop {
                                 let mut line = String::new();
                                 match reader.read_line(&mut line) {
@@ -100,10 +102,15 @@ pub fn file_server(mut chans: Vec<mpsc::Sender>, path: PathBuf) {
                                         let name = format!("{}.lines", path.to_str().unwrap());
                                         let metric = metric::Metric::counter(&name);
                                         send(&mut chans, &metric::Event::Statsd(metric));
-                                    }
-                                    Err(err) => panic!(err),
+                                        lines.push(metric::LogLine::new(
+                                            Atom::from(path.to_str().unwrap()),
+                                            line,
+                                        ));
+                                    },
+                                    Err(err) => panic!(err)
                                 }
                             }
+                            send(&mut chans, &metric::Event::Log(lines));
                         }
                     }
                     Err(e) => panic!("Unknown file event error: {}", e),

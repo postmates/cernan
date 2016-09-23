@@ -16,7 +16,9 @@ log = "0.3.6"
 dns-lookup = "0.2.1"
 toml = "0.2.0"
 notify = "2.6.3"
+rusoto = {version = "0.16.0", features = ["firehose"]}
 serde = "0.8"
+serde_json = "0.8"
 bincode = "0.6.0"
 
 [dev-dependencies]
