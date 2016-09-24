@@ -6,7 +6,7 @@ pub trait Sink {
     fn flush(&mut self) -> ();
     fn deliver(&mut self, point: Metric) -> ();
     fn deliver_lines(&mut self, lines: Vec<LogLine>) -> ();
-    fn run(&mut self, recv: mpsc::Receiver) {
+    fn run(&mut self, recv: mpsc::Receiver<Event>) {
         for event in recv {
             match event {
                 Event::TimerFlush => self.flush(),

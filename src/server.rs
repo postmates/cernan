@@ -18,28 +18,28 @@ use notify::op::*;
 use mpsc;
 
 #[inline]
-fn send(chans: &mut Vec<mpsc::Sender>, event: &metric::Event) {
+fn send(chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &metric::Event) {
     for mut chan in chans {
         chan.send(event);
     }
 }
 
 /// statsd
-pub fn udp_server_v6(chans: Vec<mpsc::Sender>, port: u16) {
+pub fn udp_server_v6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
     let socket = UdpSocket::bind(addr).expect("Unable to bind to UDP socket");
     info!("statsd server started on ::1 {}", port);
     handle_udp(chans, socket);
 }
 
-pub fn udp_server_v4(chans: Vec<mpsc::Sender>, port: u16) {
+pub fn udp_server_v4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let socket = UdpSocket::bind(addr).expect("Unable to bind to UDP socket");
     info!("statsd server started on 127.0.0.1:{}", port);
     handle_udp(chans, socket);
 }
 
-pub fn handle_udp(mut chans: Vec<mpsc::Sender>, socket: UdpSocket) {
+pub fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>, socket: UdpSocket) {
     let mut buf = [0; 8192];
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
@@ -68,7 +68,7 @@ pub fn handle_udp(mut chans: Vec<mpsc::Sender>, socket: UdpSocket) {
     }
 }
 
-pub fn file_server(mut chans: Vec<mpsc::Sender>, path: PathBuf) {
+pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf) {
     let (tx, rx) = channel();
     // NOTE on OSX fsevent will _not_ let us watch a file we don't own
     // effectively. See
@@ -121,7 +121,7 @@ pub fn file_server(mut chans: Vec<mpsc::Sender>, path: PathBuf) {
     }
 }
 
-pub fn tcp_server_ipv6(chans: Vec<mpsc::Sender>, port: u16) {
+pub fn tcp_server_ipv6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
     info!("graphite server started on ::1 {}", port);
@@ -133,7 +133,7 @@ pub fn tcp_server_ipv6(chans: Vec<mpsc::Sender>, port: u16) {
     }
 }
 
-pub fn tcp_server_ipv4(chans: Vec<mpsc::Sender>, port: u16) {
+pub fn tcp_server_ipv4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
     info!("graphite server started on 127.0.0.1:{}", port);
@@ -145,7 +145,7 @@ pub fn tcp_server_ipv4(chans: Vec<mpsc::Sender>, port: u16) {
     }
 }
 
-fn handle_client(mut chans: Vec<mpsc::Sender>, stream: TcpStream) {
+fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream) {
     let line_reader = BufReader::new(stream);
     for line in line_reader.lines() {
         match line {
@@ -177,7 +177,7 @@ fn handle_client(mut chans: Vec<mpsc::Sender>, stream: TcpStream) {
 }
 
 // emit flush event into channel on a regular interval
-pub fn flush_timer_loop(mut chans: Vec<mpsc::Sender>, interval: u64) {
+pub fn flush_timer_loop(mut chans: Vec<mpsc::Sender<metric::Event>>, interval: u64) {
     let duration = Duration::new(interval, 0);
     loop {
         sleep(duration);

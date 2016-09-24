@@ -1,11 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::io::{BufReader, ErrorKind, Write, Read, SeekFrom, Seek};
-use metric::Event;
 use bincode::serde::{serialize, deserialize};
+use serde::{Deserialize, Serialize};
 use bincode::SizeLimit;
 use std::sync::{atomic, Arc};
 use std::{thread, time};
+use std::marker::PhantomData;
 
 #[inline]
 fn u32tou8abe(v: u32) -> [u8; 4] {
@@ -18,7 +19,7 @@ fn u8tou32abe(v: &[u8]) -> u32 {
 }
 
 #[derive(Debug)]
-pub struct Sender {
+pub struct Sender<T> {
     root: PathBuf, // directory we store our queues in
     path: PathBuf, // active fp filename
     fp: fs::File, // active fp
@@ -26,19 +27,23 @@ pub struct Sender {
     max_bytes: usize,
     global_seq_num: Arc<atomic::AtomicUsize>,
     seq_num: usize,
+
+    resource_type: PhantomData<T>,
 }
 
-impl Clone for Sender {
-    fn clone(&self) -> Sender {
+impl<T> Clone for Sender<T> where T: Serialize + Deserialize {
+    fn clone(&self) -> Sender<T> {
         Sender::new(&self.root, self.max_bytes, self.global_seq_num.clone())
     }
 }
 
 #[derive(Debug)]
-pub struct Receiver {
+pub struct Receiver<T> {
     root: PathBuf, // directory we store our queues in
     fp: BufReader<fs::File>, // active fp
     seq_num: usize,
+
+    resource_type: PhantomData<T>,
 }
 
 // Here's the plan. The filesystem structure will look like so:
@@ -57,11 +62,11 @@ pub struct Receiver {
 // existing file and move on to the next file.
 //
 // File names always increase.
-pub fn channel(name: &str, data_dir: &Path) -> (Sender, Receiver) {
+pub fn channel<T>(name: &str, data_dir: &Path) -> (Sender<T>, Receiver<T>) where T: Serialize + Deserialize {
     channel_with_max_bytes(name, data_dir, 1_048_576 * 100)
 }
 
-pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> (Sender, Receiver) {
+pub fn channel_with_max_bytes<T>(name: &str, data_dir: &Path, max_bytes: usize) -> (Sender<T>, Receiver<T>) where T: Serialize + Deserialize {
     let root = data_dir.join(name);
     let snd_root = root.clone();
     let rcv_root = root.clone();
@@ -74,8 +79,8 @@ pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> 
     (sender, receiver)
 }
 
-impl Receiver {
-    pub fn new(root: &Path) -> Receiver {
+impl<T: Deserialize> Receiver<T> {
+    pub fn new(root: &Path) -> Receiver<T> {
         let queue_file = fs::read_dir(root)
             .unwrap()
             .map(|de| {
@@ -99,15 +104,16 @@ impl Receiver {
             root: root.to_path_buf(),
             fp: BufReader::new(fp),
             seq_num: seq_num,
+            resource_type: PhantomData,
         }
     }
 }
 
 
-impl Iterator for Receiver {
-    type Item = Event;
+impl<T> Iterator for Receiver<T> where T: Serialize + Deserialize {
+    type Item = T;
 
-    fn next(&mut self) -> Option<Event> {
+    fn next(&mut self) -> Option<T> {
         let mut sz_buf = [0; 4];
 
         // The receive loop
@@ -174,11 +180,11 @@ impl Iterator for Receiver {
     }
 }
 
-impl Sender {
+impl<T: Serialize> Sender<T> {
     pub fn new(data_dir: &Path,
                max_bytes: usize,
                global_seq_num: Arc<atomic::AtomicUsize>)
-               -> Sender {
+               -> Sender<T> {
         let seq_num = match fs::read_dir(data_dir)
             .unwrap()
             .map(|de| {
@@ -208,6 +214,7 @@ impl Sender {
             max_bytes: max_bytes,
             global_seq_num: global_seq_num,
             seq_num: seq_num,
+            resource_type: PhantomData,
         }
     }
 
@@ -216,7 +223,7 @@ impl Sender {
     //  u32: payload_size
     //  [u8] payload
     //
-    pub fn send(&mut self, event: &Event) {
+    pub fn send(&mut self, event: &T) {
         let mut t = serialize(event, SizeLimit::Infinite).expect("could not serialize");
         // NOTE The conversion of t.len to u32 and usize is _only_ safe when u32
         // <= usize. That's very likely to hold true for machines--for
