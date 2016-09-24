@@ -99,7 +99,7 @@ impl Buckets {
                     let counter =
                         self.counters.get_mut(&name).expect("shouldn't happen but did, counter");
 
-                    match (*counter).binary_search_by_key(&value.time, |ref m| m.time) {
+                    match (*counter).binary_search_by_key(&value.time, |m| m.time) {
                         Ok(idx) => {
                             (*counter)[idx].value += value.value * (1.0 / rate);
                         }
@@ -119,7 +119,7 @@ impl Buckets {
                 if self.gauges.contains_key(&name) {
                     let gauge =
                         self.gauges.get_mut(&name).expect("shouldn't happen but did, gauge");
-                    match (*gauge).binary_search_by_key(&value.time, |ref m| m.time) {
+                    match (*gauge).binary_search_by_key(&value.time, |m| m.time) {
                         Ok(idx) => (*gauge)[idx].value += value.value,
                         Err(idx) => (*gauge).insert(idx, value),
                     }
@@ -131,7 +131,7 @@ impl Buckets {
                 if self.gauges.contains_key(&name) {
                     let gauge =
                         self.gauges.get_mut(&name).expect("shouldn't happen but did, gauge");
-                    match (*gauge).binary_search_by_key(&value.time, |ref m| m.time) {
+                    match (*gauge).binary_search_by_key(&value.time, |m| m.time) {
                         Ok(idx) => (*gauge)[idx].value = value.value,
                         Err(idx) => (*gauge).insert(idx, value),
                     }
@@ -147,7 +147,7 @@ impl Buckets {
                 // We only want to keep one raw point per second per name. If
                 // someone pushes more than one point in a second interval we'll
                 // overwrite the value of the metric already in-vector.
-                match (*raw).binary_search_by_key(&value.time, |ref m| m.time) {
+                match (*raw).binary_search_by_key(&value.time, |m| m.time) {
                     Ok(idx) => (*raw)[idx].value = value.value,
                     Err(idx) => (*raw).insert(idx, value),
                 }
