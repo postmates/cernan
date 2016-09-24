@@ -6,7 +6,7 @@ pub struct Null {
 
 impl Null {
     pub fn new() -> Null {
-        Null { }
+        Null {}
     }
 }
 

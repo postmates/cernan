@@ -69,9 +69,7 @@ pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> 
         fs::create_dir_all(root).expect("could not create directory");
     }
 
-    let sender = Sender::new(&snd_root,
-                             max_bytes,
-                             Arc::new(atomic::AtomicUsize::new(0)));
+    let sender = Sender::new(&snd_root, max_bytes, Arc::new(atomic::AtomicUsize::new(0)));
     let receiver = Receiver::new(&rcv_root);
     (sender, receiver)
 }
