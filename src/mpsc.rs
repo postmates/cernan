@@ -242,6 +242,7 @@ impl<T: Serialize> Sender<T> {
                     match e.kind() {
                         ErrorKind::PermissionDenied |
                         ErrorKind::NotFound => {
+                            trace!("[Sender] looping to next seq_num on account of {:?}", e);
                             continue;
                         }
                         _ => panic!("COULD NOT CREATE {:?}", e),
@@ -270,7 +271,7 @@ impl<T: Serialize> Sender<T> {
         // If the individual sender writes enough to go over the max we mark the
         // file read-only--which will help the receiver to decide it has hit the
         // end of its log file--and create a new log file.
-        if (self.bytes_written + t.len() + 1) > self.max_bytes {
+        if (self.bytes_written + t.len()) > self.max_bytes {
             // Search for our place, setting paths as read-only as we go
             //
             // Once we've gone over the write limit for our current file we need
@@ -313,6 +314,7 @@ impl<T: Serialize> Sender<T> {
                         match e.kind() {
                             ErrorKind::PermissionDenied |
                             ErrorKind::NotFound => {
+                                trace!("[Sender] looping in send at {} to find next queue file", self.seq_num);
                                 self.seq_num = self.seq_num.wrapping_add(1);
                                 self.path = self.root.join(format!("{}", self.seq_num));
                                 continue;
