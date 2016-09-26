@@ -8,10 +8,11 @@ use std::fs::File;
 use toml;
 use toml::Value;
 use std::io::Read;
-use std::fmt::Write;
 use std::str::FromStr;
 use metric::MetricQOS;
-use std::path::{Path, PathBuf};
+use std::path::{Path,PathBuf};
+use std::collections::BTreeMap;
+use string_cache::Atom;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
@@ -23,11 +24,12 @@ pub struct Args {
     pub flush_interval: u64,
     pub console: bool,
     pub null: bool,
+    pub firehose_delivery_streams: Vec<String>,
     pub wavefront: bool,
     pub wavefront_port: Option<u16>,
     pub wavefront_host: Option<String>,
     pub qos: MetricQOS,
-    pub tags: String,
+    pub tags: BTreeMap<Atom, Atom>,
     pub files: Option<Vec<PathBuf>>,
     pub verbose: u64,
     pub version: String,
@@ -44,49 +46,6 @@ pub fn parse_args() -> Args {
              .value_name("config")
              .help("The config file to feed in.")
              .takes_value(true))
-        .arg(Arg::with_name("statsd-port")
-             .long("statsd-port")
-             .value_name("port")
-             .help("The UDP port to bind to for statsd traffic.")
-             .takes_value(true)
-             .default_value("8125"))
-        .arg(Arg::with_name("graphite-port")
-             .long("graphite-port")
-             .value_name("port")
-             .help("The TCP port to bind to for graphite traffic.")
-             .takes_value(true)
-             .default_value("2003"))
-        .arg(Arg::with_name("flush-interval")
-             .long("flush-interval")
-             .value_name("interval")
-             .help("How frequently to flush metrics to the sinks in seconds.")
-             .takes_value(true)
-             .default_value("10"))
-        .arg(Arg::with_name("console")
-             .long("console")
-             .help("Enable the console sink."))
-        .arg(Arg::with_name("wavefront")
-             .long("wavefront")
-             .help("Enable the wavefront sink."))
-        .arg(Arg::with_name("wavefront-port")
-             .long("wavefront-port")
-             .help("The port wavefront proxy is running on")
-             .takes_value(true)
-             .default_value("2878"))
-        .arg(Arg::with_name("wavefront-host")
-             .long("wavefront-host")
-             .help("The host wavefront proxy is running on")
-             .takes_value(true)
-             .default_value("127.0.0.1"))
-        .arg(Arg::with_name("wavefront-skip-aggrs")
-             .long("wavefront-skip-aggrs")
-             .help("Skip sending aggregate metrics to wavefront")) // NOT USED, REMOVE 0.4.x
-        .arg(Arg::with_name("tags")
-             .long("tags")
-             .help("A comma separated list of tags to report to supporting sinks.")
-             .takes_value(true)
-             .use_delimiter(false)
-             .default_value("source=cernan"))
         .arg(Arg::with_name("verbose")
             .short("v")
             .multiple(true)
@@ -143,9 +102,10 @@ pub fn parse_args() -> Args {
                 console: mk_console,
                 null: mk_null,
                 wavefront: mk_wavefront,
+                firehose_delivery_streams: Vec::default(),
                 wavefront_port: wport,
                 wavefront_host: whost,
-                tags: args.value_of("tags").unwrap().to_string(),
+                tags: BTreeMap::new(),
                 qos: qos,
                 files: None,
                 verbose: verb,
@@ -160,15 +120,14 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
 
     let tags = match value.lookup("tags") {
         Some(tbl) => {
-            let mut tags = String::new();
+            let mut tags = BTreeMap::new();
             let ttbl = tbl.as_table().unwrap();
-            for (k, v) in &(*ttbl) {
-                write!(tags, "{}={},", k, v.as_str().unwrap()).unwrap();
+            for (k, v) in ttbl.iter() {
+                tags.insert(Atom::from(k.clone()), Atom::from(v.as_str().unwrap().to_string()));
             }
-            tags.pop();
             tags
         }
-        None => "".to_string(),
+        None => BTreeMap::new(),
     };
 
     let qos = match value.lookup("quality-of-service") {
@@ -230,6 +189,20 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
     }
 
+    let mut fh_delivery_streams : Vec<String> = Vec::new();
+    if let Some(array) = value.lookup("firehose") {
+        for tbl in array.as_slice() {
+            for val in tbl {
+                match val.lookup("delivery_stream") {
+                    Some(ds) => {
+                        fh_delivery_streams.push(ds.as_str().unwrap().to_owned())
+                    }
+                    None => continue,
+                }
+            }
+        }
+    }
+
     Args {
         data_directory: value.lookup("data-directory")
             .unwrap_or(&Value::String("/tmp/cernan-data".to_string()))
@@ -251,6 +224,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         console: mk_console,
         null: mk_null,
         wavefront: mk_wavefront,
+        firehose_delivery_streams: fh_delivery_streams,
         wavefront_port: wport,
         wavefront_host: whost,
         tags: tags,
@@ -265,6 +239,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
 mod test {
     use super::*;
     use metric::MetricQOS;
+    use std::collections::BTreeMap;
+    use string_cache::Atom;
 
     #[test]
     fn config_file_default() {
@@ -277,10 +253,11 @@ mod test {
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, "");
+        assert_eq!(args.tags, BTreeMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -301,10 +278,11 @@ host = "example.com"
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
         assert_eq!(args.wavefront, true);
         assert_eq!(args.wavefront_host, Some("example.com".to_string()));
         assert_eq!(args.wavefront_port, Some(3131));
-        assert_eq!(args.tags, "");
+        assert_eq!(args.tags, BTreeMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -323,10 +301,11 @@ host = "example.com"
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, true);
         assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, "");
+        assert_eq!(args.tags, BTreeMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -345,10 +324,38 @@ host = "example.com"
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, true);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, "");
+        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_file_firehose() {
+        let config = r#"
+[[firehose]]
+delivery_stream = "stream_one"
+
+[[firehose]]
+delivery_stream = "stream_two"
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, 8125);
+        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
+        assert_eq!(args.firehose_delivery_streams, vec!["stream_one", "stream_two"]);
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, BTreeMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -364,17 +371,21 @@ mission = "from_gad"
             .to_string();
 
         let args = parse_config_file(config, 4);
+        let mut tags = BTreeMap::new();
+        tags.insert(Atom::from("mission"), Atom::from("from_gad"));
+        tags.insert(Atom::from("purpose"), Atom::from("serious_business"));
+        tags.insert(Atom::from("source"), Atom::from("cernan"));
 
         assert_eq!(args.statsd_port, 8125);
         assert_eq!(args.graphite_port, 2003);
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags,
-                   "mission=from_gad,purpose=serious_business,source=cernan");
+        assert_eq!(args.tags, tags);
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -398,10 +409,11 @@ raw = 42
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, "");
+        assert_eq!(args.tags, BTreeMap::default());
         assert_eq!(args.qos,
                    MetricQOS {
                        gauge: 110,
@@ -430,6 +442,8 @@ host = "example.com"
 
 [null]
 
+[firehose]
+
 [tags]
 source = "cernan"
 purpose = "serious_business"
@@ -445,17 +459,22 @@ raw = 42
             .to_string();
 
         let args = parse_config_file(config, 4);
+        println!("ARGS : {:?}", args);
+        let mut tags = BTreeMap::new();
+        tags.insert(Atom::from("mission"), Atom::from("from_gad"));
+        tags.insert(Atom::from("purpose"), Atom::from("serious_business"));
+        tags.insert(Atom::from("source"), Atom::from("cernan"));
 
         assert_eq!(args.statsd_port, 1024);
         assert_eq!(args.graphite_port, 1034);
         assert_eq!(args.flush_interval, 128);
         assert_eq!(args.console, true);
         assert_eq!(args.null, true);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
         assert_eq!(args.wavefront, true);
         assert_eq!(args.wavefront_host, Some("example.com".to_string()));
         assert_eq!(args.wavefront_port, Some(3131));
-        assert_eq!(args.tags,
-                   "mission=from_gad,purpose=serious_business,source=cernan");
+        assert_eq!(args.tags, tags);
         assert_eq!(args.qos,
                    MetricQOS {
                        gauge: 110,

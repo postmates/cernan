@@ -2,7 +2,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::fmt::Write;
 use std::io::Write as IoWrite;
 use chrono;
-use metric::{Metric, MetricQOS};
+use metric::{Metric, LogLine, MetricQOS};
 use buckets::Buckets;
 use sink::Sink;
 use dns_lookup;
@@ -168,6 +168,10 @@ impl Sink for Wavefront {
 
     fn deliver(&mut self, point: Metric) {
         self.aggrs.add(point);
+    }
+
+    fn deliver_lines(&mut self, _: Vec<LogLine>) {
+        // nothing, intentionally
     }
 }
 

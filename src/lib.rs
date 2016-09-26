@@ -9,6 +9,8 @@ extern crate notify;
 extern crate bincode;
 #[macro_use]
 extern crate log;
+extern crate serde_json;
+extern crate rusoto;
 
 pub mod mpsc;
 pub mod sink;
@@ -24,4 +26,5 @@ pub mod sinks {
     pub mod console;
     pub mod wavefront;
     pub mod null;
+    pub mod firehose;
 }

@@ -1,5 +1,5 @@
 use sink::Sink;
-use metric::Metric;
+use metric::{Metric, LogLine};
 
 pub struct Null {
 }
@@ -18,6 +18,10 @@ impl Default for Null {
 
 impl Sink for Null {
     fn deliver(&mut self, _: Metric) {
+        // discard point
+    }
+
+    fn deliver_lines(&mut self, _: Vec<LogLine>) {
         // discard point
     }
 

@@ -8,6 +8,7 @@ extern crate cernan;
 use std::str;
 use std::thread;
 use chrono::UTC;
+use std::fmt::Write;
 
 use cernan::sink::Sink;
 
@@ -57,7 +58,10 @@ fn main() {
         }));
     }
     if args.wavefront {
-        let wf_tags: String = args.tags.replace(",", " ");
+        let mut wf_tags = String::new();
+        for (k, v) in args.tags.iter() {
+            write!(wf_tags, "{}={} ", k, v).unwrap();
+        }
         let cp_args = args.clone();
         let (wf_send, wf_recv) = cernan::mpsc::channel("wf", &args.data_directory);
         sends.push(wf_send);
@@ -70,6 +74,15 @@ fn main() {
         }));
     }
 
+    for ds in &args.firehose_delivery_streams {
+        let fh_name = ds.clone();
+        let (firehose_send, firehose_recv) = cernan::mpsc::channel(&fh_name, &args.data_directory);
+        sends.push(firehose_send);
+        let fh_args = args.clone();
+        joins.push(thread::spawn(move || {
+            cernan::sinks::firehose::Firehose::new(&fh_name, fh_args.tags).run(firehose_recv);
+        }));
+    }
 
     let sport = args.statsd_port;
     let udp_server_v4_send = sends.clone();
