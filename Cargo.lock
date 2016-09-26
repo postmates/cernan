@@ -1,6 +1,6 @@
 [root]
 name = "cernan"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "bincode 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.2.25 (registry+https://github.com/rust-lang/crates.io-index)",
