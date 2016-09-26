@@ -1,9 +1,10 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::io::{BufReader, ErrorKind, Write, Read, SeekFrom, Seek};
-use metric::Event;
-use bincode::serde::{serialize, deserialize};
 use bincode::SizeLimit;
+use bincode::serde::{serialize, deserialize};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io::{BufReader, ErrorKind, Write, Read, SeekFrom, Seek};
+use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
 use std::sync::{atomic, Arc};
 use std::{thread, time};
 
@@ -17,8 +18,7 @@ fn u8tou32abe(v: &[u8]) -> u32 {
     (v[3] as u32) + ((v[2] as u32) << 8) + ((v[1] as u32) << 24) + ((v[0] as u32) << 16)
 }
 
-#[derive(Debug)]
-pub struct Sender {
+pub struct Sender<T> {
     root: PathBuf, // directory we store our queues in
     path: PathBuf, // active fp filename
     fp: fs::File, // active fp
@@ -26,19 +26,24 @@ pub struct Sender {
     max_bytes: usize,
     global_seq_num: Arc<atomic::AtomicUsize>,
     seq_num: usize,
+
+    resource_type: PhantomData<T>,
 }
 
-impl Clone for Sender {
-    fn clone(&self) -> Sender {
+impl<T> Clone for Sender<T>
+    where T: Serialize + Deserialize
+{
+    fn clone(&self) -> Sender<T> {
         Sender::new(&self.root, self.max_bytes, self.global_seq_num.clone())
     }
 }
 
-#[derive(Debug)]
-pub struct Receiver {
+pub struct Receiver<T> {
     root: PathBuf, // directory we store our queues in
     fp: BufReader<fs::File>, // active fp
     seq_num: usize,
+
+    resource_type: PhantomData<T>,
 }
 
 // Here's the plan. The filesystem structure will look like so:
@@ -57,11 +62,18 @@ pub struct Receiver {
 // existing file and move on to the next file.
 //
 // File names always increase.
-pub fn channel(name: &str, data_dir: &Path) -> (Sender, Receiver) {
+pub fn channel<T>(name: &str, data_dir: &Path) -> (Sender<T>, Receiver<T>)
+    where T: Serialize + Deserialize
+{
     channel_with_max_bytes(name, data_dir, 1_048_576 * 100)
 }
 
-pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> (Sender, Receiver) {
+pub fn channel_with_max_bytes<T>(name: &str,
+                                 data_dir: &Path,
+                                 max_bytes: usize)
+                                 -> (Sender<T>, Receiver<T>)
+    where T: Serialize + Deserialize
+{
     let root = data_dir.join(name);
     let snd_root = root.clone();
     let rcv_root = root.clone();
@@ -74,42 +86,39 @@ pub fn channel_with_max_bytes(name: &str, data_dir: &Path, max_bytes: usize) -> 
     (sender, receiver)
 }
 
-impl Receiver {
-    pub fn new(root: &Path) -> Receiver {
-        let queue_file = fs::read_dir(root)
+impl<T: Deserialize> Receiver<T> {
+    pub fn new(data_dir: &Path) -> Receiver<T> {
+        let seq_num = fs::read_dir(data_dir)
             .unwrap()
             .map(|de| {
-                let d = de.unwrap();
-                d.path()
+                de.unwrap().path().file_name().unwrap().to_str().unwrap().parse::<usize>().unwrap()
             })
-            .max()
+            .min()
             .unwrap();
-
-        let queue_file1 = queue_file.clone();
-        let seq_file_path = queue_file1.file_name().unwrap();
-
-        let seq_num: usize = seq_file_path.to_str().unwrap().parse::<usize>().unwrap();
+        let log = data_dir.join(format!("{}", seq_num));
         let mut fp = fs::OpenOptions::new()
             .read(true)
-            .open(queue_file)
+            .open(log)
             .expect("RECEIVER could not open file");
         fp.seek(SeekFrom::End(0)).expect("could not get to end of file");
 
         Receiver {
-            root: root.to_path_buf(),
+            root: data_dir.to_path_buf(),
             fp: BufReader::new(fp),
             seq_num: seq_num,
+            resource_type: PhantomData,
         }
     }
 }
 
 
-impl Iterator for Receiver {
-    type Item = Event;
+impl<T> Iterator for Receiver<T>
+    where T: Serialize + Deserialize
+{
+    type Item = T;
 
-    fn next(&mut self) -> Option<Event> {
+    fn next(&mut self) -> Option<T> {
         let mut sz_buf = [0; 4];
-
         // The receive loop
         //
         // The receiver works by regularly attempting to read a payload from its
@@ -118,6 +127,7 @@ impl Iterator for Receiver {
         // this is a signal from the senders that the file is no longer being
         // written to. It's safe for the sender to declare the log done by
         // trashing it.
+        let mut attempts = 0;
         loop {
             match self.fp.read_exact(&mut sz_buf) {
                 Ok(()) => {
@@ -140,10 +150,24 @@ impl Iterator for Receiver {
                 Err(e) => {
                     match e.kind() {
                         ErrorKind::UnexpectedEof => {
-                            let dur = time::Duration::from_millis(10);
-                            thread::sleep(dur);
-
-                            let metadata = self.fp.get_ref().metadata().unwrap();
+                            // It's possible that some data snuck into the file
+                            // between our read and the below lookup of its
+                            // metadata. We'll delay the file switch-over up to
+                            // 10ms and retry the EOF.
+                            attempts += 1;
+                            if attempts < 10 {
+                                let dur = time::Duration::from_millis(1);
+                                thread::sleep(dur);
+                                continue;
+                            }
+                            // Okay, we're pretty sure that no one snuck data in
+                            // on us. We check the metadata condition of the
+                            // file and, if we find it read-only, switch on over
+                            // to a new log file.
+                            let metadata = self.fp
+                                .get_ref()
+                                .metadata()
+                                .expect("could not get metadata at UnexpectedEof");
                             if metadata.permissions().readonly() {
                                 let old_log = self.root.join(format!("{}", self.seq_num));
                                 fs::remove_file(old_log).expect("could not remove log");
@@ -157,6 +181,7 @@ impl Iterator for Receiver {
                                     match fs::OpenOptions::new().read(true).open(&lg) {
                                         Ok(fp) => {
                                             self.fp = BufReader::new(fp);
+                                            attempts = 0;
                                             break;
                                         }
                                         Err(_) => continue,
@@ -174,40 +199,56 @@ impl Iterator for Receiver {
     }
 }
 
-impl Sender {
+impl<T: Serialize> Sender<T> {
     pub fn new(data_dir: &Path,
                max_bytes: usize,
                global_seq_num: Arc<atomic::AtomicUsize>)
-               -> Sender {
-        let seq_num = match fs::read_dir(data_dir)
-            .unwrap()
-            .map(|de| {
-                let d = de.unwrap();
-                d.path()
-            })
-            .max() {
-            Some(queue_file) => {
-                let seq_file_path = queue_file.file_name().unwrap();
-                seq_file_path.to_str().unwrap().parse::<usize>().unwrap()
+               -> Sender<T> {
+        loop {
+            let seq_num = match fs::read_dir(data_dir)
+                .unwrap()
+                .map(|de| {
+                    de.unwrap()
+                        .path()
+                        .file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap()
+                })
+                .max() {
+                Some(sn) => sn,
+                None => 0,
+            };
+            let log = data_dir.join(format!("{}", seq_num));
+            match fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&log) {
+                Ok(fp) => {
+                    return Sender {
+                        root: data_dir.to_path_buf(),
+                        path: log,
+                        fp: fp,
+                        bytes_written: 0,
+                        max_bytes: max_bytes,
+                        global_seq_num: global_seq_num,
+                        seq_num: seq_num,
+                        resource_type: PhantomData,
+                    }
+                }
+                Err(e) => {
+                    match e.kind() {
+                        ErrorKind::PermissionDenied |
+                        ErrorKind::NotFound => {
+                            trace!("[Sender] looping to next seq_num on account of {:?}", e);
+                            continue;
+                        }
+                        _ => panic!("COULD NOT CREATE {:?}", e),
+                    }
+                }
             }
-            None => 0,
-        };
-
-        let log = data_dir.join(format!("{}", seq_num));
-        let snd_log = log.clone();
-        let fp = fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(log)
-            .expect("SENDER NEW could not open file");
-        Sender {
-            root: data_dir.to_path_buf(),
-            path: snd_log,
-            fp: fp,
-            bytes_written: 0,
-            max_bytes: max_bytes,
-            global_seq_num: global_seq_num,
-            seq_num: seq_num,
         }
     }
 
@@ -216,7 +257,7 @@ impl Sender {
     //  u32: payload_size
     //  [u8] payload
     //
-    pub fn send(&mut self, event: &Event) {
+    pub fn send(&mut self, event: &T) {
         let mut t = serialize(event, SizeLimit::Infinite).expect("could not serialize");
         // NOTE The conversion of t.len to u32 and usize is _only_ safe when u32
         // <= usize. That's very likely to hold true for machines--for
@@ -227,77 +268,77 @@ impl Sender {
         t.insert(0, pyld_sz_bytes[1]);
         t.insert(0, pyld_sz_bytes[2]);
         t.insert(0, pyld_sz_bytes[3]);
-        self.bytes_written += t.len();
-        // The write loop
-        //
-        // We use a write loop to retry in the event of a collision between two
-        // sender threads, detected by file-handler goofs. I've been unable to
-        // force bad behaviour with this implementation run under extreme
-        // conditions but, like most lock-free code, it ought to be viewed with
-        // suspicion.
-        loop {
-            let global_seq_num = (*self.global_seq_num).load(atomic::Ordering::Relaxed);
-            // Each sender operates independently of one another. We keep track of
-            // the maximum bytes that are written in a non-shared manner. That is, a
-            // very slow sender will tend to stick with the same log file while a
-            // very fast one will tend to keep moving forward.
+        // If the individual sender writes enough to go over the max we mark the
+        // file read-only--which will help the receiver to decide it has hit the
+        // end of its log file--and create a new log file.
+        if (self.bytes_written + t.len()) > self.max_bytes {
+            // Search for our place, setting paths as read-only as we go
             //
-            // To avoid having either all senders wait for the slow sender _or_ the
-            // receiver wait on the slowest sender we have each sender pull the
-            // "global_seq_num" and compare its current "seq_num". If less, the
-            // sender is slow and needs to catch up.
-            if self.seq_num < global_seq_num {
-                self.seq_num = global_seq_num;
-                self.path = self.root.join(format!("{}", self.seq_num));
-                match fs::OpenOptions::new().append(true).create(false).open(&self.path) {
-                    Ok(fp) => self.fp = fp,
-                    Err(e) => {
-                        debug!("sender could not catch up with {}", e);
-                        continue;
-                    }
+            // Once we've gone over the write limit for our current file we need
+            // to seek forward in the space of queue files. It's possible that:
+            //
+            //   * files will have been deleted by a fast receiver
+            //   * files will have been marked read-only already
+            //   * our seq_num is well behind the global seq_num
+            //
+            // The goal here is find our place in the queue files and, while
+            // doing so, ensure that each file we come across is marked
+            // read-only.
+            loop {
+                let gsn = (*self.global_seq_num)
+                    .compare_and_swap(self.seq_num, self.seq_num + 1, atomic::Ordering::SeqCst);
+                assert!(self.seq_num <= gsn);
+                while self.seq_num != gsn {
+                    let _ = fs::metadata(&self.path).map(|p| {
+                        let mut permissions = p.permissions();
+                        permissions.set_readonly(true);
+                        let _ = fs::set_permissions(&self.path, permissions);
+                    });
+                    self.seq_num = self.seq_num.wrapping_add(1);
+                    self.path = self.root.join(format!("{}", self.seq_num));
                 }
-                self.bytes_written = 0;
-            }
-            // If the individual sender writes enough to go over the max we mark the
-            // file read-only--which will help the receiver to decide it has hit the
-            // end of its log file--and create a new log file.
-            if self.bytes_written > self.max_bytes {
-                self.seq_num = self.seq_num.wrapping_add(1);
-                // set path to read-only
-                let mut permissions = self.fp.metadata().unwrap().permissions();
-                permissions.set_readonly(true);
-                match fs::set_permissions(&self.path, permissions) {
-                    Ok(()) => trace!("set path read-only"),
+                // It's possible when we open a new file that an even faster
+                // writer has already come, written its fill and zipped on down
+                // the line. That'd result in an open causing a
+                // PermissionDenied. If the receiver is very fast it's _also_
+                // possible that a file will turn up missing, resulting in a
+                // NotFound. The way of handling both is to give up the attempt
+                // and start at the next GSN.
+                match fs::OpenOptions::new().append(true).create(true).open(&self.path) {
+                    Ok(fp) => {
+                        self.fp = fp;
+                        self.bytes_written = 0;
+                        break;
+                    }
                     Err(e) => {
                         match e.kind() {
-                            ErrorKind::NotFound => continue,
-                            _ => panic!("failed to set read-only : {:?}", e),
+                            ErrorKind::PermissionDenied |
+                            ErrorKind::NotFound => {
+                                trace!("[Sender] looping in send at {} to find next queue file", self.seq_num);
+                                self.seq_num = self.seq_num.wrapping_add(1);
+                                self.path = self.root.join(format!("{}", self.seq_num));
+                                continue;
+                            }
+                            _ => {
+                                panic!("FAILED TO OPEN {:?} WITH {:?}", &self.path, e);
+                            }
                         }
                     }
-                }
-                // open new fp
-                self.path = self.root.join(format!("{}", self.seq_num));
-                loop {
-                    match fs::OpenOptions::new().append(true).create(true).open(&self.path) {
-                        Ok(fp) => {
-                            self.fp = fp;
-                            break;
-                        }
-                        Err(_) => continue,
-                    }
-                }
-                self.bytes_written = 0;
-                (*self.global_seq_num).fetch_add(1, atomic::Ordering::AcqRel);
-            }
-            let fp = &mut self.fp;
-            match fp.write(&t[..]) {
-                Ok(_) => break,
-                Err(e) => {
-                    debug!("Write error: {}", e);
-                    continue;
                 }
             }
         }
+
+        // write to disk
+        let fp = &mut self.fp;
+        match fp.write(&t[..]) {
+            Ok(written) => {
+                self.bytes_written += written;
+            }
+            Err(e) => {
+                panic!("Write error: {}", e);
+            }
+        }
+        fp.flush().expect("unable to flush");
     }
 }
 
@@ -307,7 +348,7 @@ mod test {
     extern crate quickcheck;
 
     use super::*;
-    use metric::Event;
+    use std::thread;
     use self::quickcheck::{QuickCheck, TestResult};
 
     #[test]
@@ -315,14 +356,14 @@ mod test {
         let dir = tempdir::TempDir::new("cernan").unwrap();
         let (mut snd, mut rcv) = channel("one_item_round_trip", dir.path());
 
-        snd.send(&Event::TimerFlush);
+        snd.send(&1);
 
-        assert_eq!(Some(Event::TimerFlush), rcv.next());
+        assert_eq!(Some(1), rcv.next());
     }
 
     #[test]
     fn round_trip_order_preserved() {
-        fn rnd_trip(max_bytes: usize, evs: Vec<Event>) -> TestResult {
+        fn rnd_trip(max_bytes: usize, evs: Vec<Vec<u32>>) -> TestResult {
             let dir = tempdir::TempDir::new("cernan").unwrap();
             let (mut snd, mut rcv) =
                 channel_with_max_bytes("round_trip_order_preserved", dir.path(), max_bytes);
@@ -339,12 +380,12 @@ mod test {
         QuickCheck::new()
             .tests(100)
             .max_tests(1000)
-            .quickcheck(rnd_trip as fn(usize, Vec<Event>) -> TestResult);
+            .quickcheck(rnd_trip as fn(usize, Vec<Vec<u32>>) -> TestResult);
     }
 
     #[test]
     fn round_trip_order_preserved_small_max_bytes() {
-        fn rnd_trip(evs: Vec<Event>) -> TestResult {
+        fn rnd_trip(evs: Vec<Vec<u32>>) -> TestResult {
             let max_bytes: usize = 128;
             let dir = tempdir::TempDir::new("cernan").unwrap();
             let (mut snd, mut rcv) =
@@ -362,6 +403,57 @@ mod test {
         QuickCheck::new()
             .tests(100)
             .max_tests(1000)
-            .quickcheck(rnd_trip as fn(Vec<Event>) -> TestResult);
+            .quickcheck(rnd_trip as fn(Vec<Vec<u32>>) -> TestResult);
+    }
+
+    #[test]
+    fn concurrent_snd_and_rcv_round_trip_order_preserved() {
+        let max_bytes: usize = 512;
+        let dir = tempdir::TempDir::new("cernan").unwrap();
+        println!("CONCURRENT SND_RECV TESTDIR: {:?}", dir);
+        let (snd, mut rcv) = channel_with_max_bytes("concurrent_snd_and_rcv_small_max_bytes",
+                                                    dir.path(),
+                                                    max_bytes);
+
+        let max_thrs = 32;
+        let max_sz = 1000;
+
+        // construct the payload to send repeatedly 'pyld' and the final payload
+        // the sender should receive
+        let mut tst_pylds = Vec::new();
+        for i in 0..(max_sz * max_thrs) {
+            tst_pylds.push(i);
+        }
+
+        let mut joins = Vec::new();
+
+        // start our receiver thread
+        joins.push(thread::spawn(move || {
+            // assert that we receive every element in tst_pylds by pulling a new
+            // value from the rcv, then marking it out of tst_pylds
+            for _ in 0..(max_sz * max_thrs) {
+                if let Some(nxt) = rcv.next() {
+                    let idx = tst_pylds.binary_search(&nxt).expect("DID NOT FIND ELEMENT");
+                    tst_pylds.remove(idx);
+                }
+            }
+            assert!(tst_pylds.is_empty());
+        }));
+
+        // start all our sender threads and blast away
+        for i in 0..max_thrs {
+            let mut thr_snd = snd.clone();
+            joins.push(thread::spawn(move || {
+                let base = i * max_sz;
+                for p in 0..max_sz {
+                    thr_snd.send(&(base + p));
+                }
+            }));
+        }
+
+        // wait until the senders are for sure done
+        for jh in joins {
+            jh.join().expect("Uh oh, child thread paniced!");
+        }
     }
 }

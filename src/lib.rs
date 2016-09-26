@@ -7,6 +7,7 @@ extern crate string_cache;
 extern crate dns_lookup;
 extern crate notify;
 extern crate bincode;
+extern crate serde;
 #[macro_use]
 extern crate log;
 extern crate serde_json;
