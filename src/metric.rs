@@ -1,5 +1,5 @@
 use metrics::*;
-use chrono::UTC;
+use time::now;
 use string_cache::Atom;
 
 include!(concat!(env!("OUT_DIR"), "/serde_types.rs"));
@@ -9,7 +9,7 @@ impl LogLine {
         LogLine {
             path: path,
             value: value,
-            time: UTC::now().timestamp(),
+            time: now(),
         }
     }
 }
@@ -47,7 +47,7 @@ impl Metric {
             name: Atom::from(name),
             value: 1.0,
             kind: MetricKind::Counter(1.0),
-            time: UTC::now().timestamp(),
+            time: now(),
         }
     }
 
@@ -80,7 +80,7 @@ impl Metric {
             name: name,
             value: value,
             kind: kind,
-            time: UTC::now().timestamp(),
+            time: now(),
         }
     }
 
@@ -94,7 +94,7 @@ impl Metric {
             name: name,
             value: value,
             kind: kind,
-            time: time.unwrap_or(UTC::now().timestamp()),
+            time: time.unwrap_or(now()),
         }
     }
 
