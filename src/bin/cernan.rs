@@ -110,6 +110,10 @@ fn main() {
         cernan::server::flush_timer_loop(flush_interval_sends, flush_interval);
     }));
 
+    joins.push(thread::spawn(move || {
+        cernan::time::update_time();
+    }));
+
     if let Some(log_files) = args.files {
         for lf in log_files {
             let fp_sends = sends.clone();

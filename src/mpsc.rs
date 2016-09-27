@@ -16,7 +16,7 @@
 //! filled up with monotonically increasing files. The on-disk structure looks
 //! like this:
 //!
-//! ```
+//! ```text
 //! data-dir/
 //!    sink-name0/
 //!       0
