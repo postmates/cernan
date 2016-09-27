@@ -4,6 +4,10 @@ version = "0.3.4"
 authors = ["Brian L. Troutwine <blt@postmates.com>"]
 build = "build.rs"
 
+[[bin]]
+name = "cernan"
+doc = false
+
 [dependencies]
 quantiles = "0.1.5"
 lru-cache = "0.0.7"

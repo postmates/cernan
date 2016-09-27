@@ -1,3 +1,47 @@
+#![deny(missing_docs)]
+//! durable multi-producer, single-consumer
+//!
+//! This module provides a durable version of the rust standard
+//! [mpsc](https://doc.rust-lang.org/std/sync/mpsc/). The ambition here is to
+//! support mpsc style communication without allocating unbounded amounts of
+//! memory or dropping inputs on the floor. The durable mpsc will potentially
+//! allocate unbounded amounts of _disk_ space but you can't have everything.
+//!
+//! # Inside Baseball
+//!
+//! How does durable mpsc work? From the outside, it looks very much like a
+//! named pipe in Unix. You supply a name to either channel_2 or
+//! channel_with_max_bytes_3 and you push bytes in and out. In private, this
+//! name is used to create a directory under data_dir and this directory gets
+//! filled up with monotonically increasing files. The on-disk structure looks
+//! like this:
+//!
+//! ```
+//! data-dir/
+//!    sink-name0/
+//!       0
+//!       1
+//!    sink-name1/
+//!       0
+//! ```
+//!
+//! You'll notice exports of Sender and Receiver in this module's
+//! namespace. These are the structures that back the send and receive side of
+//! the named channel. The Senders--there may be multiples of them--are
+//! responsible for _creating_ "queue files". In the above,
+//! `data-dir/sink-name*/*` are queue files. These files are treated as
+//! append-only logs by the Senders. The Receivers trawl through these logs to
+//! read the data serialized there.
+//!
+//! ## Won't this fill up my disk?
+//!
+//! Nope! Each Sender has a notion of the maximum bytes it may read--which you
+//! can set explicitly when creating a channel with
+//! `channel_with_max_bytes`--and once the Sender has gone over that limit it'll
+//! attempt to mark the queue file as read-only and create a new file. The
+//! Receiver is programmed to read its current queue file until it reaches EOF
+//! and finds the file is read-only, at which point it deletes the file--it is
+//! the only reader--and moves on to the next.
 use bincode::SizeLimit;
 use bincode::serde::{serialize, deserialize};
 use serde::{Deserialize, Serialize};
@@ -18,6 +62,12 @@ fn u8tou32abe(v: &[u8]) -> u32 {
     (v[3] as u32) + ((v[2] as u32) << 8) + ((v[1] as u32) << 24) + ((v[0] as u32) << 16)
 }
 
+/// The 'send' side of a durable mpsc, similar to
+/// [`std::sync::mpsc::Sender`](https://doc.rust-lang.org/std/sync/mpsc/struct.Sender.html).
+///
+/// A `Sender` does its work by writing to on-disk queue files in an append-only
+/// fashion. Each `Sender` may write a soft maximum number of bytes to disk
+/// before triggering a roll-over to the next queue file.
 pub struct Sender<T> {
     root: PathBuf, // directory we store our queues in
     path: PathBuf, // active fp filename
@@ -38,6 +88,12 @@ impl<T> Clone for Sender<T>
     }
 }
 
+/// The 'receive' side of a durable mpsc, similar to
+/// [`std::sync::mpsc::Receiver`](https://doc.rust-lang.org/std/sync/mpsc/struct.Receiver.html).
+///
+/// A `Receiver` does its work by reading from on-disk queue files until it hits
+/// an EOF. If it hits an EOF on a read-only file, the `Receiver` will delete
+/// the current queue file and move on to the next.
 pub struct Receiver<T> {
     root: PathBuf, // directory we store our queues in
     fp: BufReader<fs::File>, // active fp
@@ -46,28 +102,14 @@ pub struct Receiver<T> {
     resource_type: PhantomData<T>,
 }
 
-// Here's the plan. The filesystem structure will look like so:
-//
-//   data-dir/
-//      sink-name0/
-//         0
-//         1
-//      sink-name1/
-//         0
-//
-// There will be one Receiver / Sender file. The Sender is responsible for
-// switching over to a new file. That means marking the current file read-only
-// and dinking up on the name of the next. The Receiver is responsible for
-// knowing that if it hits EOF on a read-only file that it should unlink its
-// existing file and move on to the next file.
-//
-// File names always increase.
+/// Create a (Sender, Reciever) pair in a like fashion to [`
 pub fn channel<T>(name: &str, data_dir: &Path) -> (Sender<T>, Receiver<T>)
     where T: Serialize + Deserialize
 {
     channel_with_max_bytes(name, data_dir, 1_048_576 * 100)
 }
 
+/// TODO
 pub fn channel_with_max_bytes<T>(name: &str,
                                  data_dir: &Path,
                                  max_bytes: usize)
@@ -87,6 +129,7 @@ pub fn channel_with_max_bytes<T>(name: &str,
 }
 
 impl<T: Deserialize> Receiver<T> {
+    /// TODO
     pub fn new(data_dir: &Path) -> Receiver<T> {
         let seq_num = fs::read_dir(data_dir)
             .unwrap()
@@ -200,6 +243,7 @@ impl<T> Iterator for Receiver<T>
 }
 
 impl<T: Serialize> Sender<T> {
+    /// TODO
     pub fn new(data_dir: &Path,
                max_bytes: usize,
                global_seq_num: Arc<atomic::AtomicUsize>)
@@ -252,11 +296,11 @@ impl<T: Serialize> Sender<T> {
         }
     }
 
-    // send writes data out in chunks, like so:
-    //
-    //  u32: payload_size
-    //  [u8] payload
-    //
+    /// send writes data out in chunks, like so:
+    ///
+    ///  u32: payload_size
+    ///  [u8] payload
+    ///
     pub fn send(&mut self, event: &T) {
         let mut t = serialize(event, SizeLimit::Infinite).expect("could not serialize");
         // NOTE The conversion of t.len to u32 and usize is _only_ safe when u32
