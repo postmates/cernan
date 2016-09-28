@@ -3,19 +3,23 @@
 //! Each bucket contains a set of hashmaps containing
 //! each set of metrics received by clients.
 
-use super::metric::{Metric, MetricKind};
+use metric::{Metric, MetricKind};
 use quantiles::CKMS;
-use lru_cache::LruCache;
 use string_cache::Atom;
+use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
+use fnv::FnvHasher;
+
+pub type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 
 /// Buckets stores all metrics until they are flushed.
 pub struct Buckets {
-    counters: LruCache<Atom, Vec<Metric>>,
-    gauges: LruCache<Atom, Vec<Metric>>,
-    raws: LruCache<Atom, Vec<Metric>>,
+    counters: HashMapFnv<Atom, Vec<Metric>>,
+    gauges: HashMapFnv<Atom, Vec<Metric>>,
+    raws: HashMapFnv<Atom, Vec<Metric>>,
 
-    timers: LruCache<Atom, CKMS<f64>>,
-    histograms: LruCache<Atom, CKMS<f64>>,
+    timers: HashMapFnv<Atom, CKMS<f64>>,
+    histograms: HashMapFnv<Atom, CKMS<f64>>,
 }
 
 impl Default for Buckets {
@@ -32,11 +36,11 @@ impl Default for Buckets {
     /// ```
     fn default() -> Buckets {
         Buckets {
-            counters: LruCache::new(10000),
-            gauges: LruCache::new(10000),
-            raws: LruCache::new(10000),
-            timers: LruCache::new(10000),
-            histograms: LruCache::new(10000),
+            counters: HashMapFnv::default(),
+            gauges: HashMapFnv::default(),
+            raws: HashMapFnv::default(),
+            timers: HashMapFnv::default(),
+            histograms: HashMapFnv::default(),
         }
     }
 }
@@ -95,55 +99,34 @@ impl Buckets {
         let name = value.name.to_owned();
         match value.kind {
             MetricKind::Counter(rate) => {
-                if self.counters.contains_key(&name) {
-                    let counter =
-                        self.counters.get_mut(&name).expect("shouldn't happen but did, counter");
-
-                    match (*counter).binary_search_by_key(&value.time, |m| m.time) {
-                        Ok(idx) => {
-                            (*counter)[idx].value += value.value * (1.0 / rate);
-                        }
-                        Err(idx) => {
-                            let mut v = value;
-                            v.value *= 1.0 / rate;
-                            (*counter).insert(idx, v);
-                        }
+                let counter = self.counters.entry(name).or_insert(vec![]);
+                match (*counter).binary_search_by_key(&value.time, |m| m.time) {
+                    Ok(idx) => {
+                        (*counter)[idx].value += value.value * (1.0 / rate);
                     }
-                } else {
-                    let mut v = value;
-                    v.value *= 1.0 / rate;
-                    self.counters.insert(name, vec![v]);
+                    Err(idx) => {
+                        let mut v = value;
+                        v.value *= 1.0 / rate;
+                        (*counter).insert(idx, v);
+                    }
                 }
             }
             MetricKind::DeltaGauge => {
-                if self.gauges.contains_key(&name) {
-                    let gauge =
-                        self.gauges.get_mut(&name).expect("shouldn't happen but did, gauge");
-                    match (*gauge).binary_search_by_key(&value.time, |m| m.time) {
-                        Ok(idx) => (*gauge)[idx].value += value.value,
-                        Err(idx) => (*gauge).insert(idx, value),
-                    }
-                } else {
-                    self.gauges.insert(name, vec![value]);
+                let gauge = self.gauges.entry(name).or_insert(vec![]);
+                match (*gauge).binary_search_by_key(&value.time, |m| m.time) {
+                    Ok(idx) => (*gauge)[idx].value += value.value,
+                    Err(idx) => (*gauge).insert(idx, value),
                 }
             }
             MetricKind::Gauge => {
-                if self.gauges.contains_key(&name) {
-                    let gauge =
-                        self.gauges.get_mut(&name).expect("shouldn't happen but did, gauge");
-                    match (*gauge).binary_search_by_key(&value.time, |m| m.time) {
-                        Ok(idx) => (*gauge)[idx].value = value.value,
-                        Err(idx) => (*gauge).insert(idx, value),
-                    }
-                } else {
-                    self.gauges.insert(name, vec![value]);
+                let gauge = self.gauges.entry(name).or_insert(vec![]);
+                match (*gauge).binary_search_by_key(&value.time, |m| m.time) {
+                    Ok(idx) => (*gauge)[idx].value = value.value,
+                    Err(idx) => (*gauge).insert(idx, value),
                 }
             }
             MetricKind::Raw => {
-                if !self.raws.contains_key(&name) {
-                    let _ = self.raws.insert(value.name.to_owned(), Default::default());
-                };
-                let raw = self.raws.get_mut(&name).expect("shouldn't happen but did, raw");
+                let raw = self.raws.entry(name).or_insert(vec![]);
                 // We only want to keep one raw point per second per name. If
                 // someone pushes more than one point in a second interval we'll
                 // overwrite the value of the metric already in-vector.
@@ -153,45 +136,38 @@ impl Buckets {
                 }
             }
             MetricKind::Histogram => {
-                if !self.histograms.contains_key(&name) {
-                    let _ = self.histograms.insert(value.name.to_owned(), CKMS::<f64>::new(0.001));
-                };
-                let hist =
-                    self.histograms.get_mut(&name).expect("shouldn't happen but did, histogram");
+                let hist = self.histograms.entry(name).or_insert(CKMS::<f64>::new(0.001));
                 (*hist).insert(value.value);
             }
             MetricKind::Timer => {
-                if !self.timers.contains_key(&name) {
-                    let _ = self.timers.insert(value.name.to_owned(), CKMS::new(0.001));
-                };
-                let tm = self.timers.get_mut(&name).expect("shouldn't happen but did, timer");
+                let tm = self.timers.entry(name).or_insert(CKMS::<f64>::new(0.001));
                 (*tm).insert(value.value);
             }
         }
     }
 
     /// Get the counters as a borrowed reference.
-    pub fn counters(&self) -> &LruCache<Atom, Vec<Metric>> {
+    pub fn counters(&self) -> &HashMapFnv<Atom, Vec<Metric>> {
         &self.counters
     }
 
     /// Get the gauges as a borrowed reference.
-    pub fn gauges(&self) -> &LruCache<Atom, Vec<Metric>> {
+    pub fn gauges(&self) -> &HashMapFnv<Atom, Vec<Metric>> {
         &self.gauges
     }
 
     /// Get the gauges as a borrowed reference.
-    pub fn raws(&self) -> &LruCache<Atom, Vec<Metric>> {
+    pub fn raws(&self) -> &HashMapFnv<Atom, Vec<Metric>> {
         &self.raws
     }
 
     /// Get the histograms as a borrowed reference.
-    pub fn histograms(&self) -> &LruCache<Atom, CKMS<f64>> {
+    pub fn histograms(&self) -> &HashMapFnv<Atom, CKMS<f64>> {
         &self.histograms
     }
 
     /// Get the timers as a borrowed reference.
-    pub fn timers(&self) -> &LruCache<Atom, CKMS<f64>> {
+    pub fn timers(&self) -> &HashMapFnv<Atom, CKMS<f64>> {
         &self.timers
     }
 }

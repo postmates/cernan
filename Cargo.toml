@@ -10,7 +10,6 @@ doc = false
 
 [dependencies]
 quantiles = "0.1.5"
-lru-cache = "0.0.7"
 chrono = "0.2"
 lalrpop-util = "0.12.0"
 string_cache = "0.2.21"
@@ -25,6 +24,7 @@ serde = "0.8"
 serde_json = "0.8"
 bincode = "0.6.0"
 lazy_static = "0.2.1"
+fnv = "1.0.5"
 
 [dev-dependencies]
 tempdir = "0.3"
