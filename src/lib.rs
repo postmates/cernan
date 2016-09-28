@@ -1,6 +1,7 @@
 extern crate toml;
 extern crate clap;
 extern crate chrono;
+extern crate fs2;
 extern crate fnv;
 extern crate quantiles;
 extern crate string_cache;

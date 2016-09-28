@@ -46,11 +46,12 @@ use bincode::SizeLimit;
 use bincode::serde::{serialize, deserialize};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{BufReader, ErrorKind, Write, Read, SeekFrom, Seek};
+use std::io::{ErrorKind, Write, Read, SeekFrom, Seek};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::{atomic, Arc};
 use std::{thread, time};
+use fs2::FileExt;
 
 #[inline]
 fn u32tou8abe(v: u32) -> [u8; 4] {
@@ -76,7 +77,7 @@ pub struct Sender<T> {
     max_bytes: usize,
     global_seq_num: Arc<atomic::AtomicUsize>,
     seq_num: usize,
-
+    writes_to_read: Arc<atomic::AtomicUsize>,
     resource_type: PhantomData<T>,
 }
 
@@ -84,7 +85,7 @@ impl<T> Clone for Sender<T>
     where T: Serialize + Deserialize
 {
     fn clone(&self) -> Sender<T> {
-        Sender::new(&self.root, self.max_bytes, self.global_seq_num.clone())
+        Sender::new(&self.root, self.max_bytes, self.global_seq_num.clone(), self.writes_to_read.clone())
     }
 }
 
@@ -96,9 +97,9 @@ impl<T> Clone for Sender<T>
 /// the current queue file and move on to the next.
 pub struct Receiver<T> {
     root: PathBuf, // directory we store our queues in
-    fp: BufReader<fs::File>, // active fp
+    fp: fs::File, // active fp
     seq_num: usize,
-
+    writes_to_read: Arc<atomic::AtomicUsize>,
     resource_type: PhantomData<T>,
 }
 
@@ -122,15 +123,17 @@ pub fn channel_with_max_bytes<T>(name: &str,
     if !root.is_dir() {
         fs::create_dir_all(root).expect("could not create directory");
     }
+    let global_seq_num = Arc::new(atomic::AtomicUsize::new(0));
+    let writes_to_read = Arc::new(atomic::AtomicUsize::new(0));
 
-    let sender = Sender::new(&snd_root, max_bytes, Arc::new(atomic::AtomicUsize::new(0)));
-    let receiver = Receiver::new(&rcv_root);
+    let sender = Sender::new(&snd_root, max_bytes, global_seq_num, writes_to_read.clone());
+    let receiver = Receiver::new(&rcv_root, writes_to_read);
     (sender, receiver)
 }
 
-impl<T: Deserialize> Receiver<T> {
+impl<T> Receiver<T> where T: Deserialize {
     /// TODO
-    pub fn new(data_dir: &Path) -> Receiver<T> {
+    pub fn new(data_dir: &Path, writes_to_read: Arc<atomic::AtomicUsize>) -> Receiver<T> {
         let seq_num = fs::read_dir(data_dir)
             .unwrap()
             .map(|de| {
@@ -147,9 +150,10 @@ impl<T: Deserialize> Receiver<T> {
 
         Receiver {
             root: data_dir.to_path_buf(),
-            fp: BufReader::new(fp),
+            fp: fp,
             seq_num: seq_num,
             resource_type: PhantomData,
+            writes_to_read: writes_to_read,
         }
     }
 }
@@ -171,7 +175,8 @@ impl<T> Iterator for Receiver<T>
         // written to. It's safe for the sender to declare the log done by
         // trashing it.
         let mut attempts = 0;
-        loop {
+        while self.writes_to_read.load(atomic::Ordering::SeqCst) > 0 {
+            self.fp.lock_exclusive().expect("could not get exclusive lock");
             match self.fp.read_exact(&mut sz_buf) {
                 Ok(()) => {
                     let payload_size_in_bytes = u8tou32abe(&sz_buf);
@@ -179,7 +184,11 @@ impl<T> Iterator for Receiver<T>
                     match self.fp.read_exact(&mut payload_buf) {
                         Ok(()) => {
                             match deserialize(&payload_buf) {
-                                Ok(event) => return Some(event),
+                                Ok(event) => {
+                                    self.fp.unlock().expect("could not unlock exclusive lock");
+                                    self.writes_to_read.fetch_sub(1, atomic::Ordering::SeqCst);
+                                    return Some(event)
+                                }
                                 Err(e) => panic!("Failed decoding. Skipping {:?}", e),
                             }
                         }
@@ -208,7 +217,6 @@ impl<T> Iterator for Receiver<T>
                             // file and, if we find it read-only, switch on over
                             // to a new log file.
                             let metadata = self.fp
-                                .get_ref()
                                 .metadata()
                                 .expect("could not get metadata at UnexpectedEof");
                             if metadata.permissions().readonly() {
@@ -223,11 +231,14 @@ impl<T> Iterator for Receiver<T>
                                     // exist yet.
                                     match fs::OpenOptions::new().read(true).open(&lg) {
                                         Ok(fp) => {
-                                            self.fp = BufReader::new(fp);
-                                            attempts = 0;
+                                            self.fp = fp;
                                             break;
                                         }
-                                        Err(_) => continue,
+                                        Err(_) => {
+                                            let dur = time::Duration::from_millis(100);
+                                            thread::sleep(dur);
+                                            continue;
+                                        }
                                     }
                                 }
                             }
@@ -239,14 +250,16 @@ impl<T> Iterator for Receiver<T>
                 }
             }
         }
+        None
     }
 }
 
-impl<T: Serialize> Sender<T> {
+impl<T> Sender<T> where T: Serialize {
     /// TODO
     pub fn new(data_dir: &Path,
                max_bytes: usize,
-               global_seq_num: Arc<atomic::AtomicUsize>)
+               global_seq_num: Arc<atomic::AtomicUsize>,
+               writes_to_read: Arc<atomic::AtomicUsize>)
                -> Sender<T> {
         loop {
             let seq_num = match fs::read_dir(data_dir)
@@ -279,6 +292,7 @@ impl<T: Serialize> Sender<T> {
                         max_bytes: max_bytes,
                         global_seq_num: global_seq_num,
                         seq_num: seq_num,
+                        writes_to_read: writes_to_read,
                         resource_type: PhantomData,
                     }
                 }
@@ -374,6 +388,7 @@ impl<T: Serialize> Sender<T> {
 
         // write to disk
         let fp = &mut self.fp;
+        fp.lock_shared().expect("could not get shared lock");
         match fp.write(&t[..]) {
             Ok(written) => {
                 self.bytes_written += written;
@@ -383,6 +398,10 @@ impl<T: Serialize> Sender<T> {
             }
         }
         fp.flush().expect("unable to flush");
+
+        // wake up the Receiver
+        self.writes_to_read.fetch_add(1, atomic::Ordering::SeqCst);
+        fp.unlock().expect("could not unlock shared lock");
     }
 }
 
@@ -402,6 +421,17 @@ mod test {
 
         snd.send(&1);
 
+        assert_eq!(Some(1), rcv.next());
+    }
+
+    #[test]
+    fn zero_item_round_trip() {
+        let dir = tempdir::TempDir::new("cernan").unwrap();
+        let (mut snd, mut rcv) = channel("zero_item_round_trip", dir.path());
+
+        assert_eq!(None, rcv.next());
+
+        snd.send(&1);
         assert_eq!(Some(1), rcv.next());
     }
 
@@ -439,8 +469,11 @@ mod test {
                 snd.send(&ev);
             }
 
+            let mut total = evs.len();
             for ev in evs {
+                println!("REMAINING: {}", total);
                 assert_eq!(Some(ev), rcv.next());
+                total -= 1;
             }
             TestResult::passed()
         }
@@ -476,9 +509,12 @@ mod test {
             // assert that we receive every element in tst_pylds by pulling a new
             // value from the rcv, then marking it out of tst_pylds
             for _ in 0..(max_sz * max_thrs) {
-                if let Some(nxt) = rcv.next() {
-                    let idx = tst_pylds.binary_search(&nxt).expect("DID NOT FIND ELEMENT");
-                    tst_pylds.remove(idx);
+                loop {
+                    if let Some(nxt) = rcv.next() {
+                        let idx = tst_pylds.binary_search(&nxt).expect("DID NOT FIND ELEMENT");
+                        tst_pylds.remove(idx);
+                        break;
+                    }
                 }
             }
             assert!(tst_pylds.is_empty());
