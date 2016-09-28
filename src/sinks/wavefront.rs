@@ -366,11 +366,10 @@ mod test {
 
         println!("{:?}", lines);
         assert_eq!(4, lines.len());
-        assert_eq!(lines[0],
-                   "test.some_other_gauge 1 645185471 source=test-src");
-        assert_eq!(lines[1], "test.gauge 1 645185471 source=test-src");
-        assert_eq!(lines[2], "test.gauge 3 645185473 source=test-src");
-        assert_eq!(lines[3], "test.gauge 5 645185475 source=test-src");
+        assert!(lines.contains(&"test.gauge 1 645185471 source=test-src"));
+        assert!(lines.contains(&"test.gauge 3 645185473 source=test-src"));
+        assert!(lines.contains(&"test.gauge 5 645185475 source=test-src"));
+        assert!(lines.contains(&"test.some_other_gauge 1 645185471 source=test-src"));
     }
 
     #[test]
@@ -426,11 +425,10 @@ mod test {
 
         println!("{:?}", lines);
         assert_eq!(4, lines.len());
-        assert_eq!(lines[0],
-                   "test.some_other_counter 1 645185471 source=test-src");
-        assert_eq!(lines[1], "test.counter 1 645185471 source=test-src");
-        assert_eq!(lines[2], "test.counter 3 645185473 source=test-src");
-        assert_eq!(lines[3], "test.counter 5 645185475 source=test-src");
+        assert!(lines.contains(&"test.counter 1 645185471 source=test-src"));
+        assert!(lines.contains(&"test.counter 3 645185473 source=test-src"));
+        assert!(lines.contains(&"test.counter 5 645185475 source=test-src"));
+        assert!(lines.contains(&"test.some_other_counter 1 645185471 source=test-src"));
     }
 
     #[test]

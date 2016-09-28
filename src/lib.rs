@@ -1,8 +1,8 @@
 extern crate toml;
 extern crate clap;
 extern crate chrono;
+extern crate fnv;
 extern crate quantiles;
-extern crate lru_cache;
 extern crate string_cache;
 extern crate dns_lookup;
 extern crate notify;
