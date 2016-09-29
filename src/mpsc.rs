@@ -49,9 +49,8 @@ use std::fs;
 use std::io::{ErrorKind, Write, Read, SeekFrom, Seek};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::sync::{atomic, Arc};
+use std::sync::{atomic, Arc, Mutex};
 use std::{thread, time};
-use fs2::FileExt;
 
 #[inline]
 fn u32tou8abe(v: u32) -> [u8; 4] {
@@ -78,6 +77,7 @@ pub struct Sender<T> {
     global_seq_num: Arc<atomic::AtomicUsize>,
     seq_num: usize,
     writes_to_read: Arc<atomic::AtomicUsize>,
+    fs_lock: Arc<Mutex<bool>>,
     resource_type: PhantomData<T>,
 }
 
@@ -85,7 +85,7 @@ impl<T> Clone for Sender<T>
     where T: Serialize + Deserialize
 {
     fn clone(&self) -> Sender<T> {
-        Sender::new(&self.root, self.max_bytes, self.global_seq_num.clone(), self.writes_to_read.clone())
+        Sender::new(&self.root, self.max_bytes, self.global_seq_num.clone(), self.writes_to_read.clone(), self.fs_lock.clone())
     }
 }
 
@@ -100,6 +100,7 @@ pub struct Receiver<T> {
     fp: fs::File, // active fp
     seq_num: usize,
     writes_to_read: Arc<atomic::AtomicUsize>,
+    fs_lock: Arc<Mutex<bool>>,
     resource_type: PhantomData<T>,
 }
 
@@ -125,15 +126,16 @@ pub fn channel_with_max_bytes<T>(name: &str,
     }
     let global_seq_num = Arc::new(atomic::AtomicUsize::new(0));
     let writes_to_read = Arc::new(atomic::AtomicUsize::new(0));
+    let fs_lock = Arc::new(Mutex::new(false));
 
-    let sender = Sender::new(&snd_root, max_bytes, global_seq_num, writes_to_read.clone());
-    let receiver = Receiver::new(&rcv_root, writes_to_read);
+    let sender = Sender::new(&snd_root, max_bytes, global_seq_num, writes_to_read.clone(), fs_lock.clone());
+    let receiver = Receiver::new(&rcv_root, writes_to_read, fs_lock);
     (sender, receiver)
 }
 
 impl<T> Receiver<T> where T: Deserialize {
     /// TODO
-    pub fn new(data_dir: &Path, writes_to_read: Arc<atomic::AtomicUsize>) -> Receiver<T> {
+    pub fn new(data_dir: &Path, writes_to_read: Arc<atomic::AtomicUsize>, fs_lock: Arc<Mutex<bool>>) -> Receiver<T> {
         let seq_num = fs::read_dir(data_dir)
             .unwrap()
             .map(|de| {
@@ -154,6 +156,7 @@ impl<T> Receiver<T> where T: Deserialize {
             seq_num: seq_num,
             resource_type: PhantomData,
             writes_to_read: writes_to_read,
+            fs_lock: fs_lock,
         }
     }
 }
@@ -176,7 +179,7 @@ impl<T> Iterator for Receiver<T>
         // trashing it.
         let mut attempts = 0;
         while self.writes_to_read.load(atomic::Ordering::SeqCst) > 0 {
-            self.fp.lock_exclusive().expect("could not get exclusive lock");
+            let _ = self.fs_lock.lock().expect("Receiver fs_lock was poisoned!");
             match self.fp.read_exact(&mut sz_buf) {
                 Ok(()) => {
                     let payload_size_in_bytes = u8tou32abe(&sz_buf);
@@ -185,7 +188,6 @@ impl<T> Iterator for Receiver<T>
                         Ok(()) => {
                             match deserialize(&payload_buf) {
                                 Ok(event) => {
-                                    self.fp.unlock().expect("could not unlock exclusive lock");
                                     self.writes_to_read.fetch_sub(1, atomic::Ordering::SeqCst);
                                     return Some(event)
                                 }
@@ -259,7 +261,8 @@ impl<T> Sender<T> where T: Serialize {
     pub fn new(data_dir: &Path,
                max_bytes: usize,
                global_seq_num: Arc<atomic::AtomicUsize>,
-               writes_to_read: Arc<atomic::AtomicUsize>)
+               writes_to_read: Arc<atomic::AtomicUsize>,
+               fs_lock: Arc<Mutex<bool>>)
                -> Sender<T> {
         loop {
             let seq_num = match fs::read_dir(data_dir)
@@ -293,6 +296,7 @@ impl<T> Sender<T> where T: Serialize {
                         global_seq_num: global_seq_num,
                         seq_num: seq_num,
                         writes_to_read: writes_to_read,
+                        fs_lock: fs_lock,
                         resource_type: PhantomData,
                     }
                 }
@@ -388,7 +392,7 @@ impl<T> Sender<T> where T: Serialize {
 
         // write to disk
         let fp = &mut self.fp;
-        fp.lock_shared().expect("could not get shared lock");
+        let _ = self.fs_lock.lock().expect("Sender fs_lock poisoned");
         match fp.write(&t[..]) {
             Ok(written) => {
                 self.bytes_written += written;
@@ -401,7 +405,6 @@ impl<T> Sender<T> where T: Serialize {
 
         // wake up the Receiver
         self.writes_to_read.fetch_add(1, atomic::Ordering::SeqCst);
-        fp.unlock().expect("could not unlock shared lock");
     }
 }
 

@@ -25,7 +25,6 @@ serde_json = "0.8"
 bincode = "0.6.0"
 lazy_static = "0.2.1"
 fnv = "1.0.5"
-fs2 = "0.2.5"
 
 [dev-dependencies]
 tempdir = "0.3"
