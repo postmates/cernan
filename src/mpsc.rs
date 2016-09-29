@@ -209,7 +209,7 @@ impl<T> Iterator for Receiver<T>
                             // metadata. We'll delay the file switch-over up to
                             // 10ms and retry the EOF.
                             attempts += 1;
-                            if attempts < 10 {
+                            if (attempts < 10) || (attempts > 50_000) {
                                 let dur = time::Duration::from_millis(1);
                                 thread::sleep(dur);
                                 continue;
@@ -243,6 +243,8 @@ impl<T> Iterator for Receiver<T>
                                         }
                                     }
                                 }
+                            } else if attempts >= 60_000 {
+                                panic!(format!("Hit EOF 60,000 times, did not find the next item.\nwrites_to_read: {}\ncurrent seq_num: {}", self.writes_to_read.load(atomic::Ordering::SeqCst), self.seq_num));
                             }
                         }
                         _ => {
