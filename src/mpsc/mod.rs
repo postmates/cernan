@@ -122,7 +122,7 @@ mod test {
     }
 
     #[test]
-    fn round_trip_order_preserved() {
+    fn round_trip() {
         fn rnd_trip(max_bytes: usize, evs: Vec<Vec<u32>>) -> TestResult {
             let dir = tempdir::TempDir::new("cernan").unwrap();
             let (mut snd, mut rcv) =
@@ -144,7 +144,7 @@ mod test {
     }
 
     #[test]
-    fn round_trip_order_preserved_small_max_bytes() {
+    fn round_trip_small_max_bytes() {
         fn rnd_trip(evs: Vec<Vec<u32>>) -> TestResult {
             let max_bytes: usize = 128;
             let dir = tempdir::TempDir::new("cernan").unwrap();
@@ -170,7 +170,7 @@ mod test {
     }
 
     #[test]
-    fn concurrent_snd_and_rcv_round_trip_order_preserved() {
+    fn concurrent_snd_and_rcv_round_trip() {
         let max_bytes: usize = 512;
         let dir = tempdir::TempDir::new("cernan").unwrap();
         println!("CONCURRENT SND_RECV TESTDIR: {:?}", dir);
@@ -221,5 +221,54 @@ mod test {
         for jh in joins {
             jh.join().expect("Uh oh, child thread paniced!");
         }
+    }
+
+    #[test]
+    fn qc_concurrent_snd_and_rcv_round_trip() {
+        fn snd_rcv(evs: Vec<Vec<u32>>) -> TestResult {
+            let max_bytes: usize = 512;
+            let dir = tempdir::TempDir::new("cernan").unwrap();
+            println!("CONCURRENT SND_RECV TESTDIR: {:?}", dir);
+            let (snd, mut rcv) = channel_with_max_bytes("concurrent_snd_and_rcv_small_max_bytes",
+                                                        dir.path(),
+                                                        max_bytes);
+
+            let max_thrs = 32;
+
+            let mut joins = Vec::new();
+
+            // start our receiver thread
+            let total_pylds = evs.len() * max_thrs;
+            joins.push(thread::spawn(move || {
+                for _ in 0..total_pylds {
+                    loop {
+                        if let Some(_) = rcv.next() {
+                            break;
+                        }
+                    }
+                }
+            }));
+
+            // start all our sender threads and blast away
+            for _ in 0..max_thrs {
+                let mut thr_snd = snd.clone();
+                let thr_evs = evs.clone();
+                joins.push(thread::spawn(move || {
+                    for e in thr_evs {
+                        thr_snd.send(&e);
+                    }
+                }));
+            }
+
+            // wait until the senders are for sure done
+            for jh in joins {
+                jh.join().expect("Uh oh, child thread paniced!");
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(100)
+            .max_tests(1000)
+            .quickcheck(snd_rcv as fn(Vec<Vec<u32>>) -> TestResult);
     }
 }
