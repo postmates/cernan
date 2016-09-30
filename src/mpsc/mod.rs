@@ -42,6 +42,16 @@
 //! Receiver is programmed to read its current queue file until it reaches EOF
 //! and finds the file is read-only, at which point it deletes the file--it is
 //! the only reader--and moves on to the next.
+//!
+//! ## What kind of filesystem options will I need?
+//!
+//! The durable mspc is intended to work on any crazy old filesystem with any
+//! options, even at high concurrency. As common filesystems do not support
+//! interleaving [small atomic
+//! writes](https://stackoverflow.com/questions/32851672/is-overwriting-a-small-file-atomic-on-ext4)
+//! mpsc limits itself to one exclusive Sender or one exclusive Receiver at a
+//! time. This potentially limits the concurrency of mpsc but maintains data
+//! integrity.
 mod receiver;
 mod sender;
 
@@ -53,7 +63,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-/// TODO
+/// PRIVATE -- exposed via Sender::new
 #[derive(Default, Debug)]
 pub struct FsSync {
     bytes_written: usize,
@@ -61,17 +71,28 @@ pub struct FsSync {
     sender_seq_num: usize,
 }
 
-/// TODO
+/// PRIVATE -- exposed via Sender::new
 pub type FSLock = Arc<Mutex<FsSync>>;
 
-/// Create a (Sender, Reciever) pair in a like fashion to [`
+/// Create a (Sender, Reciever) pair in a like fashion to [`std::sync::mpsc::channel`](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html)
+///
+/// This function creates a Sender and Receiver pair with name `name` whose
+/// queue files are stored in `data_dir`. The Sender is clonable.
 pub fn channel<T>(name: &str, data_dir: &Path) -> (Sender<T>, Receiver<T>)
     where T: Serialize + Deserialize
 {
     channel_with_max_bytes(name, data_dir, 1_048_576 * 100)
 }
 
-/// TODO
+/// Create a (Sender, Reciever) pair in a like fashion to [`std::sync::mpsc::channel`](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html)
+///
+/// This function creates a Sender and Receiver pair with name `name` whose
+/// queue files are stored in `data_dir`. The Sender is clonable.
+///
+/// This function gives control to the user over the maximum size of the durable
+/// channel's queue files as `max_bytes`, though not the total disk allocation
+/// that may be made. This function is largely useful for testing purposes. See
+/// the tests in `mpsc::test` for more.
 pub fn channel_with_max_bytes<T>(name: &str,
                                  data_dir: &Path,
                                  max_bytes: usize)
@@ -86,7 +107,7 @@ pub fn channel_with_max_bytes<T>(name: &str,
     }
     let fs_lock = Arc::new(Mutex::new(FsSync::default()));
 
-    let sender = Sender::new(&snd_root, max_bytes, fs_lock.clone());
+    let sender = sender::Sender::new(&snd_root, max_bytes, fs_lock.clone());
     let receiver = Receiver::new(&rcv_root, fs_lock);
     (sender, receiver)
 }

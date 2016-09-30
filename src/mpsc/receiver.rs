@@ -1,7 +1,7 @@
 use bincode::serde::deserialize;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{ErrorKind, Read, SeekFrom, Seek};
+use std::io::{BufReader, ErrorKind, Read, SeekFrom, Seek};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
@@ -12,7 +12,6 @@ fn u8tou32abe(v: &[u8]) -> u32 {
     (v[3] as u32) + ((v[2] as u32) << 8) + ((v[1] as u32) << 24) + ((v[0] as u32) << 16)
 }
 
-
 /// The 'receive' side of a durable mpsc, similar to
 /// [`std::sync::mpsc::Receiver`](https://doc.rust-lang.org/std/sync/mpsc/struct.Receiver.html).
 ///
@@ -21,7 +20,7 @@ fn u8tou32abe(v: &[u8]) -> u32 {
 /// the current queue file and move on to the next.
 pub struct Receiver<T> {
     root: PathBuf, // directory we store our queues in
-    fp: fs::File, // active fp
+    fp: BufReader<fs::File>, // active fp
     fs_lock: FSLock,
     resource_type: PhantomData<T>,
 }
@@ -46,7 +45,7 @@ impl<T> Receiver<T> where T: Deserialize {
 
         Receiver {
             root: data_dir.to_path_buf(),
-            fp: fp,
+            fp: BufReader::new(fp),
             resource_type: PhantomData,
             fs_lock: fs_lock,
         }
@@ -66,10 +65,12 @@ impl<T> Iterator for Receiver<T>
         //
         // The receiver works by regularly attempting to read a payload from its
         // current log file. In the event we hit EOF without detecting that the
-        // file is read-only, we wait and try again. If the file _is_ read-only
+        // file is read-only, we swing around and try again. If a Sender thread
+        // has a bug and is unable to mark a file its finished with as read-only
+        // this _will_ cause a livelock situation. If the file _is_ read-only
         // this is a signal from the senders that the file is no longer being
-        // written to. It's safe for the sender to declare the log done by
-        // trashing it.
+        // written to. It's safe for the Receiver to declare the log done by
+        // deleting it and moving on to the next file.
         while (*syn).writes_to_read > 0 {
             match self.fp.read_exact(&mut sz_buf) {
                 Ok(()) => {
@@ -100,6 +101,7 @@ impl<T> Iterator for Receiver<T>
                             // file and, if we find it read-only, switch on over
                             // to a new log file.
                             let metadata = self.fp
+                                .get_ref()
                                 .metadata()
                                 .expect("could not get metadata at UnexpectedEof");
                             if metadata.permissions().readonly() {
@@ -114,7 +116,7 @@ impl<T> Iterator for Receiver<T>
                                 fs::remove_file(old_log).expect("could not remove log");
                                 let lg = self.root.join(format!("{}", seq_num.wrapping_add(1)));
                                 match fs::OpenOptions::new().read(true).open(&lg) {
-                                    Ok(fp) => { self.fp = fp; continue; }
+                                    Ok(fp) => { self.fp = BufReader::new(fp); continue; }
                                     Err(e) => panic!("[Receiver] could not open {:?}", e),
                                 }
                             }

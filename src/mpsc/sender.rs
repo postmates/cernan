@@ -38,11 +38,11 @@ impl<T> Clone for Sender<T>
 }
 
 impl<T> Sender<T> where T: Serialize {
-    /// TODO
+    /// PRIVATE
     pub fn new(data_dir: &Path,
-               max_bytes: usize,
-               fs_lock: FSLock)
-               -> Sender<T> {
+           max_bytes: usize,
+           fs_lock: FSLock)
+           -> Sender<T> {
         let init_fs_lock = fs_lock.clone();
         let mut syn = init_fs_lock.lock().expect("Sender fs_lock poisoned");
         let seq_num = match fs::read_dir(data_dir)
@@ -102,39 +102,28 @@ impl<T> Sender<T> where T: Serialize {
         // file read-only--which will help the receiver to decide it has hit the
         // end of its log file--and create a new log file.
         let mut syn = self.fs_lock.lock().expect("Sender fs_lock poisoned");
-//        println!("SYN: {:?}", *syn);
         if (((*syn).bytes_written + t.len()) > self.max_bytes) || (self.seq_num != (*syn).sender_seq_num) {
-            // Search for our place, setting paths as read-only as we go
-            //
-            // Once we've gone over the write limit for our current file we need
-            // to seek forward in the space of queue files. It's possible that:
-            //
-            //   * files will have been deleted by a fast receiver
-            //   * files will have been marked read-only already
-            //   * our seq_num is well behind the global seq_num
-            //
-            // The goal here is find our place in the queue files and, while
-            // doing so, ensure that each file we come across is marked
-            // read-only.
+            // Once we've gone over the write limit for our current file or find
+            // that we've gotten behind the current queue file we need to seek
+            // forward to find our place in the space of queue files. We mark
+            // our current file read-only--there's some possibility that this
+            // will be done redundantly, but that's okay--and then read the
+            // current sender_seq_num to get up to date.
             let _ = fs::metadata(&self.path).map(|p| {
                 let mut permissions = p.permissions();
                 permissions.set_readonly(true);
                 let _ = fs::set_permissions(&self.path, permissions);
             });
-            // It's possible when we open a new file that an even faster writer
-            // has already come, written its fill and zipped on down the
-            // line. That'd result in an open causing a PermissionDenied. If the
-            // receiver is very fast it's _also_ possible that a file will turn
-            // up missing, resulting in a NotFound. The way of handling both is
-            // to give up the attempt and start at the next GSN.
-
             if self.seq_num != (*syn).sender_seq_num {
-                // if this thread is behind the leader
+                // This thread is behind the leader. We've got to set our
+                // current notion of seq_num forward and then open the
+                // corresponding file.
                 self.seq_num = (*syn).sender_seq_num;
             }
             else {
-                // this thread is the leader and reset the sender_seq_num,
-                // bytes_written
+                // This thread is the leader. We reset the sender_seq_num and
+                // bytes written and open the next queue file. All follower
+                // threads will hit the branch above this one.
                 (*syn).sender_seq_num = self.seq_num.wrapping_add(1);
                 self.seq_num = (*syn).sender_seq_num;
                 (*syn).bytes_written = 0;
@@ -148,7 +137,6 @@ impl<T> Sender<T> where T: Serialize {
             }
         }
 
-        // write to disk
         let fp = &mut self.fp;
         match fp.write(&t[..]) {
             Ok(written) => {
@@ -160,7 +148,7 @@ impl<T> Sender<T> where T: Serialize {
         }
         fp.flush().expect("unable to flush");
 
-        // wake up the Receiver
+        // Let the Receiver know there's more to read.
         (*syn).writes_to_read += 1;
     }
 }
