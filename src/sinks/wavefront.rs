@@ -1,17 +1,20 @@
 use std::net::{SocketAddr, TcpStream};
 use std::fmt::Write;
 use std::io::Write as IoWrite;
-use chrono;
-use metric::{Metric, LogLine, MetricQOS};
+use metric::{Event, Metric, LogLine, MetricQOS};
 use buckets::Buckets;
 use sink::Sink;
 use dns_lookup;
+use time;
+use mpsc;
 
 pub struct Wavefront {
     addr: SocketAddr,
     tags: String,
     aggrs: Buckets,
     qos: MetricQOS,
+
+    failed_flush_attempts: usize,
 
     timer_last_sample: i64,
     reset_timer: bool,
@@ -30,6 +33,7 @@ impl Wavefront {
                     tags: tags,
                     aggrs: Buckets::default(),
                     qos: qos,
+                    failed_flush_attempts: 0,
                     timer_last_sample: 0,
                     reset_timer: false,
                     histogram_last_sample: 0,
@@ -45,7 +49,7 @@ impl Wavefront {
     pub fn format_stats(&mut self, curtime: Option<i64>) -> String {
         let start = match curtime {
             Some(x) => x,
-            None => chrono::UTC::now().timestamp(),
+            None => time::now(),
         };
         let mut stats = String::new();
 
@@ -147,11 +151,35 @@ impl Wavefront {
 }
 
 impl Sink for Wavefront {
+    fn run(&mut self, mut recv: mpsc::Receiver<Event>) {
+        let mut attempts = 0;
+        loop {
+            time::delay(attempts);
+            if self.failed_flush_attempts > 10 {
+                attempts += 1;
+                continue;
+            }
+            match recv.next() {
+                None => attempts += 1,
+                Some(event) => {
+                    attempts = 0;
+                    match event {
+                        Event::TimerFlush => self.flush(),
+                        Event::Graphite(metric) |
+                        Event::Statsd(metric) => self.deliver(metric),
+                        Event::Log(lines) => self.deliver_lines(lines),
+                    }
+                }
+            }
+        }
+    }
+
     fn flush(&mut self) {
         match TcpStream::connect(self.addr) {
             Ok(mut stream) => {
                 let res = stream.write(self.format_stats(None).as_bytes());
                 if res.is_ok() {
+                    self.failed_flush_attempts = 0;
                     trace!("flushed to wavefront!");
                     self.aggrs.reset();
                     if self.reset_histogram {
@@ -160,6 +188,8 @@ impl Sink for Wavefront {
                     if self.reset_timer {
                         self.aggrs.reset_timers();
                     }
+                } else {
+                    self.failed_flush_attempts += 1;
                 }
             }
             Err(e) => debug!("Unable to connect: {}", e),

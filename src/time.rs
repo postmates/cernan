@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize,Ordering};
 use chrono::UTC;
-use std::{time,thread};
+use std::{cmp,time,thread};
 
 lazy_static! {
     static ref NOW: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(UTC::now().timestamp() as usize));
@@ -16,5 +16,15 @@ pub fn update_time() {
     loop {
         thread::sleep(dur);
         NOW.store(UTC::now().timestamp() as usize, Ordering::Relaxed);
+    }
+}
+
+#[inline]
+pub fn delay(attempts: u32) {
+    if attempts > 0 {
+        let max_delay : u32 = 60_000;
+        let delay = cmp::min(max_delay, 2u32.pow(attempts));
+        let sleep_time = time::Duration::from_millis(delay as u64);
+        thread::sleep(sleep_time);
     }
 }
