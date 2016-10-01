@@ -73,6 +73,23 @@ fn main() {
                 .run(wf_recv);
         }));
     }
+//    if args.cernan {
+        let (cernan_send, cernan_recv) = cernan::mpsc::channel("cernan", &args.data_directory);
+        sends.push(cernan_send);
+        joins.push(thread::spawn(move || {
+            cernan::sinks::cernan::Cernan::new().run(cernan_recv);
+        }));
+//    }
+
+    // let forwarding_server_ipv6_send = sends.clone();
+    // joins.push(thread::spawn(move || {
+    //     cernan::server::forwarding_sink_server_ipv6(forwarding_server_ipv6_send, 1972);
+    // }));
+
+    let forwarding_server_ipv4_send = sends.clone();
+    joins.push(thread::spawn(move || {
+        cernan::server::forwarding_sink_server_ipv4(forwarding_server_ipv4_send, 1972);
+    }));
 
     for ds in &args.firehose_delivery_streams {
         let fh_name = ds.clone();

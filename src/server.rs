@@ -10,6 +10,7 @@ use metric;
 use std::fs::File;
 use std::io::SeekFrom;
 use std::path::PathBuf;
+use bincode::serde::deserialize;
 
 use std::sync::mpsc::channel;
 use notify::{RecommendedWatcher, Error, Watcher};
@@ -120,6 +121,66 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf) {
     }
 }
 
+//
+// cernan forwarding sink
+//
+pub fn forwarding_sink_server_ipv6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
+    let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0), port, 0, 0);
+    let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
+    info!("cernan forwarding sink started on ::1 {}", port);
+    for stream in listener.incoming() {
+        if let Ok(stream) = stream {
+            let srv_chans = chans.clone();
+            thread::spawn(move || handle_forwarding_client(srv_chans, stream));
+        }
+    }
+}
+
+pub fn forwarding_sink_server_ipv4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
+    let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
+    let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
+    info!("cernan forwarding sink started on 127.0.0.1:{}", port);
+    for stream in listener.incoming() {
+        if let Ok(stream) = stream {
+            let srv_chans = chans.clone();
+            thread::spawn(move || handle_forwarding_client(srv_chans, stream));
+        }
+    }
+}
+
+#[inline]
+fn u8tou32abe(v: &[u8]) -> u32 {
+    (v[3] as u32) + ((v[2] as u32) << 8) + ((v[1] as u32) << 24) + ((v[0] as u32) << 16)
+}
+
+fn handle_forwarding_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream) {
+    let mut sz_buf = [0; 4];
+    let mut reader = BufReader::new(stream);
+    loop {
+        reader.read_exact(&mut sz_buf).expect("unable to read payload size");
+        let payload_size_in_bytes = u8tou32abe(&sz_buf);
+        let mut payload_buf = vec![0; (payload_size_in_bytes as usize)];
+        match reader.read_exact(&mut payload_buf) {
+            Ok(()) => {
+                match deserialize::<Vec<metric::Event>>(&payload_buf) {
+                    Ok(events) => {
+                        for ev in events {
+                            send(&mut chans, &ev);
+                        }
+                    }
+                    Err(e) => panic!("Failed decoding. Skipping {:?}", e),
+                }
+            }
+            Err(e) => {
+                panic!("Unable to read forwarded payload. {:?}", e);
+            }
+        }
+    }
+}
+
+//
+// graphite
+//
 pub fn tcp_server_ipv6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
