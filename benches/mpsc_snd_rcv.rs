@@ -33,10 +33,9 @@ fn bench_serialize_deserialize_metric(b: &mut Bencher) {
 
 #[bench]
 fn bench_snd(b: &mut Bencher) {
+    let dir = tempdir::TempDir::new("cernan").unwrap();
+    let (mut snd, _) = mpsc::channel("bench_snd", dir.path());
     b.iter(|| {
-        let dir = tempdir::TempDir::new("cernan").unwrap();
-        let (mut snd, _) = mpsc::channel("bench_snd", dir.path());
-
         for _ in 0..1000 {
             snd.send(&Event::TimerFlush);
         }
@@ -45,23 +44,19 @@ fn bench_snd(b: &mut Bencher) {
 
 #[bench]
 fn bench_snd_rcv(b: &mut Bencher) {
+    let dir = tempdir::TempDir::new("cernan").unwrap();
+    let (mut snd, mut rcv) = mpsc::channel("bench_snd", dir.path());
     b.iter(|| {
-        let dir = tempdir::TempDir::new("cernan").unwrap();
-        let (mut snd, mut rcv) = mpsc::channel("bench_snd", dir.path());
-
-        for _ in 0..1000 {
-            snd.send(&Event::TimerFlush);
-            rcv.next().unwrap();
-        }
+        snd.send(&Event::TimerFlush);
+        rcv.next().unwrap();
     });
 }
 
 #[bench]
 fn bench_all_snd_all_rcv(b: &mut Bencher) {
+    let dir = tempdir::TempDir::new("cernan").unwrap();
+    let (mut snd, mut rcv) = mpsc::channel("bench_snd", dir.path());
     b.iter(|| {
-        let dir = tempdir::TempDir::new("cernan").unwrap();
-        let (mut snd, mut rcv) = mpsc::channel("bench_snd", dir.path());
-
         for _ in 0..1000 {
             snd.send(&Event::TimerFlush);
         }
