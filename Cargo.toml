@@ -9,22 +9,20 @@ name = "cernan"
 doc = false
 
 [dependencies]
-quantiles = "0.1.5"
+bincode = "0.6.0"
 chrono = "0.2"
-lalrpop-util = "0.12.0"
-string_cache = "0.2.21"
 clap = "2.10.0"
-fern = "0.3.5"
-log = "0.3.6"
 dns-lookup = "0.2.1"
-toml = "0.2.0"
+fern = "0.3.5"
+fnv = "1.0.5"
+lazy_static = "0.2.1"
+log = "0.3.6"
 notify = "2.6.3"
-rusoto = {version = "0.16.0", features = ["firehose"]}
+quantiles = "0.1.5"
+rusoto = {version = "0.17.0", features = ["firehose"]}
 serde = "0.8"
 serde_json = "0.8"
-bincode = "0.6.0"
-lazy_static = "0.2.1"
-fnv = "1.0.5"
+toml = "0.2.0"
 
 [dev-dependencies]
 tempdir = "0.3"
@@ -32,8 +30,11 @@ quickcheck = "0.3"
 rand = "0.3"
 
 [build-dependencies]
-lalrpop = "0.12.0"
 serde_codegen = "0.8"
+
+[profile.dev]
+codegen-units = 4
 
 [profile.release]
 lto = true
+codegen-units = 4

@@ -10,7 +10,6 @@ use metric;
 use std::fs::File;
 use std::io::SeekFrom;
 use std::path::PathBuf;
-use string_cache::Atom;
 
 use std::sync::mpsc::channel;
 use notify::{RecommendedWatcher, Error, Watcher};
@@ -103,7 +102,7 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf) {
                                         let metric = metric::Metric::counter(&name);
                                         send(&mut chans, &metric::Event::Statsd(metric));
                                         lines.push(metric::LogLine::new(
-                                            Atom::from(path.to_str().unwrap()),
+                                            String::from(path.to_str().unwrap()),
                                             line,
                                         ));
                                     },

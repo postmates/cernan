@@ -5,7 +5,6 @@
 
 use metric::{Metric, MetricKind};
 use quantiles::CKMS;
-use string_cache::Atom;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
@@ -14,12 +13,12 @@ pub type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 
 /// Buckets stores all metrics until they are flushed.
 pub struct Buckets {
-    counters: HashMapFnv<Atom, Vec<Metric>>,
-    gauges: HashMapFnv<Atom, Vec<Metric>>,
-    raws: HashMapFnv<Atom, Vec<Metric>>,
+    counters: HashMapFnv<String, Vec<Metric>>,
+    gauges: HashMapFnv<String, Vec<Metric>>,
+    raws: HashMapFnv<String, Vec<Metric>>,
 
-    timers: HashMapFnv<Atom, CKMS<f64>>,
-    histograms: HashMapFnv<Atom, CKMS<f64>>,
+    timers: HashMapFnv<String, CKMS<f64>>,
+    histograms: HashMapFnv<String, CKMS<f64>>,
 }
 
 impl Default for Buckets {
@@ -52,11 +51,10 @@ impl Buckets {
     ///
     /// ```
     /// extern crate cernan;
-    /// extern crate string_cache;
     ///
     /// let metric = cernan::metric::Metric::parse_statsd("foo:1|c").unwrap();
     /// let mut buckets = cernan::buckets::Buckets::default();
-    /// let rname = string_cache::Atom::from("foo");
+    /// let rname = String::from("foo");
     ///
     /// assert_eq!(true, buckets.counters().is_empty());
     ///
@@ -147,27 +145,27 @@ impl Buckets {
     }
 
     /// Get the counters as a borrowed reference.
-    pub fn counters(&self) -> &HashMapFnv<Atom, Vec<Metric>> {
+    pub fn counters(&self) -> &HashMapFnv<String, Vec<Metric>> {
         &self.counters
     }
 
     /// Get the gauges as a borrowed reference.
-    pub fn gauges(&self) -> &HashMapFnv<Atom, Vec<Metric>> {
+    pub fn gauges(&self) -> &HashMapFnv<String, Vec<Metric>> {
         &self.gauges
     }
 
     /// Get the gauges as a borrowed reference.
-    pub fn raws(&self) -> &HashMapFnv<Atom, Vec<Metric>> {
+    pub fn raws(&self) -> &HashMapFnv<String, Vec<Metric>> {
         &self.raws
     }
 
     /// Get the histograms as a borrowed reference.
-    pub fn histograms(&self) -> &HashMapFnv<Atom, CKMS<f64>> {
+    pub fn histograms(&self) -> &HashMapFnv<String, CKMS<f64>> {
         &self.histograms
     }
 
     /// Get the timers as a borrowed reference.
-    pub fn timers(&self) -> &HashMapFnv<Atom, CKMS<f64>> {
+    pub fn timers(&self) -> &HashMapFnv<String, CKMS<f64>> {
         &self.timers
     }
 }
@@ -181,7 +179,6 @@ mod test {
     use super::*;
     use self::quickcheck::{TestResult, QuickCheck};
     use metric::{Metric, MetricKind, MetricSign};
-    use string_cache::Atom;
     use std::collections::{HashSet, HashMap};
     use chrono::{UTC, TimeZone};
 
@@ -189,7 +186,7 @@ mod test {
     fn test_add_increments_total_messages() {
         let mut buckets = Buckets::default();
         // duff value to ensure it changes.
-        let metric = Metric::new(Atom::from("some.metric"),
+        let metric = Metric::new(String::from("some.metric"),
                                  1.0,
                                  MetricKind::Counter(1.0),
                                  None);
@@ -199,11 +196,11 @@ mod test {
     #[test]
     fn test_add_counter_metric() {
         let mut buckets = Buckets::default();
-        let mname = Atom::from("some.metric");
+        let mname = String::from("some.metric");
         let metric = Metric::new(mname, 1.0, MetricKind::Counter(1.0), None);
         buckets.add(metric.clone());
 
-        let rmname = Atom::from("some.metric");
+        let rmname = String::from("some.metric");
         assert!(buckets.counters.contains_key(&rmname),
                 "Should contain the metric key");
         assert_eq!(1.0, buckets.counters.get_mut(&rmname).unwrap()[0].value);
@@ -218,11 +215,11 @@ mod test {
     #[test]
     fn test_add_counter_metric_reset() {
         let mut buckets = Buckets::default();
-        let mname = Atom::from("some.metric");
+        let mname = String::from("some.metric");
         let metric = Metric::new(mname, 1.0, MetricKind::Counter(1.0), None);
         buckets.add(metric.clone());
 
-        let rmname = Atom::from("some.metric");
+        let rmname = String::from("some.metric");
         assert!(buckets.counters.contains_key(&rmname),
                 "Should contain the metric key");
         assert_eq!(1.0, buckets.counters.get_mut(&rmname).unwrap()[0].value);
@@ -239,7 +236,7 @@ mod test {
     #[test]
     fn test_add_histogram_metric_reset() {
         let mut buckets = Buckets::default();
-        let name = Atom::from("some.metric");
+        let name = String::from("some.metric");
         let mname = name.clone();
         let metric = Metric::new(mname, 1.0, MetricKind::Histogram, None);
         buckets.add(metric.clone());
@@ -251,7 +248,7 @@ mod test {
     #[test]
     fn test_add_timer_metric_reset() {
         let mut buckets = Buckets::default();
-        let name = Atom::from("some.metric");
+        let name = String::from("some.metric");
         let mname = name.clone();
         let metric = Metric::new(mname, 1.0, MetricKind::Timer, None);
         buckets.add(metric.clone());
@@ -263,17 +260,17 @@ mod test {
     #[test]
     fn test_add_counter_metric_sampled() {
         let mut buckets = Buckets::default();
-        let metric = Metric::new(Atom::from("some.metric"),
+        let metric = Metric::new(String::from("some.metric"),
                                  1.0,
                                  MetricKind::Counter(0.1),
                                  None);
 
-        let rmname = Atom::from("some.metric");
+        let rmname = String::from("some.metric");
 
         buckets.add(metric);
         assert_eq!(10.0, buckets.counters.get_mut(&rmname).unwrap()[0].value);
 
-        let metric_two = Metric::new(Atom::from("some.metric"),
+        let metric_two = Metric::new(String::from("some.metric"),
                                      1.0,
                                      MetricKind::Counter(0.5),
                                      None);
@@ -284,8 +281,8 @@ mod test {
     #[test]
     fn test_add_gauge_metric() {
         let mut buckets = Buckets::default();
-        let rmname = Atom::from("some.metric");
-        let metric = Metric::new(Atom::from("some.metric"), 11.5, MetricKind::Gauge, None);
+        let rmname = String::from("some.metric");
+        let metric = Metric::new(String::from("some.metric"), 11.5, MetricKind::Gauge, None);
         buckets.add(metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
@@ -297,10 +294,10 @@ mod test {
     #[test]
     fn test_add_delta_gauge_metric() {
         let mut buckets = Buckets::default();
-        let rmname = Atom::from("some.metric");
-        let metric = Metric::new(Atom::from("some.metric"), 100.0, MetricKind::Gauge, None);
+        let rmname = String::from("some.metric");
+        let metric = Metric::new(String::from("some.metric"), 100.0, MetricKind::Gauge, None);
         buckets.add(metric);
-        let delta_metric = Metric::new(Atom::from("some.metric"),
+        let delta_metric = Metric::new(String::from("some.metric"),
                                        11.5,
                                        MetricKind::Gauge,
                                        Some(MetricSign::Negative));
@@ -315,15 +312,15 @@ mod test {
     #[test]
     fn test_add_delta_gauge_metric_reset() {
         let mut buckets = Buckets::default();
-        let rmname = Atom::from("some.metric");
-        let metric = Metric::new(Atom::from("some.metric"), 100.0, MetricKind::Gauge, None);
+        let rmname = String::from("some.metric");
+        let metric = Metric::new(String::from("some.metric"), 100.0, MetricKind::Gauge, None);
         buckets.add(metric);
-        let delta_metric = Metric::new(Atom::from("some.metric"),
+        let delta_metric = Metric::new(String::from("some.metric"),
                                        11.5,
                                        MetricKind::Gauge,
                                        Some(MetricSign::Negative));
         buckets.add(delta_metric);
-        let reset_metric = Metric::new(Atom::from("some.metric"), 2007.3, MetricKind::Gauge, None);
+        let reset_metric = Metric::new(String::from("some.metric"), 2007.3, MetricKind::Gauge, None);
         buckets.add(reset_metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
@@ -335,8 +332,8 @@ mod test {
     #[test]
     fn test_add_timer_metric() {
         let mut buckets = Buckets::default();
-        let rmname = Atom::from("some.metric");
-        let metric = Metric::new(Atom::from("some.metric"), 11.5, MetricKind::Timer, None);
+        let rmname = String::from("some.metric");
+        let metric = Metric::new(String::from("some.metric"), 11.5, MetricKind::Timer, None);
         buckets.add(metric);
         assert!(buckets.timers.contains_key(&rmname),
                 "Should contain the metric key");
@@ -344,11 +341,11 @@ mod test {
         assert_eq!(Some((1, 11.5)),
                    buckets.timers.get_mut(&rmname).expect("hwhap").query(0.0));
 
-        let metric_two = Metric::new(Atom::from("some.metric"), 99.5, MetricKind::Timer, None);
+        let metric_two = Metric::new(String::from("some.metric"), 99.5, MetricKind::Timer, None);
         buckets.add(metric_two);
 
-        let romname = Atom::from("other.metric");
-        let metric_three = Metric::new(Atom::from("other.metric"), 811.5, MetricKind::Timer, None);
+        let romname = String::from("other.metric");
+        let metric_three = Metric::new(String::from("other.metric"), 811.5, MetricKind::Timer, None);
         buckets.add(metric_three);
         assert!(buckets.timers.contains_key(&romname),
                 "Should contain the metric key");
@@ -365,34 +362,34 @@ mod test {
         let dt_0 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 0, 0).timestamp();
         let dt_1 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 1, 0).timestamp();
 
-        buckets.add(Metric::new_with_time(Atom::from("some.metric"),
+        buckets.add(Metric::new_with_time(String::from("some.metric"),
                                           1.0,
                                           Some(dt_0),
                                           MetricKind::Raw,
                                           None));
-        buckets.add(Metric::new_with_time(Atom::from("some.metric"),
+        buckets.add(Metric::new_with_time(String::from("some.metric"),
                                           2.0,
                                           Some(dt_0),
                                           MetricKind::Raw,
                                           None));
-        buckets.add(Metric::new_with_time(Atom::from("some.metric"),
+        buckets.add(Metric::new_with_time(String::from("some.metric"),
                                           3.0,
                                           Some(dt_0),
                                           MetricKind::Raw,
                                           None));
-        buckets.add(Metric::new_with_time(Atom::from("some.metric"),
+        buckets.add(Metric::new_with_time(String::from("some.metric"),
                                           4.0,
                                           Some(dt_1),
                                           MetricKind::Raw,
                                           None));
 
-        let mname = Atom::from("some.metric");
+        let mname = String::from("some.metric");
         assert!(buckets.raws.contains_key(&mname),
                 "Should contain the metric key");
 
         assert_eq!(Some(&mut vec![
-            Metric::new_with_time(Atom::from("some.metric"), 3.0, Some(dt_0), MetricKind::Raw, None),
-            Metric::new_with_time(Atom::from("some.metric"), 4.0, Some(dt_1), MetricKind::Raw, None),
+            Metric::new_with_time(String::from("some.metric"), 3.0, Some(dt_0), MetricKind::Raw, None),
+            Metric::new_with_time(String::from("some.metric"), 4.0, Some(dt_1), MetricKind::Raw, None),
         ]),
                    buckets.raws.get_mut(&mname));
     }
@@ -406,7 +403,7 @@ mod test {
                 bucket.add(m);
             }
 
-            let cnts: HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+            let cnts: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
                 match m.kind {
                     MetricKind::Counter(_) => {
                         acc.insert(m.name.clone());
@@ -415,7 +412,7 @@ mod test {
                     _ => acc,
                 }
             });
-            let b_cnts: HashSet<Atom> =
+            let b_cnts: HashSet<String> =
                 bucket.counters().iter().fold(HashSet::default(), |mut acc, (k, _)| {
                     acc.insert(k.clone());
                     acc
@@ -439,7 +436,7 @@ mod test {
                 bucket.add(m);
             }
 
-            let gauges: HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+            let gauges: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
                 match m.kind {
                     MetricKind::Gauge | MetricKind::DeltaGauge => {
                         acc.insert(m.name.clone());
@@ -448,7 +445,7 @@ mod test {
                     _ => acc,
                 }
             });
-            let b_gauges: HashSet<Atom> =
+            let b_gauges: HashSet<String> =
                 bucket.gauges().iter().fold(HashSet::default(), |mut acc, (k, _)| {
                     acc.insert(k.clone());
                     acc
@@ -472,7 +469,7 @@ mod test {
                 bucket.add(m);
             }
 
-            let hist: HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+            let hist: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
                 match m.kind {
                     MetricKind::Histogram => {
                         acc.insert(m.name.clone());
@@ -481,7 +478,7 @@ mod test {
                     _ => acc,
                 }
             });
-            let b_hist: HashSet<Atom> =
+            let b_hist: HashSet<String> =
                 bucket.histograms().iter().fold(HashSet::default(), |mut acc, (k, _)| {
                     acc.insert(k.clone());
                     acc
@@ -505,7 +502,7 @@ mod test {
                 bucket.add(m);
             }
 
-            let tm: HashSet<Atom> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+            let tm: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
                 match m.kind {
                     MetricKind::Timer => {
                         acc.insert(m.name.clone());
@@ -514,7 +511,7 @@ mod test {
                     _ => acc,
                 }
             });
-            let b_tm: HashSet<Atom> =
+            let b_tm: HashSet<String> =
                 bucket.timers().iter().fold(HashSet::default(), |mut acc, (k, _)| {
                     acc.insert(k.clone());
                     acc
@@ -557,15 +554,15 @@ mod test {
     fn test_gauge_insertion() {
         let mut buckets = Buckets::default();
 
-        let m0 = Metric::new(Atom::from("test.gauge_0"), 1.0, MetricKind::Gauge, None);
-        let m1 = Metric::new(Atom::from("test.gauge_1"), 1.0, MetricKind::Gauge, None);
+        let m0 = Metric::new(String::from("test.gauge_0"), 1.0, MetricKind::Gauge, None);
+        let m1 = Metric::new(String::from("test.gauge_1"), 1.0, MetricKind::Gauge, None);
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
         assert_eq!(Some(&mut vec![m0]),
-                   buckets.gauges.get_mut(&Atom::from("test.gauge_0")));
+                   buckets.gauges.get_mut(&String::from("test.gauge_0")));
         assert_eq!(Some(&mut vec![m1]),
-                   buckets.gauges.get_mut(&Atom::from("test.gauge_1")));
+                   buckets.gauges.get_mut(&String::from("test.gauge_1")));
     }
 
     #[test]
@@ -578,9 +575,9 @@ mod test {
         buckets.add(m1.clone());
 
         assert_eq!(Some(&mut vec![m0]),
-                   buckets.counters.get_mut(&Atom::from("test.counter_0")));
+                   buckets.counters.get_mut(&String::from("test.counter_0")));
         assert_eq!(Some(&mut vec![m1]),
-                   buckets.counters.get_mut(&Atom::from("test.counter_1")));
+                   buckets.counters.get_mut(&String::from("test.counter_1")));
     }
 
     #[test]
@@ -592,7 +589,7 @@ mod test {
                 bucket.add(m);
             }
 
-            let mut cnts: HashMap<Atom, Vec<(i64, f64)>> = HashMap::default();
+            let mut cnts: HashMap<String, Vec<(i64, f64)>> = HashMap::default();
             for m in ms {
                 match m.kind {
                     MetricKind::Counter(rate) => {
@@ -638,7 +635,7 @@ mod test {
                 bucket.add(m);
             }
 
-            let mut cnts: HashMap<Atom, Vec<(i64, f64)>> = HashMap::default();
+            let mut cnts: HashMap<String, Vec<(i64, f64)>> = HashMap::default();
             for m in ms {
                 match m.kind {
                     MetricKind::Gauge => {

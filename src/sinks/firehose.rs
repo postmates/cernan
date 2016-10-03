@@ -2,7 +2,6 @@ use sink::Sink;
 use metric::{Metric,LogLine};
 use std::{time,thread};
 use std::collections::BTreeMap;
-use string_cache::Atom;
 use std::cmp;
 
 use serde_json;
@@ -14,12 +13,12 @@ use rusoto::firehose::PutRecordBatchError::*;
 
 pub struct Firehose {
     buffer: Vec<LogLine>,
-    metadata: Map<Atom, Atom>,
+    metadata: Map<String, String>,
     delivery_stream_name: String,
 }
 
 impl Firehose {
-    pub fn new(delivery_stream: &str, tags: BTreeMap<Atom, Atom>) -> Firehose {
+    pub fn new(delivery_stream: &str, tags: BTreeMap<String, String>) -> Firehose {
         Firehose {
             buffer: Vec::new(),
             metadata: tags,
@@ -46,11 +45,11 @@ impl Sink for Firehose {
                     for (k,v) in metadata {
                         pyld.insert(k.clone(), v.to_string());
                     }
-                    pyld.insert(Atom::from("fs_path"),
+                    pyld.insert(String::from("fs_path"),
                                 (*m.path).to_string());
-                    pyld.insert(Atom::from("line"),
+                    pyld.insert(String::from("line"),
                                 m.value.clone());
-                    pyld.insert(Atom::from("timestamp"),
+                    pyld.insert(String::from("timestamp"),
                                 m.time.to_string());
 
                     Record {

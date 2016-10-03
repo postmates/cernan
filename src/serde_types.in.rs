@@ -1,6 +1,6 @@
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct LogLine {
-    pub path: Atom,
+    pub path: String,
     pub value: String,
     pub time: i64,
 }
@@ -26,7 +26,7 @@ pub enum MetricKind {
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct Metric {
     pub kind: MetricKind,
-    pub name: Atom,
+    pub name: String,
     pub value: f64,
     pub time: i64,
 }
