@@ -12,7 +12,6 @@ use std::str::FromStr;
 use metric::MetricQOS;
 use std::path::{Path,PathBuf};
 use std::collections::BTreeMap;
-use string_cache::Atom;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
@@ -29,7 +28,7 @@ pub struct Args {
     pub wavefront_port: Option<u16>,
     pub wavefront_host: Option<String>,
     pub qos: MetricQOS,
-    pub tags: BTreeMap<Atom, Atom>,
+    pub tags: BTreeMap<String, String>,
     pub files: Option<Vec<PathBuf>>,
     pub verbose: u64,
     pub version: String,
@@ -123,7 +122,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             let mut tags = BTreeMap::new();
             let ttbl = tbl.as_table().unwrap();
             for (k, v) in ttbl.iter() {
-                tags.insert(Atom::from(k.clone()), Atom::from(v.as_str().unwrap().to_string()));
+                tags.insert(String::from(k.clone()), String::from(v.as_str().unwrap().to_string()));
             }
             tags
         }
@@ -240,7 +239,6 @@ mod test {
     use super::*;
     use metric::MetricQOS;
     use std::collections::BTreeMap;
-    use string_cache::Atom;
 
     #[test]
     fn config_file_default() {
@@ -372,9 +370,9 @@ mission = "from_gad"
 
         let args = parse_config_file(config, 4);
         let mut tags = BTreeMap::new();
-        tags.insert(Atom::from("mission"), Atom::from("from_gad"));
-        tags.insert(Atom::from("purpose"), Atom::from("serious_business"));
-        tags.insert(Atom::from("source"), Atom::from("cernan"));
+        tags.insert(String::from("mission"), String::from("from_gad"));
+        tags.insert(String::from("purpose"), String::from("serious_business"));
+        tags.insert(String::from("source"), String::from("cernan"));
 
         assert_eq!(args.statsd_port, 8125);
         assert_eq!(args.graphite_port, 2003);
@@ -461,9 +459,9 @@ raw = 42
         let args = parse_config_file(config, 4);
         println!("ARGS : {:?}", args);
         let mut tags = BTreeMap::new();
-        tags.insert(Atom::from("mission"), Atom::from("from_gad"));
-        tags.insert(Atom::from("purpose"), Atom::from("serious_business"));
-        tags.insert(Atom::from("source"), Atom::from("cernan"));
+        tags.insert(String::from("mission"), String::from("from_gad"));
+        tags.insert(String::from("purpose"), String::from("serious_business"));
+        tags.insert(String::from("source"), String::from("cernan"));
 
         assert_eq!(args.statsd_port, 1024);
         assert_eq!(args.graphite_port, 1034);

@@ -180,7 +180,6 @@ mod test {
     use metric::{Metric, MetricKind, MetricQOS};
     use sink::Sink;
     use chrono::{UTC, TimeZone};
-    use string_cache::Atom;
     use super::*;
 
     #[test]
@@ -193,7 +192,7 @@ mod test {
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
 
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.histogram"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.histogram"),
                                                 1.0,
                                                 Some(dt_0),
                                                 MetricKind::Histogram,
@@ -260,7 +259,7 @@ mod test {
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
 
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
                                                 1.0,
                                                 Some(dt_0),
                                                 MetricKind::Timer,
@@ -325,32 +324,32 @@ mod test {
         let dt_3 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 14, 0).timestamp();
         let dt_4 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 15, 0).timestamp();
 
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
                                                 1.0,
                                                 Some(dt_0),
                                                 MetricKind::Gauge,
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.some_other_gauge"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.some_other_gauge"),
                                                 1.0,
                                                 Some(dt_0),
                                                 MetricKind::Gauge,
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
                                                 2.0,
                                                 Some(dt_1),
                                                 MetricKind::Gauge,
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
                                                 3.0,
                                                 Some(dt_2),
                                                 MetricKind::Gauge,
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
                                                 4.0,
                                                 Some(dt_3),
                                                 MetricKind::Gauge,
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
                                                 5.0,
                                                 Some(dt_4),
                                                 MetricKind::Gauge,
@@ -384,32 +383,32 @@ mod test {
         let dt_3 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 14, 0).timestamp();
         let dt_4 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 15, 0).timestamp();
 
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
                                                 1.0,
                                                 Some(dt_0),
                                                 MetricKind::Counter(1.0),
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.some_other_counter"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.some_other_counter"),
                                                 1.0,
                                                 Some(dt_0),
                                                 MetricKind::Counter(1.0),
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
                                                 2.0,
                                                 Some(dt_1),
                                                 MetricKind::Counter(1.0),
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
                                                 3.0,
                                                 Some(dt_2),
                                                 MetricKind::Counter(1.0),
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
                                                 4.0,
                                                 Some(dt_3),
                                                 MetricKind::Counter(1.0),
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
                                                 5.0,
                                                 Some(dt_4),
                                                 MetricKind::Counter(1.0),
@@ -437,47 +436,47 @@ mod test {
         let mut wavefront = Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 13).timestamp();
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
                                                 -1.0,
                                                 Some(dt_0),
                                                 MetricKind::Counter(1.0),
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
                                                 2.0,
                                                 Some(dt_0),
                                                 MetricKind::Counter(1.0),
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.counter"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
                                                 3.0,
                                                 Some(dt_1),
                                                 MetricKind::Counter(1.0),
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.gauge"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
                                                 3.211,
                                                 Some(dt_0),
                                                 MetricKind::Gauge,
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
                                                 12.101,
                                                 Some(dt_0),
                                                 MetricKind::Timer,
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
                                                 1.101,
                                                 Some(dt_0),
                                                 MetricKind::Timer,
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.timer"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
                                                 3.101,
                                                 Some(dt_0),
                                                 MetricKind::Timer,
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.raw"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.raw"),
                                                 1.0,
                                                 Some(dt_0),
                                                 MetricKind::Raw,
                                                 None));
-        wavefront.deliver(Metric::new_with_time(Atom::from("test.raw"),
+        wavefront.deliver(Metric::new_with_time(String::from("test.raw"),
                                                 2.0,
                                                 Some(dt_1),
                                                 MetricKind::Raw,

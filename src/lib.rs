@@ -3,7 +3,6 @@ extern crate clap;
 extern crate chrono;
 extern crate fnv;
 extern crate quantiles;
-extern crate string_cache;
 extern crate dns_lookup;
 extern crate notify;
 extern crate bincode;
@@ -21,10 +20,6 @@ pub mod buckets;
 pub mod config;
 pub mod metric;
 pub mod time;
-pub mod metrics {
-    pub mod statsd;
-    pub mod graphite;
-}
 pub mod server;
 pub mod sinks {
     pub mod console;

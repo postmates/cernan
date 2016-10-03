@@ -3,12 +3,10 @@
 extern crate test;
 extern crate cernan;
 extern crate chrono;
-extern crate string_cache;
 
 use self::test::Bencher;
 
 use chrono::{UTC,TimeZone};
-use string_cache::Atom;
 use cernan::buckets;
 use cernan::metric::{Metric,MetricKind};
 
@@ -19,7 +17,7 @@ fn bench_single_timer(b: &mut Bencher) {
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Metric::new_with_time(Atom::from("a"),
+        bucket.add(Metric::new_with_time(String::from("a"),
                                          1.0,
                                          Some(dt_0),
                                          MetricKind::Timer,
@@ -34,7 +32,7 @@ fn bench_single_histogram(b: &mut Bencher) {
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Metric::new_with_time(Atom::from("a"),
+        bucket.add(Metric::new_with_time(String::from("a"),
                                          1.0,
                                          Some(dt_0),
                                          MetricKind::Histogram,
@@ -54,12 +52,12 @@ fn bench_multi_counters(b: &mut Bencher) {
         for name in &["a", "aa", "aaa", "aaaa", "aaaaa", "aaaaaa", "aaaaaa"] {       // 7
             for i in &[-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0] { // 11
                 for r in &[-1.0, 0.0, 1.0] {                                         // 3
-                    bucket.add(Metric::new_with_time(Atom::from(*name),
+                    bucket.add(Metric::new_with_time(String::from(*name),
                                                      *i,
                                                      Some(dt_0),
                                                      MetricKind::Counter(*r),
                                                      None));
-                    bucket.add(Metric::new_with_time(Atom::from(*name),
+                    bucket.add(Metric::new_with_time(String::from(*name),
                                                      *i,
                                                      Some(dt_1),
                                                      MetricKind::Counter(*r),
@@ -78,7 +76,7 @@ fn bench_single_counter(b: &mut Bencher) {
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Metric::new_with_time(Atom::from("a"),
+        bucket.add(Metric::new_with_time(String::from("a"),
                                          1.0,
                                          Some(dt_0),
                                          MetricKind::Counter(1.0),
@@ -96,12 +94,12 @@ fn bench_multi_gauges(b: &mut Bencher) {
 
         for name in &["a", "aa", "aaa", "aaaa", "aaaaa", "aaaaaa", "aaaaaa"] {       // 7
             for i in &[-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0] { // 11
-                bucket.add(Metric::new_with_time(Atom::from(*name),
+                bucket.add(Metric::new_with_time(String::from(*name),
                                                  *i,
                                                  Some(dt_0),
                                                  MetricKind::Gauge,
                                                  None));
-                bucket.add(Metric::new_with_time(Atom::from(*name),
+                bucket.add(Metric::new_with_time(String::from(*name),
                                                  *i,
                                                  Some(dt_1),
                                                  MetricKind::Gauge,
@@ -119,7 +117,7 @@ fn bench_single_gauge(b: &mut Bencher) {
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Metric::new_with_time(Atom::from("a"),
+        bucket.add(Metric::new_with_time(String::from("a"),
                                          1.0,
                                          Some(dt_0),
                                          MetricKind::Gauge,
