@@ -1,11 +1,11 @@
 use std::net::{SocketAddr, TcpStream};
 use std::fmt::Write;
 use std::io::Write as IoWrite;
-use chrono;
 use metric::{Metric, LogLine, MetricQOS};
 use buckets::Buckets;
 use sink::Sink;
 use dns_lookup;
+use time;
 
 pub struct Wavefront {
     addr: SocketAddr,
@@ -45,7 +45,7 @@ impl Wavefront {
     pub fn format_stats(&mut self, curtime: Option<i64>) -> String {
         let start = match curtime {
             Some(x) => x,
-            None => chrono::UTC::now().timestamp(),
+            None => time::now(),
         };
         let mut stats = String::new();
 
@@ -148,21 +148,28 @@ impl Wavefront {
 
 impl Sink for Wavefront {
     fn flush(&mut self) {
-        match TcpStream::connect(self.addr) {
-            Ok(mut stream) => {
-                let res = stream.write(self.format_stats(None).as_bytes());
-                if res.is_ok() {
-                    trace!("flushed to wavefront!");
-                    self.aggrs.reset();
-                    if self.reset_histogram {
-                        self.aggrs.reset_histograms();
-                    }
-                    if self.reset_timer {
-                        self.aggrs.reset_timers();
+        let mut attempts = 0;
+        loop {
+            time::delay(attempts);
+            match TcpStream::connect(self.addr) {
+                Ok(mut stream) => {
+                    let res = stream.write(self.format_stats(None).as_bytes());
+                    if res.is_ok() {
+                        trace!("flushed to wavefront!");
+                        self.aggrs.reset();
+                        if self.reset_histogram {
+                            self.aggrs.reset_histograms();
+                        }
+                        if self.reset_timer {
+                            self.aggrs.reset_timers();
+                        }
+                        break;
+                    } else {
+                        attempts += 1;
                     }
                 }
+                Err(e) => debug!("Unable to connect: {}", e),
             }
-            Err(e) => debug!("Unable to connect: {}", e),
         }
     }
 
