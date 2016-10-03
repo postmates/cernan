@@ -21,34 +21,31 @@ node {
    env.SEMVAR = readFile('semvar.current').trim()
    echo "${env.SEMVAR}"
 
-
    stage 'Install Deps'
    env.LD_LIBRARY_PATH = "${env.WORKSPACE}/rust/rustc/lib:${env.LD_LIBRARY_PATH}"
-   env.PATH = "${env.WORKSPACE}/rust/bin:${env.PATH}"
+   env.PATH = "${env.WORKSPACE}/rust/bin:${env.WORKSPACE}/.rustup:${env.PATH}"
    env.RUSTUP_HOME = "${env.WORKSPACE}/.rustup"
 
    sh "curl -sSf https://static.rust-lang.org/rustup.sh > rustup.sh"
    sh "chmod +x rustup.sh"
 
    stage 'Stable Tests'
-   sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust default stable"
-   sh "cargo clean"
+   sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust --channel=stable"
    sh "cargo test"
 
    stage 'Beta Tests'
-   sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust default beta"
-   sh "cargo clean"
+   sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust --channel=beta"
    sh "cargo test"
 
-    stage 'Build Artifact'
-    sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust default stable"
-    sh "RUSTFLAGS=\"-C target-cpu=native\" cargo build --release"
+   stage 'Build Artifact'
+   sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust --channel=stable"
+   sh "RUSTFLAGS=\"-C target-cpu=native\" cargo build --release"
 
-    sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-${env.VERSION}"
-    if (env.BRANCH_NAME == "stable") {
-       sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan"
-       sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-${env.SEMVAR}"
-    } else {
-       sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-unstable"
-    }
+   sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-${env.VERSION}"
+   if (env.BRANCH_NAME == "stable") {
+      sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan"
+      sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-${env.SEMVAR}"
+   } else {
+      sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-unstable"
+   }
 }
