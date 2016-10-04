@@ -2,8 +2,12 @@ data-directory = "data/"
 
 # cernan listens on two telemetry protocols, statsd and graphite. The following
 # two configuration items set the ports cernan will listen on.
-statsd-port = 8125
-graphite-port = 2003
+[statsd]
+port = 8125
+
+[graphite]
+enabled = true
+port = 2003
 
 # There is one global timing interval on which cernan will sync from its sources
 # to its sinks. This value is in seconds.

@@ -18,8 +18,8 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 #[derive(Clone, Debug)]
 pub struct Args {
     pub data_directory: PathBuf,
-    pub statsd_port: u16,
-    pub graphite_port: u16,
+    pub statsd_port: Option<u16>,
+    pub graphite_port: Option<u16>,
     pub flush_interval: u64,
     pub console: bool,
     pub null: bool,
@@ -92,10 +92,10 @@ pub fn parse_args() -> Args {
 
             Args {
                 data_directory: Path::new("/tmp/cernan-data").to_path_buf(),
-                statsd_port: u16::from_str(args.value_of("statsd-port").unwrap())
-                    .expect("statsd-port must be an integer"),
-                graphite_port: u16::from_str(args.value_of("graphite-port").unwrap())
-                    .expect("graphite-port must be an integer"),
+                statsd_port: Some(u16::from_str(args.value_of("statsd-port").unwrap())
+                    .expect("statsd-port must be an integer")),
+                graphite_port: Some(u16::from_str(args.value_of("graphite-port").unwrap())
+                    .expect("graphite-port must be an integer")),
                 flush_interval: u64::from_str(args.value_of("flush-interval").unwrap())
                     .expect("flush-interval must be an integer"),
                 console: mk_console,
@@ -202,20 +202,44 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
     }
 
+    let statsd_port = match value.lookup("statsd-port") {
+        Some(p) => Some(p.as_integer().expect("statsd-port must be integer") as u16),
+        None => {
+            let is_enabled = value.lookup("statsd.enabled").unwrap_or(&Value::Boolean(true)).as_bool().expect("must be a bool");
+            if is_enabled {
+                match value.lookup("statsd.port") {
+                    Some(p) => Some(p.as_integer().expect("statsd-port must be integer") as u16),
+                    None => Some(8125),
+                }
+            } else {
+                None
+            }
+        }
+    };
+
+    let graphite_port = match value.lookup("graphite-port") {
+        Some(p) => Some(p.as_integer().expect("graphite-port must be integer") as u16),
+        None => {
+            let is_enabled = value.lookup("graphite.enabled").unwrap_or(&Value::Boolean(true)).as_bool().expect("must be a bool");
+            if is_enabled {
+                match value.lookup("graphite.port") {
+                    Some(p) => Some(p.as_integer().expect("graphite-port must be integer") as u16),
+                    None => Some(2003),
+                }
+            } else {
+                None
+            }
+        }
+    };
+
     Args {
         data_directory: value.lookup("data-directory")
             .unwrap_or(&Value::String("/tmp/cernan-data".to_string()))
             .as_str()
             .map(|s| Path::new(s).to_path_buf())
             .unwrap(),
-        statsd_port: value.lookup("statsd-port")
-            .unwrap_or(&Value::Integer(8125))
-            .as_integer()
-            .expect("statsd-port must be integer") as u16,
-        graphite_port: value.lookup("graphite-port")
-            .unwrap_or(&Value::Integer(2003))
-            .as_integer()
-            .expect("graphite-port must be integer") as u16,
+        statsd_port: statsd_port,
+        graphite_port: graphite_port,
         flush_interval: value.lookup("flush-interval")
             .unwrap_or(&Value::Integer(10))
             .as_integer()
@@ -246,8 +270,152 @@ mod test {
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, 8125);
-        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(2003));
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_statsd_backward_compat() {
+        let config = r#"
+statsd-port = 1024
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, Some(1024));
+        assert_eq!(args.graphite_port, Some(2003));
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_statsd() {
+        let config = r#"
+[statsd]
+port = 1024
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, Some(1024));
+        assert_eq!(args.graphite_port, Some(2003));
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_statsd_disabled() {
+        let config = r#"
+[statsd]
+enabled = false
+port = 1024
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, None);
+        assert_eq!(args.graphite_port, Some(2003));
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_graphite_backward_compat() {
+        let config = r#"
+graphite-port = 1024
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(1024));
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_graphite() {
+        let config = r#"
+[graphite]
+port = 1024
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(1024));
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_graphite_disabled() {
+        let config = r#"
+[graphite]
+enabled = false
+port = 1024
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, None);
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
@@ -271,8 +439,8 @@ host = "example.com"
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, 8125);
-        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
@@ -294,8 +462,8 @@ host = "example.com"
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, 8125);
-        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, true);
         assert_eq!(args.null, false);
@@ -317,8 +485,8 @@ host = "example.com"
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, 8125);
-        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, true);
@@ -344,8 +512,8 @@ delivery_stream = "stream_two"
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, 8125);
-        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
@@ -374,8 +542,8 @@ mission = "from_gad"
         tags.insert(String::from("purpose"), String::from("serious_business"));
         tags.insert(String::from("source"), String::from("cernan"));
 
-        assert_eq!(args.statsd_port, 8125);
-        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
@@ -402,8 +570,8 @@ raw = 42
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, 8125);
-        assert_eq!(args.graphite_port, 2003);
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
@@ -463,8 +631,8 @@ raw = 42
         tags.insert(String::from("purpose"), String::from("serious_business"));
         tags.insert(String::from("source"), String::from("cernan"));
 
-        assert_eq!(args.statsd_port, 1024);
-        assert_eq!(args.graphite_port, 1034);
+        assert_eq!(args.statsd_port, Some(1024));
+        assert_eq!(args.graphite_port, Some(1034));
         assert_eq!(args.flush_interval, 128);
         assert_eq!(args.console, true);
         assert_eq!(args.null, true);

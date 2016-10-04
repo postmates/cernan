@@ -176,11 +176,25 @@ The cernan server has options to control which ports its ingestion interfaces
 run on:
 
 ```
-statsd-port=<INT>        The UDP port to bind to for statsd traffic. [default: 8125]
-graphite-port=<INT>      The TCP port to bind to for graphite traffic. [default: 2003]
+[statsd]
+port = 8125 # UDP port to bind for statsd traffic. [default: 8125]
+
+[graphite]
+port = 2003 # TCP port to bind for graphite traffic. [default: 2003]
 ```
 
-As of this writing, both statsd and graphite interfaces are obligatory. Issue
+Both interfaces are optional, though they are enabled by default. To disable set
+`enabled = false`. For example, this configuration disables the statsd listeners
+but keeps graphite going:
+
+```
+[statsd]
+enabled = false
+port = 8125
+
+[graphite]
+port = 2003
+```
 
 ## Changing how frequently metrics are output
 
