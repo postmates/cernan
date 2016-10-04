@@ -85,24 +85,31 @@ fn main() {
     }
 
     let sport = args.statsd_port;
-    let udp_server_v4_send = sends.clone();
-    joins.push(thread::spawn(move || {
-        cernan::server::udp_server_v4(udp_server_v4_send, sport);
-    }));
-    let udp_server_v6_send = sends.clone();
-    joins.push(thread::spawn(move || {
-        cernan::server::udp_server_v6(udp_server_v6_send, sport);
-    }));
+    if sport.is_some() {
+        let sport = sport.unwrap();
+        let udp_server_v4_send = sends.clone();
+        joins.push(thread::spawn(move || {
+            cernan::server::udp_server_v4(udp_server_v4_send, sport);
+        }));
+        let udp_server_v6_send = sends.clone();
+        joins.push(thread::spawn(move || {
+            cernan::server::udp_server_v6(udp_server_v6_send, sport);
+        }));
+    }
+
 
     let gport = args.graphite_port;
-    let tcp_server_ipv6_sends = sends.clone();
-    joins.push(thread::spawn(move || {
-        cernan::server::tcp_server_ipv6(tcp_server_ipv6_sends, gport);
-    }));
-    let tcp_server_ipv4_sends = sends.clone();
-    joins.push(thread::spawn(move || {
-        cernan::server::tcp_server_ipv4(tcp_server_ipv4_sends, gport);
-    }));
+    if gport.is_some() {
+        let gport = gport.unwrap();
+        let tcp_server_ipv6_sends = sends.clone();
+        joins.push(thread::spawn(move || {
+            cernan::server::tcp_server_ipv6(tcp_server_ipv6_sends, gport);
+        }));
+        let tcp_server_ipv4_sends = sends.clone();
+        joins.push(thread::spawn(move || {
+            cernan::server::tcp_server_ipv4(tcp_server_ipv4_sends, gport);
+        }));
+    }
 
     let flush_interval = args.flush_interval;
     let flush_interval_sends = sends.clone();
