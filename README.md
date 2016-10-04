@@ -1,16 +1,17 @@
 # cernan - telemetry aggregation and shipping, last up the ladder
 
-![cernan](Gene-Cernan-1-578x485.jpg)
+![Eugene Cernan, Apollo 17 EVA](Gene-Cernan-1-578x485.jpg)
 
-`cernan` is a telemetry and logging aggregation server. It exposes a statsd and
-graphite interface as of this writing. In the Glorious Future it will ingest
-logs as well.
+Cernan is a telemetry and logging aggregation server. It exposes a statsd and
+graphite interface and can ingest logs as well. In the Glorious Future cernan
+will be able to act as a forwarding server and be able to do in-flight
+manipulation of data.
 
 [![Build Status](https://travis-ci.com/postmates/cernan.svg?token=YZ973qi8DocmxHi3Nn48&branch=master)](https://travis-ci.com/postmates/cernan)
 
 # Installation
 
-The ambition is for `cernan` to be easily installed and run on development
+The ambition is for cernan to be easily installed and run on development
 machines. The only slight rub is that you _will_ need to install rust. Should be
 as simple as:
 
@@ -38,6 +39,116 @@ service--to determine if the telemetry you intend is issued--run cernan like
     > cargo run -- --console -vvvv
 
 and full trace output will be reported to the tty.
+
+# Cernan's Data Model
+
+There are two stories to cernan's data model, one to do with durability of data
+and the other with aggregation.
+
+## Durability
+
+Cernan works very hard to store and process every piece of information you send
+it and, in doing so, to never overwhelm your system. This is born of our
+frustation with other telemetry systems who fail during crisis periods on
+account of high telemetry load. That is, should your application begin to
+frantically emit telemetry about its failing state cernan _must_ be able to
+ingest and ship this outward.
+
+Cernan's main line of effort in this regard is a disk based queueing system that
+allow individual source and sinks to communicate with one another. Each
+telemetry point that comes into the system is parsed and serialized to
+disk. These serialized points are only read from disk when a sink is capable of
+processing it. This limits cernan's eposure to restart related data-loss and
+puts a hard cap on cernan's online allocations.
+
+## Aggregation
+
+Cernan is timestamp accurate to the second. Every point of telemetry that is
+ingested by cernan is timestamped on receipt, in the case of log lines and
+statsd, or by parsing the payload, as in the case of graphite. Cernan sinks
+which opt into the use of the
+[`buckets`](https://github.com/postmates/cernan/blob/master/src/buckets.rs)
+structure aggregate points according to their "kind". Each metric is binned by
+the second, according to their needs. Sub-second aggregation is not available
+though we'd be open to it. The metric kinds are:
+
+  * `gauge` :: A gauge represents a point-in-time metric that sustains across
+    bins. A gauge _never_ resets automatically.
+  * `counter` :: A counter is a sum of all intput values in a given time bin. A
+    counter _will_ reset at the start of each new time bin. Zero will _not_ be
+    reported for a counter which does not receive a point.
+  * `timer` | `histogram` - Timers and histograms compute percentiles over input
+    points. This is done by storing a subset of these points in a structure
+    called CKMS, implemented and further discussed in the
+    [quantiles](https://github.com/postmates/quantiles) project. Cernan sinks
+    may vary in the percentile queries they emit but the default wavefront and
+    console emissions are `min`, `max`, `2`, `9`, `25`, `50`, `75`, `90`, `91`,
+    `95`, `98`, `99`, `999`. Timers and histograms _will_ reset at the start of
+    each new time bin.
+  * `delta gauge` :: A delta gauge adjusts the value of a gauge by being summed
+    to the existing value. If no such value is present, a value of 0 is
+    assumed. A delta gauge modifies a gauge and has its reset properties.
+  * `raw` :: A raw represents a piece of telemetry for which no aggregation is
+    valid. All graphite points are raw as are all log lines. Raw points are
+    stored in last-one-wins fashion per time bin. A raw _will_ reset across time
+    bins and will _not_ report values in their absence.
+
+The kinds are encoded
+[here](https://github.com/postmates/cernan/blob/master/src/serde_types.in.rs#L17).
+
+# Resource Consumption
+
+Cernan is intended to be a good citizen. It consumes three major resources:
+
+  * disk space / IO
+  * CPU
+  * memory
+
+Let's talk CPU. Cernan comes with a set of benchmarks and we, in development,
+track these closely. On my system the source parsing benchmarks look like so:
+
+```
+test bench_graphite                      ... bench:         165 ns/iter (+/- 23)
+test bench_statsd_counter_no_sample      ... bench:         159 ns/iter (+/- 19)
+test bench_statsd_counter_with_sample    ... bench:         195 ns/iter (+/- 89)
+test bench_statsd_gauge_mit_sample       ... bench:         166 ns/iter (+/- 125)
+test bench_statsd_gauge_no_sample        ... bench:         156 ns/iter (+/- 21)
+test bench_statsd_histogram              ... bench:         158 ns/iter (+/- 26)
+test bench_statsd_incr_gauge_no_sample   ... bench:         164 ns/iter (+/- 24)
+test bench_statsd_incr_gauge_with_sample ... bench:         172 ns/iter (+/- 48)
+test bench_statsd_timer                  ... bench:         161 ns/iter (+/- 21)
+```
+
+That is, cernan is able to parse approximately 2,000,000 points per second on my
+system. The mpsc round-trip benchmark:
+
+```
+test bench_snd_rcv                          ... bench:       2,370 ns/iter (+/- 380)
+```
+
+suggests that we're able to clock around 500,000 points from source, to disk and
+then out to sink. Experimentation with the `null` sink--below--bears this
+out. We encourage you to run these for yourself on your own system. You'll need
+a [nightly compiler](https://doc.rust-lang.org/stable/book/benchmark-tests.html)
+to run them--for now--but once you've got the nightly compiler `cargo bench`
+will get you where you want to be.
+
+Cernan's disk consumption is proportional to the number of telemetry points
+added into the system multiplied by the number of enabled sinks, complicated by
+the speed of said sinks. That is, for each telemetry point that comes into
+cernan we make N duplicates of it in its parsed form, where N is the number of
+enabled sinks. If a sink is especially slow--as the
+[`firehose`](https://github.com/postmates/cernan/blob/master/src/sinks/firehose.rs)
+sink can be--then more points will pool up in the disk-queue. A fast sink--like
+[`null`](https://github.com/postmates/cernan/blob/master/src/sinks/null.rs) will
+keep only a minimal number of points on disk. At present, this is 100MB worth.
+
+Cernan's allocation patterns are tightly controlled. By flushing to disk we
+reduce the need for especially fancy tricks and sustain max allocation of a few
+megabytes on our heavily loaded systems. Cernan is vulnerable to randomized
+attacks--that is, attacks where randomized metrics names are shipped--and it may
+allocate tens of megabytes while sustaining such an attack. If anyone has
+suggestions for systematically benchmarking memory use we'd be all for it.
 
 # Usage
 
@@ -69,28 +180,67 @@ statsd-port=<INT>        The UDP port to bind to for statsd traffic. [default: 8
 graphite-port=<INT>      The TCP port to bind to for graphite traffic. [default: 2003]
 ```
 
+As of this writing, both statsd and graphite interfaces are obligatory. Issue
+
 ## Changing how frequently metrics are output
 
 ```
 flush-interval=<INT>  How frequently to flush metrics to the sinks in seconds. [default: 10].
 ```
 
-## Enabling the console or graphite sinks
+## Where Cernan stores its on-disk queues
+
+By default cernan will put its on-disk queues into TMPDIR. While this is
+acceptable for testing and development this is not desirable for production
+deployments. You may adjust where cernan stores its on-disk queues with the
+`data-directory` directive:
+
+```
+data-directory = "/var/lib/cernan/"
+```
+
+In the above, we are requiring that cernan store its files in
+`/var/lib/cernan`. The structure of this data is not defined. Cernan will _not_
+create the path `data-directory` points to if it does not exist.
+
+## Elliding Points
+
+In some cases it's not nessary for cernan to ship the aggregates of each point
+for every second it receives them to achieve a statistically accurate impression
+of your system. To that end, cernan allows the user to control point ellision
+with a Quality of Service knob, which looks like so:
+
+```
+[quality-of-service]
+gauge = 15
+counter = 3
+timer = 10
+histogram = 10
+raw = 1
+```
+
+In the above, for each time bin we receive a `raw` metric it will be emitted,
+while only 1/10 of `timer` and `histogram` points will be emitted: likewise one
+of every three counters and one of every fifteen gauges.
+
+QOS may be adjusted to reduce load on downstream aggregators or save a little
+money, if you pay by the point.
+
+## Enabling sinks
 
 By default no sinks are enabled. In this mode cernan server doesn't do that
-much. Sinks are configured in a `sinks` table. To enable a sink with
-defaults it is sufficient to make a sub-table for it. In the following, all
-sinks are enabled with their default:
+much. Sinks are configured individually, by name. To enable a sink with defaults
+it is sufficient to make an entry for it. In the following, all sinks are
+enabled with their default:
 
 ```
-[sinks]
-  [console]
-  [wavefront]
-  [librato]
+[console]
+[wavefront]
+[null]
 ```
 
-For sinks which support it `cernan` can report metadata about the
-metric. These are called "tags" by some aggregators and `cernan` uses this
+For sinks which support it cernan can report metadata about the
+metric. These are called "tags" by some aggregators and cernan uses this
 terminology. In AWS you might choose to include your instance ID with each
 metric point, as well as the service name. You may set tags like so:
 
@@ -100,17 +250,17 @@ source = cernan
 ```
 
 Each key / value pair will converted to the appropriate tag, depending on the
-sink.
+sink. Milestone [0.5.0 - agena](https://github.com/postmates/cernan/milestone/7)
+increases cernan's ambitions with regard to tags.
 
-### librato
+### console
 
-The librato sink has additional options for defining authentication:
+The console sink accepts points and aggregates them into
+[buckets](https://github.com/postmates/cernan/blob/master/src/buckets.rs), as
+the wavefront sink does. The console sink will, once per `flush-interval`, print
+its aggregations. The console sink is useful for smoke testing applications.
 
-```
-username=<STRING>   The librato username for authentication. [default: ceran].
-token=<STRING>      The librato token for authentication. [default: cernan_totally_valid_token].
-host=<STRING>       The librato host to report to. [default: https://metrics-api.librato.com/v1/metrics]
-```
+There are no configurable options for the console sink.
 
 ### wavefront
 
@@ -126,9 +276,18 @@ You may find an example configuration file in the top-level of this project,
 `example-config.toml`. The TOML specification is
 [here](https://github.com/toml-lang/toml).
 
+### null
+
+The null sink accepts points and immediately discards them. This is useful for
+testing deployments of cernan, especially on systems with slow disks. For more
+information, see the section on 'Durability' and also the section on 'Resource
+Consumption'.
+
+There are no configurable options for the null sink.
+
 ## Prior Art
 
-The inspiration for the intial `cernan` work leaned very heavily on Mark Story's
+The inspiration for the intial cernan work leaned very heavily on Mark Story's
 [rust-stats-server](https://github.com/markstory/rust-statsd-server). I
 originally thought I might just adapt that project but ambitions grew. Thank you
 Mark!

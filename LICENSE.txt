@@ -1,6 +1,7 @@
 The MIT License
 
-Copyright (c) 2015, Mark Story <mark@mark-story.com>
+Original work Copyright (c) 2016, Postmates, Inc.
+Modified work Copyright (c) 2015, Mark Story <mark@mark-story.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
