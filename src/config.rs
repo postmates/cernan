@@ -203,7 +203,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     }
 
     let statsd_port = match value.lookup("statsd-port") {
-        Some(p) => Some(p.as_integer().expect("statsd-port msut be integer") as u16),
+        Some(p) => Some(p.as_integer().expect("statsd-port must be integer") as u16),
         None => {
             let is_enabled = value.lookup("statsd.enabled").unwrap_or(&Value::Boolean(true)).as_bool().expect("must be a bool");
             if is_enabled {
@@ -218,7 +218,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     };
 
     let graphite_port = match value.lookup("graphite-port") {
-        Some(p) => Some(p.as_integer().expect("graphite-port msut be integer") as u16),
+        Some(p) => Some(p.as_integer().expect("graphite-port must be integer") as u16),
         None => {
             let is_enabled = value.lookup("graphite.enabled").unwrap_or(&Value::Boolean(true)).as_bool().expect("must be a bool");
             if is_enabled {
