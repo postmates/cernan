@@ -10,21 +10,21 @@ use time;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 
-pub struct Cernan {
+pub struct CrdReceiver {
     port: u16,
     host: String,
     buffer: Vec<metric::Event>,
 }
 
-impl Cernan {
-    pub fn new(port: u16, host: String) -> Cernan {
-        Cernan { port: port, host: host, buffer: Vec::new() }
+impl CrdReceiver {
+    pub fn new(port: u16, host: String) -> CrdReceiver {
+        CrdReceiver { port: port, host: host, buffer: Vec::new() }
     }
 }
 
-impl Default for Cernan {
+impl Default for CrdReceiver {
     fn default() -> Self {
-        Cernan {
+        CrdReceiver {
             port: 1972,
             host: String::from("127.0.0.1"),
             buffer: Vec::new()
@@ -32,7 +32,7 @@ impl Default for Cernan {
     }
 }
 
-impl Sink for Cernan {
+impl Sink for CrdReceiver {
     fn deliver(&mut self, _: metric::Metric) {
         // intentionally nothing
     }
