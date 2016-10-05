@@ -1,24 +1,34 @@
 use bincode::SizeLimit;
-use bincode::serde::serialize;
+use bincode::serde::serialize_into;
 use metric;
 use mpsc;
 use sink::Sink;
 use std::io::Write;
 use std::net::{TcpStream,ToSocketAddrs};
+use time;
+
+use flate2::Compression;
+use flate2::write::ZlibEncoder;
 
 pub struct Cernan {
+    port: u16,
+    host: String,
     buffer: Vec<metric::Event>,
 }
 
 impl Cernan {
-    pub fn new() -> Cernan {
-        Cernan { buffer: Vec::new() }
+    pub fn new(port: u16, host: String) -> Cernan {
+        Cernan { port: port, host: host, buffer: Vec::new() }
     }
 }
 
 impl Default for Cernan {
     fn default() -> Self {
-        Self::new()
+        Cernan {
+            port: 1972,
+            host: String::from("127.0.0.1"),
+            buffer: Vec::new()
+        }
     }
 }
 
@@ -31,25 +41,38 @@ impl Sink for Cernan {
         // intentionally nothing
     }
 
-    fn run(&mut self, recv: mpsc::Receiver<metric::Event>) {
-        for event in recv {
-            match event {
-                metric::Event::TimerFlush => self.flush(),
-                _ => self.buffer.push(event),
+    fn run(&mut self, mut recv: mpsc::Receiver<metric::Event>) {
+        let mut attempts = 0;
+        loop {
+            time::delay(attempts);
+            match recv.next() {
+                None => attempts += 1,
+                Some(event) => {
+                    attempts = 0;
+                    match event {
+                        metric::Event::TimerFlush => self.flush(),
+                        _ => self.buffer.push(event),
+                    }
+                }
             }
         }
     }
 
     fn flush(&mut self) {
-        let mut t = serialize(&self.buffer, SizeLimit::Infinite).expect("could not serialize");
+        trace!("TRANSMISSION FLUSH!");
+        let mut e = ZlibEncoder::new(Vec::new(), Compression::Default);
+        serialize_into(&mut e, &self.buffer, SizeLimit::Infinite).expect("could not serialize");
+        let mut t = e.finish().expect("unable to finish compression write");
         let pyld_sz_bytes: [u8; 4] = u32tou8abe(t.len() as u32);
         t.insert(0, pyld_sz_bytes[0]);
         t.insert(0, pyld_sz_bytes[1]);
         t.insert(0, pyld_sz_bytes[2]);
         t.insert(0, pyld_sz_bytes[3]);
-        let srv: Vec<_> = "127.0.0.1:1972".to_socket_addrs()
+
+        let srv: Vec<_> = (self.host.as_str(), self.port).to_socket_addrs()
             .expect("Unable to resolve domain")
             .collect();
+        trace!("SENDING: {:?}", srv);
         match TcpStream::connect(srv.first().unwrap()) {
             Ok(mut stream) => {
                 let res = stream.write(&t[..]);

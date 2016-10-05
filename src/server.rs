@@ -1,21 +1,24 @@
+use bincode::SizeLimit;
 use std::net::{Ipv6Addr, UdpSocket, SocketAddrV6, SocketAddrV4, Ipv4Addr};
 use std::net::{TcpListener, TcpStream};
 use std::thread::sleep;
 use std::time::Duration;
 use std::thread;
 use std::io::prelude::*;
-use std::io::BufReader;
+use std::io::Take;
 use std::str;
 use metric;
 use std::fs::File;
-use std::io::SeekFrom;
+use std::io::{SeekFrom,BufReader};
 use std::path::PathBuf;
-use bincode::serde::deserialize;
+use bincode::serde::{deserialize_from};
 
 use std::sync::mpsc::channel;
 use notify::{RecommendedWatcher, Error, Watcher};
 use notify::op::*;
 use mpsc;
+
+use flate2::read::ZlibDecoder;
 
 #[inline]
 fn send(chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &metric::Event) {
@@ -122,28 +125,30 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf) {
 }
 
 //
-// cernan forwarding sink
+// cernan crd_receiver sink
 //
-pub fn forwarding_sink_server_ipv6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
+pub fn receiver_sink_server_ipv6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0), port, 0, 0);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
-    info!("cernan forwarding sink started on ::1 {}", port);
+    info!("cernan receiver started on ::1 {}", port);
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
+            stream.set_nonblocking(false).expect("could not set TcpStream to block");
             let srv_chans = chans.clone();
-            thread::spawn(move || handle_forwarding_client(srv_chans, stream));
+            thread::spawn(move || handle_receiver_client(srv_chans, stream));
         }
     }
 }
 
-pub fn forwarding_sink_server_ipv4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
+pub fn receiver_sink_server_ipv4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
-    info!("cernan forwarding sink started on 127.0.0.1:{}", port);
+    info!("cernan receiver started on 127.0.0.1:{}", port);
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
+            stream.set_nonblocking(false).expect("could not set TcpStream to block");
             let srv_chans = chans.clone();
-            thread::spawn(move || handle_forwarding_client(srv_chans, stream));
+            thread::spawn(move || handle_receiver_client(srv_chans, stream));
         }
     }
 }
@@ -153,28 +158,24 @@ fn u8tou32abe(v: &[u8]) -> u32 {
     (v[3] as u32) + ((v[2] as u32) << 8) + ((v[1] as u32) << 24) + ((v[0] as u32) << 16)
 }
 
-fn handle_forwarding_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream) {
+fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream) {
     let mut sz_buf = [0; 4];
     let mut reader = BufReader::new(stream);
-    loop {
-        reader.read_exact(&mut sz_buf).expect("unable to read payload size");
-        let payload_size_in_bytes = u8tou32abe(&sz_buf);
-        let mut payload_buf = vec![0; (payload_size_in_bytes as usize)];
-        match reader.read_exact(&mut payload_buf) {
-            Ok(()) => {
-                match deserialize::<Vec<metric::Event>>(&payload_buf) {
-                    Ok(events) => {
-                        for ev in events {
-                            send(&mut chans, &ev);
-                        }
+    match reader.read_exact(&mut sz_buf) {
+        Ok(()) => {
+            let payload_size_in_bytes = u8tou32abe(&sz_buf);
+            let hndl = (&mut reader).take(payload_size_in_bytes as u64);
+            let mut e = ZlibDecoder::new(hndl);
+            match deserialize_from::<ZlibDecoder<Take<&mut BufReader<TcpStream>>>, Vec<metric::Event>>(&mut e, SizeLimit::Infinite) {
+                Ok(events) => {
+                    for ev in events {
+                        send(&mut chans, &ev);
                     }
-                    Err(e) => panic!("Failed decoding. Skipping {:?}", e),
                 }
-            }
-            Err(e) => {
-                panic!("Unable to read forwarded payload. {:?}", e);
+                Err(e) => panic!("Failed decoding. Skipping {:?}", e),
             }
         }
+        Err(e) => panic!("Unable to read payload: {:?}", e),
     }
 }
 

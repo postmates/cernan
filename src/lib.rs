@@ -13,6 +13,7 @@ extern crate serde_json;
 extern crate rusoto;
 #[macro_use]
 extern crate lazy_static;
+extern crate flate2;
 
 pub mod mpsc;
 pub mod sink;
