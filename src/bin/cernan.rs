@@ -85,15 +85,12 @@ fn main() {
         }));
     }
 
-    if let Some(crcv_port) = args.crd_receiver_port {
-        // let receiver_server_ipv6_send = sends.clone();
-        // joins.push(thread::spawn(move || {
-        //     cernan::server::receiver_sink_server_ipv6(receiver_server_ipv6_send, crcv_port);
-        // }));
-
-        let receiver_server_ipv4_send = sends.clone();
+    let args_crdrcv = args.clone();
+    if let Some(crcv_port) = args_crdrcv.crd_receiver_port {
+        let crcv_ip = args_crdrcv.crd_receiver_ip.unwrap();
+        let receiver_server_send = sends.clone();
         joins.push(thread::spawn(move || {
-            cernan::server::receiver_sink_server_ipv4(receiver_server_ipv4_send, crcv_port);
+            cernan::server::receiver_sink_server(receiver_server_send, &crcv_ip, crcv_port);
         }));
     }
 

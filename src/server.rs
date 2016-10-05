@@ -1,6 +1,6 @@
 use bincode::SizeLimit;
 use std::net::{Ipv6Addr, UdpSocket, SocketAddrV6, SocketAddrV4, Ipv4Addr};
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::thread::sleep;
 use std::time::Duration;
 use std::thread;
@@ -127,23 +127,9 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf) {
 //
 // cernan crd_receiver sink
 //
-pub fn receiver_sink_server_ipv6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
-    let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0), port, 0, 0);
-    let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
-    info!("cernan receiver started on ::1 {}", port);
-    for stream in listener.incoming() {
-        if let Ok(stream) = stream {
-            stream.set_nonblocking(false).expect("could not set TcpStream to block");
-            let srv_chans = chans.clone();
-            thread::spawn(move || handle_receiver_client(srv_chans, stream));
-        }
-    }
-}
-
-pub fn receiver_sink_server_ipv4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
-    let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
-    let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
-    info!("cernan receiver started on 127.0.0.1:{}", port);
+pub fn receiver_sink_server(chans: Vec<mpsc::Sender<metric::Event>>, ip: &String, port: u16) {
+    let srv: Vec<_> = (ip.as_str(), port).to_socket_addrs().expect("unable to make socket addr").collect();
+    let listener = TcpListener::bind(srv.first().unwrap()).expect("Unable to bind to TCP socket");
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
             stream.set_nonblocking(false).expect("could not set TcpStream to block");
