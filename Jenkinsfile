@@ -17,7 +17,7 @@ node {
    env.VERSION = readFile('ver.current').trim()
    echo "${env.VERSION}"
 
-   sh "awk -F'\"' '/version/ {print \$2}' Cargo.toml > semvar.current"
+   sh "awk -F'\"' '/^version/ {print \$2}' Cargo.toml > semvar.current"
    env.SEMVAR = readFile('semvar.current').trim()
    echo "${env.SEMVAR}"
 
