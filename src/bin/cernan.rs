@@ -76,7 +76,6 @@ fn main() {
 
     let args_crdtrn = args.clone();
     if args_crdtrn.crd_transmitter {
-        println!("GOING TO TRANSMIT");
         let (cernan_send, cernan_recv) = cernan::mpsc::channel("cernan", &args.data_directory);
         sends.push(cernan_send);
         joins.push(thread::spawn(move || {
