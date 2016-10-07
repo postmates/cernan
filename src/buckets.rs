@@ -180,12 +180,12 @@ impl Buckets {
     ///
     /// This is an O(n^2) operation. Don't discard the result until you're for
     /// sure done with it.
-    pub fn histograms(&self) -> HashMapFnv<String, Vec<Vec<(String, Metric)>>> {
+    pub fn histograms(&self) -> HashMapFnv<String, Vec<Vec<(String, &Metric)>>> {
         let mut res = HashMapFnv::default();
         for (k, vec_of_vec) in self.histograms.iter() {
             for v in vec_of_vec {
                 let len = v.len() as f64;
-                let mut inner_hist: Vec<(String, Metric)> = vec![("min", 0.0),
+                let inner_hist: Vec<(String, &Metric)> = vec![("min", 0.0),
                                                                  ("max", 1.0),
                                                                  ("2", 0.02),
                                                                  ("9", 0.09),
@@ -201,13 +201,13 @@ impl Buckets {
                     .into_iter()
                     .map(|(nm, prcnt)| {
                         let idx: usize = ((len - 1.0) * prcnt).floor() as usize;
-                        (String::from(nm), v[idx].clone())
+                        (String::from(nm), &v[idx])
                     })
                     .collect();
                 // count
-                let mut cnt = v[0].clone();
-                cnt.value = len;
-                inner_hist.push((String::from("count"), cnt));
+                // let mut cnt = v[0].clone();
+                // cnt.value = len;
+                // inner_hist.push((String::from("count"), cnt));
                 res.entry((*k).clone()).or_insert(vec![]).push(inner_hist);
             }
         }
@@ -300,26 +300,26 @@ mod test {
 
         let hists = buckets.histograms();
         assert!(hists.get(&name).is_some());
-        let ref hist: Vec<(String, Metric)> = hists.get(&name).unwrap()[0];
+        let ref hist: Vec<(String, &Metric)> = hists.get(&name).unwrap()[0];
 
-        assert!(hist.contains(&(String::from("count"), cnt)));
+        assert!(hist.contains(&(String::from("count"), &cnt)));
 
-        assert!(hist.contains(&(String::from("min"), m0.clone())));
-        assert!(hist.contains(&(String::from("2"), m0.clone())));
-        assert!(hist.contains(&(String::from("9"), m0.clone())));
-        assert!(hist.contains(&(String::from("25"), m0.clone())));
+        assert!(hist.contains(&(String::from("min"), &m0)));
+        assert!(hist.contains(&(String::from("2"), &m0)));
+        assert!(hist.contains(&(String::from("9"), &m0)));
+        assert!(hist.contains(&(String::from("25"), &m0)));
 
-        assert!(hist.contains(&(String::from("50"), m1.clone())));
+        assert!(hist.contains(&(String::from("50"), &m1)));
 
-        assert!(hist.contains(&(String::from("75"), m2.clone())));
-        assert!(hist.contains(&(String::from("90"), m2.clone())));
-        assert!(hist.contains(&(String::from("91"), m2.clone())));
-        assert!(hist.contains(&(String::from("95"), m2.clone())));
-        assert!(hist.contains(&(String::from("98"), m2.clone())));
-        assert!(hist.contains(&(String::from("99"), m2.clone())));
-        assert!(hist.contains(&(String::from("999"), m2.clone())));
+        assert!(hist.contains(&(String::from("75"), &m2)));
+        assert!(hist.contains(&(String::from("90"), &m2)));
+        assert!(hist.contains(&(String::from("91"), &m2)));
+        assert!(hist.contains(&(String::from("95"), &m2)));
+        assert!(hist.contains(&(String::from("98"), &m2)));
+        assert!(hist.contains(&(String::from("99"), &m2)));
+        assert!(hist.contains(&(String::from("999"), &m2)));
 
-        assert!(hist.contains(&(String::from("max"), m3.clone())));
+        assert!(hist.contains(&(String::from("max"), &m3)));
     }
 
     #[test]
