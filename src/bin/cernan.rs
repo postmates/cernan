@@ -74,19 +74,19 @@ fn main() {
         }));
     }
 
-    let args_crdtrn = args.clone();
-    if args_crdtrn.crd_transmitter {
+    let args_fedtrn = args.clone();
+    if args_fedtrn.fed_transmitter {
         let (cernan_send, cernan_recv) = cernan::mpsc::channel("cernan", &args.data_directory);
         sends.push(cernan_send);
         joins.push(thread::spawn(move || {
-            cernan::sinks::crd_receiver::CrdReceiver::new(args_crdtrn.crd_transmitter_port.unwrap(),
-                                                          args_crdtrn.crd_transmitter_host.unwrap()).run(cernan_recv);
+            cernan::sinks::federation_receiver::FederationReceiver::new(args_fedtrn.fed_transmitter_port.unwrap(),
+                                                          args_fedtrn.fed_transmitter_host.unwrap()).run(cernan_recv);
         }));
     }
 
-    let args_crdrcv = args.clone();
-    if let Some(crcv_port) = args_crdrcv.crd_receiver_port {
-        let crcv_ip = args_crdrcv.crd_receiver_ip.unwrap();
+    let args_fedrcv = args.clone();
+    if let Some(crcv_port) = args_fedrcv.fed_receiver_port {
+        let crcv_ip = args_fedrcv.fed_receiver_ip.unwrap();
         let receiver_server_send = sends.clone();
         joins.push(thread::spawn(move || {
             cernan::server::receiver_sink_server(receiver_server_send, &crcv_ip, crcv_port);

@@ -20,8 +20,8 @@ pub struct Args {
     pub data_directory: PathBuf,
     pub statsd_port: Option<u16>,
     pub graphite_port: Option<u16>,
-    pub crd_receiver_port: Option<u16>,
-    pub crd_receiver_ip: Option<String>,
+    pub fed_receiver_port: Option<u16>,
+    pub fed_receiver_ip: Option<String>,
     pub flush_interval: u64,
     pub console: bool,
     pub null: bool,
@@ -29,9 +29,9 @@ pub struct Args {
     pub wavefront: bool,
     pub wavefront_port: Option<u16>,
     pub wavefront_host: Option<String>,
-    pub crd_transmitter: bool,
-    pub crd_transmitter_host: Option<String>,
-    pub crd_transmitter_port: Option<u16>,
+    pub fed_transmitter: bool,
+    pub fed_transmitter_host: Option<String>,
+    pub fed_transmitter_port: Option<u16>,
     pub qos: MetricQOS,
     pub tags: BTreeMap<String, String>,
     pub files: Option<Vec<PathBuf>>,
@@ -103,17 +103,17 @@ pub fn parse_args() -> Args {
                     .expect("graphite-port must be an integer")),
                 flush_interval: u64::from_str(args.value_of("flush-interval").unwrap())
                     .expect("flush-interval must be an integer"),
-                crd_receiver_port: None,
-                crd_receiver_ip: None,
+                fed_receiver_port: None,
+                fed_receiver_ip: None,
                 console: mk_console,
                 null: mk_null,
                 wavefront: mk_wavefront,
                 firehose_delivery_streams: Vec::default(),
                 wavefront_port: wport,
                 wavefront_host: whost,
-                crd_transmitter: false,
-                crd_transmitter_port: None,
-                crd_transmitter_host: None,
+                fed_transmitter: false,
+                fed_transmitter_port: None,
+                fed_transmitter_host: None,
                 tags: BTreeMap::new(),
                 qos: qos,
                 files: None,
@@ -160,7 +160,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     };
 
     let mk_wavefront = value.lookup("wavefront").is_some();
-    let mk_crdtrn = value.lookup("crd_transmitter").is_some();
+    let mk_fedtrn = value.lookup("federation_transmitter").is_some();
     let mk_null = value.lookup("null").is_some();
     let mk_console = value.lookup("console").is_some();
 
@@ -179,14 +179,14 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         (None, None)
     };
 
-    let (crdtrn_port, crdtrn_host) = if mk_crdtrn {
-        ( // crd_receiver port
-            value.lookup("crd_transmitter.port")
+    let (fedtrn_port, fedtrn_host) = if mk_fedtrn {
+        ( // fed_receiver port
+            value.lookup("federation_transmitter.port")
                 .unwrap_or(&Value::Integer(1972))
                 .as_integer()
                 .map(|i| i as u16),
-            // crd_receiver host
-            value.lookup("crd_transmitter.host")
+            // fed_receiver host
+            value.lookup("federation_transmitter.host")
                 .unwrap_or(&Value::String("127.0.0.1".to_string()))
                 .as_str()
                 .map(|s| s.to_string()))
@@ -258,13 +258,13 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
     };
 
-    let (crd_receiver_port, crd_receiver_ip) = if value.lookup("crd_receiver").is_some() {
+    let (fed_receiver_port, fed_receiver_ip) = if value.lookup("federation_receiver").is_some() {
         (
-            match value.lookup("crd_receiver.port") {
-                Some(p) => Some(p.as_integer().expect("crd_receiver.port must be integer") as u16),
+            match value.lookup("federation_receiver.port") {
+                Some(p) => Some(p.as_integer().expect("fed_receiver.port must be integer") as u16),
                 None => Some(1972),
             },
-            match value.lookup("crd_receiver.ip") {
+            match value.lookup("federation_receiver.ip") {
                 Some(p) => Some(p.as_str().unwrap().to_owned()),
                 None => Some(String::from("0.0.0.0")),
             }
@@ -281,8 +281,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             .unwrap(),
         statsd_port: statsd_port,
         graphite_port: graphite_port,
-        crd_receiver_port: crd_receiver_port,
-        crd_receiver_ip: crd_receiver_ip,
+        fed_receiver_port: fed_receiver_port,
+        fed_receiver_ip: fed_receiver_ip,
         flush_interval: value.lookup("flush-interval")
             .unwrap_or(&Value::Integer(10))
             .as_integer()
@@ -293,9 +293,9 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         firehose_delivery_streams: fh_delivery_streams,
         wavefront_port: wport,
         wavefront_host: whost,
-        crd_transmitter: mk_crdtrn,
-        crd_transmitter_port: crdtrn_port,
-        crd_transmitter_host: crdtrn_host,
+        fed_transmitter: mk_fedtrn,
+        fed_transmitter_port: fedtrn_port,
+        fed_transmitter_host: fedtrn_host,
         tags: tags,
         qos: qos,
         files: Some(paths),
@@ -318,8 +318,8 @@ mod test {
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.crd_receiver_port, None);
-        assert_eq!(args.crd_receiver_ip, None);
+        assert_eq!(args.fed_receiver_port, None);
+        assert_eq!(args.fed_receiver_ip, None);
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
@@ -327,17 +327,17 @@ mod test {
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.crd_transmitter, false);
-        assert_eq!(args.crd_transmitter_port, None);
+        assert_eq!(args.fed_transmitter, false);
+        assert_eq!(args.fed_transmitter_port, None);
         assert_eq!(args.tags, BTreeMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
     #[test]
-    fn config_crd_receiver() {
+    fn config_fed_receiver() {
         let config = r#"
-[crd_receiver]
+[federation_receiver]
 port = 1987
 "#.to_string();
 
@@ -345,8 +345,8 @@ port = 1987
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.crd_receiver_port, Some(1987));
-        assert_eq!(args.crd_receiver_ip, Some(String::from("0.0.0.0")));
+        assert_eq!(args.fed_receiver_port, Some(1987));
+        assert_eq!(args.fed_receiver_ip, Some(String::from("0.0.0.0")));
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
@@ -360,9 +360,9 @@ port = 1987
     }
 
     #[test]
-    fn config_crd_receiver_ip() {
+    fn config_fed_receiver_ip() {
         let config = r#"
-[crd_receiver]
+[federation_receiver]
 ip = "127.0.0.1"
 "#.to_string();
 
@@ -370,8 +370,8 @@ ip = "127.0.0.1"
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.crd_receiver_port, Some(1972));
-        assert_eq!(args.crd_receiver_ip, Some(String::from("127.0.0.1")));
+        assert_eq!(args.fed_receiver_port, Some(1972));
+        assert_eq!(args.fed_receiver_ip, Some(String::from("127.0.0.1")));
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
@@ -385,9 +385,9 @@ ip = "127.0.0.1"
     }
 
     #[test]
-    fn config_crd_transmitter() {
+    fn config_fed_transmitter() {
         let config = r#"
-[crd_transmitter]
+[federation_transmitter]
 port = 1987
 "#.to_string();
 
@@ -395,7 +395,7 @@ port = 1987
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.crd_receiver_port, None);
+        assert_eq!(args.fed_receiver_port, None);
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
@@ -403,18 +403,18 @@ port = 1987
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.crd_transmitter, true);
-        assert_eq!(args.crd_transmitter_host, Some(String::from("127.0.0.1")));
-        assert_eq!(args.crd_transmitter_port, Some(1987));
+        assert_eq!(args.fed_transmitter, true);
+        assert_eq!(args.fed_transmitter_host, Some(String::from("127.0.0.1")));
+        assert_eq!(args.fed_transmitter_port, Some(1987));
         assert_eq!(args.tags, BTreeMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
     #[test]
-    fn config_crd_transmitter_distinct_host() {
+    fn config_fed_transmitter_distinct_host() {
         let config = r#"
-[crd_transmitter]
+[federation_transmitter]
 host = "foo.example.com"
 "#.to_string();
 
@@ -422,7 +422,7 @@ host = "foo.example.com"
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.crd_receiver_port, None);
+        assert_eq!(args.fed_receiver_port, None);
         assert_eq!(args.flush_interval, 10);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
@@ -430,9 +430,9 @@ host = "foo.example.com"
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.crd_transmitter, true);
-        assert_eq!(args.crd_transmitter_host, Some(String::from("foo.example.com")));
-        assert_eq!(args.crd_transmitter_port, Some(1972));
+        assert_eq!(args.fed_transmitter, true);
+        assert_eq!(args.fed_transmitter_host, Some(String::from("foo.example.com")));
+        assert_eq!(args.fed_transmitter_port, Some(1972));
         assert_eq!(args.tags, BTreeMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);

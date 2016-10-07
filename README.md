@@ -182,8 +182,8 @@ port = 8125 # UDP port to bind for statsd traffic. [default: 8125]
 [graphite]
 port = 2003 # TCP port to bind for graphite traffic. [default: 2003]
 
-[crd_receiver]
-port = 1972 # TCP port to bind for CRD traffic. [default: 1972]
+[federation_receiver]
+port = 1972 # TCP port to bind for Federation traffic. [default: 1972]
 ```
 
 The statsd and graphite interfaces are optional, though they are enabled by
@@ -199,8 +199,8 @@ port = 8125
 port = 2003
 ```
 
-The `crd_receiver` interface is opt-in. It is discussed in the section
-[Cernan Remote Destination](#cernan-remote-destination).
+The `federation_receiver` interface is opt-in. It is discussed in the section
+[Federation](#federation).
 
 ## Changing how frequently metrics are output
 
@@ -305,32 +305,33 @@ Consumption'.
 
 There are no configurable options for the null sink.
 
-### crd_transmitter
+### federation_transmitter
 
-The crd_transmitter sink accepts cernan-internal information according to the
-program laid out in [Cernan Remote Destination](#cernan-remote-destination).
+The `federation_transmitter` sink accepts cernan-internal information according
+to the program laid out in [Federation](#federation).
 
-You may configure which IP and port the `crd_transmitter` will bind to. In the
-following, the transmitter is enabled and configured to ship to a `crd_receiver`
-on localhost.
+You may configure which IP and port the `federation_transmitter` will bind
+to. In the following, the transmitter is enabled and configured to ship to a
+`federation_receiver` on localhost.
 
 ```
-[crd_transmitter]
+[federation_transmitter]
 port = 1972
 host = "127.0.0.1"
 ```
 
-## Cernan Remote Destiation
+## Federation
 
 Sometimes it is desirable to forward some or all of the points inbound to
-another cernan instance. The CRD subsystem is for you. The 'receiver' cernan
-instance will listen on a TCP port, ingest points and then emit them through its
-own sinks. The 'transmitter' host will emit to its configured 'reciever'.
+another cernan instance. The Federation subsystem is for you. The 'receiver'
+cernan instance will listen on a TCP port, ingest points and then emit them
+through its own sinks. The 'transmitter' host will emit to its configured
+'reciever'.
 
 Until [issue 39](https://github.com/postmates/cernan/issues/39) is resolved
 _all_ points inbound will go to all sinks. Once that issue is resolved, it will
 be possible to route points into different sinks, one of which may be
-`crd_transmitter`.
+`federation_transmitter`.
 
 ## Prior Art
 

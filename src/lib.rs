@@ -27,5 +27,5 @@ pub mod sinks {
     pub mod wavefront;
     pub mod null;
     pub mod firehose;
-    pub mod crd_receiver;
+    pub mod federation_receiver;
 }
