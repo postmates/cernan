@@ -13,7 +13,7 @@ pub enum Event {
     TimerFlush,
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
+#[derive(PartialEq, PartialOrd, Debug, Serialize, Deserialize, Clone)]
 pub enum MetricKind {
     Counter(f64),
     Gauge,
@@ -23,7 +23,7 @@ pub enum MetricKind {
     Raw,
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
+#[derive(PartialEq, PartialOrd, Debug, Serialize, Deserialize, Clone)]
 pub struct Metric {
     pub kind: MetricKind,
     pub name: String,

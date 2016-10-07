@@ -26,6 +26,57 @@ fn bench_single_timer(b: &mut Bencher) {
 }
 
 #[bench]
+fn bench_single_timer_100(b: &mut Bencher) {
+    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+
+    b.iter(|| {
+        let mut bucket = buckets::Buckets::default();
+
+        for _ in 0..100 {
+            bucket.add(Metric::new_with_time(String::from("a"),
+                                             1.0,
+                                             Some(dt_0),
+                                             MetricKind::Timer,
+                                             None));
+        }
+    });
+}
+
+#[bench]
+fn bench_single_timer_1000(b: &mut Bencher) {
+    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+
+    b.iter(|| {
+        let mut bucket = buckets::Buckets::default();
+
+        for _ in 0..1000 {
+            bucket.add(Metric::new_with_time(String::from("a"),
+                                             1.0,
+                                             Some(dt_0),
+                                             MetricKind::Timer,
+                                             None));
+        }
+    });
+}
+
+#[bench]
+fn bench_single_timer_10000(b: &mut Bencher) {
+    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+
+    b.iter(|| {
+        let mut bucket = buckets::Buckets::default();
+
+        for _ in 0..10000 {
+            bucket.add(Metric::new_with_time(String::from("a"),
+                                             1.0,
+                                             Some(dt_0),
+                                             MetricKind::Timer,
+                                             None));
+        }
+    });
+}
+
+#[bench]
 fn bench_single_histogram(b: &mut Bencher) {
     let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
 
@@ -37,6 +88,57 @@ fn bench_single_histogram(b: &mut Bencher) {
                                          Some(dt_0),
                                          MetricKind::Histogram,
                                          None));
+    });
+}
+
+#[bench]
+fn bench_single_histogram_100(b: &mut Bencher) {
+    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+
+    b.iter(|| {
+        let mut bucket = buckets::Buckets::default();
+
+        for _ in 0..100 {
+            bucket.add(Metric::new_with_time(String::from("a"),
+                                             1.0,
+                                             Some(dt_0),
+                                             MetricKind::Histogram,
+                                             None));
+        }
+    });
+}
+
+#[bench]
+fn bench_single_histogram_1000(b: &mut Bencher) {
+    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+
+    b.iter(|| {
+        let mut bucket = buckets::Buckets::default();
+
+        for _ in 0..1000 {
+            bucket.add(Metric::new_with_time(String::from("a"),
+                                             1.0,
+                                             Some(dt_0),
+                                             MetricKind::Histogram,
+                                             None));
+        }
+    });
+}
+
+#[bench]
+fn bench_single_histogram_10000(b: &mut Bencher) {
+    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+
+    b.iter(|| {
+        let mut bucket = buckets::Buckets::default();
+
+        for _ in 0..10000 {
+            bucket.add(Metric::new_with_time(String::from("a"),
+                                             1.0,
+                                             Some(dt_0),
+                                             MetricKind::Histogram,
+                                             None));
+        }
     });
 }
 
