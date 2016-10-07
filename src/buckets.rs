@@ -17,12 +17,8 @@ pub struct Buckets {
     gauges: HashMapFnv<String, Vec<Metric>>,
     raws: HashMapFnv<String, Vec<Metric>>,
 
-    timers: HashMapFnv<String, CKMS<f64>>,
-    // histograms need special care. We buffer all points we receive and then
-    // compute a true histogram over them? So, what's Vec<Vec<Metric>>? The
-    // outer Vec is a time vector--as in counters, gagues, raw above--and the
-    // inner is the buffer of points in no sorted order.
-    histograms: HashMapFnv<String, Vec<Vec<Metric>>>,
+    timers: HashMapFnv<String, Vec<(i64, CKMS<f64>)>>,
+    histograms: HashMapFnv<String, Vec<(i64, CKMS<f64>)>>,
 }
 
 impl Default for Buckets {
@@ -71,6 +67,7 @@ impl Buckets {
         self.counters.clear();
         self.raws.clear();
         self.histograms.clear();
+        self.timers.clear();
         for (_, v) in self.gauges.iter_mut() {
             let len = v.len();
             if len > 0 {
@@ -78,10 +75,6 @@ impl Buckets {
                 v.truncate(1);
             }
         }
-    }
-
-    pub fn reset_timers(&mut self) {
-        self.timers.clear();
     }
 
     /// Adds a metric to the bucket storage.
@@ -136,24 +129,31 @@ impl Buckets {
             }
             MetricKind::Histogram => {
                 let hist = self.histograms.entry(name).or_insert(vec![]);
-                // We only keep our points in a vector so that, when the time
-                // comes, we can perform a histogram computation over the top of
-                // them.
-                match (*hist).binary_search_by_key(&value.time, |m| m[0].time) {
+                match (*hist).binary_search_by_key(&value.time, |&(t, _)| t) {
                     Ok(idx) => {
-                        // (*hist)[idx].push(value),
-                        let ref mut inner_hist = (*hist)[idx];
-                        match inner_hist.binary_search_by(|probe| probe.partial_cmp(&value).unwrap()) {
-                            Ok(idx) => inner_hist.insert(idx, value),
-                            Err(idx) => inner_hist.insert(idx, value),
-                        }
+                        let (_, ref mut ckms) = (*hist)[idx];
+                        ckms.insert(value.value);
                     }
-                    Err(idx) => (*hist).insert(idx, vec![value]),
+                    Err(idx) => {
+                        let mut h = CKMS::<f64>::new(0.001);
+                        h.insert(value.value);
+                        (*hist).insert(idx, (value.time, h));
+                    }
                 }
             }
             MetricKind::Timer => {
-                let tm = self.timers.entry(name).or_insert(CKMS::<f64>::new(0.001));
-                (*tm).insert(value.value);
+                let tmr = self.timers.entry(name).or_insert(vec![]);
+                match (*tmr).binary_search_by_key(&value.time, |&(t, _)| t) {
+                    Ok(idx) => {
+                        let (_, ref mut ckms) = (*tmr)[idx];
+                        ckms.insert(value.value);
+                    }
+                    Err(idx) => {
+                        let mut t = CKMS::<f64>::new(0.001);
+                        t.insert(value.value);
+                        (*tmr).insert(idx, (value.time, t));
+                    }
+                }
             }
         }
     }
@@ -170,51 +170,11 @@ impl Buckets {
         &self.raws
     }
 
-    /// Retrieve a true histogram over all input metrics
-    ///
-    /// We have to compute the histogram from our raw points per bin. This
-    /// requires an allocation of a non-trivial structure for every flush of a
-    /// histogram. Also, unlike other getters in this module, the caller assumes
-    /// ownership of said structure. No caching is done of the resulting
-    /// structure but the underlying metrics are maintained.
-    ///
-    /// This is an O(n^2) operation. Don't discard the result until you're for
-    /// sure done with it.
-    pub fn histograms(&self) -> HashMapFnv<String, Vec<Vec<(String, &Metric)>>> {
-        let mut res = HashMapFnv::default();
-        for (k, vec_of_vec) in self.histograms.iter() {
-            for v in vec_of_vec {
-                let len = v.len() as f64;
-                let inner_hist: Vec<(String, &Metric)> = vec![("min", 0.0),
-                                                                 ("max", 1.0),
-                                                                 ("2", 0.02),
-                                                                 ("9", 0.09),
-                                                                 ("25", 0.25),
-                                                                 ("50", 0.5),
-                                                                 ("75", 0.75),
-                                                                 ("90", 0.90),
-                                                                 ("91", 0.91),
-                                                                 ("95", 0.95),
-                                                                 ("98", 0.98),
-                                                                 ("99", 0.99),
-                                                                 ("999", 0.999)]
-                    .into_iter()
-                    .map(|(nm, prcnt)| {
-                        let idx: usize = ((len - 1.0) * prcnt).floor() as usize;
-                        (String::from(nm), &v[idx])
-                    })
-                    .collect();
-                // count
-                // let mut cnt = v[0].clone();
-                // cnt.value = len;
-                // inner_hist.push((String::from("count"), cnt));
-                res.entry((*k).clone()).or_insert(vec![]).push(inner_hist);
-            }
-        }
-        res
+    pub fn histograms(&self) -> &HashMapFnv<String, Vec<(i64, CKMS<f64>)>> {
+        &self.histograms
     }
 
-    pub fn timers(&self) -> &HashMapFnv<String, CKMS<f64>> {
+    pub fn timers(&self) -> &HashMapFnv<String, Vec<(i64, CKMS<f64>)>> {
         &self.timers
     }
 }
@@ -230,6 +190,7 @@ mod test {
     use metric::{Metric, MetricKind, MetricSign};
     use std::collections::{HashSet, HashMap};
     use chrono::{UTC, TimeZone};
+    use quantiles::CKMS;
 
     #[test]
     fn test_add_increments_total_messages() {
@@ -286,40 +247,45 @@ mod test {
     fn test_true_histogram() {
         let mut buckets = Buckets::default();
 
+        let dt_0 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 11, 0).timestamp();
+        let dt_1 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 12, 0).timestamp();
+        let dt_2 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 13, 0).timestamp();
+
         let name = String::from("some.metric");
-        let cnt = Metric::new(name.clone(), 4.0, MetricKind::Histogram, None);
-        let m0 = Metric::new(name.clone(), 1.0, MetricKind::Histogram, None);
-        let m1 = Metric::new(name.clone(), 2.0, MetricKind::Histogram, None);
-        let m2 = Metric::new(name.clone(), 3.0, MetricKind::Histogram, None);
-        let m3 = Metric::new(name.clone(), 4.0, MetricKind::Histogram, None);
+        let m0 = Metric::new_with_time(name.clone(), 1.0, Some(dt_0), MetricKind::Histogram, None);
+        let m1 = Metric::new_with_time(name.clone(), 2.0, Some(dt_1), MetricKind::Histogram, None);
+        let m2 = Metric::new_with_time(name.clone(), 3.0, Some(dt_2), MetricKind::Histogram, None);
 
         buckets.add(m0.clone());
         buckets.add(m1.clone());
         buckets.add(m2.clone());
-        buckets.add(m3.clone());
 
         let hists = buckets.histograms();
         assert!(hists.get(&name).is_some());
-        let ref hist: Vec<(String, &Metric)> = hists.get(&name).unwrap()[0];
+        let ref hist: &Vec<(i64, CKMS<f64>)> = hists.get(&name).unwrap();
 
-        assert!(hist.contains(&(String::from("count"), &cnt)));
+        assert_eq!(3, hist.len());
 
-        assert!(hist.contains(&(String::from("min"), &m0)));
-        assert!(hist.contains(&(String::from("2"), &m0)));
-        assert!(hist.contains(&(String::from("9"), &m0)));
-        assert!(hist.contains(&(String::from("25"), &m0)));
+        let ref vm0 = hist[0];
+        assert_eq!(844683071, vm0.0);
+        let ref ckms0 = vm0.1;
+        assert_eq!(1, ckms0.count());
+        assert_eq!(Some((1, 1.0)), ckms0.query(1.0));
+        assert_eq!(Some((1, 1.0)), ckms0.query(0.0));
 
-        assert!(hist.contains(&(String::from("50"), &m1)));
+        let ref vm1 = hist[1];
+        assert_eq!(844683072, vm1.0);
+        let ref ckms1 = vm1.1;
+        assert_eq!(1, ckms1.count());
+        assert_eq!(Some((1, 2.0)), ckms1.query(1.0));
+        assert_eq!(Some((1, 2.0)), ckms1.query(0.0));
 
-        assert!(hist.contains(&(String::from("75"), &m2)));
-        assert!(hist.contains(&(String::from("90"), &m2)));
-        assert!(hist.contains(&(String::from("91"), &m2)));
-        assert!(hist.contains(&(String::from("95"), &m2)));
-        assert!(hist.contains(&(String::from("98"), &m2)));
-        assert!(hist.contains(&(String::from("99"), &m2)));
-        assert!(hist.contains(&(String::from("999"), &m2)));
-
-        assert!(hist.contains(&(String::from("max"), &m3)));
+        let ref vm2 = hist[2];
+        assert_eq!(844683073, vm2.0);
+        let ref ckms2 = vm2.1;
+        assert_eq!(1, ckms2.count());
+        assert_eq!(Some((1, 3.0)), ckms2.query(1.0));
+        assert_eq!(Some((1, 3.0)), ckms2.query(0.0));
     }
 
     #[test]
@@ -342,8 +308,8 @@ mod test {
         let metric = Metric::new(mname, 1.0, MetricKind::Timer, None);
         buckets.add(metric.clone());
 
-        buckets.reset_timers();
-        assert!(buckets.histograms.get_mut(&name).is_none());
+        buckets.reset();
+        assert!(buckets.timers.get_mut(&name).is_none());
     }
 
     #[test]
@@ -429,7 +395,7 @@ mod test {
                 "Should contain the metric key");
 
         assert_eq!(Some((1, 11.5)),
-                   buckets.timers.get_mut(&rmname).expect("hwhap").query(0.0));
+                   buckets.timers.get_mut(&rmname).expect("hwhap")[0].1.query(0.0));
 
         let metric_two = Metric::new(String::from("some.metric"), 99.5, MetricKind::Timer, None);
         buckets.add(metric_two);

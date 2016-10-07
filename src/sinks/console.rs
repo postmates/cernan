@@ -60,29 +60,37 @@ impl Sink for Console {
         }
 
         println!("  histograms:");
-        for (_, hists) in self.aggrs.histograms() {
-            for hist in hists {
-                for &(ref nm, ref val) in hist.iter() {
-                    println!("    {}: {} {}", val.name, nm, val.value);
+        for (key, hists) in self.aggrs.histograms() {
+            for &(_, ref hist) in hists {
+                for tup in &[("min", 0.0),
+                             ("max", 1.0),
+                             ("50", 0.5),
+                             ("90", 0.90),
+                             ("99", 0.99),
+                             ("999", 0.999)] {
+                    let stat: &str = tup.0;
+                    let quant: f64 = tup.1;
+                    println!("    {}: {} {}", key, stat, hist.query(quant).unwrap().1);
                 }
             }
         }
 
         println!("  timers:");
-        for (key, value) in self.aggrs.timers() {
-            for tup in &[("min", 0.0),
-                         ("max", 1.0),
-                         ("50", 0.5),
-                         ("90", 0.90),
-                         ("99", 0.99),
-                         ("999", 0.999)] {
-                let stat: &str = tup.0;
-                let quant: f64 = tup.1;
-                println!("    {}: {} {}", key, stat, value.query(quant).unwrap().1);
+        for (key, tmrs) in self.aggrs.timers() {
+            for &(_, ref tmr) in tmrs {
+                for tup in &[("min", 0.0),
+                             ("max", 1.0),
+                             ("50", 0.5),
+                             ("90", 0.90),
+                             ("99", 0.99),
+                             ("999", 0.999)] {
+                    let stat: &str = tup.0;
+                    let quant: f64 = tup.1;
+                    println!("    {}: {} {}", key, stat, tmr.query(quant).unwrap().1);
+                }
             }
         }
 
         self.aggrs.reset();
-        self.aggrs.reset_timers();
     }
 }

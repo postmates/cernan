@@ -12,8 +12,6 @@ pub struct Wavefront {
     tags: String,
     aggrs: Buckets,
     qos: MetricQOS,
-
-    reset_timer: bool,
 }
 
 impl Wavefront {
@@ -27,7 +25,6 @@ impl Wavefront {
                     tags: tags,
                     aggrs: Buckets::default(),
                     qos: qos,
-                    reset_timer: false,
                 }
             }
             Err(_) => panic!("Could not lookup host"),
@@ -36,11 +33,7 @@ impl Wavefront {
 
     /// Convert the buckets into a String that
     /// can be sent to the the wavefront proxy
-    pub fn format_stats(&mut self, curtime: Option<i64>) -> String {
-        let start = match curtime {
-            Some(x) => x,
-            None => time::now(),
-        };
+    pub fn format_stats(&mut self) -> String {
         let mut stats = String::new();
 
         for (key, value) in self.aggrs.counters().iter() {
@@ -59,55 +52,70 @@ impl Wavefront {
             }
         }
 
-        for (_, hists) in self.aggrs.histograms().iter() {
-            for hist in hists {
-                assert!(hist.len() > 0);
-                let smpl_time = hist[0].1.time;
+        for (key, hists) in self.aggrs.histograms().iter() {
+            for &(smpl_time, ref hist) in hists {
                 if (smpl_time % (self.qos.histogram as i64)) == 0 {
-                    for &(ref nm, ref val) in hist.iter() {
+                    for tup in &[("min", 0.0),
+                                 ("max", 1.0),
+                                 ("2", 0.02),
+                                 ("9", 0.09),
+                                 ("25", 0.25),
+                                 ("50", 0.5),
+                                 ("75", 0.75),
+                                 ("90", 0.90),
+                                 ("91", 0.91),
+                                 ("95", 0.95),
+                                 ("98", 0.98),
+                                 ("99", 0.99),
+                                 ("999", 0.999)] {
+                        let stat: &str = tup.0;
+                        let quant: f64 = tup.1;
                         write!(stats,
                                "{}.{} {} {} {}\n",
-                               val.name,
-                               nm,
-                               val.value,
-                               val.time,
+                               key,
+                               stat,
+                               hist.query(quant).unwrap().1,
+                               smpl_time,
                                self.tags)
-                            .unwrap();
+                            .unwrap()
                     }
+                    let count = hist.count();
+                    write!(stats, "{}.count {} {} {}\n", key, count, smpl_time, self.tags).unwrap();
                 }
             }
         }
 
-        if (start % (self.qos.timer as i64)) == 0 {
-            for (key, value) in self.aggrs.timers().iter() {
-                for tup in &[("min", 0.0),
-                             ("max", 1.0),
-                             ("2", 0.02),
-                             ("9", 0.09),
-                             ("25", 0.25),
-                             ("50", 0.5),
-                             ("75", 0.75),
-                             ("90", 0.90),
-                             ("91", 0.91),
-                             ("95", 0.95),
-                             ("98", 0.98),
-                             ("99", 0.99),
-                             ("999", 0.999)] {
-                    let stat: &str = tup.0;
-                    let quant: f64 = tup.1;
-                    write!(stats,
-                           "{}.{} {} {} {}\n",
-                           key,
-                           stat,
-                           value.query(quant).unwrap().1,
-                           start,
-                           self.tags)
-                        .unwrap();
+        for (key, tmrs) in self.aggrs.timers().iter() {
+            for &(smpl_time, ref tmr) in tmrs {
+                if (smpl_time % (self.qos.timer as i64)) == 0 {
+                    for tup in &[("min", 0.0),
+                                 ("max", 1.0),
+                                 ("2", 0.02),
+                                 ("9", 0.09),
+                                 ("25", 0.25),
+                                 ("50", 0.5),
+                                 ("75", 0.75),
+                                 ("90", 0.90),
+                                 ("91", 0.91),
+                                 ("95", 0.95),
+                                 ("98", 0.98),
+                                 ("99", 0.99),
+                                 ("999", 0.999)] {
+                        let stat: &str = tup.0;
+                        let quant: f64 = tup.1;
+                        write!(stats,
+                               "{}.{} {} {} {}\n",
+                               key,
+                               stat,
+                               tmr.query(quant).unwrap().1,
+                               smpl_time,
+                               self.tags)
+                            .unwrap()
+                    }
+                    let count = tmr.count();
+                    write!(stats, "{}.count {} {} {}\n", key, count, smpl_time, self.tags).unwrap();
                 }
-                let count = value.count();
-                write!(stats, "{}.count {} {} {}\n", key, count, start, self.tags).unwrap();
             }
-            self.reset_timer = true;
         }
 
         // Raw points have no QOS as we can make no valid aggregation of them.
@@ -128,13 +136,10 @@ impl Sink for Wavefront {
             time::delay(attempts);
             match TcpStream::connect(self.addr) {
                 Ok(mut stream) => {
-                    let res = stream.write(self.format_stats(None).as_bytes());
+                    let res = stream.write(self.format_stats().as_bytes());
                     if res.is_ok() {
                         trace!("flushed to wavefront!");
                         self.aggrs.reset();
-                        if self.reset_timer {
-                            self.aggrs.reset_timers();
-                        }
                         break;
                     } else {
                         attempts += 1;
@@ -187,7 +192,7 @@ mod test {
                                                 MetricKind::Histogram,
                                                 None));
 
-        let result = wavefront.format_stats(Some(dt_1));
+        let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
         println!("{:?}", lines);
         assert_eq!(14, lines.len());
@@ -264,7 +269,7 @@ mod test {
                                                 MetricKind::Timer,
                                                 None));
 
-        let result = wavefront.format_stats(Some(dt_1));
+        let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
         println!("{:?}", lines);
         assert_eq!(14, lines.len());
@@ -282,7 +287,7 @@ mod test {
         assert!(lines.contains(&"test.timer.98 1 645185472 source=test-src"));
         assert!(lines.contains(&"test.timer.99 1 645185472 source=test-src"));
         assert!(lines.contains(&"test.timer.999 1 645185472 source=test-src"));
-        assert!(lines.contains(&"test.timer.count 3 645185472 source=test-src"));
+        assert!(lines.contains(&"test.timer.count 1 645185472 source=test-src"));
     }
 
     #[test]
@@ -327,7 +332,7 @@ mod test {
                                                 Some(dt_4),
                                                 MetricKind::Gauge,
                                                 None));
-        let result = wavefront.format_stats(Some(10101));
+        let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
 
         assert_eq!(645185471, dt_0); // elided
@@ -385,7 +390,7 @@ mod test {
                                                 Some(dt_4),
                                                 MetricKind::Counter(1.0),
                                                 None));
-        let result = wavefront.format_stats(Some(10101));
+        let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
 
         assert_eq!(645185471, dt_0); // elided
@@ -452,28 +457,28 @@ mod test {
                                                 Some(dt_1),
                                                 MetricKind::Raw,
                                                 None));
-        let result = wavefront.format_stats(Some(10101));
+        let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
         assert_eq!(19, lines.len());
-        assert_eq!(lines[0], "test.counter 1 645181811 source=test-src");
-        assert_eq!(lines[1], "test.counter 3 645185472 source=test-src");
-        assert_eq!(lines[2], "test.gauge 3.211 645181811 source=test-src");
-        assert_eq!(lines[3], "test.timer.min 1.101 10101 source=test-src");
-        assert_eq!(lines[4], "test.timer.max 12.101 10101 source=test-src");
-        assert_eq!(lines[5], "test.timer.2 1.101 10101 source=test-src");
-        assert_eq!(lines[6], "test.timer.9 1.101 10101 source=test-src");
-        assert_eq!(lines[7], "test.timer.25 1.101 10101 source=test-src");
-        assert_eq!(lines[8], "test.timer.50 3.101 10101 source=test-src");
-        assert_eq!(lines[9], "test.timer.75 3.101 10101 source=test-src");
-        assert_eq!(lines[10], "test.timer.90 12.101 10101 source=test-src");
-        assert_eq!(lines[11], "test.timer.91 12.101 10101 source=test-src");
-        assert_eq!(lines[12], "test.timer.95 12.101 10101 source=test-src");
-        assert_eq!(lines[13], "test.timer.98 12.101 10101 source=test-src");
-        assert_eq!(lines[14], "test.timer.99 12.101 10101 source=test-src");
-        assert_eq!(lines[15], "test.timer.999 12.101 10101 source=test-src");
-        assert_eq!(lines[16], "test.timer.count 3 10101 source=test-src");
-        assert_eq!(lines[17], "test.raw 1 645181811 source=test-src");
+        assert!(lines.contains(&"test.counter 1 645181811 source=test-src"));
+        assert!(lines.contains(&"test.counter 3 645185472 source=test-src"));
+        assert!(lines.contains(&"test.gauge 3.211 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.min 1.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.max 12.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.2 1.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.9 1.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.25 1.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.50 3.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.75 3.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.90 12.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.91 12.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.95 12.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.98 12.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.99 12.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.999 12.101 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.count 3 645181811 source=test-src"));
+        assert!(lines.contains(&"test.raw 1 645181811 source=test-src"));
     }
 }
