@@ -174,13 +174,6 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             match tbl.lookup("path") {
                 Some(pth) => {
                     let path = Path::new(pth.as_str().unwrap());
-                    if !path.exists() {
-                        panic!("{} not found on disk!", path.to_str().unwrap());
-                    }
-                    if !path.is_file() {
-                        panic!("{} is found on disk but must be a file!",
-                               path.to_str().unwrap());
-                    }
                     paths.push(path.to_path_buf())
                 }
                 None => continue,
@@ -263,6 +256,7 @@ mod test {
     use super::*;
     use metric::MetricQOS;
     use std::collections::BTreeMap;
+    use std::path::PathBuf;
 
     #[test]
     fn config_file_default() {
@@ -518,6 +512,59 @@ delivery_stream = "stream_two"
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(args.firehose_delivery_streams, vec!["stream_one", "stream_two"]);
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_file_file_source_single() {
+        let config = r#"
+[[file]]
+path = "/foo/bar.txt"
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(2003));
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert_eq!(args.files, Some(vec![PathBuf::from("/foo/bar.txt")]));
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_file_file_source_multiple() {
+        let config = r#"
+[[file]]
+path = "/foo/bar.txt"
+
+[[file]]
+path = "/bar.txt"
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(2003));
+        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.console, false);
+        assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert_eq!(args.files, Some(vec![PathBuf::from("/foo/bar.txt"), PathBuf::from("/bar.txt")]));
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);

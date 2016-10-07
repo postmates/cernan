@@ -3,6 +3,9 @@ use metric::{Metric,LogLine};
 use std::{time,thread};
 use std::collections::BTreeMap;
 use std::cmp;
+use chrono::naive::datetime::NaiveDateTime;
+use chrono::datetime::DateTime;
+use chrono::offset::utc::UTC;
 
 use serde_json;
 use serde_json::Map;
@@ -49,9 +52,10 @@ impl Sink for Firehose {
                                 (*m.path).to_string());
                     pyld.insert(String::from("line"),
                                 m.value.clone());
+                    let naive_time = NaiveDateTime::from_timestamp(m.time, 0);
+                    let utc_time : DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
                     pyld.insert(String::from("timestamp"),
-                                m.time.to_string());
-
+                                utc_time.to_rfc3339());
                     Record {
                         data: serde_json::ser::to_vec(&pyld).unwrap(),
                     }
