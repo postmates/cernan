@@ -41,21 +41,21 @@ impl Sink for Console {
         println!("  counters:");
         for (key, value) in self.aggrs.counters() {
             for m in value {
-                fmt_line(key, m.value);
+                fmt_line(key, m.1.value);
             }
         }
 
         println!("  gauges:");
         for (key, value) in self.aggrs.gauges() {
             for m in value {
-                fmt_line(key, m.value);
+                fmt_line(key, m.1.value);
             }
         }
 
         println!("  raws:");
         for (key, value) in self.aggrs.raws() {
             for m in value {
-                fmt_line(key, m.value);
+                fmt_line(key, m.1.value);
             }
         }
 

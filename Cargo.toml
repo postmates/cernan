@@ -24,11 +24,11 @@ rusoto = {version = "0.17.0", features = ["firehose"]}
 serde = "0.8"
 serde_json = "0.8"
 toml = "0.2.0"
+rand = "0.3"
 
 [dev-dependencies]
 tempdir = "0.3"
 quickcheck = "0.3"
-rand = "0.3"
 
 [build-dependencies]
 serde_codegen = "0.8"
