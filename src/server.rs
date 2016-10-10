@@ -1,20 +1,24 @@
+use bincode::SizeLimit;
 use std::net::{Ipv6Addr, UdpSocket, SocketAddrV6, SocketAddrV4, Ipv4Addr};
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::thread::sleep;
 use std::time::Duration;
 use std::thread;
 use std::io::prelude::*;
-use std::io::BufReader;
+use std::io::Take;
 use std::str;
 use metric;
 use std::fs::File;
-use std::io::SeekFrom;
+use std::io::{SeekFrom,BufReader};
 use std::path::PathBuf;
+use bincode::serde::{deserialize_from};
 
 use std::sync::mpsc::channel;
 use notify::{RecommendedWatcher, Error, Watcher};
 use notify::op::*;
 use mpsc;
+
+use flate2::read::ZlibDecoder;
 
 #[inline]
 fn send(chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &metric::Event) {
@@ -120,6 +124,50 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf) {
     }
 }
 
+//
+// cernan crd_receiver sink
+//
+pub fn receiver_sink_server(chans: Vec<mpsc::Sender<metric::Event>>, ip: &String, port: u16) {
+    let srv: Vec<_> = (ip.as_str(), port).to_socket_addrs().expect("unable to make socket addr").collect();
+    let listener = TcpListener::bind(srv.first().unwrap()).expect("Unable to bind to TCP socket");
+    for stream in listener.incoming() {
+        if let Ok(stream) = stream {
+            stream.set_nonblocking(false).expect("could not set TcpStream to block");
+            let srv_chans = chans.clone();
+            thread::spawn(move || handle_receiver_client(srv_chans, stream));
+        }
+    }
+}
+
+#[inline]
+fn u8tou32abe(v: &[u8]) -> u32 {
+    (v[3] as u32) + ((v[2] as u32) << 8) + ((v[1] as u32) << 24) + ((v[0] as u32) << 16)
+}
+
+fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream) {
+    let mut sz_buf = [0; 4];
+    let mut reader = BufReader::new(stream);
+    match reader.read_exact(&mut sz_buf) {
+        Ok(()) => {
+            let payload_size_in_bytes = u8tou32abe(&sz_buf);
+            let hndl = (&mut reader).take(payload_size_in_bytes as u64);
+            let mut e = ZlibDecoder::new(hndl);
+            match deserialize_from::<ZlibDecoder<Take<&mut BufReader<TcpStream>>>, Vec<metric::Event>>(&mut e, SizeLimit::Infinite) {
+                Ok(events) => {
+                    for ev in events {
+                        send(&mut chans, &ev);
+                    }
+                }
+                Err(e) => panic!("Failed decoding. Skipping {:?}", e),
+            }
+        }
+        Err(e) => panic!("Unable to read payload: {:?}", e),
+    }
+}
+
+//
+// graphite
+//
 pub fn tcp_server_ipv6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");

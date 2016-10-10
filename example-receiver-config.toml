@@ -1,0 +1,19 @@
+data-directory = "data-receiver/"
+
+[statsd]
+enabled = false
+
+[graphite]
+enabled = false
+
+flush-interval = 10
+
+[tags]
+source = "cernan"
+kind = "receiver"
+
+[crd_receiver]
+port = 1972
+ip = "0.0.0.0"
+
+[console]

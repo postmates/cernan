@@ -13,6 +13,7 @@ extern crate serde_json;
 extern crate rusoto;
 #[macro_use]
 extern crate lazy_static;
+extern crate flate2;
 
 pub mod mpsc;
 pub mod sink;
@@ -26,4 +27,5 @@ pub mod sinks {
     pub mod wavefront;
     pub mod null;
     pub mod firehose;
+    pub mod federation_receiver;
 }

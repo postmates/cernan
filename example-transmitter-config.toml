@@ -1,0 +1,17 @@
+data-directory = "data-transmitter/"
+
+[statsd]
+port = 8125
+
+[graphite]
+port = 2003
+
+flush-interval = 10
+
+[tags]
+source = "cernan"
+kind = "transmitter"
+
+[crd_transmitter]
+port = 1972
+host = "127.0.0.1"
