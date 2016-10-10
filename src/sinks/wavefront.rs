@@ -140,7 +140,6 @@ impl Wavefront {
 pub fn sample<T>(interval: i64, qos: i64, vals: &Vec<(i64, T)>) -> Vec<&(i64, T)> {
     assert!(qos <= interval);
     let samples: usize = (interval as usize) / (qos as usize);
-    println!("SAMPLES: {}", samples);
     let mut max = vals.len();
     let mut res = Vec::with_capacity(max);
     for v in vals {
@@ -157,25 +156,13 @@ pub fn sample<T>(interval: i64, qos: i64, vals: &Vec<(i64, T)>) -> Vec<&(i64, T)
     let mut rng = rand::thread_rng();
     let mut has_sampled = false;
     while idx < max {
-        println!("IDX: {} | BASE_IDX: {} | INTERVAL: {} | BASE_SMPL: {} | VAL_TIME: {} | DIFF: {}",
-                 idx,
-                 base_idx,
-                 interval,
-                 cur_base_smpl_time,
-                 res[idx].0,
-                 res[idx].0 - cur_base_smpl_time);
         if (res[idx].0 - cur_base_smpl_time) >= interval {
             // We've found another interval, time to potentially downsample past
             // all points from base_idx to idx, exclusive of idx.
             if (idx - base_idx) > samples {
                 // This interval has more points than allowed by the sample
                 // limit, so we downsample.
-                println!("SAMPLES: {} | IDX: {} | BASE_IDX: {}",
-                         samples,
-                         idx,
-                         base_idx);
                 let mut must_go = (idx - base_idx) - samples;
-                println!("MUST_GO: {}", must_go);
                 while must_go > 0 {
                     has_sampled = true;
                     let del_idx = rng.gen_range(base_idx, idx);
