@@ -1,8 +1,10 @@
 use sink::Sink;
 use metric::{Metric,LogLine};
-use std::{time,thread};
 use std::collections::BTreeMap;
-use std::cmp;
+use chrono::naive::datetime::NaiveDateTime;
+use chrono::datetime::DateTime;
+use chrono::offset::utc::UTC;
+use time;
 
 use serde_json;
 use serde_json::Map;
@@ -50,8 +52,7 @@ impl Sink for Firehose {
                     pyld.insert(String::from("line"),
                                 m.value.clone());
                     pyld.insert(String::from("timestamp"),
-                                m.time.to_string());
-
+                                format_time(m.time));
                     Record {
                         data: serde_json::ser::to_vec(&pyld).unwrap(),
                     }
@@ -59,7 +60,7 @@ impl Sink for Firehose {
             };
             let mut attempts = 0;
             loop {
-                delay(attempts);
+                time::delay(attempts);
                 match client.put_record_batch(&prbi) {
                     Ok(prbo) => {
                         let failed_put_count = prbo.failed_put_count;
@@ -121,11 +122,8 @@ impl Sink for Firehose {
 }
 
 #[inline]
-fn delay(attempts: u32) {
-    if attempts > 0 {
-        let max_delay : u32 = 60_000;
-        let delay = cmp::min(max_delay, 2u32.pow(attempts));
-        let sleep_time = time::Duration::from_millis(delay as u64);
-        thread::sleep(sleep_time);
-    }
+fn format_time(time: i64) -> String {
+    let naive_time = NaiveDateTime::from_timestamp(time, 0);
+    let utc_time : DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
+    format!("{}", utc_time.format("%Y-%m-%dT%H:%M:%S%.3fZ"))
 }
