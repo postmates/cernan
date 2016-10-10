@@ -133,6 +133,36 @@ impl Wavefront {
             }
         }
 
+        let now = time::now();
+        write!(stats,
+               "{} {} {} {}\n",
+               "cernan.wavefront.qos.timer",
+               self.qos.timer,
+               now,
+               self.tags)
+            .unwrap();
+        write!(stats,
+               "{} {} {} {}\n",
+               "cernan.wavefront.qos.gauge",
+               self.qos.gauge,
+               now,
+               self.tags)
+            .unwrap();
+        write!(stats,
+               "{} {} {} {}\n",
+               "cernan.wavefront.qos.histogram",
+               self.qos.histogram,
+               now,
+               self.tags)
+            .unwrap();
+        write!(stats,
+               "{} {} {} {}\n",
+               "cernan.wavefront.qos.counter",
+               self.qos.counter,
+               now,
+               self.tags)
+            .unwrap();
+
         stats
     }
 }
@@ -367,7 +397,7 @@ mod test {
         let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
         println!("{:?}", lines);
-        assert_eq!(42, lines.len());
+        assert_eq!(46, lines.len());
     }
 
     #[test]
@@ -413,7 +443,7 @@ mod test {
         let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
         println!("{:?}", lines);
-        assert_eq!(42, lines.len());
+        assert_eq!(46, lines.len());
     }
 
     #[test]
@@ -464,7 +494,7 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(4, lines.len());
+        assert_eq!(8, lines.len());
     }
 
     #[test]
@@ -515,7 +545,7 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(4, lines.len());
+        assert_eq!(8, lines.len());
     }
 
     #[test]
@@ -574,7 +604,7 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(19, lines.len());
+        assert_eq!(23, lines.len());
         assert!(lines.contains(&"test.counter 1 645181811 source=test-src"));
         assert!(lines.contains(&"test.counter 3 645185472 source=test-src"));
         assert!(lines.contains(&"test.gauge 3.211 645181811 source=test-src"));
