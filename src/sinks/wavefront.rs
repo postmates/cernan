@@ -175,16 +175,13 @@ pub fn sample<T>(interval: i64, qos: i64, vals: &Vec<(i64, T)>) -> Vec<&(i64, T)
     for v in vals {
         res.push(v);
     }
-    if qos == 1 {
-        return res;
-    } else if max <= samples {
+    if max <= samples {
         return res;
     }
     let mut base_idx = 0;
     let mut idx = 0;
     let mut cur_base_smpl_time = res[0].0;
     let mut rng = rand::thread_rng();
-    let mut has_sampled = false;
     while idx < max {
         if (res[idx].0 - cur_base_smpl_time) >= interval {
             // We've found another interval, time to potentially downsample past
@@ -192,9 +189,8 @@ pub fn sample<T>(interval: i64, qos: i64, vals: &Vec<(i64, T)>) -> Vec<&(i64, T)
             if (idx - base_idx) > samples {
                 // This interval has more points than allowed by the sample
                 // limit, so we downsample.
-                let mut must_go = (idx - base_idx) - samples;
+                let mut must_go = (idx - base_idx.saturating_sub(1)) - samples;
                 while must_go > 0 {
-                    has_sampled = true;
                     let del_idx = rng.gen_range(base_idx, idx);
                     res.remove(del_idx);
                     if idx > 0 {
@@ -216,15 +212,13 @@ pub fn sample<T>(interval: i64, qos: i64, vals: &Vec<(i64, T)>) -> Vec<&(i64, T)
             idx += 1;
         }
     }
-    // It's possible that all our points will sit inside the same interval but
-    // that there will still be too many of them. This clause catches that.
-    if !has_sampled && res.len() > samples {
-        let mut must_go = res.len() - samples;
-        while must_go > 0 {
-            let del_idx = rng.gen_range(0, res.len());
-            res.remove(del_idx);
-            must_go -= 1;
-        }
+    // It's possible the last interval has more points than needed. We cover
+    // that here.
+    let mut must_go = idx.saturating_sub(base_idx).saturating_sub(samples);
+    while must_go > 0 {
+        let del_idx = rng.gen_range(base_idx, res.len());
+        res.remove(del_idx);
+        must_go -= 1;
     }
     res
 }
@@ -261,10 +255,93 @@ impl Sink for Wavefront {
 
 #[cfg(test)]
 mod test {
+    extern crate quickcheck;
+
     use metric::{Metric, MetricKind, MetricQOS};
     use sink::Sink;
     use chrono::{UTC, TimeZone};
     use super::*;
+
+    use self::quickcheck::{TestResult, QuickCheck};
+
+    #[test]
+    fn windows_obey_sample_limit() {
+        fn inner(interval: u8, qos: u8, mut vals: Vec<(i64, u64)>) -> TestResult {
+            if qos == 0 {
+                return TestResult::discard();
+            } else if interval == 0 {
+                return TestResult::discard();
+            } else if vals.len() == 0 {
+                return TestResult::discard();
+            } else if qos > interval {
+                return TestResult::discard();
+            }
+
+            let interval = interval as i64;
+            let qos = qos as i64;
+            let sample_size = interval / qos;
+
+            vals.sort_by_key(|&(t, _)| t);
+            let smpl = sample(interval, qos, &vals);
+            assert!(smpl.len() <= vals.len());
+
+            // compute the total intervals
+            let mut total_intervals = 1;
+            let mut low_side_bound = vals[0].0;
+            for &(t, _) in &vals {
+                if (low_side_bound - t).abs() >= interval {
+                    total_intervals += 1;
+                    low_side_bound = t;
+                }
+            }
+
+            // compute the bounds
+            let mut bounds = Vec::new();
+            let mut low_bound = vals[0].0;
+            for &(t, _) in &vals {
+                if (low_bound - t).abs() >= interval {
+                    // new interval
+                    bounds.push(low_bound);
+                    low_bound = t;
+                }
+            }
+            bounds.push(low_bound);
+
+            // assert sample strides
+            let mut bound_idx = 0;
+            let mut cur_samples_per_interval = 0;
+            for &&(t, _) in &smpl {
+                debug_assert!(bound_idx < bounds.len(),
+                              "bounds: {:?} | vals: {:?}",
+                              bounds,
+                              vals);
+                if bounds[bound_idx] <= t {
+                    // inside current interval
+                    cur_samples_per_interval += 1;
+                } else {
+                    // new interval
+                    assert!(cur_samples_per_interval <= sample_size);
+                    cur_samples_per_interval = 0;
+                    bound_idx += 1;
+                }
+            }
+
+            debug_assert!(smpl.len() <= (sample_size * total_intervals) as usize,
+                          "smpl.len() = {} | sample_size = {} | total_intervals = {} | vals = \
+                           {:?} | smpl = {:?}",
+                          smpl.len(),
+                          sample_size,
+                          total_intervals,
+                          vals,
+                          smpl);
+
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(100)
+            .max_tests(1000)
+            .quickcheck(inner as fn(u8, u8, Vec<(i64, u64)>) -> TestResult);
+    }
 
     #[test]
     fn test_sampling() {
@@ -272,15 +349,159 @@ mod test {
         let qos = 2;
         // With interval 5 and qos 2 this means that for every interval there
         // will be at most 2 points in it.
-        let samples = vec![(0, "a"), (1, "b"), (2, "c") /* interval 1 */,
-                           (5, "d") /* interval 2 */, (10, "e"),
-                           (11, "f") /* interval 3 */, (15, "g")];
+        let samples = vec![// interval 1
+                           (0, "a"),
+                           (1, "b"),
+                           (2, "c"),
+                           // interval 2
+                           (5, "d"),
+                           // interval 3
+                           (10, "e"),
+                           (11, "f"),
+                           (15, "g")];
         let downsamples = sample(interval, qos, &samples);
         assert_eq!(6, downsamples.len());
         assert!(downsamples.contains(&&(5, "d")));
         assert!(downsamples.contains(&&(10, "e")));
         assert!(downsamples.contains(&&(11, "f")));
         assert!(downsamples.contains(&&(15, "g")));
+    }
+
+    #[test]
+    fn test_sampling_all_redundant() {
+        let interval = 2;
+        let qos = 1;
+        let samples = vec![(0, 0), (0, 0), (0, 0)];
+        let downsamples = sample(interval, qos, &samples);
+        assert_eq!(downsamples.len(), 2);
+        assert!(downsamples.contains(&&(0, 0)));
+    }
+
+    #[test]
+    fn test_sampling_zero_thirtyone_thirtysix() {
+        let interval = 1;
+        let qos = 1;
+        let samples = vec![(0, 0), (31, 0), (36, 0), (36, 0)];
+        let downsamples = sample(interval, qos, &samples);
+        println!("DOWNSAMPLES: {:?}", downsamples);
+        assert_eq!(downsamples.len(), 3);
+        assert!(downsamples.contains(&&(0, 0)));
+        assert!(downsamples.contains(&&(31, 0)));
+        assert!(downsamples.contains(&&(36, 0)));
+    }
+
+    #[test]
+    fn test_sampling_double_zero() {
+        let interval = 4;
+        let qos = 2;
+        let samples = vec![// interval 1
+                           (0, 0),
+                           (0, 0),
+                           // interval 2
+                           (70, 0),
+                           (70, 0),
+                           (73, 0),
+                           (74, 0),
+                           // interval 3
+                           (76, 0)];
+        let downsamples = sample(interval, qos, &samples);
+        println!("DOWNSAMPLES: {:?}", downsamples);
+        assert_eq!(downsamples.len(), 5);
+        assert!(downsamples.contains(&&(0, 0)));
+        assert!(downsamples.contains(&&(76, 0)));
+    }
+
+    #[test]
+    fn test_sampling_six_interval() {
+        let interval = 6;
+        let qos = 3;
+        let samples = vec![// interval 1
+                           (0, 0),
+                           // interval 2
+                           (70, 0),
+                           (71, 0),
+                           (75, 0),
+                           // interval 3
+                           (77, 0),
+                           (77, 73),
+                           (83, 0)];
+        let downsamples = sample(interval, qos, &samples);
+        println!("DOWNSAMPLES: {:?}", downsamples);
+        assert_eq!(downsamples.len(), 5);
+        assert!(downsamples.contains(&&(0, 0)));
+    }
+
+    #[test]
+    fn test_sampling_zero_seventies() {
+        let interval = 3;
+        let qos = 2;
+        let samples = vec![(0, 0), (74, 0), (75, 0), (77, 0)];
+        let downsamples = sample(interval, qos, &samples);
+        println!("DOWNSAMPLES: {:?}", downsamples);
+        assert_eq!(downsamples.len(), 2);
+        assert!(downsamples.contains(&&(0, 0)));
+    }
+
+    #[test]
+    fn test_sampling_zero_two_two() {
+        let interval = 2;
+        let qos = 1;
+        let samples = vec![(0, 0), (2, 0), (2, 0), (2, 0)];
+        let downsamples = sample(interval, qos, &samples);
+        println!("DOWNSAMPLES: {:?}", downsamples);
+        assert_eq!(downsamples.len(), 3);
+    }
+
+    #[test]
+    fn test_sampling_neg_double_seven() {
+        let interval = 6;
+        let qos = 3;
+        let samples = vec![// interval 1
+                           (0, 0),
+                           // interval 2
+                           (6, 0),
+                           (11, 0),
+                           (11, 0),
+                           // interval 3
+                           (12, 0),
+                           (16, 0),
+                           (18, 0)];
+        let downsamples = sample(interval, qos, &samples);
+        println!("DOWNSAMPLES: {:?}", downsamples);
+        assert_eq!(downsamples.len(), 5);
+    }
+
+    #[test]
+    fn test_sampling_triple_zero() {
+        let interval = 4;
+        let qos = 2;
+        let samples = vec![(0, 0), (0, 0), (0, 0), (4, 0)];
+        let downsamples = sample(interval, qos, &samples);
+        println!("DOWNSAMPLES: {:?}", downsamples);
+        assert_eq!(downsamples.len(), 3);
+    }
+
+    #[test]
+    fn test_sampling_one_one_two_intervals() {
+        let interval = 1;
+        let qos = 1;
+        let samples = vec![(-1, 0), (0, 0), (0, 0)];
+        let downsamples = sample(interval, qos, &samples);
+        println!("DOWNSAMPLES: {:?}", downsamples);
+        assert_eq!(downsamples.len(), 2);
+        assert!(downsamples.contains(&&(0, 0)));
+        assert!(downsamples.contains(&&(-1, 0)));
+    }
+
+    #[test]
+    fn test_sampling_one_one_no_overlap() {
+        let interval = 1;
+        let qos = 1;
+        let samples = vec![(0, 0), (2, 0)];
+        let downsamples = sample(interval, qos, &samples);
+        assert_eq!(downsamples.len(), 2);
+        assert!(downsamples.contains(&&(0, 0)));
+        assert!(downsamples.contains(&&(2, 0)));
     }
 
     #[test]
@@ -318,7 +539,6 @@ mod test {
                                              // interval 3
                                              (10, "e"),
                                              (11, "f"),
-                                             // interval 4
                                              (15, "g")];
         let downsamples = sample(interval, qos, &samples);
         assert_eq!(7, downsamples.len());
@@ -346,11 +566,10 @@ mod test {
                                              // interval 3
                                              (10, "e"),
                                              (11, "f"),
-                                             // interval 4
                                              (15, "g")];
         let downsamples = sample(interval, qos, &samples);
         println!("DOWNSAMPLES: {:?}", downsamples);
-        assert_eq!(4, downsamples.len());
+        assert_eq!(3, downsamples.len());
     }
 
     #[test]
