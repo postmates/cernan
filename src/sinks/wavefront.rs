@@ -368,6 +368,20 @@ mod test {
     }
 
     #[test]
+    fn test_sampling_sixty_fifteen() {
+        let interval = 60;
+        let qos = 15;
+        // With interval 60 and qos 15 over two intervals we would expect to see
+        // 8 points total.
+        let mut samples = Vec::new();
+        for i in 0..120 {
+            samples.push((i, 0));
+        }
+        let downsamples = sample(interval, qos, &samples);
+        assert_eq!(8, downsamples.len());
+    }
+
+    #[test]
     fn test_sampling_all_redundant() {
         let interval = 2;
         let qos = 1;
@@ -617,6 +631,29 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
         println!("{:?}", lines);
         assert_eq!(46, lines.len());
+    }
+
+    #[test]
+    fn test_sixty_fifteen_histogram_qos_ellision() {
+        let mut qos = MetricQOS::default();
+        qos.histogram = 15;
+        let flush = 60;
+
+        let mut wavefront =
+            Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos, flush);
+        for i in 0..122 {
+            wavefront.deliver(Metric::new_with_time(String::from("test.histogram"),
+                                                    1.0,
+                                                    Some(i),
+                                                    MetricKind::Histogram,
+                                                    None));
+        }
+
+        let result = wavefront.format_stats();
+        let lines: Vec<&str> = result.lines().collect();
+        println!("{:?}", lines);
+        assert_eq!(130, lines.len()); // 130 = 8*14 + 14 + 4
+                                      //       int01  int2 meta
     }
 
     #[test]
