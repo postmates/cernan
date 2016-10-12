@@ -69,7 +69,8 @@ fn main() {
             cernan::sinks::wavefront::Wavefront::new(&cp_args.wavefront_host.unwrap(),
                                                      cp_args.wavefront_port.unwrap(),
                                                      wf_tags,
-                                                     cp_args.qos.clone())
+                                                     cp_args.qos.clone(),
+                                                     cp_args.flush_interval as i64)
                 .run(wf_recv);
         }));
     }
