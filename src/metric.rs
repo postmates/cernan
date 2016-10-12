@@ -50,6 +50,20 @@ pub struct MetricBuilder {
 }
 
 impl MetricBuilder {
+    /// Make a builder for metrics
+    ///
+    /// This function returns a MetricBuidler with a name set. A metric must
+    /// have _at least_ a name and a value but values may be delayed behind
+    /// names.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::MetricBuilder;
+    ///
+    /// assert!(MetricBuilder::new("foo").build().is_err());
+    /// assert!(MetricBuilder::new("foo").value(1.1).build().is_ok());
+    /// ```
     pub fn new<S>(name: S) -> MetricBuilder where S: Into<String> {
         MetricBuilder {
             name: name.into(),
@@ -60,46 +74,188 @@ impl MetricBuilder {
         }
     }
 
+    /// Add a value to a MetricBuilder
+    ///
+    /// Values are mandatory for a Metric but may not be available at the same
+    /// time as names. Values _must_ carry their proper sign. `positive` and
+    /// `negative` functions _will not_ modify value sign. These functions
+    /// modify the interpretation of a MetricKind::Gauge.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::MetricBuilder;
+    ///
+    /// let mp = MetricBuilder::new("foo").value(1.1).positive().build().unwrap();
+    /// let mn = MetricBuilder::new("foo").value(1.1).negative().build().unwrap();
+    ///
+    /// assert_eq!(1.1, mp.value);
+    /// assert_eq!(1.1, mn.value);
+    /// ```
     pub fn value(mut self, value: f64) -> MetricBuilder {
         self.value = Some(value);
         self
     }
 
+    /// Adjust MetricKind to Counter
+    ///
+    /// This sets the ultimate metric's MetricKind to Counter. A sample
+    /// rate--measured in per-second units--is required.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{MetricBuilder, MetricKind};
+    ///
+    /// let mr = MetricBuilder::new("foo").value(1.1).build().unwrap();
+    /// let mc = MetricBuilder::new("foo").value(1.1).counter(1.0).build().unwrap();
+    ///
+    /// assert_eq!(MetricKind::Raw, mr.kind);
+    /// assert_eq!(MetricKind::Counter(1.0), mc.kind);
+    /// ```
     pub fn counter(mut self, sample: f64) -> MetricBuilder {
         self.kind = Some(MetricKind::Counter(sample));
         self
     }
 
+    /// Adjust MetricKind to Gauge
+    ///
+    /// This sets the ultimate metric's MetricKind to gauge-type. There are two
+    /// manner of gauge, DeltaGauge and Gauge. This function will set the manner
+    /// to Gauge, though `postive` and `negative` may adjust this.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{MetricBuilder, MetricKind};
+    ///
+    /// let mr = MetricBuilder::new("foo").value(1.1).build().unwrap();
+    /// let mg = MetricBuilder::new("foo").value(1.1).gauge().build().unwrap();
+    ///
+    /// assert_eq!(MetricKind::Raw, mr.kind);
+    /// assert_eq!(MetricKind::Gauge, mg.kind);
+    /// ```
     pub fn gauge(mut self) -> MetricBuilder {
         self.kind = Some(MetricKind::Gauge);
         self
     }
 
+    /// Adjust MetricKind to Timer
+    ///
+    /// This sets the ultimate metric's MetricKind to Timer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{MetricBuilder, MetricKind};
+    ///
+    /// let mr = MetricBuilder::new("foo").value(1.1).build().unwrap();
+    /// let mt = MetricBuilder::new("foo").value(1.1).timer().build().unwrap();
+    ///
+    /// assert_eq!(MetricKind::Raw, mr.kind);
+    /// assert_eq!(MetricKind::Timer, mt.kind);
+    /// ```
     pub fn timer(mut self) -> MetricBuilder {
         self.kind = Some(MetricKind::Timer);
         self
     }
 
+    /// Adjust MetricKind to Histogram
+    ///
+    /// This sets the ultimate metric's MetricKind to Histogram.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{MetricBuilder, MetricKind};
+    ///
+    /// let mr = MetricBuilder::new("foo").value(1.1).build().unwrap();
+    /// let mt = MetricBuilder::new("foo").value(1.1).histogram().build().unwrap();
+    ///
+    /// assert_eq!(MetricKind::Raw, mr.kind);
+    /// assert_eq!(MetricKind::Histogram, mt.kind);
+    /// ```
     pub fn histogram(mut self) -> MetricBuilder {
         self.kind = Some(MetricKind::Histogram);
         self
     }
 
+    /// Adjust Metric time
+    ///
+    /// This sets the metric time to the specified value, taken to be UTC
+    /// seconds since the Unix Epoch. If this is not set the metric will default
+    /// to `cernan::time::now()`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::MetricBuilder;
+    ///
+    /// let m = MetricBuilder::new("foo").value(1.1).time(10101).build().unwrap();
+    ///
+    /// assert_eq!(10101, m.time);
+    /// ```
     pub fn time(mut self, time: i64) -> MetricBuilder {
         self.time = Some(time);
         self
     }
 
+    /// Adjust Metric with Gauge kind to be DeltaGauge
+    ///
+    /// This sets the metric's kind to DeltaGauge if the kind has been otherwise
+    /// set to Gauge. The ordering does not matter. This will not affect other
+    /// metric types. A distinction is made between `positive` and `negative` to
+    /// aid debugging.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{MetricBuilder,MetricKind};
+    ///
+    /// let mr = MetricBuilder::new("foo").value(1.1).positive().build().unwrap();
+    /// let mg = MetricBuilder::new("bar").value(1.1).gauge().build().unwrap();
+    /// let mdg = MetricBuilder::new("bar").value(1.1).gauge().positive().build().unwrap();
+    ///
+    /// assert_eq!(MetricKind::Raw, mr.kind);
+    /// assert_eq!(MetricKind::Gauge, mg.kind);
+    /// assert_eq!(MetricKind::DeltaGauge, mdg.kind);
+    /// ```
     pub fn positive(mut self) -> MetricBuilder {
         self.sign = Some(MetricSign::Positive);
         self
     }
 
+    /// Adjust Metric with Gauge kind to be DeltaGauge
+    ///
+    /// This sets the metric's kind to DeltaGauge if the kind has been otherwise
+    /// set to Gauge. The ordering does not matter. This will not affect other
+    /// metric types. A distinction is made between `positive` and `negative` to
+    /// aid debugging.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{MetricBuilder,MetricKind};
+    ///
+    /// let mr = MetricBuilder::new("foo").value(1.1).positive().build().unwrap();
+    /// let mg = MetricBuilder::new("bar").value(1.1).gauge().build().unwrap();
+    /// let mdg = MetricBuilder::new("bar").value(1.1).gauge().negative().build().unwrap();
+    ///
+    /// assert_eq!(MetricKind::Raw, mr.kind);
+    /// assert_eq!(MetricKind::Gauge, mg.kind);
+    /// assert_eq!(MetricKind::DeltaGauge, mdg.kind);
+    /// ```
     pub fn negative(mut self) -> MetricBuilder {
         self.sign = Some(MetricSign::Negative);
         self
     }
 
+    /// Build a Metric
+    ///
+    /// This function will return Err if a value has not been
+    /// provided. Otherwise, everything will pretty well go through smooth.
+    ///
+    /// See other functions on this impl for examples.
     pub fn build(self) -> Result<Metric, &'static str> {
         if !self.value.is_some() {
             return Err("must have a value");
