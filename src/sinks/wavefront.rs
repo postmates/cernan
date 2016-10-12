@@ -257,7 +257,7 @@ impl Sink for Wavefront {
 mod test {
     extern crate quickcheck;
 
-    use metric::{Metric, MetricKind, MetricQOS};
+    use metric::{MetricBuilder, MetricQOS};
     use sink::Sink;
     use chrono::{UTC, TimeZone};
     use super::*;
@@ -600,32 +600,9 @@ mod test {
         let dt_3 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 14, 0).timestamp();
         let dt_4 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 15, 0).timestamp();
 
-        wavefront.deliver(Metric::new_with_time(String::from("test.histogram"),
-                                                1.0,
-                                                Some(dt_0),
-                                                MetricKind::Histogram,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.histogram"),
-                                                1.0,
-                                                Some(dt_1),
-                                                MetricKind::Histogram,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.histogram"),
-                                                1.0,
-                                                Some(dt_2),
-                                                MetricKind::Histogram,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.histogram"),
-                                                1.0,
-                                                Some(dt_3),
-                                                MetricKind::Histogram,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.histogram"),
-                                                1.0,
-                                                Some(dt_4),
-                                                MetricKind::Histogram,
-                                                None));
-
+        for dt in &[dt_0, dt_1, dt_2, dt_3, dt_4] {
+            wavefront.deliver(MetricBuilder::new("test.histogram").value(1.0).time(*dt).histogram().build().unwrap());
+        }
 
         let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
@@ -642,11 +619,7 @@ mod test {
         let mut wavefront =
             Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos, flush);
         for i in 0..122 {
-            wavefront.deliver(Metric::new_with_time(String::from("test.histogram"),
-                                                    1.0,
-                                                    Some(i),
-                                                    MetricKind::Histogram,
-                                                    None));
+            wavefront.deliver(MetricBuilder::new("test.histogram").value(1.0).time(i).histogram().build().unwrap());
         }
 
         let result = wavefront.format_stats();
@@ -670,31 +643,9 @@ mod test {
         let dt_3 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 14, 0).timestamp();
         let dt_4 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 15, 0).timestamp();
 
-        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
-                                                1.0,
-                                                Some(dt_0),
-                                                MetricKind::Timer,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
-                                                1.0,
-                                                Some(dt_1),
-                                                MetricKind::Timer,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
-                                                1.0,
-                                                Some(dt_2),
-                                                MetricKind::Timer,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
-                                                1.0,
-                                                Some(dt_3),
-                                                MetricKind::Timer,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
-                                                1.0,
-                                                Some(dt_4),
-                                                MetricKind::Timer,
-                                                None));
+        for dt in &[dt_0, dt_1, dt_2, dt_3, dt_4] {
+            wavefront.deliver(MetricBuilder::new("test.timer").value(1.0).time(*dt).timer().build().unwrap());
+        }
 
         let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
@@ -716,36 +667,11 @@ mod test {
         let dt_3 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 14, 0).timestamp();
         let dt_4 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 15, 0).timestamp();
 
-        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
-                                                1.0,
-                                                Some(dt_0),
-                                                MetricKind::Gauge,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
-                                                2.0,
-                                                Some(dt_1),
-                                                MetricKind::Gauge,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
-                                                3.0,
-                                                Some(dt_2),
-                                                MetricKind::Gauge,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
-                                                4.0,
-                                                Some(dt_3),
-                                                MetricKind::Gauge,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.some_other_gauge"),
-                                                1.0,
-                                                Some(dt_3),
-                                                MetricKind::Gauge,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
-                                                5.0,
-                                                Some(dt_4),
-                                                MetricKind::Gauge,
-                                                None));
+        for (i, dt) in vec![dt_0, dt_1, dt_2, dt_3, dt_4].iter().enumerate() {
+            wavefront.deliver(MetricBuilder::new("test.gauge").value(i as f64).time(*dt).gauge().build().unwrap());
+        }
+        wavefront.deliver(MetricBuilder::new("test.some_other_gauge").value(1.0).time(dt_3).gauge().build().unwrap());
+
         let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
 
@@ -767,36 +693,11 @@ mod test {
         let dt_3 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 14, 0).timestamp();
         let dt_4 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 15, 0).timestamp();
 
-        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
-                                                1.0,
-                                                Some(dt_0),
-                                                MetricKind::Counter(1.0),
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
-                                                2.0,
-                                                Some(dt_1),
-                                                MetricKind::Counter(1.0),
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
-                                                3.0,
-                                                Some(dt_2),
-                                                MetricKind::Counter(1.0),
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
-                                                4.0,
-                                                Some(dt_3),
-                                                MetricKind::Counter(1.0),
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.some_other_counter"),
-                                                1.0,
-                                                Some(dt_3),
-                                                MetricKind::Counter(1.0),
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
-                                                5.0,
-                                                Some(dt_4),
-                                                MetricKind::Counter(1.0),
-                                                None));
+        for (i, dt) in vec![dt_0, dt_1, dt_2, dt_3, dt_4].iter().enumerate() {
+            wavefront.deliver(MetricBuilder::new("test.counter").value(i as f64).time(*dt).counter(1.0).build().unwrap());
+        }
+        wavefront.deliver(MetricBuilder::new("test.some_other_counter").value(1.0).time(dt_3).counter(1.0).build().unwrap());
+
         let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
 
@@ -811,51 +712,15 @@ mod test {
             Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos, 60);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 13).timestamp();
-        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
-                                                -1.0,
-                                                Some(dt_0),
-                                                MetricKind::Counter(1.0),
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
-                                                2.0,
-                                                Some(dt_0),
-                                                MetricKind::Counter(1.0),
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.counter"),
-                                                3.0,
-                                                Some(dt_1),
-                                                MetricKind::Counter(1.0),
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.gauge"),
-                                                3.211,
-                                                Some(dt_0),
-                                                MetricKind::Gauge,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
-                                                12.101,
-                                                Some(dt_0),
-                                                MetricKind::Timer,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
-                                                1.101,
-                                                Some(dt_0),
-                                                MetricKind::Timer,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.timer"),
-                                                3.101,
-                                                Some(dt_0),
-                                                MetricKind::Timer,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.raw"),
-                                                1.0,
-                                                Some(dt_0),
-                                                MetricKind::Raw,
-                                                None));
-        wavefront.deliver(Metric::new_with_time(String::from("test.raw"),
-                                                2.0,
-                                                Some(dt_1),
-                                                MetricKind::Raw,
-                                                None));
+        wavefront.deliver(MetricBuilder::new("test.counter").value(-1.0).time(dt_0).counter(1.0).build().unwrap());
+        wavefront.deliver(MetricBuilder::new("test.counter").value(2.0).time(dt_0).counter(1.0).build().unwrap());
+        wavefront.deliver(MetricBuilder::new("test.counter").value(3.0).time(dt_1).counter(1.0).build().unwrap());
+        wavefront.deliver(MetricBuilder::new("test.gauge").value(3.211).time(dt_0).gauge().build().unwrap());
+        wavefront.deliver(MetricBuilder::new("test.timer").value(12.101).time(dt_0).timer().build().unwrap());
+        wavefront.deliver(MetricBuilder::new("test.timer").value(1.101).time(dt_0).timer().build().unwrap());
+        wavefront.deliver(MetricBuilder::new("test.timer").value(3.101).time(dt_0).timer().build().unwrap());
+        wavefront.deliver(MetricBuilder::new("test.raw").value(1.0).time(dt_0).build().unwrap());
+        wavefront.deliver(MetricBuilder::new("test.raw").value(2.0).time(dt_1).build().unwrap());
         let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
 

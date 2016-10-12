@@ -1,4 +1,4 @@
-use time::now;
+use time;
 use std::str::FromStr;
 
 include!(concat!(env!("OUT_DIR"), "/serde_types.rs"));
@@ -8,7 +8,7 @@ impl LogLine {
         LogLine {
             path: path,
             value: value,
-            time: now(),
+            time: time::now(),
         }
     }
 }
@@ -40,63 +40,96 @@ pub enum MetricSign {
     Negative,
 }
 
-impl Metric {
-    pub fn counter(name: &str) -> Metric {
-        Metric {
-            name: String::from(name),
-            value: 1.0,
-            kind: MetricKind::Counter(1.0),
-            time: now(),
+#[derive(Debug)]
+pub struct MetricBuilder {
+    name: String,
+    value: Option<f64>,
+    kind: Option<MetricKind>,
+    sign: Option<MetricSign>,
+    time: Option<i64>,
+}
+
+impl MetricBuilder {
+    pub fn new<S>(name: S) -> MetricBuilder where S: Into<String> {
+        MetricBuilder {
+            name: name.into(),
+            value: None,
+            kind: None,
+            time: None,
+            sign: None,
         }
     }
 
-    /// Create a new metric
-    ///
-    /// Uses the Into trait to allow both str and String types.
-    pub fn new(name: String,
-               raw_value: f64,
-               raw_kind: MetricKind,
-               sign: Option<MetricSign>)
-               -> Metric {
-        let kind = match raw_kind {
-            MetricKind::Gauge => {
-                match sign {
-                    Some(MetricSign::Positive) |
-                    Some(MetricSign::Negative) => MetricKind::DeltaGauge,
-                    None => raw_kind,
-                }
+    pub fn value(mut self, value: f64) -> MetricBuilder {
+        self.value = Some(value);
+        self
+    }
+
+    pub fn counter(mut self, sample: f64) -> MetricBuilder {
+        self.kind = Some(MetricKind::Counter(sample));
+        self
+    }
+
+    pub fn gauge(mut self) -> MetricBuilder {
+        self.kind = Some(MetricKind::Gauge);
+        self
+    }
+
+    pub fn timer(mut self) -> MetricBuilder {
+        self.kind = Some(MetricKind::Timer);
+        self
+    }
+
+    pub fn histogram(mut self) -> MetricBuilder {
+        self.kind = Some(MetricKind::Histogram);
+        self
+    }
+
+    pub fn time(mut self, time: i64) -> MetricBuilder {
+        self.time = Some(time);
+        self
+    }
+
+    pub fn positive(mut self) -> MetricBuilder {
+        self.sign = Some(MetricSign::Positive);
+        self
+    }
+
+    pub fn negative(mut self) -> MetricBuilder {
+        self.sign = Some(MetricSign::Negative);
+        self
+    }
+
+    pub fn build(self) -> Result<Metric, &'static str> {
+        if !self.value.is_some() {
+            return Err("must have a value");
+        }
+        let raw_value = self.value.unwrap();
+
+        let kind = if let Some(k) = self.kind {
+            match k {
+                MetricKind::Gauge => if self.sign.is_some() {
+                    MetricKind::DeltaGauge
+                } else {
+                    MetricKind::Gauge
+                },
+                _ => k,
             }
-            _ => raw_kind,
+        } else {
+            MetricKind::Raw
         };
 
-        let value = match sign {
-            None |
-            Some(MetricSign::Positive) => raw_value,
-            Some(MetricSign::Negative) => -1.0 * raw_value,
-        };
-
-        Metric {
-            name: name,
-            value: value,
+        Ok(Metric {
+            name: self.name,
+            time: self.time.unwrap_or(time::now()),
+            value: raw_value,
             kind: kind,
-            time: now(),
-        }
+            tags: vec![],
+        })
     }
+}
 
-    pub fn new_with_time(name: String,
-                         value: f64,
-                         time: Option<i64>,
-                         kind: MetricKind,
-                         _: Option<MetricSign>)
-                         -> Metric {
-        Metric {
-            name: name,
-            value: value,
-            kind: kind,
-            time: time.unwrap_or(now()),
-        }
-    }
-
+impl Metric {
     /// Valid message formats are:
     ///
     /// - `<str:metric_name>:<f64:value>|<str:type>`
@@ -116,64 +149,51 @@ impl Metric {
                         Some(colon_idx) => {
                             let name = &src[offset..(offset+colon_idx)];
                             if name.is_empty() { return None };
+                            let mut metric_builder = MetricBuilder::new(name);
                             offset += colon_idx + 1;
                             if offset >= len { return None };
                             match (&src[offset..]).find('|') {
                                 Some(pipe_idx) => {
-                                    let sign = match &src[offset..(offset+1)] {
-                                        "+" => Some(MetricSign::Positive),
-                                        "-" => Some(MetricSign::Negative),
-                                        _ => None
+                                    metric_builder = match &src[offset..(offset+1)] {
+                                        "+" => metric_builder.positive(),
+                                        "-" => metric_builder.negative(),
+                                        _ => metric_builder,
                                     };
                                     let val = match f64::from_str(&src[offset..(offset+pipe_idx)]) {
                                         Ok(f) => f,
                                         Err(_) => return None
                                     };
+                                    metric_builder = metric_builder.value(val);
                                     offset += pipe_idx + 1;
                                     if offset >= len { return None };
-                                    let kind = match (&src[offset..]).find('@') {
+                                    metric_builder = match (&src[offset..]).find('@') {
                                         Some(sample_idx) => {
                                             match &src[offset..(offset+sample_idx)] {
-                                                "g" => MetricKind::Gauge,
-                                                "ms" => MetricKind::Timer,
-                                                "h" => MetricKind::Histogram,
+                                                "g" => metric_builder.gauge(),
+                                                "ms" => metric_builder.timer(),
+                                                "h" => metric_builder.histogram(),
                                                 "c" => {
                                                     let sample = match f64::from_str(&src[(offset+sample_idx+1)..]) {
                                                         Ok(f) => f,
                                                         Err(_) => return None
                                                     };
-                                                    MetricKind::Counter(sample)
+                                                    metric_builder.counter(sample)
                                                 }
                                                 _ => return None
                                             }
                                         }
                                         None => {
                                             match &src[offset..] {
-                                                "g" | "g\n" => MetricKind::Gauge,
-                                                "ms" | "ms\n" => MetricKind::Timer,
-                                                "h" | "h\n" => MetricKind::Histogram,
-                                                "c" | "c\n" => MetricKind::Counter(1.0),
+                                                "g" | "g\n" => metric_builder.gauge(),
+                                                "ms" | "ms\n" => metric_builder.timer(),
+                                                "h" | "h\n" => metric_builder.histogram(),
+                                                "c" | "c\n" => metric_builder.counter(1.0),
                                                 _ => return None
                                             }
                                         }
                                     };
 
-                                    let m = match sign {
-                                        None => Metric::new(String::from(name), val, kind, None),
-                                        Some(MetricSign::Positive) => {
-                                            match kind {
-                                                MetricKind::Gauge => Metric::new(String::from(name), val, MetricKind::DeltaGauge, None),
-                                                _ => Metric::new(String::from(name), val, kind, None),
-                                            }
-                                        },
-                                        Some(MetricSign::Negative) => {
-                                            match kind {
-                                                MetricKind::Gauge => Metric::new(String::from(name), val, MetricKind::DeltaGauge, None),
-                                                _ => Metric::new(String::from(name), val, kind, None),
-                                            }
-                                        }
-                                    };
-                                    res.push(m);
+                                    res.push(metric_builder.build().unwrap());
                                 }
                                 None => return None
                             }
@@ -209,10 +229,7 @@ impl Metric {
                                         Ok(t) => t,
                                         Err(_) => return None,
                                     };
-                                    res.push(Metric::new_with_time(String::from(name),
-                                                                   parsed_val,
-                                                                   Some(parsed_time),
-                                                                   MetricKind::Raw, None))
+                                    res.push(MetricBuilder::new(String::from(name)).value(parsed_val).time(parsed_time).build().unwrap());
                                 }
                                 None => return None
                             }
@@ -233,7 +250,7 @@ mod tests {
     extern crate rand;
     extern crate quickcheck;
 
-    use metric::{Metric, MetricKind, MetricSign, MetricQOS, Event};
+    use metric::{Metric, MetricBuilder, MetricKind, MetricSign, MetricQOS, Event};
     use self::quickcheck::{Arbitrary, Gen};
     use chrono::{UTC, TimeZone};
     use self::rand::{Rand, Rng};
@@ -270,7 +287,21 @@ mod tests {
             let kind: MetricKind = rng.gen();
             let sign: Option<MetricSign> = rng.gen();
             let time: i64 = rng.gen_range(0, 100);
-            Metric::new_with_time(name, val, Some(time), kind, sign)
+            let mut mb = MetricBuilder::new(name).value(val).time(time);
+            mb = match kind {
+                MetricKind::Gauge => mb.gauge(),
+                MetricKind::Timer => mb.timer(),
+                MetricKind::Histogram => mb.histogram(),
+                MetricKind::Counter(smpl) => mb.counter(smpl),
+                MetricKind::DeltaGauge => mb.gauge(),
+                MetricKind::Raw => mb,
+            };
+            mb = match sign {
+                None => mb,
+                Some(MetricSign::Positive) => mb.positive(),
+                Some(MetricSign::Negative) => mb.negative(),
+            };
+            mb.build().unwrap()
         }
     }
 
@@ -351,6 +382,36 @@ mod tests {
         assert_eq!(prs_pyld[5].name, "s-th");
         assert_eq!(prs_pyld[5].value, 6.0);
         assert_eq!(prs_pyld[5].time, UTC.timestamp(606, 0).timestamp());
+    }
+
+    #[test]
+    fn test_negative_timer() {
+        let m = MetricBuilder::new("timer").value(-1.0).timer().build().unwrap();
+
+        assert_eq!(m.kind, MetricKind::Timer);
+        assert_eq!(m.value, -1.0);
+        assert_eq!(m.name, "timer");
+    }
+
+    #[test]
+    fn test_parse_negative_timer() {
+        let prs = Metric::parse_statsd("fst:-1.1|ms\n");
+
+        assert!(prs.is_some());
+        let prs_pyld = prs.unwrap();
+
+        assert_eq!(prs_pyld[0].kind, MetricKind::Timer);
+        assert_eq!(prs_pyld[0].name, "fst");
+        assert_eq!(prs_pyld[0].value, -1.1);
+    }
+
+    #[test]
+    fn test_postive_delta_gauge() {
+        let m = MetricBuilder::new("dgauge").value(1.0).positive().gauge().build().unwrap();
+
+        assert_eq!(m.kind, MetricKind::DeltaGauge);
+        assert_eq!(m.value, 1.0);
+        assert_eq!(m.name, "dgauge");
     }
 
     #[test]
