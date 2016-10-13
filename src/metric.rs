@@ -1,14 +1,21 @@
-use time::now;
+use time;
 use std::str::FromStr;
 
 include!(concat!(env!("OUT_DIR"), "/serde_types.rs"));
 
+use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
+use fnv::FnvHasher;
+
+pub type TagMap = HashMap<String, String, BuildHasherDefault<FnvHasher>>;
+
 impl LogLine {
-    pub fn new(path: String, value: String) -> LogLine {
+    pub fn new(path: String, value: String, tags: TagMap) -> LogLine {
         LogLine {
             path: path,
             value: value,
-            time: now(),
+            time: time::now(),
+            tags: tags,
         }
     }
 }
@@ -34,67 +41,175 @@ impl Default for MetricQOS {
     }
 }
 
-#[derive(PartialEq, Debug)]
-pub enum MetricSign {
-    Positive,
-    Negative,
-}
-
 impl Metric {
-    pub fn counter(name: &str) -> Metric {
-        Metric {
-            name: String::from(name),
-            value: 1.0,
-            kind: MetricKind::Counter(1.0),
-            time: now(),
-        }
-    }
-
-    /// Create a new metric
+    /// Make a builder for metrics
     ///
-    /// Uses the Into trait to allow both str and String types.
-    pub fn new(name: String,
-               raw_value: f64,
-               raw_kind: MetricKind,
-               sign: Option<MetricSign>)
-               -> Metric {
-        let kind = match raw_kind {
-            MetricKind::Gauge => {
-                match sign {
-                    Some(MetricSign::Positive) |
-                    Some(MetricSign::Negative) => MetricKind::DeltaGauge,
-                    None => raw_kind,
-                }
-            }
-            _ => raw_kind,
-        };
-
-        let value = match sign {
-            None |
-            Some(MetricSign::Positive) => raw_value,
-            Some(MetricSign::Negative) => -1.0 * raw_value,
-        };
-
+    /// This function returns a MetricBuidler with a name set. A metric must
+    /// have _at least_ a name and a value but values may be delayed behind
+    /// names.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{Metric,MetricKind};
+    ///
+    /// let m = Metric::new("foo", 1.1);
+    ///
+    /// assert_eq!(m.kind, MetricKind::Raw);
+    /// assert_eq!(m.name, "foo");
+    /// assert_eq!(m.value, 1.1);
+    /// ```
+    pub fn new<S>(name: S, value: f64) -> Metric
+        where S: Into<String>
+    {
         Metric {
-            name: name,
+            kind: MetricKind::Raw,
+            name: name.into(),
+            tags: TagMap::default(),
+            time: time::now(),
             value: value,
-            kind: kind,
-            time: now(),
         }
     }
 
-    pub fn new_with_time(name: String,
-                         value: f64,
-                         time: Option<i64>,
-                         kind: MetricKind,
-                         _: Option<MetricSign>)
-                         -> Metric {
-        Metric {
-            name: name,
-            value: value,
-            kind: kind,
-            time: time.unwrap_or(now()),
+    pub fn overlay_tag(mut self, key: String, val: String) -> Metric {
+        self.tags.insert(key, val);
+        self
+    }
+
+    pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Metric {
+        for (k,v) in map.iter() {
+            self.tags.insert(k.clone(),v.clone());
         }
+        self
+    }
+
+    /// Replace a Metric's value
+    ///
+    /// While it is sometimes still necessary to fiddle with the value of a
+    /// Metric directly--I'm looking at you, buckets.rs--ideally we'd use a safe
+    /// API to do that fiddling.
+    ///
+    /// This function merely replaces the value. We could get fancy in the
+    /// future and do the Kind appropriate computation...
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::Metric;
+    ///
+    /// let m = Metric::new("foo", 1.1).value(10.10);
+    ///
+    /// assert_eq!(m.value, 10.10);
+    /// ```
+    pub fn value(mut self, value: f64) -> Metric {
+        self.value = value;
+        self
+    }
+
+    /// Adjust MetricKind to Counter
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{Metric, MetricKind};
+    ///
+    /// let m = Metric::new("foo", 1.1).counter(1.0);
+    ///
+    /// assert_eq!(MetricKind::Counter(1.0), m.kind);
+    /// ```
+    pub fn counter(mut self, sample: f64) -> Metric {
+        self.kind = MetricKind::Counter(sample);
+        self
+    }
+
+    /// Adjust MetricKind to Gauge
+    ///
+    /// If the kind has previously been set to DeltaGauge the kind will not be
+    /// reset to Gauge.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{Metric, MetricKind};
+    ///
+    /// let m = Metric::new("foo", 1.1).gauge();
+    ///
+    /// assert_eq!(MetricKind::Gauge, m.kind);
+    /// ```
+    pub fn gauge(mut self) -> Metric {
+        self.kind = match self.kind {
+            MetricKind::DeltaGauge => MetricKind::DeltaGauge,
+            _ => MetricKind::Gauge,
+        };
+        self
+    }
+
+    /// Adjust MetricKind to DeltaGauge
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{Metric, MetricKind};
+    ///
+    /// let m = Metric::new("foo", 1.1).delta_gauge();
+    ///
+    /// assert_eq!(MetricKind::DeltaGauge, m.kind);
+    /// ```
+    pub fn delta_gauge(mut self) -> Metric {
+        self.kind = MetricKind::DeltaGauge;
+        self
+    }
+
+    /// Adjust MetricKind to Timer
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{Metric, MetricKind};
+    ///
+    /// let m = Metric::new("foo", 1.1).delta_gauge();
+    ///
+    /// assert_eq!(MetricKind::DeltaGauge, m.kind);
+    /// ```
+    pub fn timer(mut self) -> Metric {
+        self.kind = MetricKind::Timer;
+        self
+    }
+
+    /// Adjust MetricKind to Histogram
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{Metric, MetricKind};
+    ///
+    /// let m = Metric::new("foo", 1.1).histogram();
+    ///
+    /// assert_eq!(MetricKind::Histogram, m.kind);
+    /// ```
+    pub fn histogram(mut self) -> Metric {
+        self.kind = MetricKind::Histogram;
+        self
+    }
+
+    /// Adjust Metric time
+    ///
+    /// This sets the metric time to the specified value, taken to be UTC
+    /// seconds since the Unix Epoch. If this is not set the metric will default
+    /// to `cernan::time::now()`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::Metric;
+    ///
+    /// let m = Metric::new("foo", 1.1).time(10101);
+    ///
+    /// assert_eq!(10101, m.time);
+    /// ```
+    pub fn time(mut self, time: i64) -> Metric {
+        self.time = time;
+        self
     }
 
     /// Valid message formats are:
@@ -114,74 +229,69 @@ impl Metric {
                     let len = src.len();
                     match (&src[offset..]).find(':') {
                         Some(colon_idx) => {
-                            let name = &src[offset..(offset+colon_idx)];
-                            if name.is_empty() { return None };
+                            let name = &src[offset..(offset + colon_idx)];
+                            if name.is_empty() {
+                                return None;
+                            };
                             offset += colon_idx + 1;
-                            if offset >= len { return None };
+                            if offset >= len {
+                                return None;
+                            };
                             match (&src[offset..]).find('|') {
                                 Some(pipe_idx) => {
-                                    let sign = match &src[offset..(offset+1)] {
-                                        "+" => Some(MetricSign::Positive),
-                                        "-" => Some(MetricSign::Negative),
-                                        _ => None
-                                    };
-                                    let val = match f64::from_str(&src[offset..(offset+pipe_idx)]) {
+                                    let val = match f64::from_str(&src[offset..(offset +
+                                                                                pipe_idx)]) {
                                         Ok(f) => f,
-                                        Err(_) => return None
+                                        Err(_) => return None,
+                                    };
+                                    let mut metric = Metric::new(name, val);
+                                    metric = match &src[offset..(offset + 1)] {
+                                        "+" | "-" => metric.delta_gauge(),
+                                        _ => metric,
                                     };
                                     offset += pipe_idx + 1;
-                                    if offset >= len { return None };
-                                    let kind = match (&src[offset..]).find('@') {
+                                    if offset >= len {
+                                        return None;
+                                    };
+                                    metric = match (&src[offset..]).find('@') {
                                         Some(sample_idx) => {
-                                            match &src[offset..(offset+sample_idx)] {
-                                                "g" => MetricKind::Gauge,
-                                                "ms" => MetricKind::Timer,
-                                                "h" => MetricKind::Histogram,
+                                            match &src[offset..(offset + sample_idx)] {
+                                                "g" => metric.gauge(),
+                                                "ms" => metric.timer(),
+                                                "h" => metric.histogram(),
                                                 "c" => {
-                                                    let sample = match f64::from_str(&src[(offset+sample_idx+1)..]) {
-                                                        Ok(f) => f,
-                                                        Err(_) => return None
-                                                    };
-                                                    MetricKind::Counter(sample)
+                                                    let sample =
+                                                        match f64::from_str(&src[(offset +
+                                                                                  sample_idx +
+                                                                                  1)..]) {
+                                                            Ok(f) => f,
+                                                            Err(_) => return None,
+                                                        };
+                                                    metric.counter(sample)
                                                 }
-                                                _ => return None
+                                                _ => return None,
                                             }
                                         }
                                         None => {
                                             match &src[offset..] {
-                                                "g" | "g\n" => MetricKind::Gauge,
-                                                "ms" | "ms\n" => MetricKind::Timer,
-                                                "h" | "h\n" => MetricKind::Histogram,
-                                                "c" | "c\n" => MetricKind::Counter(1.0),
-                                                _ => return None
+                                                "g" | "g\n" => metric.gauge(),
+                                                "ms" | "ms\n" => metric.timer(),
+                                                "h" | "h\n" => metric.histogram(),
+                                                "c" | "c\n" => metric.counter(1.0),
+                                                _ => return None,
                                             }
                                         }
                                     };
 
-                                    let m = match sign {
-                                        None => Metric::new(String::from(name), val, kind, None),
-                                        Some(MetricSign::Positive) => {
-                                            match kind {
-                                                MetricKind::Gauge => Metric::new(String::from(name), val, MetricKind::DeltaGauge, None),
-                                                _ => Metric::new(String::from(name), val, kind, None),
-                                            }
-                                        },
-                                        Some(MetricSign::Negative) => {
-                                            match kind {
-                                                MetricKind::Gauge => Metric::new(String::from(name), val, MetricKind::DeltaGauge, None),
-                                                _ => Metric::new(String::from(name), val, kind, None),
-                                            }
-                                        }
-                                    };
-                                    res.push(m);
+                                    res.push(metric);
                                 }
-                                None => return None
+                                None => return None,
                             }
                         }
-                        None => return None
+                        None => return None,
                     }
                 }
-                None => break
+                None => break,
             }
         }
         if res.is_empty() {
@@ -209,21 +319,20 @@ impl Metric {
                                         Ok(t) => t,
                                         Err(_) => return None,
                                     };
-                                    res.push(Metric::new_with_time(String::from(name),
-                                                                   parsed_val,
-                                                                   Some(parsed_time),
-                                                                   MetricKind::Raw, None))
+                                    res.push(Metric::new(name, parsed_val).time(parsed_time));
                                 }
-                                None => return None
+                                None => return None,
                             }
                         }
-                        None => return None
+                        None => return None,
                     }
                 }
-                None => break
+                None => break,
             }
         }
-        if res.is_empty() { return None }
+        if res.is_empty() {
+            return None;
+        }
         Some(res)
     }
 }
@@ -233,21 +342,10 @@ mod tests {
     extern crate rand;
     extern crate quickcheck;
 
-    use metric::{Metric, MetricKind, MetricSign, MetricQOS, Event};
+    use metric::{Metric, MetricKind, MetricQOS, Event};
     use self::quickcheck::{Arbitrary, Gen};
     use chrono::{UTC, TimeZone};
     use self::rand::{Rand, Rng};
-
-    impl Rand for MetricSign {
-        fn rand<R: Rng>(rng: &mut R) -> MetricSign {
-            let i: usize = rng.gen_range(0, 2);
-            match i % 2 {
-                0 => MetricSign::Positive,
-                1 => MetricSign::Negative,
-                _ => unreachable!(),
-            }
-        }
-    }
 
     impl Rand for MetricKind {
         fn rand<R: Rng>(rng: &mut R) -> MetricKind {
@@ -268,9 +366,17 @@ mod tests {
             let name: String = rng.gen_ascii_chars().take(2).collect();
             let val: f64 = rng.gen();
             let kind: MetricKind = rng.gen();
-            let sign: Option<MetricSign> = rng.gen();
             let time: i64 = rng.gen_range(0, 100);
-            Metric::new_with_time(name, val, Some(time), kind, sign)
+            let mut mb = Metric::new(name, val).time(time);
+            mb = match kind {
+                MetricKind::Gauge => mb.gauge(),
+                MetricKind::Timer => mb.timer(),
+                MetricKind::Histogram => mb.histogram(),
+                MetricKind::Counter(smpl) => mb.counter(smpl),
+                MetricKind::DeltaGauge => mb.delta_gauge(),
+                MetricKind::Raw => mb,
+            };
+            mb
         }
     }
 
@@ -351,6 +457,36 @@ mod tests {
         assert_eq!(prs_pyld[5].name, "s-th");
         assert_eq!(prs_pyld[5].value, 6.0);
         assert_eq!(prs_pyld[5].time, UTC.timestamp(606, 0).timestamp());
+    }
+
+    #[test]
+    fn test_negative_timer() {
+        let m = Metric::new("timer", -1.0).timer();
+
+        assert_eq!(m.kind, MetricKind::Timer);
+        assert_eq!(m.value, -1.0);
+        assert_eq!(m.name, "timer");
+    }
+
+    #[test]
+    fn test_parse_negative_timer() {
+        let prs = Metric::parse_statsd("fst:-1.1|ms\n");
+
+        assert!(prs.is_some());
+        let prs_pyld = prs.unwrap();
+
+        assert_eq!(prs_pyld[0].kind, MetricKind::Timer);
+        assert_eq!(prs_pyld[0].name, "fst");
+        assert_eq!(prs_pyld[0].value, -1.1);
+    }
+
+    #[test]
+    fn test_postive_delta_gauge() {
+        let m = Metric::new("dgauge", 1.0).delta_gauge();
+
+        assert_eq!(m.kind, MetricKind::DeltaGauge);
+        assert_eq!(m.value, 1.0);
+        assert_eq!(m.name, "dgauge");
     }
 
     #[test]

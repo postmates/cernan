@@ -9,9 +9,8 @@ use toml;
 use toml::Value;
 use std::io::Read;
 use std::str::FromStr;
-use metric::MetricQOS;
+use metric::{MetricQOS, TagMap};
 use std::path::{Path,PathBuf};
-use std::collections::BTreeMap;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
@@ -33,7 +32,7 @@ pub struct Args {
     pub fed_transmitter_host: Option<String>,
     pub fed_transmitter_port: Option<u16>,
     pub qos: MetricQOS,
-    pub tags: BTreeMap<String, String>,
+    pub tags: TagMap,
     pub files: Option<Vec<PathBuf>>,
     pub verbose: u64,
     pub version: String,
@@ -114,7 +113,7 @@ pub fn parse_args() -> Args {
                 fed_transmitter: false,
                 fed_transmitter_port: None,
                 fed_transmitter_host: None,
-                tags: BTreeMap::new(),
+                tags: TagMap::default(),
                 qos: qos,
                 files: None,
                 verbose: verb,
@@ -127,16 +126,16 @@ pub fn parse_args() -> Args {
 pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     let value: toml::Value = buffer.parse().unwrap();
 
-    let tags = match value.lookup("tags") {
+    let tags : TagMap = match value.lookup("tags") {
         Some(tbl) => {
-            let mut tags = BTreeMap::new();
+            let mut tags = TagMap::default();
             let ttbl = tbl.as_table().unwrap();
             for (k, v) in ttbl.iter() {
                 tags.insert(String::from(k.clone()), String::from(v.as_str().unwrap().to_string()));
             }
             tags
         }
-        None => BTreeMap::new(),
+        None => TagMap::default(),
     };
 
     let qos = match value.lookup("quality-of-service") {
@@ -300,8 +299,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
 #[cfg(test)]
 mod test {
     use super::*;
-    use metric::MetricQOS;
-    use std::collections::BTreeMap;
+    use metric::{MetricQOS,TagMap};
     use std::path::PathBuf;
 
     #[test]
@@ -323,7 +321,7 @@ mod test {
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.fed_transmitter, false);
         assert_eq!(args.fed_transmitter_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -348,7 +346,7 @@ port = 1987
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -373,7 +371,7 @@ ip = "127.0.0.1"
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -400,7 +398,7 @@ port = 1987
         assert_eq!(args.fed_transmitter, true);
         assert_eq!(args.fed_transmitter_host, Some(String::from("127.0.0.1")));
         assert_eq!(args.fed_transmitter_port, Some(1987));
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -427,7 +425,7 @@ host = "foo.example.com"
         assert_eq!(args.fed_transmitter, true);
         assert_eq!(args.fed_transmitter_host, Some(String::from("foo.example.com")));
         assert_eq!(args.fed_transmitter_port, Some(1972));
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -450,7 +448,7 @@ statsd-port = 1024
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -474,7 +472,7 @@ port = 1024
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -499,7 +497,7 @@ port = 1024
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -522,7 +520,7 @@ graphite-port = 1024
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -546,7 +544,7 @@ port = 1024
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -571,7 +569,7 @@ port = 1024
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -596,7 +594,7 @@ host = "example.com"
         assert_eq!(args.wavefront, true);
         assert_eq!(args.wavefront_host, Some("example.com".to_string()));
         assert_eq!(args.wavefront_port, Some(3131));
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -619,7 +617,7 @@ host = "example.com"
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -642,7 +640,7 @@ host = "example.com"
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -669,7 +667,7 @@ delivery_stream = "stream_two"
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -694,7 +692,7 @@ path = "/foo/bar.txt"
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -722,7 +720,7 @@ path = "/bar.txt"
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
@@ -738,7 +736,7 @@ mission = "from_gad"
             .to_string();
 
         let args = parse_config_file(config, 4);
-        let mut tags = BTreeMap::new();
+        let mut tags = TagMap::default();
         tags.insert(String::from("mission"), String::from("from_gad"));
         tags.insert(String::from("purpose"), String::from("serious_business"));
         tags.insert(String::from("source"), String::from("cernan"));
@@ -780,7 +778,7 @@ raw = 42
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, BTreeMap::default());
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos,
                    MetricQOS {
                        gauge: 110,
@@ -827,7 +825,7 @@ raw = 42
 
         let args = parse_config_file(config, 4);
         println!("ARGS : {:?}", args);
-        let mut tags = BTreeMap::new();
+        let mut tags = TagMap::default();
         tags.insert(String::from("mission"), String::from("from_gad"));
         tags.insert(String::from("purpose"), String::from("serious_business"));
         tags.insert(String::from("source"), String::from("cernan"));

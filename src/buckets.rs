@@ -187,7 +187,7 @@ mod test {
 
     use super::*;
     use self::quickcheck::{TestResult, QuickCheck};
-    use metric::{Metric, MetricKind, MetricSign};
+    use metric::{Metric, MetricKind};
     use std::collections::{HashSet, HashMap};
     use chrono::{UTC, TimeZone};
     use quantiles::CKMS;
@@ -196,18 +196,14 @@ mod test {
     fn test_add_increments_total_messages() {
         let mut buckets = Buckets::default();
         // duff value to ensure it changes.
-        let metric = Metric::new(String::from("some.metric"),
-                                 1.0,
-                                 MetricKind::Counter(1.0),
-                                 None);
+        let metric = Metric::new("some.metric", 1.0).counter(1.0);
         buckets.add(metric);
     }
 
     #[test]
     fn test_add_counter_metric() {
         let mut buckets = Buckets::default();
-        let mname = String::from("some.metric");
-        let metric = Metric::new(mname, 1.0, MetricKind::Counter(1.0), None);
+        let metric = Metric::new("some.metric", 1.0).counter(1.0);
         buckets.add(metric.clone());
 
         let rmname = String::from("some.metric");
@@ -225,8 +221,7 @@ mod test {
     #[test]
     fn test_add_counter_metric_reset() {
         let mut buckets = Buckets::default();
-        let mname = String::from("some.metric");
-        let metric = Metric::new(mname, 1.0, MetricKind::Counter(1.0), None);
+        let metric = Metric::new("some.metric", 1.0).counter(1.0);
         buckets.add(metric.clone());
 
         let rmname = String::from("some.metric");
@@ -252,9 +247,9 @@ mod test {
         let dt_2 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 13, 0).timestamp();
 
         let name = String::from("some.metric");
-        let m0 = Metric::new_with_time(name.clone(), 1.0, Some(dt_0), MetricKind::Histogram, None);
-        let m1 = Metric::new_with_time(name.clone(), 2.0, Some(dt_1), MetricKind::Histogram, None);
-        let m2 = Metric::new_with_time(name.clone(), 3.0, Some(dt_2), MetricKind::Histogram, None);
+        let m0 = Metric::new("some.metric", 1.0).time(dt_0).histogram();
+        let m1 = Metric::new("some.metric", 2.0).time(dt_1).histogram();
+        let m2 = Metric::new("some.metric", 3.0).time(dt_2).histogram();
 
         buckets.add(m0.clone());
         buckets.add(m1.clone());
@@ -292,8 +287,7 @@ mod test {
     fn test_add_histogram_metric_reset() {
         let mut buckets = Buckets::default();
         let name = String::from("some.metric");
-        let mname = name.clone();
-        let metric = Metric::new(mname, 1.0, MetricKind::Histogram, None);
+        let metric = Metric::new("some.metric", 1.0).histogram();
         buckets.add(metric.clone());
 
         buckets.reset();
@@ -304,8 +298,7 @@ mod test {
     fn test_add_timer_metric_reset() {
         let mut buckets = Buckets::default();
         let name = String::from("some.metric");
-        let mname = name.clone();
-        let metric = Metric::new(mname, 1.0, MetricKind::Timer, None);
+        let metric = Metric::new("some.metric", 1.0).timer();
         buckets.add(metric.clone());
 
         buckets.reset();
@@ -315,20 +308,13 @@ mod test {
     #[test]
     fn test_add_counter_metric_sampled() {
         let mut buckets = Buckets::default();
-        let metric = Metric::new(String::from("some.metric"),
-                                 1.0,
-                                 MetricKind::Counter(0.1),
-                                 None);
-
+        let metric = Metric::new("some.metric", 1.0).counter(0.1);
         let rmname = String::from("some.metric");
 
         buckets.add(metric);
         assert_eq!(10.0, buckets.counters.get_mut(&rmname).unwrap()[0].1.value);
 
-        let metric_two = Metric::new(String::from("some.metric"),
-                                     1.0,
-                                     MetricKind::Counter(0.5),
-                                     None);
+        let metric_two = Metric::new("some.metric", 1.0).counter(0.5);
         buckets.add(metric_two);
         assert_eq!(12.0, buckets.counters.get_mut(&rmname).unwrap()[0].1.value);
     }
@@ -337,7 +323,7 @@ mod test {
     fn test_add_gauge_metric() {
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Metric::new(String::from("some.metric"), 11.5, MetricKind::Gauge, None);
+        let metric = Metric::new("some.metric", 11.5).gauge();
         buckets.add(metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
@@ -350,12 +336,9 @@ mod test {
     fn test_add_delta_gauge_metric() {
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Metric::new(String::from("some.metric"), 100.0, MetricKind::Gauge, None);
+        let metric = Metric::new("some.metric", 100.0).gauge();
         buckets.add(metric);
-        let delta_metric = Metric::new(String::from("some.metric"),
-                                       11.5,
-                                       MetricKind::Gauge,
-                                       Some(MetricSign::Negative));
+        let delta_metric = Metric::new("some.metric", -11.5).delta_gauge();
         buckets.add(delta_metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
@@ -365,18 +348,14 @@ mod test {
     }
 
     #[test]
-    fn test_add_delta_gauge_metric_reset() {
+    fn test_reset_add_delta_gauge_metric() {
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Metric::new(String::from("some.metric"), 100.0, MetricKind::Gauge, None);
+        let metric = Metric::new("some.metric", 100.0).gauge();
         buckets.add(metric);
-        let delta_metric = Metric::new(String::from("some.metric"),
-                                       11.5,
-                                       MetricKind::Gauge,
-                                       Some(MetricSign::Negative));
+        let delta_metric = Metric::new("some.metric", -11.5).delta_gauge();
         buckets.add(delta_metric);
-        let reset_metric =
-            Metric::new(String::from("some.metric"), 2007.3, MetricKind::Gauge, None);
+        let reset_metric = Metric::new("some.metric", 2007.3).gauge();
         buckets.add(reset_metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
@@ -389,7 +368,7 @@ mod test {
     fn test_add_timer_metric() {
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Metric::new(String::from("some.metric"), 11.5, MetricKind::Timer, None);
+        let metric = Metric::new("some.metric", 11.5).timer();
         buckets.add(metric);
         assert!(buckets.timers.contains_key(&rmname),
                 "Should contain the metric key");
@@ -397,20 +376,16 @@ mod test {
         assert_eq!(Some((1, 11.5)),
                    buckets.timers.get_mut(&rmname).expect("hwhap")[0].1.query(0.0));
 
-        let metric_two = Metric::new(String::from("some.metric"), 99.5, MetricKind::Timer, None);
+        let metric_two = Metric::new("some.metric", 99.5).timer();
         buckets.add(metric_two);
 
         let romname = String::from("other.metric");
-        let metric_three =
-            Metric::new(String::from("other.metric"), 811.5, MetricKind::Timer, None);
+        let metric_three = Metric::new("other.metric", 811.5).timer();
         buckets.add(metric_three);
         assert!(buckets.timers.contains_key(&romname),
                 "Should contain the metric key");
         assert!(buckets.timers.contains_key(&romname),
                 "Should contain the metric key");
-
-        // assert_eq!(Some(&mut vec![11.5, 99.5]), buckets.timers.get_mut("some.metric"));
-        // assert_eq!(Some(&mut vec![811.5]), buckets.timers.get_mut("other.metric"));
     }
 
     #[test]
@@ -419,36 +394,18 @@ mod test {
         let dt_0 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 0, 0).timestamp();
         let dt_1 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 1, 0).timestamp();
 
-        buckets.add(Metric::new_with_time(String::from("some.metric"),
-                                          1.0,
-                                          Some(dt_0),
-                                          MetricKind::Raw,
-                                          None));
-        buckets.add(Metric::new_with_time(String::from("some.metric"),
-                                          2.0,
-                                          Some(dt_0),
-                                          MetricKind::Raw,
-                                          None));
-        buckets.add(Metric::new_with_time(String::from("some.metric"),
-                                          3.0,
-                                          Some(dt_0),
-                                          MetricKind::Raw,
-                                          None));
-        buckets.add(Metric::new_with_time(String::from("some.metric"),
-                                          4.0,
-                                          Some(dt_1),
-                                          MetricKind::Raw,
-                                          None));
+        buckets.add(Metric::new("some.metric", 1.0).time(dt_0));
+        buckets.add(Metric::new("some.metric", 2.0).time(dt_0));
+        buckets.add(Metric::new("some.metric", 3.0).time(dt_0));
+        buckets.add(Metric::new("some.metric", 4.0).time(dt_1));
 
         let mname = String::from("some.metric");
-        assert!(buckets.raws.contains_key(&mname),
-                "Should contain the metric key");
+        assert!(buckets.raws.contains_key(&mname), "Should contain the metric key");
 
         assert_eq!(Some(&mut vec![
-            (1473766200, Metric::new_with_time(String::from("some.metric"), 3.0, Some(dt_0), MetricKind::Raw, None)),
-            (1473766201, Metric::new_with_time(String::from("some.metric"), 4.0, Some(dt_1), MetricKind::Raw, None)),
-        ]),
-                   buckets.raws.get_mut(&mname));
+            (dt_0, Metric::new("some.metric", 3.0).time(dt_0)),
+            (dt_1, Metric::new("some.metric", 4.0).time(dt_1)),
+        ]), buckets.raws.get_mut(&mname));
     }
 
     #[test]
@@ -611,8 +568,8 @@ mod test {
     fn test_gauge_insertion() {
         let mut buckets = Buckets::default();
 
-        let m0 = Metric::new(String::from("test.gauge_0"), 1.0, MetricKind::Gauge, None);
-        let m1 = Metric::new(String::from("test.gauge_1"), 1.0, MetricKind::Gauge, None);
+        let m0 = Metric::new("test.gauge_0", 1.0).gauge();
+        let m1 = Metric::new("test.gauge_1", 1.0).gauge();
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
@@ -626,8 +583,8 @@ mod test {
     fn test_counter_insertion() {
         let mut buckets = Buckets::default();
 
-        let m0 = Metric::counter("test.counter_0");
-        let m1 = Metric::counter("test.counter_1");
+        let m0 = Metric::new("test.counter_0", 1.0).counter(1.0);
+        let m1 = Metric::new("test.counter_1", 1.0).counter(1.0);
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 

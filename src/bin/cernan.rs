@@ -8,7 +8,6 @@ extern crate cernan;
 use std::str;
 use std::thread;
 use chrono::UTC;
-use std::fmt::Write;
 
 use cernan::sink::Sink;
 
@@ -43,6 +42,9 @@ fn main() {
     let mut joins = Vec::new();
     let mut sends = Vec::new();
 
+    //
+    // SINKS
+    //
     if args.console {
         let (console_send, console_recv) = cernan::mpsc::channel("console", &args.data_directory);
         sends.push(console_send);
@@ -58,30 +60,16 @@ fn main() {
         }));
     }
     if args.wavefront {
-        let mut wf_tags = String::new();
-        for (k, v) in args.tags.iter() {
-            write!(wf_tags, "{}={} ", k, v).unwrap();
-        }
         let cp_args = args.clone();
         let (wf_send, wf_recv) = cernan::mpsc::channel("wf", &args.data_directory);
         sends.push(wf_send);
         joins.push(thread::spawn(move || {
             cernan::sinks::wavefront::Wavefront::new(&cp_args.wavefront_host.unwrap(),
                                                      cp_args.wavefront_port.unwrap(),
-                                                     wf_tags,
+                                                     cp_args.tags.clone(),
                                                      cp_args.qos.clone(),
                                                      cp_args.flush_interval as i64)
                 .run(wf_recv);
-        }));
-    }
-
-    let args_fedtrn = args.clone();
-    if args_fedtrn.fed_transmitter {
-        let (cernan_send, cernan_recv) = cernan::mpsc::channel("cernan", &args.data_directory);
-        sends.push(cernan_send);
-        joins.push(thread::spawn(move || {
-            cernan::sinks::federation_receiver::FederationReceiver::new(args_fedtrn.fed_transmitter_port.unwrap(),
-                                                          args_fedtrn.fed_transmitter_host.unwrap()).run(cernan_recv);
         }));
     }
 
@@ -98,38 +86,65 @@ fn main() {
         let fh_name = ds.clone();
         let (firehose_send, firehose_recv) = cernan::mpsc::channel(&fh_name, &args.data_directory);
         sends.push(firehose_send);
-        let fh_args = args.clone();
         joins.push(thread::spawn(move || {
-            cernan::sinks::firehose::Firehose::new(&fh_name, fh_args.tags).run(firehose_recv);
+            cernan::sinks::firehose::Firehose::new(&fh_name).run(firehose_recv);
         }));
     }
 
-    let sport = args.statsd_port;
-    if sport.is_some() {
-        let sport = sport.unwrap();
-        let udp_server_v4_send = sends.clone();
+    //
+    // SOURCES
+    //
+
+    let args_fedtrn = args.clone();
+    if args_fedtrn.fed_transmitter {
+        let (cernan_send, cernan_recv) = cernan::mpsc::channel("cernan", &args.data_directory);
+        sends.push(cernan_send);
         joins.push(thread::spawn(move || {
-            cernan::server::udp_server_v4(udp_server_v4_send, sport);
+            cernan::sinks::federation_receiver::FederationReceiver::new(args_fedtrn.fed_transmitter_port.unwrap(),
+                                                          args_fedtrn.fed_transmitter_host.unwrap()).run(cernan_recv);
+        }));
+    }
+
+    let stags = args.tags.clone();
+    if let Some(sport) = args.statsd_port {
+        let udp_server_v4_send = sends.clone();
+        let stags_v4 = stags.clone();
+        joins.push(thread::spawn(move || {
+            cernan::server::udp_server_v4(udp_server_v4_send, sport, stags_v4);
         }));
         let udp_server_v6_send = sends.clone();
         joins.push(thread::spawn(move || {
-            cernan::server::udp_server_v6(udp_server_v6_send, sport);
+            cernan::server::udp_server_v6(udp_server_v6_send, sport, stags);
         }));
     }
 
 
-    let gport = args.graphite_port;
-    if gport.is_some() {
-        let gport = gport.unwrap();
+    let gtags = args.tags.clone();
+    if let Some(gport) = args.graphite_port {
         let tcp_server_ipv6_sends = sends.clone();
+        let gtags_v4 = gtags.clone();
         joins.push(thread::spawn(move || {
-            cernan::server::tcp_server_ipv6(tcp_server_ipv6_sends, gport);
+            cernan::server::tcp_server_ipv6(tcp_server_ipv6_sends, gport, gtags_v4);
         }));
         let tcp_server_ipv4_sends = sends.clone();
         joins.push(thread::spawn(move || {
-            cernan::server::tcp_server_ipv4(tcp_server_ipv4_sends, gport);
+            cernan::server::tcp_server_ipv4(tcp_server_ipv4_sends, gport, gtags);
         }));
     }
+
+    if let Some(log_files) = args.files {
+        for lf in log_files {
+            let fp_sends = sends.clone();
+            let ftags = args.tags.clone();
+            joins.push(thread::spawn(move || {
+                cernan::server::file_server(fp_sends, lf, ftags);
+            }));
+        }
+    }
+
+    //
+    // BACKGROUND
+    //
 
     let flush_interval = args.flush_interval;
     let flush_interval_sends = sends.clone();
@@ -140,15 +155,6 @@ fn main() {
     joins.push(thread::spawn(move || {
         cernan::time::update_time();
     }));
-
-    if let Some(log_files) = args.files {
-        for lf in log_files {
-            let fp_sends = sends.clone();
-            joins.push(thread::spawn(move || {
-                cernan::server::file_server(fp_sends, lf);
-            }));
-        }
-    }
 
     for jh in joins {
         jh.join().expect("Uh oh, child thread paniced!");

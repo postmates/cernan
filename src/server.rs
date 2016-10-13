@@ -27,22 +27,25 @@ fn send(chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &metric::Event) {
     }
 }
 
-/// statsd
-pub fn udp_server_v6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
+//
+// STATSD
+//
+
+pub fn udp_server_v6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16, tags: metric::TagMap) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
     let socket = UdpSocket::bind(addr).expect("Unable to bind to UDP socket");
     info!("statsd server started on ::1 {}", port);
-    handle_udp(chans, socket);
+    handle_udp(chans, socket, tags);
 }
 
-pub fn udp_server_v4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
+pub fn udp_server_v4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16, tags: metric::TagMap) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let socket = UdpSocket::bind(addr).expect("Unable to bind to UDP socket");
     info!("statsd server started on 127.0.0.1:{}", port);
-    handle_udp(chans, socket);
+    handle_udp(chans, socket, tags);
 }
 
-pub fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>, socket: UdpSocket) {
+pub fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>, socket: UdpSocket, tags: metric::TagMap) {
     let mut buf = [0; 8192];
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
@@ -54,14 +57,17 @@ pub fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>, socket: UdpSocket
                 trace!("statsd - {}", val);
                 match metric::Metric::parse_statsd(val) {
                     Some(metrics) => {
-                        for m in metrics {
+                        for mut m in metrics {
+                            m = m.overlay_tags_from_map(&tags);
                             send(&mut chans, &metric::Event::Statsd(m));
                         }
-                        let metric = metric::Metric::counter("cernan.statsd.packet");
+                        let mut metric = metric::Metric::new("cernan.statsd.packet", 1.0).counter(1.0);
+                        metric = metric.overlay_tags_from_map(&tags);
                         send(&mut chans, &metric::Event::Statsd(metric));
                     }
                     None => {
-                        let metric = metric::Metric::counter("cernan.statsd.bad_packet");
+                        let mut metric = metric::Metric::new("cernan.statsd.bad_packet", 1.0).counter(1.0);
+                        metric = metric.overlay_tags_from_map(&tags);
                         send(&mut chans, &metric::Event::Statsd(metric));
                         error!("BAD PACKET: {:?}", val);
                     }
@@ -71,7 +77,11 @@ pub fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>, socket: UdpSocket
     }
 }
 
-pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf) {
+//
+// FILE
+//
+
+pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf, tags: metric::TagMap) {
     let (tx, rx) = channel();
     // NOTE on OSX fsevent will _not_ let us watch a file we don't own
     // effectively. See
@@ -103,11 +113,12 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf) {
                                     Ok(0) => break,
                                     Ok(_) => {
                                         let name = format!("{}.lines", path.to_str().unwrap());
-                                        let metric = metric::Metric::counter(&name);
+                                        let metric = metric::Metric::new(name, 1.0).counter(1.0).overlay_tags_from_map(&tags);
                                         send(&mut chans, &metric::Event::Statsd(metric));
                                         lines.push(metric::LogLine::new(
                                             String::from(path.to_str().unwrap()),
                                             line,
+                                            tags.clone()
                                         ));
                                     },
                                     Err(err) => panic!(err)
@@ -125,8 +136,9 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf) {
 }
 
 //
-// cernan crd_receiver sink
+// FEDERATION_RECEIVER
 //
+
 pub fn receiver_sink_server(chans: Vec<mpsc::Sender<metric::Event>>, ip: &String, port: u16) {
     let srv: Vec<_> = (ip.as_str(), port).to_socket_addrs().expect("unable to make socket addr").collect();
     let listener = TcpListener::bind(srv.first().unwrap()).expect("Unable to bind to TCP socket");
@@ -166,33 +178,36 @@ fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: T
 }
 
 //
-// graphite
+// GRAPHITE
 //
-pub fn tcp_server_ipv6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
+
+pub fn tcp_server_ipv6(chans: Vec<mpsc::Sender<metric::Event>>, port: u16, tags: metric::TagMap) {
     let addr = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
     info!("graphite server started on ::1 {}", port);
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
             let srv_chans = chans.clone();
-            thread::spawn(move || handle_client(srv_chans, stream));
+            let tags = tags.clone();
+            thread::spawn(move || handle_client(srv_chans, stream, tags));
         }
     }
 }
 
-pub fn tcp_server_ipv4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
+pub fn tcp_server_ipv4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16, tags: metric::TagMap) {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
     info!("graphite server started on 127.0.0.1:{}", port);
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
             let srv_chans = chans.clone();
-            thread::spawn(move || handle_client(srv_chans, stream));
+            let tags = tags.clone();
+            thread::spawn(move || handle_client(srv_chans, stream, tags));
         }
     }
 }
 
-fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream) {
+fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream, tags: metric::TagMap) {
     let line_reader = BufReader::new(stream);
     for line in line_reader.lines() {
         match line {
@@ -203,14 +218,15 @@ fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream)
                         trace!("graphite - {}", val);
                         match metric::Metric::parse_graphite(val) {
                             Some(metrics) => {
-                                let metric = metric::Metric::counter("cernan.graphite.packet");
+                                let metric = metric::Metric::new("cernan.graphite.packet", 1.0).counter(1.0).overlay_tags_from_map(&tags);;
                                 send(&mut chans, &metric::Event::Statsd(metric));
-                                for m in metrics {
+                                for mut m in metrics {
+                                    m = m.overlay_tags_from_map(&tags);
                                     send(&mut chans, &metric::Event::Graphite(m));
                                 }
                             }
                             None => {
-                                let metric = metric::Metric::counter("cernan.graphite.bad_packet");
+                                let metric = metric::Metric::new("cernan.graphite.bad_packet", 1.0).counter(1.0).overlay_tags_from_map(&tags);
                                 send(&mut chans, &metric::Event::Statsd(metric));
                                 error!("BAD PACKET: {:?}", val);
                             }
@@ -223,7 +239,10 @@ fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream)
     }
 }
 
-// emit flush event into channel on a regular interval
+//
+// FLUSH
+//
+
 pub fn flush_timer_loop(mut chans: Vec<mpsc::Sender<metric::Event>>, interval: u64) {
     let duration = Duration::new(interval, 0);
     loop {
