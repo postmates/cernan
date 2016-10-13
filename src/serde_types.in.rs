@@ -6,13 +6,13 @@ pub struct LogLine {
 //    pub tags: Cow<Vec<(String, String)>>,
 }
 
-#[derive(PartialEq, PartialOrd, Debug, Serialize, Deserialize, Clone)]
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct Metric {
     pub kind: MetricKind,
+    pub name: String,
+    pub tags: HashMapFnv<String, String>,
     pub time: i64,
     pub value: f64,
-    pub name: String,
-    pub tags: Vec<(String, String)>,
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]

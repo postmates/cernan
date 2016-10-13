@@ -57,11 +57,11 @@ pub fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>, socket: UdpSocket
                         for m in metrics {
                             send(&mut chans, &metric::Event::Statsd(m));
                         }
-                        let metric = metric::MetricBuilder::new("cernan.statsd.packet").counter(1.0).build().unwrap();
+                        let metric = metric::Metric::new("cernan.statsd.packet", 1.0).counter(1.0);
                         send(&mut chans, &metric::Event::Statsd(metric));
                     }
                     None => {
-                        let metric = metric::MetricBuilder::new("cernan.statsd.bad_packet").counter(1.0).build().unwrap();
+                        let metric = metric::Metric::new("cernan.statsd.bad_packet", 1.0).counter(1.0);
                         send(&mut chans, &metric::Event::Statsd(metric));
                         error!("BAD PACKET: {:?}", val);
                     }
@@ -103,7 +103,7 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf) {
                                     Ok(0) => break,
                                     Ok(_) => {
                                         let name = format!("{}.lines", path.to_str().unwrap());
-                                        let metric = metric::MetricBuilder::new(name).counter(1.0).build().unwrap();
+                                        let metric = metric::Metric::new(name, 1.0).counter(1.0);
                                         send(&mut chans, &metric::Event::Statsd(metric));
                                         lines.push(metric::LogLine::new(
                                             String::from(path.to_str().unwrap()),
@@ -203,14 +203,14 @@ fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream)
                         trace!("graphite - {}", val);
                         match metric::Metric::parse_graphite(val) {
                             Some(metrics) => {
-                                let metric = metric::MetricBuilder::new("cernan.graphite.packet").counter(1.0).build().unwrap();
+                                let metric = metric::Metric::new("cernan.graphite.packet", 1.0).counter(1.0);
                                 send(&mut chans, &metric::Event::Statsd(metric));
                                 for m in metrics {
                                     send(&mut chans, &metric::Event::Graphite(m));
                                 }
                             }
                             None => {
-                                let metric = metric::MetricBuilder::new("cernan.graphite.bad_packet").counter(1.0).build().unwrap();
+                                let metric = metric::Metric::new("cernan.graphite.bad_packet", 1.0).counter(1.0);
                                 send(&mut chans, &metric::Event::Statsd(metric));
                                 error!("BAD PACKET: {:?}", val);
                             }

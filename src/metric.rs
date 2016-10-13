@@ -3,6 +3,12 @@ use std::str::FromStr;
 
 include!(concat!(env!("OUT_DIR"), "/serde_types.rs"));
 
+use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
+use fnv::FnvHasher;
+
+type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
+
 impl LogLine {
     pub fn new(path: String, value: String) -> LogLine {
         LogLine {
@@ -34,22 +40,7 @@ impl Default for MetricQOS {
     }
 }
 
-#[derive(PartialEq, Debug)]
-pub enum MetricSign {
-    Positive,
-    Negative,
-}
-
-#[derive(Debug)]
-pub struct MetricBuilder {
-    name: String,
-    value: Option<f64>,
-    kind: Option<MetricKind>,
-    sign: Option<MetricSign>,
-    time: Option<i64>,
-}
-
-impl MetricBuilder {
+impl Metric {
     /// Make a builder for metrics
     ///
     /// This function returns a MetricBuidler with a name set. A metric must
@@ -59,124 +50,137 @@ impl MetricBuilder {
     /// # Examples
     ///
     /// ```
-    /// use cernan::metric::MetricBuilder;
+    /// use cernan::metric::{Metric,MetricKind};
     ///
-    /// assert!(MetricBuilder::new("foo").build().is_err());
-    /// assert!(MetricBuilder::new("foo").value(1.1).build().is_ok());
+    /// let m = Metric::new("foo", 1.1);
+    ///
+    /// assert_eq!(m.kind, MetricKind::Raw);
+    /// assert_eq!(m.name, "foo");
+    /// assert_eq!(m.value, 1.1);
     /// ```
-    pub fn new<S>(name: S) -> MetricBuilder where S: Into<String> {
-        MetricBuilder {
+    pub fn new<S>(name: S, value: f64) -> Metric
+        where S: Into<String>
+    {
+        Metric {
+            kind: MetricKind::Raw,
             name: name.into(),
-            value: None,
-            kind: None,
-            time: None,
-            sign: None,
+            tags: HashMapFnv::default(),
+            time: time::now(),
+            value: value,
         }
     }
 
-    /// Add a value to a MetricBuilder
+    pub fn overlay_tag(mut self, key: String, val: String) -> Metric {
+        self.tags.insert(key, val);
+        self
+    }
+
+    /// Replace a Metric's value
     ///
-    /// Values are mandatory for a Metric but may not be available at the same
-    /// time as names. Values _must_ carry their proper sign. `positive` and
-    /// `negative` functions _will not_ modify value sign. These functions
-    /// modify the interpretation of a MetricKind::Gauge.
+    /// While it is sometimes still necessary to fiddle with the value of a
+    /// Metric directly--I'm looking at you, buckets.rs--ideally we'd use a safe
+    /// API to do that fiddling.
+    ///
+    /// This function merely replaces the value. We could get fancy in the
+    /// future and do the Kind appropriate computation...
     ///
     /// # Examples
     ///
     /// ```
-    /// use cernan::metric::MetricBuilder;
+    /// use cernan::metric::Metric;
     ///
-    /// let mp = MetricBuilder::new("foo").value(1.1).positive().build().unwrap();
-    /// let mn = MetricBuilder::new("foo").value(1.1).negative().build().unwrap();
+    /// let m = Metric::new("foo", 1.1).value(10.10);
     ///
-    /// assert_eq!(1.1, mp.value);
-    /// assert_eq!(1.1, mn.value);
+    /// assert_eq!(m.value, 10.10);
     /// ```
-    pub fn value(mut self, value: f64) -> MetricBuilder {
-        self.value = Some(value);
+    pub fn value(mut self, value: f64) -> Metric {
+        self.value = value;
         self
     }
 
     /// Adjust MetricKind to Counter
     ///
-    /// This sets the ultimate metric's MetricKind to Counter. A sample
-    /// rate--measured in per-second units--is required.
-    ///
     /// # Examples
     ///
     /// ```
-    /// use cernan::metric::{MetricBuilder, MetricKind};
+    /// use cernan::metric::{Metric, MetricKind};
     ///
-    /// let mr = MetricBuilder::new("foo").value(1.1).build().unwrap();
-    /// let mc = MetricBuilder::new("foo").value(1.1).counter(1.0).build().unwrap();
+    /// let m = Metric::new("foo", 1.1).counter(1.0);
     ///
-    /// assert_eq!(MetricKind::Raw, mr.kind);
-    /// assert_eq!(MetricKind::Counter(1.0), mc.kind);
+    /// assert_eq!(MetricKind::Counter(1.0), m.kind);
     /// ```
-    pub fn counter(mut self, sample: f64) -> MetricBuilder {
-        self.kind = Some(MetricKind::Counter(sample));
+    pub fn counter(mut self, sample: f64) -> Metric {
+        self.kind = MetricKind::Counter(sample);
         self
     }
 
     /// Adjust MetricKind to Gauge
     ///
-    /// This sets the ultimate metric's MetricKind to gauge-type. There are two
-    /// manner of gauge, DeltaGauge and Gauge. This function will set the manner
-    /// to Gauge, though `postive` and `negative` may adjust this.
+    /// If the kind has previously been set to DeltaGauge the kind will not be
+    /// reset to Gauge.
     ///
     /// # Examples
     ///
     /// ```
-    /// use cernan::metric::{MetricBuilder, MetricKind};
+    /// use cernan::metric::{Metric, MetricKind};
     ///
-    /// let mr = MetricBuilder::new("foo").value(1.1).build().unwrap();
-    /// let mg = MetricBuilder::new("foo").value(1.1).gauge().build().unwrap();
+    /// let m = Metric::new("foo", 1.1).gauge();
     ///
-    /// assert_eq!(MetricKind::Raw, mr.kind);
-    /// assert_eq!(MetricKind::Gauge, mg.kind);
+    /// assert_eq!(MetricKind::Gauge, m.kind);
     /// ```
-    pub fn gauge(mut self) -> MetricBuilder {
-        self.kind = Some(MetricKind::Gauge);
+    pub fn gauge(mut self) -> Metric {
+        self.kind = match self.kind {
+            MetricKind::DeltaGauge => MetricKind::DeltaGauge,
+            _ => MetricKind::Gauge,
+        };
+        self
+    }
+
+    /// Adjust MetricKind to DeltaGauge
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{Metric, MetricKind};
+    ///
+    /// let m = Metric::new("foo", 1.1).delta_gauge();
+    ///
+    /// assert_eq!(MetricKind::DeltaGauge, m.kind);
+    /// ```
+    pub fn delta_gauge(mut self) -> Metric {
+        self.kind = MetricKind::DeltaGauge;
         self
     }
 
     /// Adjust MetricKind to Timer
     ///
-    /// This sets the ultimate metric's MetricKind to Timer.
-    ///
     /// # Examples
     ///
     /// ```
-    /// use cernan::metric::{MetricBuilder, MetricKind};
+    /// use cernan::metric::{Metric, MetricKind};
     ///
-    /// let mr = MetricBuilder::new("foo").value(1.1).build().unwrap();
-    /// let mt = MetricBuilder::new("foo").value(1.1).timer().build().unwrap();
+    /// let m = Metric::new("foo", 1.1).delta_gauge();
     ///
-    /// assert_eq!(MetricKind::Raw, mr.kind);
-    /// assert_eq!(MetricKind::Timer, mt.kind);
+    /// assert_eq!(MetricKind::DeltaGauge, m.kind);
     /// ```
-    pub fn timer(mut self) -> MetricBuilder {
-        self.kind = Some(MetricKind::Timer);
+    pub fn timer(mut self) -> Metric {
+        self.kind = MetricKind::Timer;
         self
     }
 
     /// Adjust MetricKind to Histogram
     ///
-    /// This sets the ultimate metric's MetricKind to Histogram.
-    ///
     /// # Examples
     ///
     /// ```
-    /// use cernan::metric::{MetricBuilder, MetricKind};
+    /// use cernan::metric::{Metric, MetricKind};
     ///
-    /// let mr = MetricBuilder::new("foo").value(1.1).build().unwrap();
-    /// let mt = MetricBuilder::new("foo").value(1.1).histogram().build().unwrap();
+    /// let m = Metric::new("foo", 1.1).histogram();
     ///
-    /// assert_eq!(MetricKind::Raw, mr.kind);
-    /// assert_eq!(MetricKind::Histogram, mt.kind);
+    /// assert_eq!(MetricKind::Histogram, m.kind);
     /// ```
-    pub fn histogram(mut self) -> MetricBuilder {
-        self.kind = Some(MetricKind::Histogram);
+    pub fn histogram(mut self) -> Metric {
+        self.kind = MetricKind::Histogram;
         self
     }
 
@@ -189,103 +193,17 @@ impl MetricBuilder {
     /// # Examples
     ///
     /// ```
-    /// use cernan::metric::MetricBuilder;
+    /// use cernan::metric::Metric;
     ///
-    /// let m = MetricBuilder::new("foo").value(1.1).time(10101).build().unwrap();
+    /// let m = Metric::new("foo", 1.1).time(10101);
     ///
     /// assert_eq!(10101, m.time);
     /// ```
-    pub fn time(mut self, time: i64) -> MetricBuilder {
-        self.time = Some(time);
+    pub fn time(mut self, time: i64) -> Metric {
+        self.time = time;
         self
     }
 
-    /// Adjust Metric with Gauge kind to be DeltaGauge
-    ///
-    /// This sets the metric's kind to DeltaGauge if the kind has been otherwise
-    /// set to Gauge. The ordering does not matter. This will not affect other
-    /// metric types. A distinction is made between `positive` and `negative` to
-    /// aid debugging.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::{MetricBuilder,MetricKind};
-    ///
-    /// let mr = MetricBuilder::new("foo").value(1.1).positive().build().unwrap();
-    /// let mg = MetricBuilder::new("bar").value(1.1).gauge().build().unwrap();
-    /// let mdg = MetricBuilder::new("bar").value(1.1).gauge().positive().build().unwrap();
-    ///
-    /// assert_eq!(MetricKind::Raw, mr.kind);
-    /// assert_eq!(MetricKind::Gauge, mg.kind);
-    /// assert_eq!(MetricKind::DeltaGauge, mdg.kind);
-    /// ```
-    pub fn positive(mut self) -> MetricBuilder {
-        self.sign = Some(MetricSign::Positive);
-        self
-    }
-
-    /// Adjust Metric with Gauge kind to be DeltaGauge
-    ///
-    /// This sets the metric's kind to DeltaGauge if the kind has been otherwise
-    /// set to Gauge. The ordering does not matter. This will not affect other
-    /// metric types. A distinction is made between `positive` and `negative` to
-    /// aid debugging.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::{MetricBuilder,MetricKind};
-    ///
-    /// let mr = MetricBuilder::new("foo").value(1.1).positive().build().unwrap();
-    /// let mg = MetricBuilder::new("bar").value(1.1).gauge().build().unwrap();
-    /// let mdg = MetricBuilder::new("bar").value(1.1).gauge().negative().build().unwrap();
-    ///
-    /// assert_eq!(MetricKind::Raw, mr.kind);
-    /// assert_eq!(MetricKind::Gauge, mg.kind);
-    /// assert_eq!(MetricKind::DeltaGauge, mdg.kind);
-    /// ```
-    pub fn negative(mut self) -> MetricBuilder {
-        self.sign = Some(MetricSign::Negative);
-        self
-    }
-
-    /// Build a Metric
-    ///
-    /// This function will return Err if a value has not been
-    /// provided. Otherwise, everything will pretty well go through smooth.
-    ///
-    /// See other functions on this impl for examples.
-    pub fn build(self) -> Result<Metric, &'static str> {
-        if !self.value.is_some() {
-            return Err("must have a value");
-        }
-        let raw_value = self.value.unwrap();
-
-        let kind = if let Some(k) = self.kind {
-            match k {
-                MetricKind::Gauge => if self.sign.is_some() {
-                    MetricKind::DeltaGauge
-                } else {
-                    MetricKind::Gauge
-                },
-                _ => k,
-            }
-        } else {
-            MetricKind::Raw
-        };
-
-        Ok(Metric {
-            name: self.name,
-            time: self.time.unwrap_or(time::now()),
-            value: raw_value,
-            kind: kind,
-            tags: vec![],
-        })
-    }
-}
-
-impl Metric {
     /// Valid message formats are:
     ///
     /// - `<str:metric_name>:<f64:value>|<str:type>`
@@ -303,61 +221,69 @@ impl Metric {
                     let len = src.len();
                     match (&src[offset..]).find(':') {
                         Some(colon_idx) => {
-                            let name = &src[offset..(offset+colon_idx)];
-                            if name.is_empty() { return None };
-                            let mut metric_builder = MetricBuilder::new(name);
+                            let name = &src[offset..(offset + colon_idx)];
+                            if name.is_empty() {
+                                return None;
+                            };
                             offset += colon_idx + 1;
-                            if offset >= len { return None };
+                            if offset >= len {
+                                return None;
+                            };
                             match (&src[offset..]).find('|') {
                                 Some(pipe_idx) => {
-                                    metric_builder = match &src[offset..(offset+1)] {
-                                        "+" => metric_builder.positive(),
-                                        "-" => metric_builder.negative(),
-                                        _ => metric_builder,
-                                    };
-                                    let val = match f64::from_str(&src[offset..(offset+pipe_idx)]) {
+                                    let val = match f64::from_str(&src[offset..(offset +
+                                                                                pipe_idx)]) {
                                         Ok(f) => f,
-                                        Err(_) => return None
+                                        Err(_) => return None,
                                     };
-                                    metric_builder = metric_builder.value(val);
+                                    let mut metric = Metric::new(name, val);
+                                    metric = match &src[offset..(offset + 1)] {
+                                        "+" | "-" => metric.delta_gauge(),
+                                        _ => metric,
+                                    };
                                     offset += pipe_idx + 1;
-                                    if offset >= len { return None };
-                                    metric_builder = match (&src[offset..]).find('@') {
+                                    if offset >= len {
+                                        return None;
+                                    };
+                                    metric = match (&src[offset..]).find('@') {
                                         Some(sample_idx) => {
-                                            match &src[offset..(offset+sample_idx)] {
-                                                "g" => metric_builder.gauge(),
-                                                "ms" => metric_builder.timer(),
-                                                "h" => metric_builder.histogram(),
+                                            match &src[offset..(offset + sample_idx)] {
+                                                "g" => metric.gauge(),
+                                                "ms" => metric.timer(),
+                                                "h" => metric.histogram(),
                                                 "c" => {
-                                                    let sample = match f64::from_str(&src[(offset+sample_idx+1)..]) {
-                                                        Ok(f) => f,
-                                                        Err(_) => return None
-                                                    };
-                                                    metric_builder.counter(sample)
+                                                    let sample =
+                                                        match f64::from_str(&src[(offset +
+                                                                                  sample_idx +
+                                                                                  1)..]) {
+                                                            Ok(f) => f,
+                                                            Err(_) => return None,
+                                                        };
+                                                    metric.counter(sample)
                                                 }
-                                                _ => return None
+                                                _ => return None,
                                             }
                                         }
                                         None => {
                                             match &src[offset..] {
-                                                "g" | "g\n" => metric_builder.gauge(),
-                                                "ms" | "ms\n" => metric_builder.timer(),
-                                                "h" | "h\n" => metric_builder.histogram(),
-                                                "c" | "c\n" => metric_builder.counter(1.0),
-                                                _ => return None
+                                                "g" | "g\n" => metric.gauge(),
+                                                "ms" | "ms\n" => metric.timer(),
+                                                "h" | "h\n" => metric.histogram(),
+                                                "c" | "c\n" => metric.counter(1.0),
+                                                _ => return None,
                                             }
                                         }
                                     };
 
-                                    res.push(metric_builder.build().unwrap());
+                                    res.push(metric);
                                 }
-                                None => return None
+                                None => return None,
                             }
                         }
-                        None => return None
+                        None => return None,
                     }
                 }
-                None => break
+                None => break,
             }
         }
         if res.is_empty() {
@@ -385,18 +311,20 @@ impl Metric {
                                         Ok(t) => t,
                                         Err(_) => return None,
                                     };
-                                    res.push(MetricBuilder::new(String::from(name)).value(parsed_val).time(parsed_time).build().unwrap());
+                                    res.push(Metric::new(name, parsed_val).time(parsed_time));
                                 }
-                                None => return None
+                                None => return None,
                             }
                         }
-                        None => return None
+                        None => return None,
                     }
                 }
-                None => break
+                None => break,
             }
         }
-        if res.is_empty() { return None }
+        if res.is_empty() {
+            return None;
+        }
         Some(res)
     }
 }
@@ -406,21 +334,10 @@ mod tests {
     extern crate rand;
     extern crate quickcheck;
 
-    use metric::{Metric, MetricBuilder, MetricKind, MetricSign, MetricQOS, Event};
+    use metric::{Metric, MetricKind, MetricQOS, Event};
     use self::quickcheck::{Arbitrary, Gen};
     use chrono::{UTC, TimeZone};
     use self::rand::{Rand, Rng};
-
-    impl Rand for MetricSign {
-        fn rand<R: Rng>(rng: &mut R) -> MetricSign {
-            let i: usize = rng.gen_range(0, 2);
-            match i % 2 {
-                0 => MetricSign::Positive,
-                1 => MetricSign::Negative,
-                _ => unreachable!(),
-            }
-        }
-    }
 
     impl Rand for MetricKind {
         fn rand<R: Rng>(rng: &mut R) -> MetricKind {
@@ -441,23 +358,17 @@ mod tests {
             let name: String = rng.gen_ascii_chars().take(2).collect();
             let val: f64 = rng.gen();
             let kind: MetricKind = rng.gen();
-            let sign: Option<MetricSign> = rng.gen();
             let time: i64 = rng.gen_range(0, 100);
-            let mut mb = MetricBuilder::new(name).value(val).time(time);
+            let mut mb = Metric::new(name, val).time(time);
             mb = match kind {
                 MetricKind::Gauge => mb.gauge(),
                 MetricKind::Timer => mb.timer(),
                 MetricKind::Histogram => mb.histogram(),
                 MetricKind::Counter(smpl) => mb.counter(smpl),
-                MetricKind::DeltaGauge => mb.gauge(),
+                MetricKind::DeltaGauge => mb.delta_gauge(),
                 MetricKind::Raw => mb,
             };
-            mb = match sign {
-                None => mb,
-                Some(MetricSign::Positive) => mb.positive(),
-                Some(MetricSign::Negative) => mb.negative(),
-            };
-            mb.build().unwrap()
+            mb
         }
     }
 
@@ -542,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_negative_timer() {
-        let m = MetricBuilder::new("timer").value(-1.0).timer().build().unwrap();
+        let m = Metric::new("timer", -1.0).timer();
 
         assert_eq!(m.kind, MetricKind::Timer);
         assert_eq!(m.value, -1.0);
@@ -563,7 +474,7 @@ mod tests {
 
     #[test]
     fn test_postive_delta_gauge() {
-        let m = MetricBuilder::new("dgauge").value(1.0).positive().gauge().build().unwrap();
+        let m = Metric::new("dgauge", 1.0).delta_gauge();
 
         assert_eq!(m.kind, MetricKind::DeltaGauge);
         assert_eq!(m.value, 1.0);
