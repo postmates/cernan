@@ -7,14 +7,15 @@ use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
 
-type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
+pub type TagMap = HashMap<String, String, BuildHasherDefault<FnvHasher>>;
 
 impl LogLine {
-    pub fn new(path: String, value: String) -> LogLine {
+    pub fn new(path: String, value: String, tags: TagMap) -> LogLine {
         LogLine {
             path: path,
             value: value,
             time: time::now(),
+            tags: tags,
         }
     }
 }
@@ -64,7 +65,7 @@ impl Metric {
         Metric {
             kind: MetricKind::Raw,
             name: name.into(),
-            tags: HashMapFnv::default(),
+            tags: TagMap::default(),
             time: time::now(),
             value: value,
         }
@@ -72,6 +73,13 @@ impl Metric {
 
     pub fn overlay_tag(mut self, key: String, val: String) -> Metric {
         self.tags.insert(key, val);
+        self
+    }
+
+    pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Metric {
+        for (k,v) in map.iter() {
+            self.tags.insert(k.clone(),v.clone());
+        }
         self
     }
 

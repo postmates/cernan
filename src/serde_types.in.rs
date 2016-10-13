@@ -3,14 +3,14 @@ pub struct LogLine {
     pub time: i64,
     pub path: String,
     pub value: String,
-//    pub tags: Cow<Vec<(String, String)>>,
+    pub tags: TagMap,
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct Metric {
     pub kind: MetricKind,
     pub name: String,
-    pub tags: HashMapFnv<String, String>,
+    pub tags: TagMap,
     pub time: i64,
     pub value: f64,
 }

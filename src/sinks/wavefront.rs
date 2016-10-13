@@ -1,7 +1,7 @@
 use std::net::{SocketAddr, TcpStream};
 use std::fmt::Write;
 use std::io::Write as IoWrite;
-use metric::{Metric, LogLine, MetricQOS};
+use metric::{Metric, LogLine, MetricQOS, TagMap};
 use buckets::Buckets;
 use sink::Sink;
 use dns_lookup;
@@ -11,23 +11,36 @@ use rand::Rng;
 
 pub struct Wavefront {
     addr: SocketAddr,
-    tags: String,
     aggrs: Buckets,
     qos: MetricQOS,
+    tags: TagMap,
     interval: i64,
 }
 
+#[inline]
+fn fmt_tags(tags: &TagMap) -> String {
+    let mut s = String::new();
+    let mut iter = tags.iter();
+    if let Some((fk,fv)) = iter.next() {
+        write!(s, "{}={}", fk, fv).unwrap();
+        for (k, v) in iter {
+            write!(s, " {}={}", k, v).unwrap();
+        }
+    }
+    s
+}
+
 impl Wavefront {
-    pub fn new(host: &str, port: u16, tags: String, qos: MetricQOS, interval: i64) -> Wavefront {
+    pub fn new(host: &str, port: u16, tags: TagMap, qos: MetricQOS, interval: i64) -> Wavefront {
         match dns_lookup::lookup_host(host) {
             Ok(mut lh) => {
                 let ip = lh.next().expect("No IPs associated with host").unwrap();
                 let addr = SocketAddr::new(ip, port);
                 Wavefront {
                     addr: addr,
-                    tags: tags,
                     aggrs: Buckets::default(),
                     qos: qos,
+                    tags: tags,
                     interval: interval,
                 }
             }
@@ -42,13 +55,13 @@ impl Wavefront {
 
         for (key, value) in self.aggrs.counters().iter() {
             for &(_, ref m) in sample(self.interval, self.qos.counter as i64, value) {
-                write!(stats, "{} {} {} {}\n", key, m.value, m.time, self.tags).unwrap();
+                write!(stats, "{} {} {} {}\n", key, m.value, m.time, fmt_tags(&m.tags)).unwrap();
             }
         }
 
         for (key, value) in self.aggrs.gauges().iter() {
             for &(_, ref m) in sample(self.interval, self.qos.gauge as i64, value) {
-                write!(stats, "{} {} {} {}\n", key, m.value, m.time, self.tags).unwrap();
+                write!(stats, "{} {} {} {}\n", key, m.value, m.time, fmt_tags(&m.tags)).unwrap();
             }
         }
 
@@ -75,7 +88,7 @@ impl Wavefront {
                            stat,
                            hist.query(quant).unwrap().1,
                            smpl_time,
-                           self.tags)
+                           fmt_tags(&self.tags))
                         .unwrap()
                 }
                 let count = hist.count();
@@ -84,7 +97,7 @@ impl Wavefront {
                        key,
                        count,
                        smpl_time,
-                       self.tags)
+                       fmt_tags(&self.tags))
                     .unwrap();
             }
         }
@@ -112,7 +125,7 @@ impl Wavefront {
                            stat,
                            tmr.query(quant).unwrap().1,
                            smpl_time,
-                           self.tags)
+                           fmt_tags(&self.tags))
                         .unwrap()
                 }
                 let count = tmr.count();
@@ -121,7 +134,7 @@ impl Wavefront {
                        key,
                        count,
                        smpl_time,
-                       self.tags)
+                       fmt_tags(&self.tags))
                     .unwrap();
             }
         }
@@ -129,7 +142,7 @@ impl Wavefront {
         // Raw points have no QOS as we can make no valid aggregation of them.
         for (key, value) in self.aggrs.raws().iter() {
             for &(_, ref m) in value {
-                write!(stats, "{} {} {} {}\n", key, m.value, m.time, self.tags).unwrap();
+                write!(stats, "{} {} {} {}\n", key, m.value, m.time, fmt_tags(&m.tags)).unwrap();
             }
         }
 
@@ -139,28 +152,28 @@ impl Wavefront {
                "cernan.wavefront.qos.timer",
                self.qos.timer,
                now,
-               self.tags)
+               fmt_tags(&self.tags))
             .unwrap();
         write!(stats,
                "{} {} {} {}\n",
                "cernan.wavefront.qos.gauge",
                self.qos.gauge,
                now,
-               self.tags)
+               fmt_tags(&self.tags))
             .unwrap();
         write!(stats,
                "{} {} {} {}\n",
                "cernan.wavefront.qos.histogram",
                self.qos.histogram,
                now,
-               self.tags)
+               fmt_tags(&self.tags))
             .unwrap();
         write!(stats,
                "{} {} {} {}\n",
                "cernan.wavefront.qos.counter",
                self.qos.counter,
                now,
-               self.tags)
+               fmt_tags(&self.tags))
             .unwrap();
 
         stats
@@ -257,7 +270,7 @@ impl Sink for Wavefront {
 mod test {
     extern crate quickcheck;
 
-    use metric::{Metric, MetricQOS};
+    use metric::{Metric, MetricQOS, TagMap};
     use sink::Sink;
     use chrono::{UTC, TimeZone};
     use super::*;
@@ -593,7 +606,7 @@ mod test {
         let flush = 6;
 
         let mut wavefront =
-            Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos, flush);
+            Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
@@ -617,7 +630,7 @@ mod test {
         let flush = 60;
 
         let mut wavefront =
-            Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos, flush);
+            Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
         for i in 0..122 {
             wavefront.deliver(Metric::new("test.histogram", 1.0).time(i).histogram());
         }
@@ -636,7 +649,7 @@ mod test {
         let flush = 6;
 
         let mut wavefront =
-            Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos, flush);
+            Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
@@ -660,7 +673,7 @@ mod test {
         let flush = 6;
 
         let mut wavefront =
-            Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos, flush);
+            Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
@@ -686,7 +699,7 @@ mod test {
         let flush = 6;
 
         let mut wavefront =
-            Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos, flush);
+            Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
@@ -708,19 +721,21 @@ mod test {
     #[test]
     fn test_format_wavefront() {
         let qos = MetricQOS::default();
+        let mut tags = TagMap::default();
+        tags.insert("source".into(), "test-src".into());
         let mut wavefront =
-            Wavefront::new("localhost", 2003, "source=test-src".to_string(), qos, 60);
+            Wavefront::new("localhost", 2003, tags.clone(), qos, 60);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 13).timestamp();
-        wavefront.deliver(Metric::new("test.counter", -1.0).time(dt_0).counter(1.0));
-        wavefront.deliver(Metric::new("test.counter", 2.0).time(dt_0).counter(1.0));
-        wavefront.deliver(Metric::new("test.counter", 3.0).time(dt_1).counter(1.0));
-        wavefront.deliver(Metric::new("test.gauge", 3.211).time(dt_0).gauge());
-        wavefront.deliver(Metric::new("test.timer", 12.101).time(dt_0).timer());
-        wavefront.deliver(Metric::new("test.timer", 1.101).time(dt_0).timer());
-        wavefront.deliver(Metric::new("test.timer", 3.101).time(dt_0).timer());
-        wavefront.deliver(Metric::new("test.raw", 1.0).time(dt_0));
-        wavefront.deliver(Metric::new("test.raw", 2.0).time(dt_1));
+        wavefront.deliver(Metric::new("test.counter", -1.0).time(dt_0).counter(1.0).overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.counter", 2.0).time(dt_0).counter(1.0).overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.counter", 3.0).time(dt_1).counter(1.0).overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.gauge", 3.211).time(dt_0).gauge().overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.timer", 12.101).time(dt_0).timer().overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.timer", 1.101).time(dt_0).timer().overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.timer", 3.101).time(dt_0).timer().overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.raw", 1.0).time(dt_0).overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.raw", 2.0).time(dt_1).overlay_tags_from_map(&tags));
         let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
 

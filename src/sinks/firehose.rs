@@ -1,6 +1,5 @@
 use sink::Sink;
 use metric::{Metric,LogLine};
-use std::collections::BTreeMap;
 use chrono::naive::datetime::NaiveDateTime;
 use chrono::datetime::DateTime;
 use chrono::offset::utc::UTC;
@@ -15,15 +14,13 @@ use rusoto::firehose::PutRecordBatchError::*;
 
 pub struct Firehose {
     buffer: Vec<LogLine>,
-    metadata: Map<String, String>,
     delivery_stream_name: String,
 }
 
 impl Firehose {
-    pub fn new(delivery_stream: &str, tags: BTreeMap<String, String>) -> Firehose {
+    pub fn new(delivery_stream: &str) -> Firehose {
         Firehose {
             buffer: Vec::new(),
-            metadata: tags,
             delivery_stream_name: delivery_stream.to_string(),
         }
     }
@@ -38,15 +35,11 @@ impl Sink for Firehose {
             return;
         }
 
-        let ref metadata = self.metadata;
         for chunk in self.buffer.chunks(450) {
             let prbi = PutRecordBatchInput {
                 delivery_stream_name: self.delivery_stream_name.clone(),
                 records: chunk.iter().map(|m| {
                     let mut pyld = Map::new();
-                    for (k,v) in metadata {
-                        pyld.insert(k.clone(), v.to_string());
-                    }
                     pyld.insert(String::from("fs_path"),
                                 (*m.path).to_string());
                     pyld.insert(String::from("line"),
