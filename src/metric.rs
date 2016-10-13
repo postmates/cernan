@@ -71,14 +71,95 @@ impl Metric {
         }
     }
 
+    /// Overlay a specific key / value pair in self's tags
+    ///
+    /// This insert a key / value pair into the metric's tag map. If the key was
+    /// already present in the tag map the value will be replaced, else it will
+    /// be inserted.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::Metric;
+    ///
+    /// let mut m = Metric::new("foo", 1.1);
+    ///
+    /// assert!(m.tags.is_empty());
+    ///
+    /// m = m.overlay_tag("foo".into(), "bar".into());
+    /// assert_eq!(Some(&"bar".into()), m.tags.get("foo"));
+    ///
+    /// m = m.overlay_tag("foo".into(), "22".into());
+    /// assert_eq!(Some(&"22".into()), m.tags.get("foo"));
+    /// ```
     pub fn overlay_tag(mut self, key: String, val: String) -> Metric {
         self.tags.insert(key, val);
         self
     }
 
+    /// Overlay self's tags with a TagMap
+    ///
+    /// This inserts a map of key / value pairs over the top of metric's
+    /// existing tag map. Any new keys will be inserted while existing keys will
+    /// be overwritten.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{Metric,TagMap};
+    ///
+    /// let mut m = Metric::new("foo", 1.1);
+    ///
+    /// assert!(m.tags.is_empty());
+    ///
+    /// m = m.overlay_tag("foo".into(), "22".into());
+    /// assert_eq!(Some(&"22".into()), m.tags.get("foo"));
+    ///
+    /// let mut tag_map = TagMap::default();
+    /// tag_map.insert("foo".into(), "bar".into());
+    /// tag_map.insert("oof".into(), "rab".into());
+    ///
+    /// m = m.overlay_tags_from_map(&tag_map);
+    /// assert_eq!(Some(&"bar".into()), m.tags.get("foo".into()));
+    /// assert_eq!(Some(&"rab".into()), m.tags.get("oof".into()));
+    /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Metric {
         for (k,v) in map.iter() {
             self.tags.insert(k.clone(),v.clone());
+        }
+        self
+    }
+
+    /// Merge a TagMap into self's tags
+    ///
+    /// This inserts a map of key / values pairs into metric's existing map,
+    /// inserting keys if and only if the key does not already exist
+    /// in-map. This is the information-preserving partner to
+    /// overlay_tags_from_map.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{Metric,TagMap};
+    ///
+    /// let mut m = Metric::new("foo", 1.1);
+    ///
+    /// assert!(m.tags.is_empty());
+    ///
+    /// m = m.overlay_tag("foo".into(), "22".into());
+    /// assert_eq!(Some(&"22".into()), m.tags.get("foo"));
+    ///
+    /// let mut tag_map = TagMap::default();
+    /// tag_map.insert("foo".into(), "bar".into());
+    /// tag_map.insert("oof".into(), "rab".into());
+    ///
+    /// m = m.merge_tags_from_map(&tag_map);
+    /// assert_eq!(Some(&"22".into()), m.tags.get("foo".into()));
+    /// assert_eq!(Some(&"rab".into()), m.tags.get("oof".into()));
+    /// ```
+    pub fn merge_tags_from_map(mut self, map: &TagMap) -> Metric {
+        for (k, v) in map.iter() {
+            self.tags.entry(k.clone()).or_insert(v.clone());
         }
         self
     }
