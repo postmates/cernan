@@ -10,21 +10,21 @@ use time;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 
-pub struct FederationReceiver {
+pub struct FederationTransmitter {
     port: u16,
     host: String,
     buffer: Vec<metric::Event>,
 }
 
-impl FederationReceiver {
-    pub fn new(port: u16, host: String) -> FederationReceiver {
-        FederationReceiver { port: port, host: host, buffer: Vec::new() }
+impl FederationTransmitter {
+    pub fn new(port: u16, host: String) -> FederationTransmitter {
+        FederationTransmitter { port: port, host: host, buffer: Vec::new() }
     }
 }
 
-impl Default for FederationReceiver {
+impl Default for FederationTransmitter {
     fn default() -> Self {
-        FederationReceiver {
+        FederationTransmitter {
             port: 1972,
             host: String::from("127.0.0.1"),
             buffer: Vec::new()
@@ -32,7 +32,7 @@ impl Default for FederationReceiver {
     }
 }
 
-impl Sink for FederationReceiver {
+impl Sink for FederationTransmitter {
     fn deliver(&mut self, _: metric::Metric) {
         // intentionally nothing
     }

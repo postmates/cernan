@@ -139,14 +139,15 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf, t
 // FEDERATION_RECEIVER
 //
 
-pub fn receiver_sink_server(chans: Vec<mpsc::Sender<metric::Event>>, ip: &String, port: u16) {
+pub fn receiver_sink_server(chans: Vec<mpsc::Sender<metric::Event>>, ip: &String, port: u16, tags: metric::TagMap) {
     let srv: Vec<_> = (ip.as_str(), port).to_socket_addrs().expect("unable to make socket addr").collect();
     let listener = TcpListener::bind(srv.first().unwrap()).expect("Unable to bind to TCP socket");
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
             stream.set_nonblocking(false).expect("could not set TcpStream to block");
             let srv_chans = chans.clone();
-            thread::spawn(move || handle_receiver_client(srv_chans, stream));
+            let tags = tags.clone();
+            thread::spawn(move || handle_receiver_client(srv_chans, stream, tags));
         }
     }
 }
@@ -156,7 +157,7 @@ fn u8tou32abe(v: &[u8]) -> u32 {
     (v[3] as u32) + ((v[2] as u32) << 8) + ((v[1] as u32) << 24) + ((v[0] as u32) << 16)
 }
 
-fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream) {
+fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream, tags: metric::TagMap) {
     let mut sz_buf = [0; 4];
     let mut reader = BufReader::new(stream);
     match reader.read_exact(&mut sz_buf) {
@@ -166,7 +167,12 @@ fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: T
             let mut e = ZlibDecoder::new(hndl);
             match deserialize_from::<ZlibDecoder<Take<&mut BufReader<TcpStream>>>, Vec<metric::Event>>(&mut e, SizeLimit::Infinite) {
                 Ok(events) => {
-                    for ev in events {
+                    for mut ev in events {
+                        ev = match ev {
+                            metric::Event::Statsd(m) => metric::Event::Statsd(m.merge_tags_from_map(&tags)),
+                            metric::Event::Graphite(m) => metric::Event::Graphite(m.merge_tags_from_map(&tags)),
+                            _ => continue, // we refuse to accept any non-telemetry forward for now
+                        };
                         send(&mut chans, &ev);
                     }
                 }

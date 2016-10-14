@@ -6,6 +6,7 @@ include!(concat!(env!("OUT_DIR"), "/serde_types.rs"));
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
+use std::cmp::Ordering;
 
 pub type TagMap = HashMap<String, String, BuildHasherDefault<FnvHasher>>;
 
@@ -41,6 +42,92 @@ impl Default for MetricQOS {
     }
 }
 
+fn cmp(left: &TagMap, right: &TagMap) -> Option<Ordering> {
+    if left.len() != right.len() {
+        left.len().partial_cmp(&right.len())
+    } else {
+        let mut l: Vec<(&String,&String)> = left.iter().collect();
+        l.sort();
+        let mut r: Vec<(&String,&String)> = right.iter().collect();
+        r.sort();
+        l.partial_cmp(&r)
+    }
+}
+
+impl PartialEq for MetricKind {
+    fn eq(&self, other: &MetricKind) -> bool {
+        match (self, other) {
+            (&MetricKind::Gauge, &MetricKind::Gauge) => true,
+            (&MetricKind::Gauge, &MetricKind::DeltaGauge) => true,
+            (&MetricKind::DeltaGauge, &MetricKind::DeltaGauge) => true,
+            (&MetricKind::DeltaGauge, &MetricKind::Gauge) => true,
+            (&MetricKind::Counter(_), &MetricKind::Counter(_)) => true,
+            (&MetricKind::Timer, &MetricKind::Timer) => true,
+            (&MetricKind::Histogram, &MetricKind::Histogram) => true,
+            (&MetricKind::Raw, &MetricKind::Raw) => true,
+            _ => false,
+        }
+    }
+}
+
+impl PartialOrd for MetricKind {
+    fn partial_cmp(&self, other: &MetricKind) -> Option<Ordering> {
+        match (self, other) {
+            (&MetricKind::Counter(_), &MetricKind::DeltaGauge) => Some(Ordering::Less),
+            (&MetricKind::Counter(_), &MetricKind::Gauge) => Some(Ordering::Less),
+            (&MetricKind::Counter(_), &MetricKind::Histogram) => Some(Ordering::Less),
+            (&MetricKind::Counter(_), &MetricKind::Raw) => Some(Ordering::Less),
+            (&MetricKind::Counter(_), &MetricKind::Timer) => Some(Ordering::Less),
+            (&MetricKind::Counter(_), &MetricKind::Counter(_)) => Some(Ordering::Equal),
+            (&MetricKind::DeltaGauge, &MetricKind::Counter(_)) => Some(Ordering::Greater),
+            (&MetricKind::DeltaGauge, &MetricKind::DeltaGauge) => Some(Ordering::Equal),
+            (&MetricKind::DeltaGauge, &MetricKind::Gauge) => Some(Ordering::Equal),
+            (&MetricKind::DeltaGauge, &MetricKind::Histogram) => Some(Ordering::Less),
+            (&MetricKind::DeltaGauge, &MetricKind::Raw) => Some(Ordering::Less),
+            (&MetricKind::DeltaGauge, &MetricKind::Timer) => Some(Ordering::Less),
+            (&MetricKind::Gauge, &MetricKind::Counter(_)) => Some(Ordering::Greater),
+            (&MetricKind::Gauge, &MetricKind::DeltaGauge) => Some(Ordering::Equal),
+            (&MetricKind::Gauge, &MetricKind::Gauge) => Some(Ordering::Equal),
+            (&MetricKind::Gauge, &MetricKind::Histogram) => Some(Ordering::Less),
+            (&MetricKind::Gauge, &MetricKind::Raw) => Some(Ordering::Less),
+            (&MetricKind::Gauge, &MetricKind::Timer) => Some(Ordering::Less),
+            (&MetricKind::Histogram, &MetricKind::Counter(_)) => Some(Ordering::Greater),
+            (&MetricKind::Histogram, &MetricKind::DeltaGauge) => Some(Ordering::Greater),
+            (&MetricKind::Histogram, &MetricKind::Gauge) => Some(Ordering::Greater),
+            (&MetricKind::Histogram, &MetricKind::Histogram) => Some(Ordering::Equal),
+            (&MetricKind::Histogram, &MetricKind::Raw) => Some(Ordering::Less),
+            (&MetricKind::Histogram, &MetricKind::Timer) => Some(Ordering::Greater),
+            (&MetricKind::Raw, &MetricKind::Counter(_)) => Some(Ordering::Greater),
+            (&MetricKind::Raw, &MetricKind::DeltaGauge) => Some(Ordering::Greater),
+            (&MetricKind::Raw, &MetricKind::Gauge) => Some(Ordering::Greater),
+            (&MetricKind::Raw, &MetricKind::Histogram) => Some(Ordering::Greater),
+            (&MetricKind::Raw, &MetricKind::Raw) => Some(Ordering::Equal),
+            (&MetricKind::Raw, &MetricKind::Timer) => Some(Ordering::Greater),
+            (&MetricKind::Timer, &MetricKind::Counter(_)) => Some(Ordering::Greater),
+            (&MetricKind::Timer, &MetricKind::DeltaGauge) => Some(Ordering::Greater),
+            (&MetricKind::Timer, &MetricKind::Gauge) => Some(Ordering::Greater),
+            (&MetricKind::Timer, &MetricKind::Histogram) => Some(Ordering::Less),
+            (&MetricKind::Timer, &MetricKind::Raw) => Some(Ordering::Less),
+            (&MetricKind::Timer, &MetricKind::Timer) => Some(Ordering::Equal),
+        }
+    }
+}
+
+impl PartialOrd for Metric {
+    fn partial_cmp(&self, other: &Metric) -> Option<Ordering> {
+        match self.kind.partial_cmp(&other.kind) {
+            Some(Ordering::Equal) => match self.name.partial_cmp(&other.name) {
+                Some(Ordering::Equal) => match self.time.partial_cmp(&other.time) {
+                    Some(Ordering::Equal) => cmp(&self.tags, &other.tags),
+                    other => { println!("TIME ORDERING"); other },
+                },
+                other => { println!("NAME ORDERING"); other },
+            },
+            other => { println!("KIND ORDERING"); other },
+        }
+    }
+}
+
 impl Metric {
     /// Make a builder for metrics
     ///
@@ -71,14 +158,96 @@ impl Metric {
         }
     }
 
-    pub fn overlay_tag(mut self, key: String, val: String) -> Metric {
-        self.tags.insert(key, val);
+    /// Overlay a specific key / value pair in self's tags
+    ///
+    /// This insert a key / value pair into the metric's tag map. If the key was
+    /// already present in the tag map the value will be replaced, else it will
+    /// be inserted.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::Metric;
+    ///
+    /// let mut m = Metric::new("foo", 1.1);
+    ///
+    /// assert!(m.tags.is_empty());
+    ///
+    /// m = m.overlay_tag("foo", "bar");
+    /// assert_eq!(Some(&"bar".into()), m.tags.get("foo".into()));
+    ///
+    /// m = m.overlay_tag("foo", "22");
+    /// assert_eq!(Some(&"22".into()), m.tags.get("foo".into()));
+    /// ```
+    pub fn overlay_tag<S>(mut self, key: S, val: S) -> Metric
+        where S: Into<String> {
+        self.tags.insert(key.into(), val.into());
         self
     }
 
+    /// Overlay self's tags with a TagMap
+    ///
+    /// This inserts a map of key / value pairs over the top of metric's
+    /// existing tag map. Any new keys will be inserted while existing keys will
+    /// be overwritten.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{Metric,TagMap};
+    ///
+    /// let mut m = Metric::new("foo", 1.1);
+    ///
+    /// assert!(m.tags.is_empty());
+    ///
+    /// m = m.overlay_tag("foo", "22");
+    /// assert_eq!(Some(&"22".into()), m.tags.get("foo".into()));
+    ///
+    /// let mut tag_map = TagMap::default();
+    /// tag_map.insert("foo".into(), "bar".into());
+    /// tag_map.insert("oof".into(), "rab".into());
+    ///
+    /// m = m.overlay_tags_from_map(&tag_map);
+    /// assert_eq!(Some(&"bar".into()), m.tags.get("foo".into()));
+    /// assert_eq!(Some(&"rab".into()), m.tags.get("oof".into()));
+    /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Metric {
         for (k,v) in map.iter() {
             self.tags.insert(k.clone(),v.clone());
+        }
+        self
+    }
+
+    /// Merge a TagMap into self's tags
+    ///
+    /// This inserts a map of key / values pairs into metric's existing map,
+    /// inserting keys if and only if the key does not already exist
+    /// in-map. This is the information-preserving partner to
+    /// overlay_tags_from_map.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::{Metric,TagMap};
+    ///
+    /// let mut m = Metric::new("foo", 1.1);
+    ///
+    /// assert!(m.tags.is_empty());
+    ///
+    /// m = m.overlay_tag("foo", "22");
+    /// assert_eq!(Some(&"22".into()), m.tags.get("foo".into()));
+    ///
+    /// let mut tag_map = TagMap::default();
+    /// tag_map.insert("foo".into(), "bar".into());
+    /// tag_map.insert("oof".into(), "rab".into());
+    ///
+    /// m = m.merge_tags_from_map(&tag_map);
+    /// assert_eq!(Some(&"22".into()), m.tags.get("foo".into()));
+    /// assert_eq!(Some(&"rab".into()), m.tags.get("oof".into()));
+    /// ```
+    pub fn merge_tags_from_map(mut self, map: &TagMap) -> Metric {
+        for (k, v) in map.iter() {
+            self.tags.entry(k.clone()).or_insert(v.clone());
         }
         self
     }
@@ -346,6 +515,16 @@ mod tests {
     use self::quickcheck::{Arbitrary, Gen};
     use chrono::{UTC, TimeZone};
     use self::rand::{Rand, Rng};
+    use std::cmp::Ordering;
+
+    #[test]
+    fn partial_ord_gauges() {
+        let mdg = Metric::new("l6", 0.7913855).delta_gauge().time(47);
+        let mg = Metric::new("l6", 0.9683).gauge().time(47);
+
+        assert_eq!(Some(Ordering::Equal), mg.partial_cmp(&mdg));
+        assert_eq!(Some(Ordering::Equal), mdg.partial_cmp(&mg));
+    }
 
     impl Rand for MetricKind {
         fn rand<R: Rng>(rng: &mut R) -> MetricKind {

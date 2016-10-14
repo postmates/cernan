@@ -92,7 +92,7 @@ impl Buckets {
         match value.kind {
             MetricKind::Counter(rate) => {
                 let counter = self.counters.entry(name).or_insert(vec![]);
-                match (*counter).binary_search_by_key(&value.time, |&(t, _)| t) {
+                match (*counter).binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap() ) {
                     Ok(idx) => {
                         (*counter)[idx].1.value += value.value * (1.0 / rate);
                     }
@@ -105,14 +105,14 @@ impl Buckets {
             }
             MetricKind::DeltaGauge => {
                 let gauge = self.gauges.entry(name).or_insert(vec![]);
-                match (*gauge).binary_search_by_key(&value.time, |&(t, _)| t) {
+                match (*gauge).binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap() ) {
                     Ok(idx) => (*gauge)[idx].1.value += value.value,
                     Err(idx) => (*gauge).insert(idx, (value.time, value)),
                 }
             }
             MetricKind::Gauge => {
                 let gauge = self.gauges.entry(name).or_insert(vec![]);
-                match (*gauge).binary_search_by_key(&value.time, |&(t, _)| t) {
+                match (*gauge).binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap() ) {
                     Ok(idx) => (*gauge)[idx].1.value = value.value,
                     Err(idx) => (*gauge).insert(idx, (value.time, value)),
                 }
@@ -198,6 +198,19 @@ mod test {
         // duff value to ensure it changes.
         let metric = Metric::new("some.metric", 1.0).counter(1.0);
         buckets.add(metric);
+    }
+
+    #[test]
+    fn test_add_gauge_metric_distinct_tags() {
+        let mut buckets = Buckets::default();
+        let m0 = Metric::new("some.metric", 1.0).gauge().time(10).overlay_tag("foo", "bar");
+        let m1 = Metric::new("some.metric", 1.0).gauge().time(10).overlay_tag("foo", "bingo");
+
+        buckets.add(m0.clone());
+        buckets.add(m1.clone());
+
+        assert_eq!(Some(&vec![(10, m0), (10, m1)]),
+                   buckets.gauges().get("some.metric"));
     }
 
     #[test]
