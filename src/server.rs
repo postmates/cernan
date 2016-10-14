@@ -175,6 +175,8 @@ fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: T
                         };
                         send(&mut chans, &ev);
                     }
+                    let metric = metric::Metric::new("cernan.federation.receiver.packet", 1.0).counter(1.0).overlay_tags_from_map(&tags);;
+                    send(&mut chans, &metric::Event::Statsd(metric));
                 }
                 Err(e) => panic!("Failed decoding. Skipping {:?}", e),
             }
