@@ -277,7 +277,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         fed_receiver_port: fed_receiver_port,
         fed_receiver_ip: fed_receiver_ip,
         flush_interval: value.lookup("flush-interval")
-            .unwrap_or(&Value::Integer(10))
+            .unwrap_or(&Value::Integer(60))
             .as_integer()
             .expect("flush-interval must be integer") as u64,
         console: mk_console,
@@ -314,7 +314,7 @@ mod test {
         assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.fed_receiver_port, None);
         assert_eq!(args.fed_receiver_ip, None);
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -341,7 +341,7 @@ port = 1987
         assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.fed_receiver_port, Some(1987));
         assert_eq!(args.fed_receiver_ip, Some(String::from("0.0.0.0")));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -366,7 +366,7 @@ ip = "127.0.0.1"
         assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.fed_receiver_port, Some(1972));
         assert_eq!(args.fed_receiver_ip, Some(String::from("127.0.0.1")));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -390,7 +390,7 @@ port = 1987
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.fed_receiver_port, None);
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -417,7 +417,7 @@ host = "foo.example.com"
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.fed_receiver_port, None);
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -443,7 +443,7 @@ statsd-port = 1024
 
         assert_eq!(args.statsd_port, Some(1024));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -467,7 +467,7 @@ port = 1024
 
         assert_eq!(args.statsd_port, Some(1024));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -492,7 +492,7 @@ port = 1024
 
         assert_eq!(args.statsd_port, None);
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -515,7 +515,7 @@ graphite-port = 1024
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(1024));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -539,7 +539,7 @@ port = 1024
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(1024));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -564,7 +564,7 @@ port = 1024
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, None);
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -589,7 +589,7 @@ host = "example.com"
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -612,7 +612,7 @@ host = "example.com"
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, true);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -635,7 +635,7 @@ host = "example.com"
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, true);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -662,7 +662,7 @@ delivery_stream = "stream_two"
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(args.firehose_delivery_streams, vec!["stream_one", "stream_two"]);
@@ -686,7 +686,7 @@ path = "/foo/bar.txt"
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -714,7 +714,7 @@ path = "/bar.txt"
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -745,7 +745,7 @@ mission = "from_gad"
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
@@ -773,7 +773,7 @@ raw = 42
 
         assert_eq!(args.statsd_port, Some(8125));
         assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 10);
+        assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());

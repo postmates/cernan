@@ -205,7 +205,7 @@ The `federation_receiver` interface is opt-in. It is discussed in the section
 ## Changing how frequently metrics are output
 
 ```
-flush-interval=<INT>  How frequently to flush metrics to the sinks in seconds. [default: 10].
+flush-interval=<INT>  How frequently to flush metrics to the sinks in seconds. [default: 60].
 ```
 
 ## Where Cernan stores its on-disk queues
