@@ -10,8 +10,8 @@ pub struct LogLine {
 pub struct Metric {
     pub kind: MetricKind,
     pub name: String,
-    pub tags: TagMap,
     pub time: i64,
+    pub tags: TagMap,
     pub value: f64,
 }
 
@@ -23,7 +23,7 @@ pub enum Event {
     TimerFlush,
 }
 
-#[derive(PartialEq, PartialOrd, Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum MetricKind {
     Counter(f64),
     Gauge,
