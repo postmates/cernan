@@ -204,9 +204,16 @@ The `federation_receiver` interface is opt-in. It is discussed in the section
 
 ## Changing how frequently metrics are output
 
-```
-flush-interval=<INT>  How frequently to flush metrics to the sinks in seconds. [default: 60].
-```
+By default cernan's sinks will flush every sixty seconds. You may adjust this
+behaviour can be configured by modifying the `flush-interval` directive:
+
+``` flush-interval=<INT> How frequently to flush metrics to the sinks in
+seconds. [default: 60].  ```
+
+The `flush-interval` does not affect aggregations. A full discussion of cernan's
+aggregation model is discussed in the sub-section
+[Aggregation](#Aggregation). The `flush-interval` does interact with point
+elision, discussed in [Elliding Points](#Elliding-Points).
 
 ## Where Cernan stores its on-disk queues
 
@@ -236,12 +243,27 @@ gauge = 15
 counter = 3
 timer = 10
 histogram = 10
-raw = 1
 ```
 
-In the above, for each time bin we receive a `raw` metric it will be emitted,
-while only 1/10 of `timer` and `histogram` points will be emitted: likewise one
-of every three counters and one of every fifteen gauges.
+How many points will this ellide? If the `flush-interval` of the system is `F`
+and the QOS for a given type of metic is `Q` then the maximum number of points
+that will be retained in `F` is `floor(F/Q)`. By default, `F=60` so let's assume
+that's the case. Given the values above, the maximum number of points allowed in
+one minute will be:
+
+```
+gauge = floor(60/15) = 4
+counter = floor(60/3) = 20
+timer = floor(60/10) = 6
+histogram = floor(60/10) = 6
+```
+
+What if you have more than `floor(F/Q)` points in an interval `F`? In this case,
+cernan will randomly sample the appropriate amount of points from your
+interval. Random sampling is done to avoid introducing systematic artifacts into
+the resulting time series.
+
+Raw metrics are except from elision.
 
 QOS may be adjusted to reduce load on downstream aggregators or save a little
 money, if you pay by the point.
