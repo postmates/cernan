@@ -119,11 +119,11 @@ impl PartialOrd for Metric {
             Some(Ordering::Equal) => match self.name.partial_cmp(&other.name) {
                 Some(Ordering::Equal) => match self.time.partial_cmp(&other.time) {
                     Some(Ordering::Equal) => cmp(&self.tags, &other.tags),
-                    other => { println!("TIME ORDERING"); other },
+                    other => other,
                 },
-                other => { println!("NAME ORDERING"); other },
+                other => other,
             },
-            other => { println!("KIND ORDERING"); other },
+            other => other,
         }
     }
 }

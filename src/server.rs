@@ -168,11 +168,13 @@ fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: T
             match deserialize_from::<ZlibDecoder<Take<&mut BufReader<TcpStream>>>, Vec<metric::Event>>(&mut e, SizeLimit::Infinite) {
                 Ok(events) => {
                     for mut ev in events {
+                        trace!("FED RECV PRE-EVENT: {:?}", ev);
                         ev = match ev {
                             metric::Event::Statsd(m) => metric::Event::Statsd(m.merge_tags_from_map(&tags)),
                             metric::Event::Graphite(m) => metric::Event::Graphite(m.merge_tags_from_map(&tags)),
                             _ => continue, // we refuse to accept any non-telemetry forward for now
                         };
+                        trace!("FED RECV POST-EVENT: {:?}", ev);
                         send(&mut chans, &ev);
                     }
                     let metric = metric::Metric::new("cernan.federation.receiver.packet", 1.0).counter(1.0).overlay_tags_from_map(&tags);;
