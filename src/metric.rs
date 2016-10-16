@@ -1,12 +1,14 @@
 use time;
 use std::str::FromStr;
+use quantiles::CKMS;
 
-include!(concat!(env!("OUT_DIR"), "/serde_types.rs"));
+include!(concat!(env!("OUT_DIR"), "/metric_types.rs"));
 
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
 use std::cmp::Ordering;
+use std::ops::AddAssign;
 
 pub type TagMap = HashMap<String, String, BuildHasherDefault<FnvHasher>>;
 
@@ -61,7 +63,7 @@ impl PartialEq for MetricKind {
             (&MetricKind::Gauge, &MetricKind::DeltaGauge) => true,
             (&MetricKind::DeltaGauge, &MetricKind::DeltaGauge) => true,
             (&MetricKind::DeltaGauge, &MetricKind::Gauge) => true,
-            (&MetricKind::Counter(_), &MetricKind::Counter(_)) => true,
+            (&MetricKind::Counter, &MetricKind::Counter) => true,
             (&MetricKind::Timer, &MetricKind::Timer) => true,
             (&MetricKind::Histogram, &MetricKind::Histogram) => true,
             (&MetricKind::Raw, &MetricKind::Raw) => true,
@@ -73,43 +75,53 @@ impl PartialEq for MetricKind {
 impl PartialOrd for MetricKind {
     fn partial_cmp(&self, other: &MetricKind) -> Option<Ordering> {
         match (self, other) {
-            (&MetricKind::Counter(_), &MetricKind::DeltaGauge) => Some(Ordering::Less),
-            (&MetricKind::Counter(_), &MetricKind::Gauge) => Some(Ordering::Less),
-            (&MetricKind::Counter(_), &MetricKind::Histogram) => Some(Ordering::Less),
-            (&MetricKind::Counter(_), &MetricKind::Raw) => Some(Ordering::Less),
-            (&MetricKind::Counter(_), &MetricKind::Timer) => Some(Ordering::Less),
-            (&MetricKind::Counter(_), &MetricKind::Counter(_)) => Some(Ordering::Equal),
-            (&MetricKind::DeltaGauge, &MetricKind::Counter(_)) => Some(Ordering::Greater),
+            (&MetricKind::Counter, &MetricKind::DeltaGauge) => Some(Ordering::Less),
+            (&MetricKind::Counter, &MetricKind::Gauge) => Some(Ordering::Less),
+            (&MetricKind::Counter, &MetricKind::Histogram) => Some(Ordering::Less),
+            (&MetricKind::Counter, &MetricKind::Raw) => Some(Ordering::Less),
+            (&MetricKind::Counter, &MetricKind::Timer) => Some(Ordering::Less),
+            (&MetricKind::Counter, &MetricKind::Counter) => Some(Ordering::Equal),
+            (&MetricKind::DeltaGauge, &MetricKind::Counter) => Some(Ordering::Greater),
             (&MetricKind::DeltaGauge, &MetricKind::DeltaGauge) => Some(Ordering::Equal),
             (&MetricKind::DeltaGauge, &MetricKind::Gauge) => Some(Ordering::Equal),
             (&MetricKind::DeltaGauge, &MetricKind::Histogram) => Some(Ordering::Less),
             (&MetricKind::DeltaGauge, &MetricKind::Raw) => Some(Ordering::Less),
             (&MetricKind::DeltaGauge, &MetricKind::Timer) => Some(Ordering::Less),
-            (&MetricKind::Gauge, &MetricKind::Counter(_)) => Some(Ordering::Greater),
+            (&MetricKind::Gauge, &MetricKind::Counter) => Some(Ordering::Greater),
             (&MetricKind::Gauge, &MetricKind::DeltaGauge) => Some(Ordering::Equal),
             (&MetricKind::Gauge, &MetricKind::Gauge) => Some(Ordering::Equal),
             (&MetricKind::Gauge, &MetricKind::Histogram) => Some(Ordering::Less),
             (&MetricKind::Gauge, &MetricKind::Raw) => Some(Ordering::Less),
             (&MetricKind::Gauge, &MetricKind::Timer) => Some(Ordering::Less),
-            (&MetricKind::Histogram, &MetricKind::Counter(_)) => Some(Ordering::Greater),
+            (&MetricKind::Histogram, &MetricKind::Counter) => Some(Ordering::Greater),
             (&MetricKind::Histogram, &MetricKind::DeltaGauge) => Some(Ordering::Greater),
             (&MetricKind::Histogram, &MetricKind::Gauge) => Some(Ordering::Greater),
             (&MetricKind::Histogram, &MetricKind::Histogram) => Some(Ordering::Equal),
             (&MetricKind::Histogram, &MetricKind::Raw) => Some(Ordering::Less),
             (&MetricKind::Histogram, &MetricKind::Timer) => Some(Ordering::Greater),
-            (&MetricKind::Raw, &MetricKind::Counter(_)) => Some(Ordering::Greater),
+            (&MetricKind::Raw, &MetricKind::Counter) => Some(Ordering::Greater),
             (&MetricKind::Raw, &MetricKind::DeltaGauge) => Some(Ordering::Greater),
             (&MetricKind::Raw, &MetricKind::Gauge) => Some(Ordering::Greater),
             (&MetricKind::Raw, &MetricKind::Histogram) => Some(Ordering::Greater),
             (&MetricKind::Raw, &MetricKind::Raw) => Some(Ordering::Equal),
             (&MetricKind::Raw, &MetricKind::Timer) => Some(Ordering::Greater),
-            (&MetricKind::Timer, &MetricKind::Counter(_)) => Some(Ordering::Greater),
+            (&MetricKind::Timer, &MetricKind::Counter) => Some(Ordering::Greater),
             (&MetricKind::Timer, &MetricKind::DeltaGauge) => Some(Ordering::Greater),
             (&MetricKind::Timer, &MetricKind::Gauge) => Some(Ordering::Greater),
             (&MetricKind::Timer, &MetricKind::Histogram) => Some(Ordering::Less),
             (&MetricKind::Timer, &MetricKind::Raw) => Some(Ordering::Less),
             (&MetricKind::Timer, &MetricKind::Timer) => Some(Ordering::Equal),
         }
+    }
+}
+
+impl AddAssign for Metric {
+    fn add_assign(&mut self, rhs: Metric) {
+        self.value += rhs.value;
+        match rhs.kind {
+            MetricKind::DeltaGauge | MetricKind::Gauge => self.kind = rhs.kind,
+            _ => (),
+        };
     }
 }
 
@@ -144,17 +156,19 @@ impl Metric {
     ///
     /// assert_eq!(m.kind, MetricKind::Raw);
     /// assert_eq!(m.name, "foo");
-    /// assert_eq!(m.value, 1.1);
+    /// assert_eq!(m.value(), Some(1.1));
     /// ```
     pub fn new<S>(name: S, value: f64) -> Metric
         where S: Into<String>
     {
+        let mut ckms = CKMS::new(0.001);
+        ckms.insert(value);
         Metric {
             kind: MetricKind::Raw,
             name: name.into(),
             tags: TagMap::default(),
             time: time::now(),
-            value: value,
+            value: ckms,
         }
     }
 
@@ -266,13 +280,23 @@ impl Metric {
     /// ```
     /// use cernan::metric::Metric;
     ///
-    /// let m = Metric::new("foo", 1.1).value(10.10);
+    /// let m = Metric::new("foo", 1.1).set_value(10.10);
     ///
-    /// assert_eq!(m.value, 10.10);
+    /// assert_eq!(m.value(), Some(10.10));
     /// ```
-    pub fn value(mut self, value: f64) -> Metric {
-        self.value = value;
+    pub fn set_value(mut self, value: f64) -> Metric {
+        self.value = CKMS::new(0.001);
+        self.value.insert(value);
         self
+    }
+
+    pub fn value(&self) -> Option<f64> {
+        match self.kind {
+            MetricKind::Gauge | MetricKind::Raw => self.value.last(),
+            MetricKind::DeltaGauge => self.value.sum(),
+            MetricKind::Counter => self.value.sum(),
+            MetricKind::Timer | MetricKind::Histogram => self.value.query(1.0).map(|x| x.1),
+        }
     }
 
     /// Adjust MetricKind to Counter
@@ -282,12 +306,12 @@ impl Metric {
     /// ```
     /// use cernan::metric::{Metric, MetricKind};
     ///
-    /// let m = Metric::new("foo", 1.1).counter(1.0);
+    /// let m = Metric::new("foo", 1.1).counter();
     ///
-    /// assert_eq!(MetricKind::Counter(1.0), m.kind);
+    /// assert_eq!(MetricKind::Counter, m.kind);
     /// ```
-    pub fn counter(mut self, sample: f64) -> Metric {
-        self.kind = MetricKind::Counter(sample);
+    pub fn counter(mut self) -> Metric {
+        self.kind = MetricKind::Counter;
         self
     }
 
@@ -381,6 +405,14 @@ impl Metric {
         self
     }
 
+    pub fn query(&self, prcnt: f64) -> Option<f64> {
+        self.value.query(prcnt).map(|x| x.1)
+    }
+
+    pub fn count(&self) -> usize {
+        self.value.count()
+    }
+
     /// Valid message formats are:
     ///
     /// - `<str:metric_name>:<f64:value>|<str:type>`
@@ -436,7 +468,8 @@ impl Metric {
                                                             Ok(f) => f,
                                                             Err(_) => return None,
                                                         };
-                                                    metric.counter(sample)
+                                                    metric = metric.counter();
+                                                    metric.set_value(val * (1.0 / sample))
                                                 }
                                                 _ => return None,
                                             }
@@ -446,7 +479,7 @@ impl Metric {
                                                 "g" | "g\n" => metric.gauge(),
                                                 "ms" | "ms\n" => metric.timer(),
                                                 "h" | "h\n" => metric.histogram(),
-                                                "c" | "c\n" => metric.counter(1.0),
+                                                "c" | "c\n" => metric.counter(),
                                                 _ => return None,
                                             }
                                         }
@@ -512,7 +545,7 @@ mod tests {
     extern crate quickcheck;
 
     use metric::{Metric, MetricKind, MetricQOS, Event};
-    use self::quickcheck::{Arbitrary, Gen};
+    use self::quickcheck::{Arbitrary, Gen, TestResult, QuickCheck};
     use chrono::{UTC, TimeZone};
     use self::rand::{Rand, Rng};
     use std::cmp::Ordering;
@@ -530,7 +563,7 @@ mod tests {
         fn rand<R: Rng>(rng: &mut R) -> MetricKind {
             let i: usize = rng.gen();
             match i % 6 {
-                0 => MetricKind::Counter(rng.gen_range(-2.0, 2.0)),
+                0 => MetricKind::Counter,
                 1 => MetricKind::Gauge,
                 2 => MetricKind::DeltaGauge,
                 3 => MetricKind::Timer,
@@ -551,7 +584,7 @@ mod tests {
                 MetricKind::Gauge => mb.gauge(),
                 MetricKind::Timer => mb.timer(),
                 MetricKind::Histogram => mb.histogram(),
-                MetricKind::Counter(smpl) => mb.counter(smpl),
+                MetricKind::Counter => mb.counter(),
                 MetricKind::DeltaGauge => mb.delta_gauge(),
                 MetricKind::Raw => mb,
             };
@@ -587,6 +620,12 @@ mod tests {
         }
     }
 
+    impl Arbitrary for MetricKind {
+        fn arbitrary<G: Gen>(g: &mut G) -> MetricKind {
+            g.gen()
+        }
+    }
+
     impl Arbitrary for Metric {
         fn arbitrary<G: Gen>(g: &mut G) -> Metric {
             g.gen()
@@ -600,6 +639,48 @@ mod tests {
     }
 
     #[test]
+    fn test_metric_add_assign() {
+        fn inner(lhs: f64, rhs: f64, kind: MetricKind) -> TestResult {
+            let mut mlhs = Metric::new("foo", lhs);
+            let mut mrhs = Metric::new("foo", rhs);
+            mlhs = match kind {
+                MetricKind::Gauge => mlhs.gauge(),
+                MetricKind::DeltaGauge => mlhs.delta_gauge(),
+                MetricKind::Histogram => mlhs.histogram(),
+                MetricKind::Timer => mlhs.timer(),
+                MetricKind::Raw => mlhs,
+                MetricKind::Counter => mlhs.counter(),
+            };
+            mrhs = match kind {
+                MetricKind::Gauge => mrhs.gauge(),
+                MetricKind::DeltaGauge => mrhs.delta_gauge(),
+                MetricKind::Histogram => mrhs.histogram(),
+                MetricKind::Timer => mrhs.timer(),
+                MetricKind::Raw => mrhs,
+                MetricKind::Counter => mrhs.counter(),
+            };
+            mlhs += mrhs;
+            if let Some(val) = mlhs.value() {
+                let expected = match kind {
+                    MetricKind::Gauge | MetricKind::Raw => rhs,
+                    MetricKind::DeltaGauge | MetricKind::Counter => lhs+rhs,
+                    MetricKind::Timer | MetricKind::Histogram => lhs.max(rhs),
+                };
+                match val.partial_cmp(&expected) {
+                    Some(Ordering::Equal) => return TestResult::passed(),
+                    _ => return TestResult::failed(),
+                }
+            } else {
+                return TestResult::failed()
+            }
+        }
+        QuickCheck::new()
+            .tests(100)
+            .max_tests(1000)
+            .quickcheck(inner as fn(f64, f64, MetricKind) -> TestResult);
+    }
+
+    #[test]
     fn test_parse_graphite() {
         let pyld = "fst 1 101\nsnd -2.0 202\nthr 3 303\nfth@fth 4 404\nfv%fv 5 505\ns-th 6 606\n";
         let prs = Metric::parse_graphite(pyld);
@@ -609,32 +690,32 @@ mod tests {
 
         assert_eq!(prs_pyld[0].kind, MetricKind::Raw);
         assert_eq!(prs_pyld[0].name, "fst");
-        assert_eq!(prs_pyld[0].value, 1.0);
+        assert_eq!(prs_pyld[0].value(), Some(1.0));
         assert_eq!(prs_pyld[0].time, UTC.timestamp(101, 0).timestamp());
 
         assert_eq!(prs_pyld[1].kind, MetricKind::Raw);
         assert_eq!(prs_pyld[1].name, "snd");
-        assert_eq!(prs_pyld[1].value, -2.0);
+        assert_eq!(prs_pyld[1].value(), Some(-2.0));
         assert_eq!(prs_pyld[1].time, UTC.timestamp(202, 0).timestamp());
 
         assert_eq!(prs_pyld[2].kind, MetricKind::Raw);
         assert_eq!(prs_pyld[2].name, "thr");
-        assert_eq!(prs_pyld[2].value, 3.0);
+        assert_eq!(prs_pyld[2].value(), Some(3.0));
         assert_eq!(prs_pyld[2].time, UTC.timestamp(303, 0).timestamp());
 
         assert_eq!(prs_pyld[3].kind, MetricKind::Raw);
         assert_eq!(prs_pyld[3].name, "fth@fth");
-        assert_eq!(prs_pyld[3].value, 4.0);
+        assert_eq!(prs_pyld[3].value(), Some(4.0));
         assert_eq!(prs_pyld[3].time, UTC.timestamp(404, 0).timestamp());
 
         assert_eq!(prs_pyld[4].kind, MetricKind::Raw);
         assert_eq!(prs_pyld[4].name, "fv%fv");
-        assert_eq!(prs_pyld[4].value, 5.0);
+        assert_eq!(prs_pyld[4].value(), Some(5.0));
         assert_eq!(prs_pyld[4].time, UTC.timestamp(505, 0).timestamp());
 
         assert_eq!(prs_pyld[5].kind, MetricKind::Raw);
         assert_eq!(prs_pyld[5].name, "s-th");
-        assert_eq!(prs_pyld[5].value, 6.0);
+        assert_eq!(prs_pyld[5].value(), Some(6.0));
         assert_eq!(prs_pyld[5].time, UTC.timestamp(606, 0).timestamp());
     }
 
@@ -643,7 +724,7 @@ mod tests {
         let m = Metric::new("timer", -1.0).timer();
 
         assert_eq!(m.kind, MetricKind::Timer);
-        assert_eq!(m.value, -1.0);
+        assert_eq!(m.query(1.0), Some(-1.0));
         assert_eq!(m.name, "timer");
     }
 
@@ -656,7 +737,7 @@ mod tests {
 
         assert_eq!(prs_pyld[0].kind, MetricKind::Timer);
         assert_eq!(prs_pyld[0].name, "fst");
-        assert_eq!(prs_pyld[0].value, -1.1);
+        assert_eq!(prs_pyld[0].query(1.0), Some(-1.1));
     }
 
     #[test]
@@ -664,13 +745,13 @@ mod tests {
         let m = Metric::new("dgauge", 1.0).delta_gauge();
 
         assert_eq!(m.kind, MetricKind::DeltaGauge);
-        assert_eq!(m.value, 1.0);
+        assert_eq!(m.value(), Some(1.0));
         assert_eq!(m.name, "dgauge");
     }
 
     #[test]
     fn test_parse_metric_via_api() {
-        let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@2\nsxth:-6.\
+        let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@0.1\nsxth:-6.\
                     6|g\nsvth:+7.77|g\n";
         let prs = Metric::parse_statsd(pyld);
 
@@ -679,35 +760,35 @@ mod tests {
 
         assert_eq!(prs_pyld[0].kind, MetricKind::Gauge);
         assert_eq!(prs_pyld[0].name, "zrth");
-        assert_eq!(prs_pyld[0].value, 0.0);
+        assert_eq!(prs_pyld[0].value(), Some(0.0));
 
         assert_eq!(prs_pyld[1].kind, MetricKind::Timer);
         assert_eq!(prs_pyld[1].name, "fst");
-        assert_eq!(prs_pyld[1].value, -1.1);
+        assert_eq!(prs_pyld[1].query(1.0), Some(-1.1));
 
         assert_eq!(prs_pyld[2].kind, MetricKind::DeltaGauge);
         assert_eq!(prs_pyld[2].name, "snd");
-        assert_eq!(prs_pyld[2].value, 2.2);
+        assert_eq!(prs_pyld[2].value(), Some(2.2));
 
         assert_eq!(prs_pyld[3].kind, MetricKind::Histogram);
         assert_eq!(prs_pyld[3].name, "thd");
-        assert_eq!(prs_pyld[3].value, 3.3);
+        assert_eq!(prs_pyld[3].query(1.0), Some(3.3));
 
-        assert_eq!(prs_pyld[4].kind, MetricKind::Counter(1.0));
+        assert_eq!(prs_pyld[4].kind, MetricKind::Counter);
         assert_eq!(prs_pyld[4].name, "fth");
-        assert_eq!(prs_pyld[4].value, 4.0);
+        assert_eq!(prs_pyld[4].value(), Some(4.0));
 
-        assert_eq!(prs_pyld[5].kind, MetricKind::Counter(2.0));
+        assert_eq!(prs_pyld[5].kind, MetricKind::Counter);
         assert_eq!(prs_pyld[5].name, "fvth");
-        assert_eq!(prs_pyld[5].value, 5.5);
+        assert_eq!(prs_pyld[5].value(), Some(55.0));
 
         assert_eq!(prs_pyld[6].kind, MetricKind::DeltaGauge);
         assert_eq!(prs_pyld[6].name, "sxth");
-        assert_eq!(prs_pyld[6].value, -6.6);
+        assert_eq!(prs_pyld[6].value(), Some(-6.6));
 
         assert_eq!(prs_pyld[7].kind, MetricKind::DeltaGauge);
         assert_eq!(prs_pyld[7].name, "svth");
-        assert_eq!(prs_pyld[7].value, 7.77);
+        assert_eq!(prs_pyld[7].value(), Some(7.77));
     }
 
     #[test]
@@ -715,7 +796,7 @@ mod tests {
         let res = Metric::parse_statsd("A=:1|ms\n").unwrap();
 
         assert_eq!("A=", res[0].name);
-        assert_eq!(1.0, res[0].value);
+        assert_eq!(Some(1.0), res[0].query(1.0));
         assert_eq!(MetricKind::Timer, res[0].kind);
     }
 
@@ -724,7 +805,7 @@ mod tests {
         let res = Metric::parse_statsd("A/:1|ms\n").unwrap();
 
         assert_eq!("A/", res[0].name);
-        assert_eq!(1.0, res[0].value);
+        assert_eq!(Some(1.0), res[0].query(1.0));
         assert_eq!(MetricKind::Timer, res[0].kind);
     }
 
@@ -733,11 +814,11 @@ mod tests {
         let res = Metric::parse_statsd("foo:1|g@0.22\nbar:101|g@2\n").unwrap();
         //                              0         A     F
         assert_eq!("foo", res[0].name);
-        assert_eq!(1.0, res[0].value);
+        assert_eq!(Some(1.0), res[0].query(1.0));
         assert_eq!(MetricKind::Gauge, res[0].kind);
 
         assert_eq!("bar", res[1].name);
-        assert_eq!(101.0, res[1].value);
+        assert_eq!(Some(101.0), res[1].query(1.0));
         assert_eq!(MetricKind::Gauge, res[1].kind);
     }
 
@@ -757,10 +838,10 @@ mod tests {
         assert_eq!(2, res.len());
 
         assert_eq!("a.b", res[0].name);
-        assert_eq!(12.1, res[0].value);
+        assert_eq!(Some(12.1), res[0].value());
 
         assert_eq!("b_c", res[1].name);
-        assert_eq!(13.2, res[1].value);
+        assert_eq!(Some(13.2), res[1].value());
     }
 
     #[test]
@@ -769,10 +850,10 @@ mod tests {
         assert_eq!(2, res.len());
 
         assert_eq!("a.b", res[0].name);
-        assert_eq!(12.1, res[0].value);
+        assert_eq!(Some(12.1), res[0].value());
 
         assert_eq!("b_c", res[1].name);
-        assert_eq!(13.2, res[1].value);
+        assert_eq!(Some(13.2), res[1].value());
     }
 
     #[test]

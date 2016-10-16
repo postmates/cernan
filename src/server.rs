@@ -61,12 +61,12 @@ pub fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>, socket: UdpSocket
                             m = m.overlay_tags_from_map(&tags);
                             send(&mut chans, &metric::Event::Statsd(m));
                         }
-                        let mut metric = metric::Metric::new("cernan.statsd.packet", 1.0).counter(1.0);
+                        let mut metric = metric::Metric::new("cernan.statsd.packet", 1.0).counter();
                         metric = metric.overlay_tags_from_map(&tags);
                         send(&mut chans, &metric::Event::Statsd(metric));
                     }
                     None => {
-                        let mut metric = metric::Metric::new("cernan.statsd.bad_packet", 1.0).counter(1.0);
+                        let mut metric = metric::Metric::new("cernan.statsd.bad_packet", 1.0).counter();
                         metric = metric.overlay_tags_from_map(&tags);
                         send(&mut chans, &metric::Event::Statsd(metric));
                         error!("BAD PACKET: {:?}", val);
@@ -113,7 +113,7 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf, t
                                     Ok(0) => break,
                                     Ok(_) => {
                                         let name = format!("{}.lines", path.to_str().unwrap());
-                                        let metric = metric::Metric::new(name, 1.0).counter(1.0).overlay_tags_from_map(&tags);
+                                        let metric = metric::Metric::new(name, 1.0).counter().overlay_tags_from_map(&tags);
                                         send(&mut chans, &metric::Event::Statsd(metric));
                                         lines.push(metric::LogLine::new(
                                             String::from(path.to_str().unwrap()),
@@ -177,7 +177,7 @@ fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: T
                         trace!("FED RECV POST-EVENT: {:?}", ev);
                         send(&mut chans, &ev);
                     }
-                    let metric = metric::Metric::new("cernan.federation.receiver.packet", 1.0).counter(1.0).overlay_tags_from_map(&tags);;
+                    let metric = metric::Metric::new("cernan.federation.receiver.packet", 1.0).counter().overlay_tags_from_map(&tags);;
                     send(&mut chans, &metric::Event::Statsd(metric));
                 }
                 Err(e) => panic!("Failed decoding. Skipping {:?}", e),
@@ -228,7 +228,7 @@ fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream,
                         trace!("graphite - {}", val);
                         match metric::Metric::parse_graphite(val) {
                             Some(metrics) => {
-                                let metric = metric::Metric::new("cernan.graphite.packet", 1.0).counter(1.0).overlay_tags_from_map(&tags);;
+                                let metric = metric::Metric::new("cernan.graphite.packet", 1.0).counter().overlay_tags_from_map(&tags);;
                                 send(&mut chans, &metric::Event::Statsd(metric));
                                 for mut m in metrics {
                                     m = m.overlay_tags_from_map(&tags);
@@ -236,7 +236,7 @@ fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream,
                                 }
                             }
                             None => {
-                                let metric = metric::Metric::new("cernan.graphite.bad_packet", 1.0).counter(1.0).overlay_tags_from_map(&tags);
+                                let metric = metric::Metric::new("cernan.graphite.bad_packet", 1.0).counter().overlay_tags_from_map(&tags);
                                 send(&mut chans, &metric::Event::Statsd(metric));
                                 error!("BAD PACKET: {:?}", val);
                             }

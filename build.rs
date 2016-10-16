@@ -6,8 +6,7 @@ use std::path::Path;
 fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
 
-    let src = Path::new("src/serde_types.in.rs");
-    let dst = Path::new(&out_dir).join("serde_types.rs");
-
-    serde_codegen::expand(&src, &dst).unwrap();
+    let metric_src = Path::new("src/metric_types.in.rs");
+    let metric_dst = Path::new(&out_dir).join("metric_types.rs");
+    serde_codegen::expand(&metric_src, &metric_dst).unwrap();
 }

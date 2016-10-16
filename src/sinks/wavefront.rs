@@ -55,13 +55,17 @@ impl Wavefront {
 
         for (key, value) in self.aggrs.counters().iter() {
             for &(_, ref m) in sample(self.interval, self.qos.counter as i64, value) {
-                write!(stats, "{} {} {} {}\n", key, m.value, m.time, fmt_tags(&m.tags)).unwrap();
+                if let Some(v) = m.value() {
+                    write!(stats, "{} {} {} {}\n", key, v, m.time, fmt_tags(&m.tags)).unwrap();
+                }
             }
         }
 
         for (key, value) in self.aggrs.gauges().iter() {
             for &(_, ref m) in sample(self.interval, self.qos.gauge as i64, value) {
-                write!(stats, "{} {} {} {}\n", key, m.value, m.time, fmt_tags(&m.tags)).unwrap();
+                if let Some(v) = m.value() {
+                    write!(stats, "{} {} {} {}\n", key, v, m.time, fmt_tags(&m.tags)).unwrap();
+                }
             }
         }
 
@@ -86,7 +90,7 @@ impl Wavefront {
                            "{}.{} {} {} {}\n",
                            key,
                            stat,
-                           hist.query(quant).unwrap().1,
+                           hist.query(quant).unwrap(),
                            smpl_time,
                            fmt_tags(&self.tags))
                         .unwrap()
@@ -123,7 +127,7 @@ impl Wavefront {
                            "{}.{} {} {} {}\n",
                            key,
                            stat,
-                           tmr.query(quant).unwrap().1,
+                           tmr.query(quant).unwrap(),
                            smpl_time,
                            fmt_tags(&self.tags))
                         .unwrap()
@@ -142,7 +146,7 @@ impl Wavefront {
         // Raw points have no QOS as we can make no valid aggregation of them.
         for (key, value) in self.aggrs.raws().iter() {
             for &(_, ref m) in value {
-                write!(stats, "{} {} {} {}\n", key, m.value, m.time, fmt_tags(&m.tags)).unwrap();
+                write!(stats, "{} {} {} {}\n", key, m.value().unwrap(), m.time, fmt_tags(&m.tags)).unwrap();
             }
         }
 
@@ -707,9 +711,9 @@ mod test {
         let dt_4 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 15, 0).timestamp();
 
         for (i, dt) in vec![dt_0, dt_1, dt_2, dt_3, dt_4].iter().enumerate() {
-            wavefront.deliver(Metric::new("test.counter", i as f64).time(*dt).counter(1.0));
+            wavefront.deliver(Metric::new("test.counter", i as f64).time(*dt).counter());
         }
-        wavefront.deliver(Metric::new("test.some_other_counter", 1.0).time(dt_3).counter(1.0));
+        wavefront.deliver(Metric::new("test.some_other_counter", 1.0).time(dt_3).counter());
 
         let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
@@ -727,9 +731,9 @@ mod test {
             Wavefront::new("localhost", 2003, tags.clone(), qos, 60);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 13).timestamp();
-        wavefront.deliver(Metric::new("test.counter", -1.0).time(dt_0).counter(1.0).overlay_tags_from_map(&tags));
-        wavefront.deliver(Metric::new("test.counter", 2.0).time(dt_0).counter(1.0).overlay_tags_from_map(&tags));
-        wavefront.deliver(Metric::new("test.counter", 3.0).time(dt_1).counter(1.0).overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.counter", -1.0).time(dt_0).counter().overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.counter", 2.0).time(dt_0).counter().overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.counter", 3.0).time(dt_1).counter().overlay_tags_from_map(&tags));
         wavefront.deliver(Metric::new("test.gauge", 3.211).time(dt_0).gauge().overlay_tags_from_map(&tags));
         wavefront.deliver(Metric::new("test.timer", 12.101).time(dt_0).timer().overlay_tags_from_map(&tags));
         wavefront.deliver(Metric::new("test.timer", 1.101).time(dt_0).timer().overlay_tags_from_map(&tags));
