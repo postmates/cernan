@@ -92,7 +92,7 @@ impl Wavefront {
                            stat,
                            hist.query(quant).unwrap(),
                            smpl_time,
-                           fmt_tags(&self.tags))
+                           fmt_tags(&hist.tags))
                         .unwrap()
                 }
                 let count = hist.count();
@@ -101,7 +101,7 @@ impl Wavefront {
                        key,
                        count,
                        smpl_time,
-                       fmt_tags(&self.tags))
+                       fmt_tags(&hist.tags))
                     .unwrap();
             }
         }
@@ -129,7 +129,7 @@ impl Wavefront {
                            stat,
                            tmr.query(quant).unwrap(),
                            smpl_time,
-                           fmt_tags(&self.tags))
+                           fmt_tags(&tmr.tags))
                         .unwrap()
                 }
                 let count = tmr.count();
@@ -138,7 +138,7 @@ impl Wavefront {
                        key,
                        count,
                        smpl_time,
-                       fmt_tags(&self.tags))
+                       fmt_tags(&tmr.tags))
                     .unwrap();
             }
         }

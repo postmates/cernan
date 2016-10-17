@@ -9,8 +9,8 @@ port = 2003
 flush-interval = 10
 
 [tags]
+service = "transmitter"
 source = "cernan"
-kind = "transmitter"
 
 [federation_transmitter]
 port = 1972
