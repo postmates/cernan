@@ -67,7 +67,7 @@ impl Buckets {
         self.raws.clear();
         self.histograms.clear();
         self.timers.clear();
-        for (_, v) in self.gauges.iter_mut() {
+        for (_, v) in &mut self.gauges {
             let len = v.len();
             if len > 0 {
                 v.swap(0, len - 1);
@@ -90,21 +90,23 @@ impl Buckets {
         let name = value.name.to_owned();
         match value.kind {
             MetricKind::Counter => {
-                let counter = self.counters.entry(name).or_insert(vec![]);
-                match (*counter).binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap() ) {
+                let counter = self.counters.entry(name).or_insert_with(|| vec![]);
+                match (*counter)
+                    .binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap()) {
                     Ok(idx) => (*counter)[idx].1 += value,
                     Err(idx) => (*counter).insert(idx, (value.time, value)),
                 }
             }
             MetricKind::Gauge | MetricKind::DeltaGauge => {
-                let gauge = self.gauges.entry(name).or_insert(vec![]);
-                match (*gauge).binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap() ) {
+                let gauge = self.gauges.entry(name).or_insert_with(|| vec![]);
+                match (*gauge)
+                    .binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap()) {
                     Ok(idx) => (*gauge)[idx].1 += value,
                     Err(idx) => (*gauge).insert(idx, (value.time, value)),
                 }
             }
             MetricKind::Raw => {
-                let raw = self.raws.entry(name).or_insert(vec![]);
+                let raw = self.raws.entry(name).or_insert_with(|| vec![]);
                 // We only want to keep one raw point per second per name. If
                 // someone pushes more than one point in a second interval we'll
                 // overwrite the value of the metric already in-vector.
@@ -114,14 +116,14 @@ impl Buckets {
                 }
             }
             MetricKind::Histogram => {
-                let hist = self.histograms.entry(name).or_insert(vec![]);
+                let hist = self.histograms.entry(name).or_insert_with(|| vec![]);
                 match (*hist).binary_search_by_key(&value.time, |&(t, _)| t) {
                     Ok(idx) => (*hist)[idx].1 += value,
                     Err(idx) => (*hist).insert(idx, (value.time, value)),
                 }
             }
             MetricKind::Timer => {
-                let tmr = self.timers.entry(name).or_insert(vec![]);
+                let tmr = self.timers.entry(name).or_insert_with(|| vec![]);
                 match (*tmr).binary_search_by_key(&value.time, |&(t, _)| t) {
                     Ok(idx) => (*tmr)[idx].1 += value,
                     Err(idx) => (*tmr).insert(idx, (value.time, value)),
@@ -193,11 +195,13 @@ mod test {
         let rmname = String::from("some.metric");
         assert!(buckets.counters.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(Some(1.0), buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
+        assert_eq!(Some(1.0),
+                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
 
         // Increment counter
         buckets.add(metric);
-        assert_eq!(Some(2.0), buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
+        assert_eq!(Some(2.0),
+                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
         assert_eq!(1, buckets.counters().len());
         assert_eq!(0, buckets.gauges().len());
     }
@@ -211,11 +215,13 @@ mod test {
         let rmname = String::from("some.metric");
         assert!(buckets.counters.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(Some(1.0), buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
+        assert_eq!(Some(1.0),
+                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
 
         // Increment counter
         buckets.add(metric);
-        assert_eq!(Some(2.0), buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
+        assert_eq!(Some(2.0),
+                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
         assert_eq!(1, buckets.counters().len());
 
         buckets.reset();
@@ -297,7 +303,8 @@ mod test {
         buckets.add(metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(Some(11.5), buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
+        assert_eq!(Some(11.5),
+                   buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
         assert_eq!(1, buckets.gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
@@ -312,7 +319,8 @@ mod test {
         buckets.add(delta_metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(Some(88.5), buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
+        assert_eq!(Some(88.5),
+                   buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
         assert_eq!(1, buckets.gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
@@ -329,7 +337,8 @@ mod test {
         buckets.add(reset_metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(Some(2007.3), buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
+        assert_eq!(Some(2007.3),
+                   buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
         assert_eq!(1, buckets.gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
@@ -370,7 +379,8 @@ mod test {
         buckets.add(Metric::new("some.metric", 4.0).time(dt_1));
 
         let mname = String::from("some.metric");
-        assert!(buckets.raws.contains_key(&mname), "Should contain the metric key");
+        assert!(buckets.raws.contains_key(&mname),
+                "Should contain the metric key");
 
         let metrics = buckets.raws.get_mut(&mname).unwrap();
         assert_eq!(2, metrics.len());

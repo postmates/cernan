@@ -42,7 +42,6 @@ fn main() {
     let mut joins = Vec::new();
     let mut sends = Vec::new();
 
-    //
     // SINKS
     //
     if args.console {
@@ -92,7 +91,6 @@ fn main() {
         }));
     }
 
-    //
     // SOURCES
     //
 
@@ -102,7 +100,10 @@ fn main() {
         let fed_tags = args_fedrcv.tags;
         let receiver_server_send = sends.clone();
         joins.push(thread::spawn(move || {
-            cernan::server::receiver_sink_server(receiver_server_send, &crcv_ip, crcv_port, fed_tags);
+            cernan::server::receiver_sink_server(receiver_server_send,
+                                                 &crcv_ip,
+                                                 crcv_port,
+                                                 fed_tags);
         }));
     }
 
@@ -143,7 +144,6 @@ fn main() {
         }
     }
 
-    //
     // BACKGROUND
     //
 

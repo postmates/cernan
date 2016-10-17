@@ -9,9 +9,9 @@ use std::io::Take;
 use std::str;
 use metric;
 use std::fs::File;
-use std::io::{SeekFrom,BufReader};
+use std::io::{SeekFrom, BufReader};
 use std::path::PathBuf;
-use bincode::serde::{deserialize_from};
+use bincode::serde::deserialize_from;
 
 use std::sync::mpsc::channel;
 use notify::{RecommendedWatcher, Error, Watcher};
@@ -27,7 +27,6 @@ fn send(chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &metric::Event) {
     }
 }
 
-//
 // STATSD
 //
 
@@ -45,7 +44,9 @@ pub fn udp_server_v4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16, tags: m
     handle_udp(chans, socket, tags);
 }
 
-pub fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>, socket: UdpSocket, tags: metric::TagMap) {
+pub fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>,
+                  socket: UdpSocket,
+                  tags: metric::TagMap) {
     let mut buf = [0; 8192];
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
@@ -66,7 +67,8 @@ pub fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>, socket: UdpSocket
                         send(&mut chans, &metric::Event::Statsd(metric));
                     }
                     None => {
-                        let mut metric = metric::Metric::new("cernan.statsd.bad_packet", 1.0).counter();
+                        let mut metric = metric::Metric::new("cernan.statsd.bad_packet", 1.0)
+                            .counter();
                         metric = metric.overlay_tags_from_map(&tags);
                         send(&mut chans, &metric::Event::Statsd(metric));
                         error!("BAD PACKET: {:?}", val);
@@ -77,11 +79,12 @@ pub fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>, socket: UdpSocket
     }
 }
 
-//
 // FILE
 //
 
-pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf, tags: metric::TagMap) {
+pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>,
+                   path: PathBuf,
+                   tags: metric::TagMap) {
     let (tx, rx) = channel();
     // NOTE on OSX fsevent will _not_ let us watch a file we don't own
     // effectively. See
@@ -113,15 +116,16 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf, t
                                     Ok(0) => break,
                                     Ok(_) => {
                                         let name = format!("{}.lines", path.to_str().unwrap());
-                                        let metric = metric::Metric::new(name, 1.0).counter().overlay_tags_from_map(&tags);
+                                        let metric = metric::Metric::new(name, 1.0)
+                                            .counter()
+                                            .overlay_tags_from_map(&tags);
                                         send(&mut chans, &metric::Event::Statsd(metric));
-                                        lines.push(metric::LogLine::new(
-                                            String::from(path.to_str().unwrap()),
-                                            line,
-                                            tags.clone()
-                                        ));
-                                    },
-                                    Err(err) => panic!(err)
+                                        lines.push(metric::LogLine::new(String::from(path.to_str()
+                                                                            .unwrap()),
+                                                                        line,
+                                                                        tags.clone()));
+                                    }
+                                    Err(err) => panic!(err),
                                 }
                             }
                             send(&mut chans, &metric::Event::Log(lines));
@@ -135,12 +139,14 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>, path: PathBuf, t
     }
 }
 
-//
 // FEDERATION_RECEIVER
 //
 
-pub fn receiver_sink_server(chans: Vec<mpsc::Sender<metric::Event>>, ip: &String, port: u16, tags: metric::TagMap) {
-    let srv: Vec<_> = (ip.as_str(), port).to_socket_addrs().expect("unable to make socket addr").collect();
+pub fn receiver_sink_server(chans: Vec<mpsc::Sender<metric::Event>>,
+                            ip: &str,
+                            port: u16,
+                            tags: metric::TagMap) {
+    let srv: Vec<_> = (ip, port).to_socket_addrs().expect("unable to make socket addr").collect();
     let listener = TcpListener::bind(srv.first().unwrap()).expect("Unable to bind to TCP socket");
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
@@ -157,7 +163,9 @@ fn u8tou32abe(v: &[u8]) -> u32 {
     (v[3] as u32) + ((v[2] as u32) << 8) + ((v[1] as u32) << 24) + ((v[0] as u32) << 16)
 }
 
-fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream, tags: metric::TagMap) {
+fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>,
+                          stream: TcpStream,
+                          tags: metric::TagMap) {
     let mut sz_buf = [0; 4];
     let mut reader = BufReader::new(stream);
     match reader.read_exact(&mut sz_buf) {
@@ -165,19 +173,26 @@ fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: T
             let payload_size_in_bytes = u8tou32abe(&sz_buf);
             let hndl = (&mut reader).take(payload_size_in_bytes as u64);
             let mut e = ZlibDecoder::new(hndl);
-            match deserialize_from::<ZlibDecoder<Take<&mut BufReader<TcpStream>>>, Vec<metric::Event>>(&mut e, SizeLimit::Infinite) {
+            match deserialize_from::<ZlibDecoder<Take<&mut BufReader<TcpStream>>>,
+                                     Vec<metric::Event>>(&mut e, SizeLimit::Infinite) {
                 Ok(events) => {
                     for mut ev in events {
                         trace!("FED RECV PRE-EVENT: {:?}", ev);
                         ev = match ev {
-                            metric::Event::Statsd(m) => metric::Event::Statsd(m.merge_tags_from_map(&tags)),
-                            metric::Event::Graphite(m) => metric::Event::Graphite(m.merge_tags_from_map(&tags)),
+                            metric::Event::Statsd(m) => {
+                                metric::Event::Statsd(m.merge_tags_from_map(&tags))
+                            }
+                            metric::Event::Graphite(m) => {
+                                metric::Event::Graphite(m.merge_tags_from_map(&tags))
+                            }
                             _ => continue, // we refuse to accept any non-telemetry forward for now
                         };
                         trace!("FED RECV POST-EVENT: {:?}", ev);
                         send(&mut chans, &ev);
                     }
-                    let metric = metric::Metric::new("cernan.federation.receiver.packet", 1.0).counter().overlay_tags_from_map(&tags);;
+                    let metric = metric::Metric::new("cernan.federation.receiver.packet", 1.0)
+                        .counter()
+                        .overlay_tags_from_map(&tags);;
                     send(&mut chans, &metric::Event::Statsd(metric));
                 }
                 Err(e) => panic!("Failed decoding. Skipping {:?}", e),
@@ -187,7 +202,6 @@ fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: T
     }
 }
 
-//
 // GRAPHITE
 //
 
@@ -217,7 +231,9 @@ pub fn tcp_server_ipv4(chans: Vec<mpsc::Sender<metric::Event>>, port: u16, tags:
     }
 }
 
-fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream, tags: metric::TagMap) {
+fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>,
+                 stream: TcpStream,
+                 tags: metric::TagMap) {
     let line_reader = BufReader::new(stream);
     for line in line_reader.lines() {
         match line {
@@ -228,7 +244,9 @@ fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream,
                         trace!("graphite - {}", val);
                         match metric::Metric::parse_graphite(val) {
                             Some(metrics) => {
-                                let metric = metric::Metric::new("cernan.graphite.packet", 1.0).counter().overlay_tags_from_map(&tags);;
+                                let metric = metric::Metric::new("cernan.graphite.packet", 1.0)
+                                    .counter()
+                                    .overlay_tags_from_map(&tags);;
                                 send(&mut chans, &metric::Event::Statsd(metric));
                                 for mut m in metrics {
                                     m = m.overlay_tags_from_map(&tags);
@@ -236,7 +254,9 @@ fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream,
                                 }
                             }
                             None => {
-                                let metric = metric::Metric::new("cernan.graphite.bad_packet", 1.0).counter().overlay_tags_from_map(&tags);
+                                let metric = metric::Metric::new("cernan.graphite.bad_packet", 1.0)
+                                    .counter()
+                                    .overlay_tags_from_map(&tags);
                                 send(&mut chans, &metric::Event::Statsd(metric));
                                 error!("BAD PACKET: {:?}", val);
                             }
@@ -249,7 +269,6 @@ fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream,
     }
 }
 
-//
 // FLUSH
 //
 

@@ -10,9 +10,9 @@
 //! # Inside Baseball
 //!
 //! How does durable mpsc work? From the outside, it looks very much like a
-//! named pipe in Unix. You supply a name to either channel_2 or
-//! channel_with_max_bytes_3 and you push bytes in and out. In private, this
-//! name is used to create a directory under data_dir and this directory gets
+//! named pipe in Unix. You supply a name to either `channel_2` or
+//! `channel_with_max_bytes_3` and you push bytes in and out. In private, this
+//! name is used to create a directory under `data_dir` and this directory gets
 //! filled up with monotonically increasing files. The on-disk structure looks
 //! like this:
 //!
@@ -63,7 +63,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-/// PRIVATE -- exposed via Sender::new
+/// PRIVATE -- exposed via `Sender::new`
 #[derive(Default, Debug)]
 pub struct FsSync {
     bytes_written: usize,
@@ -71,7 +71,7 @@ pub struct FsSync {
     sender_seq_num: usize,
 }
 
-/// PRIVATE -- exposed via Sender::new
+/// PRIVATE -- exposed via `Sender::new`
 pub type FSLock = Arc<Mutex<FsSync>>;
 
 /// Create a (Sender, Reciever) pair in a like fashion to [`std::sync::mpsc::channel`](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html)

@@ -25,7 +25,9 @@ pub struct Receiver<T> {
     resource_type: PhantomData<T>,
 }
 
-impl<T> Receiver<T> where T: Deserialize {
+impl<T> Receiver<T>
+    where T: Deserialize
+{
     /// TODO
     pub fn new(data_dir: &Path, fs_lock: FSLock) -> Receiver<T> {
         let _ = fs_lock.lock().expect("Sender fs_lock poisoned");
@@ -81,7 +83,7 @@ impl<T> Iterator for Receiver<T>
                             match deserialize(&payload_buf) {
                                 Ok(event) => {
                                     (*syn).writes_to_read -= 1;
-                                    return Some(event)
+                                    return Some(event);
                                 }
                                 Err(e) => panic!("Failed decoding. Skipping {:?}", e),
                             }
@@ -108,7 +110,14 @@ impl<T> Iterator for Receiver<T>
                                 let seq_num = fs::read_dir(&self.root)
                                     .unwrap()
                                     .map(|de| {
-                                        de.unwrap().path().file_name().unwrap().to_str().unwrap().parse::<usize>().unwrap()
+                                        de.unwrap()
+                                            .path()
+                                            .file_name()
+                                            .unwrap()
+                                            .to_str()
+                                            .unwrap()
+                                            .parse::<usize>()
+                                            .unwrap()
                                     })
                                     .min()
                                     .unwrap();
@@ -116,7 +125,10 @@ impl<T> Iterator for Receiver<T>
                                 fs::remove_file(old_log).expect("could not remove log");
                                 let lg = self.root.join(format!("{}", seq_num.wrapping_add(1)));
                                 match fs::OpenOptions::new().read(true).open(&lg) {
-                                    Ok(fp) => { self.fp = BufReader::new(fp); continue; }
+                                    Ok(fp) => {
+                                        self.fp = BufReader::new(fp);
+                                        continue;
+                                    }
                                     Err(e) => panic!("[Receiver] could not open {:?}", e),
                                 }
                             }

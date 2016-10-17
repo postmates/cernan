@@ -48,9 +48,9 @@ fn cmp(left: &TagMap, right: &TagMap) -> Option<Ordering> {
     if left.len() != right.len() {
         left.len().partial_cmp(&right.len())
     } else {
-        let mut l: Vec<(&String,&String)> = left.iter().collect();
+        let mut l: Vec<(&String, &String)> = left.iter().collect();
         l.sort();
-        let mut r: Vec<(&String,&String)> = right.iter().collect();
+        let mut r: Vec<(&String, &String)> = right.iter().collect();
         r.sort();
         l.partial_cmp(&r)
     }
@@ -59,13 +59,13 @@ fn cmp(left: &TagMap, right: &TagMap) -> Option<Ordering> {
 impl PartialEq for MetricKind {
     fn eq(&self, other: &MetricKind) -> bool {
         match (self, other) {
-            (&MetricKind::Gauge, &MetricKind::Gauge) => true,
-            (&MetricKind::Gauge, &MetricKind::DeltaGauge) => true,
-            (&MetricKind::DeltaGauge, &MetricKind::DeltaGauge) => true,
-            (&MetricKind::DeltaGauge, &MetricKind::Gauge) => true,
-            (&MetricKind::Counter, &MetricKind::Counter) => true,
-            (&MetricKind::Timer, &MetricKind::Timer) => true,
-            (&MetricKind::Histogram, &MetricKind::Histogram) => true,
+            (&MetricKind::Gauge, &MetricKind::Gauge) |
+            (&MetricKind::Gauge, &MetricKind::DeltaGauge) |
+            (&MetricKind::DeltaGauge, &MetricKind::DeltaGauge) |
+            (&MetricKind::DeltaGauge, &MetricKind::Gauge) |
+            (&MetricKind::Counter, &MetricKind::Counter) |
+            (&MetricKind::Timer, &MetricKind::Timer) |
+            (&MetricKind::Histogram, &MetricKind::Histogram) |
             (&MetricKind::Raw, &MetricKind::Raw) => true,
             _ => false,
         }
@@ -75,42 +75,44 @@ impl PartialEq for MetricKind {
 impl PartialOrd for MetricKind {
     fn partial_cmp(&self, other: &MetricKind) -> Option<Ordering> {
         match (self, other) {
-            (&MetricKind::Counter, &MetricKind::DeltaGauge) => Some(Ordering::Less),
-            (&MetricKind::Counter, &MetricKind::Gauge) => Some(Ordering::Less),
-            (&MetricKind::Counter, &MetricKind::Histogram) => Some(Ordering::Less),
-            (&MetricKind::Counter, &MetricKind::Raw) => Some(Ordering::Less),
-            (&MetricKind::Counter, &MetricKind::Timer) => Some(Ordering::Less),
-            (&MetricKind::Counter, &MetricKind::Counter) => Some(Ordering::Equal),
-            (&MetricKind::DeltaGauge, &MetricKind::Counter) => Some(Ordering::Greater),
-            (&MetricKind::DeltaGauge, &MetricKind::DeltaGauge) => Some(Ordering::Equal),
-            (&MetricKind::DeltaGauge, &MetricKind::Gauge) => Some(Ordering::Equal),
-            (&MetricKind::DeltaGauge, &MetricKind::Histogram) => Some(Ordering::Less),
-            (&MetricKind::DeltaGauge, &MetricKind::Raw) => Some(Ordering::Less),
-            (&MetricKind::DeltaGauge, &MetricKind::Timer) => Some(Ordering::Less),
-            (&MetricKind::Gauge, &MetricKind::Counter) => Some(Ordering::Greater),
-            (&MetricKind::Gauge, &MetricKind::DeltaGauge) => Some(Ordering::Equal),
-            (&MetricKind::Gauge, &MetricKind::Gauge) => Some(Ordering::Equal),
-            (&MetricKind::Gauge, &MetricKind::Histogram) => Some(Ordering::Less),
-            (&MetricKind::Gauge, &MetricKind::Raw) => Some(Ordering::Less),
-            (&MetricKind::Gauge, &MetricKind::Timer) => Some(Ordering::Less),
-            (&MetricKind::Histogram, &MetricKind::Counter) => Some(Ordering::Greater),
-            (&MetricKind::Histogram, &MetricKind::DeltaGauge) => Some(Ordering::Greater),
-            (&MetricKind::Histogram, &MetricKind::Gauge) => Some(Ordering::Greater),
-            (&MetricKind::Histogram, &MetricKind::Histogram) => Some(Ordering::Equal),
-            (&MetricKind::Histogram, &MetricKind::Raw) => Some(Ordering::Less),
-            (&MetricKind::Histogram, &MetricKind::Timer) => Some(Ordering::Greater),
-            (&MetricKind::Raw, &MetricKind::Counter) => Some(Ordering::Greater),
-            (&MetricKind::Raw, &MetricKind::DeltaGauge) => Some(Ordering::Greater),
-            (&MetricKind::Raw, &MetricKind::Gauge) => Some(Ordering::Greater),
-            (&MetricKind::Raw, &MetricKind::Histogram) => Some(Ordering::Greater),
-            (&MetricKind::Raw, &MetricKind::Raw) => Some(Ordering::Equal),
-            (&MetricKind::Raw, &MetricKind::Timer) => Some(Ordering::Greater),
-            (&MetricKind::Timer, &MetricKind::Counter) => Some(Ordering::Greater),
-            (&MetricKind::Timer, &MetricKind::DeltaGauge) => Some(Ordering::Greater),
-            (&MetricKind::Timer, &MetricKind::Gauge) => Some(Ordering::Greater),
-            (&MetricKind::Timer, &MetricKind::Histogram) => Some(Ordering::Less),
+            (&MetricKind::Counter, &MetricKind::DeltaGauge) |
+            (&MetricKind::Counter, &MetricKind::Gauge) |
+            (&MetricKind::Counter, &MetricKind::Histogram) |
+            (&MetricKind::Counter, &MetricKind::Raw) |
+            (&MetricKind::Counter, &MetricKind::Timer) |
+            (&MetricKind::Histogram, &MetricKind::Raw) |
+            (&MetricKind::DeltaGauge, &MetricKind::Histogram) |
+            (&MetricKind::DeltaGauge, &MetricKind::Raw) |
+            (&MetricKind::DeltaGauge, &MetricKind::Timer) |
+            (&MetricKind::Gauge, &MetricKind::Histogram) |
+            (&MetricKind::Gauge, &MetricKind::Raw) |
+            (&MetricKind::Gauge, &MetricKind::Timer) |
+            (&MetricKind::Timer, &MetricKind::Histogram) |
             (&MetricKind::Timer, &MetricKind::Raw) => Some(Ordering::Less),
+
+            (&MetricKind::Counter, &MetricKind::Counter) |
+            (&MetricKind::DeltaGauge, &MetricKind::DeltaGauge) |
+            (&MetricKind::DeltaGauge, &MetricKind::Gauge) |
+            (&MetricKind::Gauge, &MetricKind::DeltaGauge) |
+            (&MetricKind::Gauge, &MetricKind::Gauge) |
+            (&MetricKind::Histogram, &MetricKind::Histogram) |
+            (&MetricKind::Raw, &MetricKind::Raw) |
             (&MetricKind::Timer, &MetricKind::Timer) => Some(Ordering::Equal),
+
+            (&MetricKind::DeltaGauge, &MetricKind::Counter) |
+            (&MetricKind::Gauge, &MetricKind::Counter) |
+            (&MetricKind::Histogram, &MetricKind::Counter) |
+            (&MetricKind::Histogram, &MetricKind::DeltaGauge) |
+            (&MetricKind::Histogram, &MetricKind::Gauge) |
+            (&MetricKind::Histogram, &MetricKind::Timer) |
+            (&MetricKind::Raw, &MetricKind::Counter) |
+            (&MetricKind::Raw, &MetricKind::DeltaGauge) |
+            (&MetricKind::Raw, &MetricKind::Gauge) |
+            (&MetricKind::Raw, &MetricKind::Histogram) |
+            (&MetricKind::Raw, &MetricKind::Timer) |
+            (&MetricKind::Timer, &MetricKind::Counter) |
+            (&MetricKind::Timer, &MetricKind::DeltaGauge) |
+            (&MetricKind::Timer, &MetricKind::Gauge) => Some(Ordering::Greater),
         }
     }
 }
@@ -128,13 +130,17 @@ impl AddAssign for Metric {
 impl PartialOrd for Metric {
     fn partial_cmp(&self, other: &Metric) -> Option<Ordering> {
         match self.kind.partial_cmp(&other.kind) {
-            Some(Ordering::Equal) => match self.name.partial_cmp(&other.name) {
-                Some(Ordering::Equal) => match self.time.partial_cmp(&other.time) {
-                    Some(Ordering::Equal) => cmp(&self.tags, &other.tags),
+            Some(Ordering::Equal) => {
+                match self.name.partial_cmp(&other.name) {
+                    Some(Ordering::Equal) => {
+                        match self.time.partial_cmp(&other.time) {
+                            Some(Ordering::Equal) => cmp(&self.tags, &other.tags),
+                            other => other,
+                        }
+                    }
                     other => other,
-                },
-                other => other,
-            },
+                }
+            }
             other => other,
         }
     }
@@ -194,7 +200,8 @@ impl Metric {
     /// assert_eq!(Some(&"22".into()), m.tags.get("foo".into()));
     /// ```
     pub fn overlay_tag<S>(mut self, key: S, val: S) -> Metric
-        where S: Into<String> {
+        where S: Into<String>
+    {
         self.tags.insert(key.into(), val.into());
         self
     }
@@ -226,8 +233,8 @@ impl Metric {
     /// assert_eq!(Some(&"rab".into()), m.tags.get("oof".into()));
     /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Metric {
-        for (k,v) in map.iter() {
-            self.tags.insert(k.clone(),v.clone());
+        for (k, v) in map.iter() {
+            self.tags.insert(k.clone(), v.clone());
         }
         self
     }
@@ -293,8 +300,7 @@ impl Metric {
     pub fn value(&self) -> Option<f64> {
         match self.kind {
             MetricKind::Gauge | MetricKind::Raw => self.value.last(),
-            MetricKind::DeltaGauge => self.value.sum(),
-            MetricKind::Counter => self.value.sum(),
+            MetricKind::DeltaGauge | MetricKind::Counter => self.value.sum(),
             MetricKind::Timer | MetricKind::Histogram => self.value.query(1.0).map(|x| x.1),
         }
     }
@@ -506,30 +512,25 @@ impl Metric {
     pub fn parse_graphite(source: &str) -> Option<Vec<Metric>> {
         let mut res = Vec::new();
         let mut iter = source.split_whitespace();
-        loop {
+        while let Some(name) = iter.next() {
             match iter.next() {
-                Some(name) => {
+                Some(val) => {
                     match iter.next() {
-                        Some(val) => {
-                            match iter.next() {
-                                Some(time) => {
-                                    let parsed_val = match f64::from_str(val) {
-                                        Ok(f) => f,
-                                        Err(_) => return None,
-                                    };
-                                    let parsed_time = match i64::from_str(time) {
-                                        Ok(t) => t,
-                                        Err(_) => return None,
-                                    };
-                                    res.push(Metric::new(name, parsed_val).time(parsed_time));
-                                }
-                                None => return None,
-                            }
+                        Some(time) => {
+                            let parsed_val = match f64::from_str(val) {
+                                Ok(f) => f,
+                                Err(_) => return None,
+                            };
+                            let parsed_time = match i64::from_str(time) {
+                                Ok(t) => t,
+                                Err(_) => return None,
+                            };
+                            res.push(Metric::new(name, parsed_val).time(parsed_time));
                         }
                         None => return None,
                     }
                 }
-                None => break,
+                None => return None,
             }
         }
         if res.is_empty() {
@@ -663,7 +664,7 @@ mod tests {
             if let Some(val) = mlhs.value() {
                 let expected = match kind {
                     MetricKind::Gauge | MetricKind::Raw => rhs,
-                    MetricKind::DeltaGauge | MetricKind::Counter => lhs+rhs,
+                    MetricKind::DeltaGauge | MetricKind::Counter => lhs + rhs,
                     MetricKind::Timer | MetricKind::Histogram => lhs.max(rhs),
                 };
                 match val.partial_cmp(&expected) {
@@ -671,7 +672,7 @@ mod tests {
                     _ => return TestResult::failed(),
                 }
             } else {
-                return TestResult::failed()
+                return TestResult::failed();
             }
         }
         QuickCheck::new()
@@ -751,8 +752,8 @@ mod tests {
 
     #[test]
     fn test_parse_metric_via_api() {
-        let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@0.1\nsxth:-6.\
-                    6|g\nsvth:+7.77|g\n";
+        let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@0.1\nsxth:\
+                    -6.6|g\nsvth:+7.77|g\n";
         let prs = Metric::parse_statsd(pyld);
 
         assert!(prs.is_some());
