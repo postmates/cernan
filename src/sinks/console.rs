@@ -41,21 +41,27 @@ impl Sink for Console {
         println!("  counters:");
         for (key, value) in self.aggrs.counters() {
             for m in value {
-                fmt_line(key, m.1.value);
+                if let Some(f) = m.1.value() {
+                    fmt_line(key, f)
+                }
             }
         }
 
         println!("  gauges:");
         for (key, value) in self.aggrs.gauges() {
             for m in value {
-                fmt_line(key, m.1.value);
+                if let Some(f) = m.1.value() {
+                    fmt_line(key, f)
+                }
             }
         }
 
         println!("  raws:");
         for (key, value) in self.aggrs.raws() {
             for m in value {
-                fmt_line(key, m.1.value);
+                if let Some(f) = m.1.value() {
+                    fmt_line(key, f)
+                }
             }
         }
 
@@ -70,7 +76,7 @@ impl Sink for Console {
                              ("999", 0.999)] {
                     let stat: &str = tup.0;
                     let quant: f64 = tup.1;
-                    println!("    {}: {} {}", key, stat, hist.query(quant).unwrap().1);
+                    println!("    {}: {} {}", key, stat, hist.query(quant).unwrap());
                 }
             }
         }
@@ -86,7 +92,7 @@ impl Sink for Console {
                              ("999", 0.999)] {
                     let stat: &str = tup.0;
                     let quant: f64 = tup.1;
-                    println!("    {}: {} {}", key, stat, tmr.query(quant).unwrap().1);
+                    println!("    {}: {} {}", key, stat, tmr.query(quant).unwrap());
                 }
             }
         }

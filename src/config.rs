@@ -10,7 +10,7 @@ use toml::Value;
 use std::io::Read;
 use std::str::FromStr;
 use metric::{MetricQOS, TagMap};
-use std::path::{Path,PathBuf};
+use std::path::{Path, PathBuf};
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
@@ -44,11 +44,11 @@ pub fn parse_args() -> Args {
         .author("Brian L. Troutwine <blt@postmates.com>")
         .about("telemetry aggregation and shipping, last up the ladder")
         .arg(Arg::with_name("config-file")
-             .long("config")
-             .short("C")
-             .value_name("config")
-             .help("The config file to feed in.")
-             .takes_value(true))
+            .long("config")
+            .short("C")
+            .value_name("config")
+            .help("The config file to feed in.")
+            .takes_value(true))
         .arg(Arg::with_name("verbose")
             .short("v")
             .multiple(true)
@@ -126,12 +126,13 @@ pub fn parse_args() -> Args {
 pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     let value: toml::Value = buffer.parse().unwrap();
 
-    let tags : TagMap = match value.lookup("tags") {
+    let tags: TagMap = match value.lookup("tags") {
         Some(tbl) => {
             let mut tags = TagMap::default();
             let ttbl = tbl.as_table().unwrap();
             for (k, v) in ttbl.iter() {
-                tags.insert(String::from(k.clone()), String::from(v.as_str().unwrap().to_string()));
+                tags.insert(String::from(k.clone()),
+                            String::from(v.as_str().unwrap().to_string()));
             }
             tags
         }
@@ -179,16 +180,16 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     };
 
     let (fedtrn_port, fedtrn_host) = if mk_fedtrn {
-        ( // fed_receiver port
-            value.lookup("federation_transmitter.port")
-                .unwrap_or(&Value::Integer(1972))
-                .as_integer()
-                .map(|i| i as u16),
-            // fed_receiver host
-            value.lookup("federation_transmitter.host")
-                .unwrap_or(&Value::String("127.0.0.1".to_string()))
-                .as_str()
-                .map(|s| s.to_string()))
+        (// fed_receiver port
+         value.lookup("federation_transmitter.port")
+            .unwrap_or(&Value::Integer(1972))
+            .as_integer()
+            .map(|i| i as u16),
+         // fed_receiver host
+         value.lookup("federation_transmitter.host")
+            .unwrap_or(&Value::String("127.0.0.1".to_string()))
+            .as_str()
+            .map(|s| s.to_string()))
     } else {
         (None, None)
     };
@@ -206,14 +207,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
     }
 
-    let mut fh_delivery_streams : Vec<String> = Vec::new();
+    let mut fh_delivery_streams: Vec<String> = Vec::new();
     if let Some(array) = value.lookup("firehose") {
-        for tbl in array.as_slice() {
+        if let Some(tbl) = array.as_slice() {
             for val in tbl {
                 match val.lookup("delivery_stream") {
-                    Some(ds) => {
-                        fh_delivery_streams.push(ds.as_str().unwrap().to_owned())
-                    }
+                    Some(ds) => fh_delivery_streams.push(ds.as_str().unwrap().to_owned()),
                     None => continue,
                 }
             }
@@ -223,7 +222,10 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     let statsd_port = match value.lookup("statsd-port") {
         Some(p) => Some(p.as_integer().expect("statsd-port must be integer") as u16),
         None => {
-            let is_enabled = value.lookup("statsd.enabled").unwrap_or(&Value::Boolean(true)).as_bool().expect("must be a bool");
+            let is_enabled = value.lookup("statsd.enabled")
+                .unwrap_or(&Value::Boolean(true))
+                .as_bool()
+                .expect("must be a bool");
             if is_enabled {
                 match value.lookup("statsd.port") {
                     Some(p) => Some(p.as_integer().expect("statsd-port must be integer") as u16),
@@ -238,7 +240,10 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     let graphite_port = match value.lookup("graphite-port") {
         Some(p) => Some(p.as_integer().expect("graphite-port must be integer") as u16),
         None => {
-            let is_enabled = value.lookup("graphite.enabled").unwrap_or(&Value::Boolean(true)).as_bool().expect("must be a bool");
+            let is_enabled = value.lookup("graphite.enabled")
+                .unwrap_or(&Value::Boolean(true))
+                .as_bool()
+                .expect("must be a bool");
             if is_enabled {
                 match value.lookup("graphite.port") {
                     Some(p) => Some(p.as_integer().expect("graphite-port must be integer") as u16),
@@ -251,16 +256,14 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     };
 
     let (fed_receiver_port, fed_receiver_ip) = if value.lookup("federation_receiver").is_some() {
-        (
-            match value.lookup("federation_receiver.port") {
-                Some(p) => Some(p.as_integer().expect("fed_receiver.port must be integer") as u16),
-                None => Some(1972),
-            },
-            match value.lookup("federation_receiver.ip") {
-                Some(p) => Some(p.as_str().unwrap().to_owned()),
-                None => Some(String::from("0.0.0.0")),
-            }
-            )
+        (match value.lookup("federation_receiver.port") {
+            Some(p) => Some(p.as_integer().expect("fed_receiver.port must be integer") as u16),
+            None => Some(1972),
+        },
+         match value.lookup("federation_receiver.ip") {
+            Some(p) => Some(p.as_str().unwrap().to_owned()),
+            None => Some(String::from("0.0.0.0")),
+        })
     } else {
         (None, None)
     };
@@ -299,7 +302,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
 #[cfg(test)]
 mod test {
     use super::*;
-    use metric::{MetricQOS,TagMap};
+    use metric::{MetricQOS, TagMap};
     use std::path::PathBuf;
 
     #[test]
@@ -331,7 +334,8 @@ mod test {
         let config = r#"
 [federation_receiver]
 port = 1987
-"#.to_string();
+"#
+            .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -356,7 +360,8 @@ port = 1987
         let config = r#"
 [federation_receiver]
 ip = "127.0.0.1"
-"#.to_string();
+"#
+            .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -381,7 +386,8 @@ ip = "127.0.0.1"
         let config = r#"
 [federation_transmitter]
 port = 1987
-"#.to_string();
+"#
+            .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -408,7 +414,8 @@ port = 1987
         let config = r#"
 [federation_transmitter]
 host = "foo.example.com"
-"#.to_string();
+"#
+            .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -423,7 +430,8 @@ host = "foo.example.com"
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.fed_transmitter, true);
-        assert_eq!(args.fed_transmitter_host, Some(String::from("foo.example.com")));
+        assert_eq!(args.fed_transmitter_host,
+                   Some(String::from("foo.example.com")));
         assert_eq!(args.fed_transmitter_port, Some(1972));
         assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.qos, MetricQOS::default());
@@ -663,7 +671,8 @@ delivery_stream = "stream_two"
         assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
-        assert_eq!(args.firehose_delivery_streams, vec!["stream_one", "stream_two"]);
+        assert_eq!(args.firehose_delivery_streams,
+                   vec!["stream_one", "stream_two"]);
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
@@ -716,7 +725,8 @@ path = "/bar.txt"
         assert_eq!(args.console, false);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.files, Some(vec![PathBuf::from("/foo/bar.txt"), PathBuf::from("/bar.txt")]));
+        assert_eq!(args.files,
+                   Some(vec![PathBuf::from("/foo/bar.txt"), PathBuf::from("/bar.txt")]));
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);

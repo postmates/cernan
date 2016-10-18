@@ -2,7 +2,6 @@ extern crate toml;
 extern crate clap;
 extern crate chrono;
 extern crate fnv;
-extern crate quantiles;
 extern crate dns_lookup;
 extern crate notify;
 extern crate bincode;
@@ -15,6 +14,7 @@ extern crate rusoto;
 extern crate lazy_static;
 extern crate flate2;
 extern crate rand;
+extern crate quantiles;
 
 pub mod mpsc;
 pub mod sink;

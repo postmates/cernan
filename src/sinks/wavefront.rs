@@ -21,7 +21,7 @@ pub struct Wavefront {
 fn fmt_tags(tags: &TagMap) -> String {
     let mut s = String::new();
     let mut iter = tags.iter();
-    if let Some((fk,fv)) = iter.next() {
+    if let Some((fk, fv)) = iter.next() {
         write!(s, "{}={}", fk, fv).unwrap();
         for (k, v) in iter {
             write!(s, " {}={}", k, v).unwrap();
@@ -55,13 +55,17 @@ impl Wavefront {
 
         for (key, value) in self.aggrs.counters().iter() {
             for &(_, ref m) in sample(self.interval, self.qos.counter as i64, value) {
-                write!(stats, "{} {} {} {}\n", key, m.value, m.time, fmt_tags(&m.tags)).unwrap();
+                if let Some(v) = m.value() {
+                    write!(stats, "{} {} {} {}\n", key, v, m.time, fmt_tags(&m.tags)).unwrap();
+                }
             }
         }
 
         for (key, value) in self.aggrs.gauges().iter() {
             for &(_, ref m) in sample(self.interval, self.qos.gauge as i64, value) {
-                write!(stats, "{} {} {} {}\n", key, m.value, m.time, fmt_tags(&m.tags)).unwrap();
+                if let Some(v) = m.value() {
+                    write!(stats, "{} {} {} {}\n", key, v, m.time, fmt_tags(&m.tags)).unwrap();
+                }
             }
         }
 
@@ -86,9 +90,9 @@ impl Wavefront {
                            "{}.{} {} {} {}\n",
                            key,
                            stat,
-                           hist.query(quant).unwrap().1,
+                           hist.query(quant).unwrap(),
                            smpl_time,
-                           fmt_tags(&self.tags))
+                           fmt_tags(&hist.tags))
                         .unwrap()
                 }
                 let count = hist.count();
@@ -97,7 +101,7 @@ impl Wavefront {
                        key,
                        count,
                        smpl_time,
-                       fmt_tags(&self.tags))
+                       fmt_tags(&hist.tags))
                     .unwrap();
             }
         }
@@ -123,9 +127,9 @@ impl Wavefront {
                            "{}.{} {} {} {}\n",
                            key,
                            stat,
-                           tmr.query(quant).unwrap().1,
+                           tmr.query(quant).unwrap(),
                            smpl_time,
-                           fmt_tags(&self.tags))
+                           fmt_tags(&tmr.tags))
                         .unwrap()
                 }
                 let count = tmr.count();
@@ -134,7 +138,7 @@ impl Wavefront {
                        key,
                        count,
                        smpl_time,
-                       fmt_tags(&self.tags))
+                       fmt_tags(&tmr.tags))
                     .unwrap();
             }
         }
@@ -142,7 +146,13 @@ impl Wavefront {
         // Raw points have no QOS as we can make no valid aggregation of them.
         for (key, value) in self.aggrs.raws().iter() {
             for &(_, ref m) in value {
-                write!(stats, "{} {} {} {}\n", key, m.value, m.time, fmt_tags(&m.tags)).unwrap();
+                write!(stats,
+                       "{} {} {} {}\n",
+                       key,
+                       m.value().unwrap(),
+                       m.time,
+                       fmt_tags(&m.tags))
+                    .unwrap();
             }
         }
 
@@ -180,7 +190,7 @@ impl Wavefront {
     }
 }
 
-pub fn sample<T>(interval: i64, qos: i64, vals: &Vec<(i64, T)>) -> Vec<&(i64, T)> {
+pub fn sample<T>(interval: i64, qos: i64, vals: &[(i64, T)]) -> Vec<&(i64, T)> {
     assert!(qos <= interval);
     let samples: usize = (interval as usize) / (qos as usize);
     let mut max = vals.len();
@@ -605,8 +615,7 @@ mod test {
         qos.histogram = 2;
         let flush = 6;
 
-        let mut wavefront =
-            Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
+        let mut wavefront = Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
@@ -629,8 +638,7 @@ mod test {
         qos.histogram = 15;
         let flush = 60;
 
-        let mut wavefront =
-            Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
+        let mut wavefront = Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
         for i in 0..122 {
             wavefront.deliver(Metric::new("test.histogram", 1.0).time(i).histogram());
         }
@@ -648,8 +656,7 @@ mod test {
         qos.timer = 2;
         let flush = 6;
 
-        let mut wavefront =
-            Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
+        let mut wavefront = Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
@@ -672,8 +679,7 @@ mod test {
         qos.gauge = 2;
         let flush = 6;
 
-        let mut wavefront =
-            Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
+        let mut wavefront = Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
@@ -698,8 +704,7 @@ mod test {
         qos.counter = 2;
         let flush = 6;
 
-        let mut wavefront =
-            Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
+        let mut wavefront = Wavefront::new("localhost", 2003, TagMap::default(), qos, flush);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 11, 0).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 0).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 13, 0).timestamp();
@@ -707,9 +712,9 @@ mod test {
         let dt_4 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 15, 0).timestamp();
 
         for (i, dt) in vec![dt_0, dt_1, dt_2, dt_3, dt_4].iter().enumerate() {
-            wavefront.deliver(Metric::new("test.counter", i as f64).time(*dt).counter(1.0));
+            wavefront.deliver(Metric::new("test.counter", i as f64).time(*dt).counter());
         }
-        wavefront.deliver(Metric::new("test.some_other_counter", 1.0).time(dt_3).counter(1.0));
+        wavefront.deliver(Metric::new("test.some_other_counter", 1.0).time(dt_3).counter());
 
         let result = wavefront.format_stats();
         let lines: Vec<&str> = result.lines().collect();
@@ -723,17 +728,37 @@ mod test {
         let qos = MetricQOS::default();
         let mut tags = TagMap::default();
         tags.insert("source".into(), "test-src".into());
-        let mut wavefront =
-            Wavefront::new("localhost", 2003, tags.clone(), qos, 60);
+        let mut wavefront = Wavefront::new("localhost", 2003, tags.clone(), qos, 60);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 13).timestamp();
-        wavefront.deliver(Metric::new("test.counter", -1.0).time(dt_0).counter(1.0).overlay_tags_from_map(&tags));
-        wavefront.deliver(Metric::new("test.counter", 2.0).time(dt_0).counter(1.0).overlay_tags_from_map(&tags));
-        wavefront.deliver(Metric::new("test.counter", 3.0).time(dt_1).counter(1.0).overlay_tags_from_map(&tags));
-        wavefront.deliver(Metric::new("test.gauge", 3.211).time(dt_0).gauge().overlay_tags_from_map(&tags));
-        wavefront.deliver(Metric::new("test.timer", 12.101).time(dt_0).timer().overlay_tags_from_map(&tags));
-        wavefront.deliver(Metric::new("test.timer", 1.101).time(dt_0).timer().overlay_tags_from_map(&tags));
-        wavefront.deliver(Metric::new("test.timer", 3.101).time(dt_0).timer().overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.counter", -1.0)
+            .time(dt_0)
+            .counter()
+            .overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.counter", 2.0)
+            .time(dt_0)
+            .counter()
+            .overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.counter", 3.0)
+            .time(dt_1)
+            .counter()
+            .overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.gauge", 3.211)
+            .time(dt_0)
+            .gauge()
+            .overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.timer", 12.101)
+            .time(dt_0)
+            .timer()
+            .overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.timer", 1.101)
+            .time(dt_0)
+            .timer()
+            .overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.timer", 3.101)
+            .time(dt_0)
+            .timer()
+            .overlay_tags_from_map(&tags));
         wavefront.deliver(Metric::new("test.raw", 1.0).time(dt_0).overlay_tags_from_map(&tags));
         wavefront.deliver(Metric::new("test.raw", 2.0).time(dt_1).overlay_tags_from_map(&tags));
         let result = wavefront.format_stats();

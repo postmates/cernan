@@ -4,7 +4,6 @@
 //! each set of metrics received by clients.
 
 use metric::{Metric, MetricKind};
-use quantiles::CKMS;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
@@ -17,8 +16,8 @@ pub struct Buckets {
     gauges: HashMapFnv<String, Vec<(i64, Metric)>>,
     raws: HashMapFnv<String, Vec<(i64, Metric)>>,
 
-    timers: HashMapFnv<String, Vec<(i64, CKMS<f64>)>>,
-    histograms: HashMapFnv<String, Vec<(i64, CKMS<f64>)>>,
+    timers: HashMapFnv<String, Vec<(i64, Metric)>>,
+    histograms: HashMapFnv<String, Vec<(i64, Metric)>>,
 }
 
 impl Default for Buckets {
@@ -68,7 +67,7 @@ impl Buckets {
         self.raws.clear();
         self.histograms.clear();
         self.timers.clear();
-        for (_, v) in self.gauges.iter_mut() {
+        for (_, v) in &mut self.gauges {
             let len = v.len();
             if len > 0 {
                 v.swap(0, len - 1);
@@ -90,69 +89,44 @@ impl Buckets {
     pub fn add(&mut self, value: Metric) {
         let name = value.name.to_owned();
         match value.kind {
-            MetricKind::Counter(rate) => {
-                let counter = self.counters.entry(name).or_insert(vec![]);
-                match (*counter).binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap() ) {
-                    Ok(idx) => {
-                        (*counter)[idx].1.value += value.value * (1.0 / rate);
-                    }
-                    Err(idx) => {
-                        let mut v = value;
-                        v.value *= 1.0 / rate;
-                        (*counter).insert(idx, (v.time, v));
-                    }
+            MetricKind::Counter => {
+                let counter = self.counters.entry(name).or_insert_with(|| vec![]);
+                match (*counter)
+                    .binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap()) {
+                    Ok(idx) => (*counter)[idx].1 += value,
+                    Err(idx) => (*counter).insert(idx, (value.time, value)),
                 }
             }
-            MetricKind::DeltaGauge => {
-                let gauge = self.gauges.entry(name).or_insert(vec![]);
-                match (*gauge).binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap() ) {
-                    Ok(idx) => (*gauge)[idx].1.value += value.value,
-                    Err(idx) => (*gauge).insert(idx, (value.time, value)),
-                }
-            }
-            MetricKind::Gauge => {
-                let gauge = self.gauges.entry(name).or_insert(vec![]);
-                match (*gauge).binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap() ) {
-                    Ok(idx) => (*gauge)[idx].1.value = value.value,
+            MetricKind::Gauge | MetricKind::DeltaGauge => {
+                let gauge = self.gauges.entry(name).or_insert_with(|| vec![]);
+                match (*gauge)
+                    .binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap()) {
+                    Ok(idx) => (*gauge)[idx].1 += value,
                     Err(idx) => (*gauge).insert(idx, (value.time, value)),
                 }
             }
             MetricKind::Raw => {
-                let raw = self.raws.entry(name).or_insert(vec![]);
+                let raw = self.raws.entry(name).or_insert_with(|| vec![]);
                 // We only want to keep one raw point per second per name. If
                 // someone pushes more than one point in a second interval we'll
                 // overwrite the value of the metric already in-vector.
                 match (*raw).binary_search_by_key(&value.time, |&(t, _)| t) {
-                    Ok(idx) => (*raw)[idx].1.value = value.value,
+                    Ok(idx) => (*raw)[idx].1 += value,
                     Err(idx) => (*raw).insert(idx, (value.time, value)),
                 }
             }
             MetricKind::Histogram => {
-                let hist = self.histograms.entry(name).or_insert(vec![]);
+                let hist = self.histograms.entry(name).or_insert_with(|| vec![]);
                 match (*hist).binary_search_by_key(&value.time, |&(t, _)| t) {
-                    Ok(idx) => {
-                        let (_, ref mut ckms) = (*hist)[idx];
-                        ckms.insert(value.value);
-                    }
-                    Err(idx) => {
-                        let mut h = CKMS::<f64>::new(0.001);
-                        h.insert(value.value);
-                        (*hist).insert(idx, (value.time, h));
-                    }
+                    Ok(idx) => (*hist)[idx].1 += value,
+                    Err(idx) => (*hist).insert(idx, (value.time, value)),
                 }
             }
             MetricKind::Timer => {
-                let tmr = self.timers.entry(name).or_insert(vec![]);
+                let tmr = self.timers.entry(name).or_insert_with(|| vec![]);
                 match (*tmr).binary_search_by_key(&value.time, |&(t, _)| t) {
-                    Ok(idx) => {
-                        let (_, ref mut ckms) = (*tmr)[idx];
-                        ckms.insert(value.value);
-                    }
-                    Err(idx) => {
-                        let mut t = CKMS::<f64>::new(0.001);
-                        t.insert(value.value);
-                        (*tmr).insert(idx, (value.time, t));
-                    }
+                    Ok(idx) => (*tmr)[idx].1 += value,
+                    Err(idx) => (*tmr).insert(idx, (value.time, value)),
                 }
             }
         }
@@ -170,11 +144,11 @@ impl Buckets {
         &self.raws
     }
 
-    pub fn histograms(&self) -> &HashMapFnv<String, Vec<(i64, CKMS<f64>)>> {
+    pub fn histograms(&self) -> &HashMapFnv<String, Vec<(i64, Metric)>> {
         &self.histograms
     }
 
-    pub fn timers(&self) -> &HashMapFnv<String, Vec<(i64, CKMS<f64>)>> {
+    pub fn timers(&self) -> &HashMapFnv<String, Vec<(i64, Metric)>> {
         &self.timers
     }
 }
@@ -190,13 +164,12 @@ mod test {
     use metric::{Metric, MetricKind};
     use std::collections::{HashSet, HashMap};
     use chrono::{UTC, TimeZone};
-    use quantiles::CKMS;
 
     #[test]
     fn test_add_increments_total_messages() {
         let mut buckets = Buckets::default();
         // duff value to ensure it changes.
-        let metric = Metric::new("some.metric", 1.0).counter(1.0);
+        let metric = Metric::new("some.metric", 1.0).counter();
         buckets.add(metric);
     }
 
@@ -216,35 +189,39 @@ mod test {
     #[test]
     fn test_add_counter_metric() {
         let mut buckets = Buckets::default();
-        let metric = Metric::new("some.metric", 1.0).counter(1.0);
+        let metric = Metric::new("some.metric", 1.0).counter();
         buckets.add(metric.clone());
 
         let rmname = String::from("some.metric");
         assert!(buckets.counters.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(1.0, buckets.counters.get_mut(&rmname).unwrap()[0].1.value);
+        assert_eq!(Some(1.0),
+                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
 
         // Increment counter
         buckets.add(metric);
-        assert_eq!(2.0, buckets.counters.get_mut(&rmname).unwrap()[0].1.value);
+        assert_eq!(Some(2.0),
+                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
         assert_eq!(1, buckets.counters().len());
         assert_eq!(0, buckets.gauges().len());
     }
 
     #[test]
-    fn test_add_counter_metric_reset() {
+    fn test_reset_add_counter_metric() {
         let mut buckets = Buckets::default();
-        let metric = Metric::new("some.metric", 1.0).counter(1.0);
+        let metric = Metric::new("some.metric", 1.0).counter();
         buckets.add(metric.clone());
 
         let rmname = String::from("some.metric");
         assert!(buckets.counters.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(1.0, buckets.counters.get_mut(&rmname).unwrap()[0].1.value);
+        assert_eq!(Some(1.0),
+                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
 
         // Increment counter
         buckets.add(metric);
-        assert_eq!(2.0, buckets.counters.get_mut(&rmname).unwrap()[0].1.value);
+        assert_eq!(Some(2.0),
+                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
         assert_eq!(1, buckets.counters().len());
 
         buckets.reset();
@@ -270,7 +247,7 @@ mod test {
 
         let hists = buckets.histograms();
         assert!(hists.get(&name).is_some());
-        let ref hist: &Vec<(i64, CKMS<f64>)> = hists.get(&name).unwrap();
+        let ref hist: &Vec<(i64, Metric)> = hists.get(&name).unwrap();
 
         assert_eq!(3, hist.len());
 
@@ -278,22 +255,22 @@ mod test {
         assert_eq!(844683071, vm0.0);
         let ref ckms0 = vm0.1;
         assert_eq!(1, ckms0.count());
-        assert_eq!(Some((1, 1.0)), ckms0.query(1.0));
-        assert_eq!(Some((1, 1.0)), ckms0.query(0.0));
+        assert_eq!(Some(1.0), ckms0.query(1.0));
+        assert_eq!(Some(1.0), ckms0.query(0.0));
 
         let ref vm1 = hist[1];
         assert_eq!(844683072, vm1.0);
         let ref ckms1 = vm1.1;
         assert_eq!(1, ckms1.count());
-        assert_eq!(Some((1, 2.0)), ckms1.query(1.0));
-        assert_eq!(Some((1, 2.0)), ckms1.query(0.0));
+        assert_eq!(Some(2.0), ckms1.query(1.0));
+        assert_eq!(Some(2.0), ckms1.query(0.0));
 
         let ref vm2 = hist[2];
         assert_eq!(844683073, vm2.0);
         let ref ckms2 = vm2.1;
         assert_eq!(1, ckms2.count());
-        assert_eq!(Some((1, 3.0)), ckms2.query(1.0));
-        assert_eq!(Some((1, 3.0)), ckms2.query(0.0));
+        assert_eq!(Some(3.0), ckms2.query(1.0));
+        assert_eq!(Some(3.0), ckms2.query(0.0));
     }
 
     #[test]
@@ -319,20 +296,6 @@ mod test {
     }
 
     #[test]
-    fn test_add_counter_metric_sampled() {
-        let mut buckets = Buckets::default();
-        let metric = Metric::new("some.metric", 1.0).counter(0.1);
-        let rmname = String::from("some.metric");
-
-        buckets.add(metric);
-        assert_eq!(10.0, buckets.counters.get_mut(&rmname).unwrap()[0].1.value);
-
-        let metric_two = Metric::new("some.metric", 1.0).counter(0.5);
-        buckets.add(metric_two);
-        assert_eq!(12.0, buckets.counters.get_mut(&rmname).unwrap()[0].1.value);
-    }
-
-    #[test]
     fn test_add_gauge_metric() {
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
@@ -340,7 +303,8 @@ mod test {
         buckets.add(metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(11.5, buckets.gauges.get_mut(&rmname).unwrap()[0].1.value);
+        assert_eq!(Some(11.5),
+                   buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
         assert_eq!(1, buckets.gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
@@ -355,7 +319,8 @@ mod test {
         buckets.add(delta_metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(88.5, buckets.gauges.get_mut(&rmname).unwrap()[0].1.value);
+        assert_eq!(Some(88.5),
+                   buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
         assert_eq!(1, buckets.gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
@@ -372,7 +337,8 @@ mod test {
         buckets.add(reset_metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(2007.3, buckets.gauges.get_mut(&rmname).unwrap()[0].1.value);
+        assert_eq!(Some(2007.3),
+                   buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
         assert_eq!(1, buckets.gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
@@ -386,7 +352,7 @@ mod test {
         assert!(buckets.timers.contains_key(&rmname),
                 "Should contain the metric key");
 
-        assert_eq!(Some((1, 11.5)),
+        assert_eq!(Some(11.5),
                    buckets.timers.get_mut(&rmname).expect("hwhap")[0].1.query(0.0));
 
         let metric_two = Metric::new("some.metric", 99.5).timer();
@@ -413,12 +379,17 @@ mod test {
         buckets.add(Metric::new("some.metric", 4.0).time(dt_1));
 
         let mname = String::from("some.metric");
-        assert!(buckets.raws.contains_key(&mname), "Should contain the metric key");
+        assert!(buckets.raws.contains_key(&mname),
+                "Should contain the metric key");
 
-        assert_eq!(Some(&mut vec![
-            (dt_0, Metric::new("some.metric", 3.0).time(dt_0)),
-            (dt_1, Metric::new("some.metric", 4.0).time(dt_1)),
-        ]), buckets.raws.get_mut(&mname));
+        let metrics = buckets.raws.get_mut(&mname).unwrap();
+        assert_eq!(2, metrics.len());
+
+        assert_eq!(dt_0, metrics[0].0);
+        assert_eq!(Some(3.0), metrics[0].1.value());
+
+        assert_eq!(dt_1, metrics[1].0);
+        assert_eq!(Some(4.0), metrics[1].1.value());
     }
 
     #[test]
@@ -432,7 +403,7 @@ mod test {
 
             let cnts: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
                 match m.kind {
-                    MetricKind::Counter(_) => {
+                    MetricKind::Counter => {
                         acc.insert(m.name.clone());
                         acc
                     }
@@ -596,8 +567,8 @@ mod test {
     fn test_counter_insertion() {
         let mut buckets = Buckets::default();
 
-        let m0 = Metric::new("test.counter_0", 1.0).counter(1.0);
-        let m1 = Metric::new("test.counter_1", 1.0).counter(1.0);
+        let m0 = Metric::new("test.counter_0", 1.0).counter();
+        let m1 = Metric::new("test.counter_1", 1.0).counter();
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
@@ -619,11 +590,11 @@ mod test {
             let mut cnts: HashMap<String, Vec<(i64, f64)>> = HashMap::default();
             for m in ms {
                 match m.kind {
-                    MetricKind::Counter(rate) => {
+                    MetricKind::Counter => {
                         let c = cnts.entry(m.name.clone()).or_insert(vec![]);
                         match c.binary_search_by_key(&m.time, |&(a, _)| a) {
-                            Ok(idx) => c[idx].1 += m.value * (1.0 / rate),
-                            Err(idx) => c.insert(idx, (m.time, m.value * (1.0 / rate))),
+                            Ok(idx) => c[idx].1 += m.value().unwrap_or(0.0),
+                            Err(idx) => c.insert(idx, (m.time, m.value().unwrap_or(0.0))),
                         }
                     }
                     _ => continue,
@@ -641,7 +612,7 @@ mod test {
 
                 for (i, c_v) in cnts_v.iter().enumerate() {
                     assert_eq!(c_v.0, v[i].1.time);
-                    assert_eq!(c_v.1, v[i].1.value);
+                    assert_eq!(Some(c_v.1), v[i].1.value());
                 }
             }
 
@@ -655,7 +626,7 @@ mod test {
 
     #[test]
     fn test_gauge_behaviour() {
-        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+        fn inner(ms: Vec<Metric>) -> TestResult {
             let mut bucket = Buckets::default();
 
             for m in ms.clone() {
@@ -668,15 +639,15 @@ mod test {
                     MetricKind::Gauge => {
                         let c = cnts.entry(m.name.clone()).or_insert(vec![]);
                         match c.binary_search_by_key(&m.time, |&(a, _)| a) {
-                            Ok(idx) => c[idx] = (m.time, m.value),
-                            Err(idx) => c.insert(idx, (m.time, m.value)),
+                            Ok(idx) => c[idx] = (m.time, m.value().unwrap()),
+                            Err(idx) => c.insert(idx, (m.time, m.value().unwrap())),
                         }
                     }
                     MetricKind::DeltaGauge => {
                         let c = cnts.entry(m.name.clone()).or_insert(vec![]);
                         match c.binary_search_by_key(&m.time, |&(a, _)| a) {
-                            Ok(idx) => c[idx].1 += m.value,
-                            Err(idx) => c.insert(idx, (m.time, m.value)),
+                            Ok(idx) => c[idx].1 += m.value().unwrap(),
+                            Err(idx) => c.insert(idx, (m.time, m.value().unwrap())),
                         }
                     }
                     _ => continue,
@@ -693,7 +664,7 @@ mod test {
 
                 for (i, c_v) in cnts_v.iter().enumerate() {
                     assert_eq!(c_v.0, v[i].1.time);
-                    assert_eq!(c_v.1, v[i].1.value);
+                    assert_eq!(Some(c_v.1), v[i].1.value());
                 }
             }
 
@@ -702,6 +673,6 @@ mod test {
         QuickCheck::new()
             .tests(10000)
             .max_tests(100000)
-            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+            .quickcheck(inner as fn(Vec<Metric>) -> TestResult);
     }
 }

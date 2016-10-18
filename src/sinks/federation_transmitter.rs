@@ -4,7 +4,7 @@ use metric;
 use mpsc;
 use sink::Sink;
 use std::io::Write;
-use std::net::{TcpStream,ToSocketAddrs};
+use std::net::{TcpStream, ToSocketAddrs};
 use time;
 
 use flate2::Compression;
@@ -18,7 +18,11 @@ pub struct FederationTransmitter {
 
 impl FederationTransmitter {
     pub fn new(port: u16, host: String) -> FederationTransmitter {
-        FederationTransmitter { port: port, host: host, buffer: Vec::new() }
+        FederationTransmitter {
+            port: port,
+            host: host,
+            buffer: Vec::new(),
+        }
     }
 }
 
@@ -27,7 +31,7 @@ impl Default for FederationTransmitter {
         FederationTransmitter {
             port: 1972,
             host: String::from("127.0.0.1"),
-            buffer: Vec::new()
+            buffer: Vec::new(),
         }
     }
 }
@@ -61,6 +65,7 @@ impl Sink for FederationTransmitter {
     fn flush(&mut self) {
         trace!("TRANSMISSION FLUSH!");
         let mut e = ZlibEncoder::new(Vec::new(), Compression::Default);
+        trace!("BUFFER: {:?}", &self.buffer);
         serialize_into(&mut e, &self.buffer, SizeLimit::Infinite).expect("could not serialize");
         let mut t = e.finish().expect("unable to finish compression write");
         let pyld_sz_bytes: [u8; 4] = u32tou8abe(t.len() as u32);
@@ -69,7 +74,8 @@ impl Sink for FederationTransmitter {
         t.insert(0, pyld_sz_bytes[2]);
         t.insert(0, pyld_sz_bytes[3]);
 
-        let srv: Vec<_> = (self.host.as_str(), self.port).to_socket_addrs()
+        let srv: Vec<_> = (self.host.as_str(), self.port)
+            .to_socket_addrs()
             .expect("Unable to resolve domain")
             .collect();
         trace!("SENDING: {:?}", srv);

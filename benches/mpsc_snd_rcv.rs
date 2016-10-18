@@ -23,11 +23,11 @@ fn bench_serialize_deserialize_timerflush(b: &mut Bencher) {
 
 #[bench]
 fn bench_serialize_deserialize_metric(b: &mut Bencher) {
-    let m = Metric::counter("bench");
+    let m = Metric::new("bench", 1.0).counter();
     b.iter(|| {
         let s = serialize(&m, SizeLimit::Infinite).unwrap();
         let new_m : Metric = deserialize(s.as_slice()).unwrap();
-        assert_eq!(1.0, new_m.value);
+        assert_eq!(Some(1.0), new_m.value());
     });
 }
 

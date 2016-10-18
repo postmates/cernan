@@ -12,7 +12,7 @@ dependencies = [
  "lazy_static 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "notify 2.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "quantiles 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quantiles 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "quickcheck 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.3.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -512,8 +512,12 @@ dependencies = [
 
 [[package]]
 name = "quantiles"
-version = "0.1.5"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "serde 0.8.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_codegen 0.8.9 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "quasi"
@@ -1017,7 +1021,7 @@ dependencies = [
 "checksum openssl-verify 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "3ed86cce894f6b0ed4572e21eb34026f1dc8869cb9ee3869029131bc8c3feb2d"
 "checksum pkg-config 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)" = "8cee804ecc7eaf201a4a207241472cc870e825206f6c031e3ee2a72fa425f2fa"
 "checksum pnacl-build-helper 1.4.10 (registry+https://github.com/rust-lang/crates.io-index)" = "61c9231d31aea845007443d62fcbb58bb6949ab9c18081ee1e09920e0cf1118b"
-"checksum quantiles 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "2f5173e0f07c35a9d86ec3035bb9803d478e131f91a05d81cae7d921bcd80ef6"
+"checksum quantiles 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "58546e197383b53a50fa00289227758f29fa6831f97645281f4e8e914c6aa642"
 "checksum quasi 0.20.1 (registry+https://github.com/rust-lang/crates.io-index)" = "94a532453b931a4483a5b2e40f0fe04aee35b6bc2c0eeec876f1bd2358a134d3"
 "checksum quasi_codegen 0.20.0 (registry+https://github.com/rust-lang/crates.io-index)" = "cfb4a9a5410fdbdacbeda8063ddb8add9838dfd4cf50ac486db98abb762d8bd6"
 "checksum quickcheck 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "ee4649d5e823e7a9e5a128a6bfa884e132f93668c64274d865d9f94a0f2574ca"

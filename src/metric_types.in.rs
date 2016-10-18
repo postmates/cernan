@@ -12,7 +12,7 @@ pub struct Metric {
     pub name: String,
     pub time: i64,
     pub tags: TagMap,
-    pub value: f64,
+    value: CKMS<f64>,
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
@@ -25,7 +25,7 @@ pub enum Event {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum MetricKind {
-    Counter(f64),
+    Counter,
     Gauge,
     DeltaGauge,
     Timer,

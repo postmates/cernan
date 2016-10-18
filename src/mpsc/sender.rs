@@ -37,12 +37,11 @@ impl<T> Clone for Sender<T>
     }
 }
 
-impl<T> Sender<T> where T: Serialize {
+impl<T> Sender<T>
+    where T: Serialize
+{
     /// PRIVATE
-    pub fn new(data_dir: &Path,
-           max_bytes: usize,
-           fs_lock: FSLock)
-           -> Sender<T> {
+    pub fn new(data_dir: &Path, max_bytes: usize, fs_lock: FSLock) -> Sender<T> {
         let init_fs_lock = fs_lock.clone();
         let mut syn = init_fs_lock.lock().expect("Sender fs_lock poisoned");
         let seq_num = match fs::read_dir(data_dir)
@@ -58,28 +57,28 @@ impl<T> Sender<T> where T: Serialize {
                     .unwrap()
             })
             .max() {
-                Some(sn) => sn,
-                None => 0,
-            };
+            Some(sn) => sn,
+            None => 0,
+        };
         let log = data_dir.join(format!("{}", seq_num));
         match fs::OpenOptions::new()
             .append(true)
             .create(true)
             .open(&log) {
-                Ok(fp) => {
-                    (*syn).sender_seq_num = seq_num;
-                    return Sender {
-                        root: data_dir.to_path_buf(),
-                        path: log,
-                        fp: fp,
-                        seq_num: seq_num,
-                        max_bytes: max_bytes,
-                        fs_lock: fs_lock,
-                        resource_type: PhantomData,
-                    }
+            Ok(fp) => {
+                (*syn).sender_seq_num = seq_num;
+                Sender {
+                    root: data_dir.to_path_buf(),
+                    path: log,
+                    fp: fp,
+                    seq_num: seq_num,
+                    max_bytes: max_bytes,
+                    fs_lock: fs_lock,
+                    resource_type: PhantomData,
                 }
-                Err(e) => panic!("[Sender] failed to start {:?}", e)
             }
+            Err(e) => panic!("[Sender] failed to start {:?}", e),
+        }
     }
 
     /// send writes data out in chunks, like so:
@@ -102,7 +101,8 @@ impl<T> Sender<T> where T: Serialize {
         // file read-only--which will help the receiver to decide it has hit the
         // end of its log file--and create a new log file.
         let mut syn = self.fs_lock.lock().expect("Sender fs_lock poisoned");
-        if (((*syn).bytes_written + t.len()) > self.max_bytes) || (self.seq_num != (*syn).sender_seq_num) {
+        if (((*syn).bytes_written + t.len()) > self.max_bytes) ||
+           (self.seq_num != (*syn).sender_seq_num) {
             // Once we've gone over the write limit for our current file or find
             // that we've gotten behind the current queue file we need to seek
             // forward to find our place in the space of queue files. We mark
@@ -119,8 +119,7 @@ impl<T> Sender<T> where T: Serialize {
                 // current notion of seq_num forward and then open the
                 // corresponding file.
                 self.seq_num = (*syn).sender_seq_num;
-            }
-            else {
+            } else {
                 // This thread is the leader. We reset the sender_seq_num and
                 // bytes written and open the next queue file. All follower
                 // threads will hit the branch above this one.
