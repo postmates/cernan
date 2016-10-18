@@ -19,7 +19,7 @@ fnv = "1.0.5"
 lazy_static = "0.2.1"
 log = "0.3.6"
 notify = "2.6.3"
-quantiles = { git = "https://github.com/postmates/quantiles.git", branch = "add_assign" }
+quantiles = "0.2.0"
 rusoto = {version = "0.17.0", features = ["firehose"]}
 serde = "0.8"
 serde_json = "0.8"
