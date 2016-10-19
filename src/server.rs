@@ -198,7 +198,7 @@ fn handle_receiver_client(mut chans: Vec<mpsc::Sender<metric::Event>>,
                 Err(e) => panic!("Failed decoding. Skipping {:?}", e),
             }
         }
-        Err(e) => panic!("Unable to read payload: {:?}", e),
+        Err(e) => trace!("Unable to read payload: {:?}", e),
     }
 }
 
