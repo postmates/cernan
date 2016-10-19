@@ -23,27 +23,6 @@ impl LogLine {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub struct MetricQOS {
-    pub counter: u64,
-    pub gauge: u64,
-    pub timer: u64,
-    pub histogram: u64,
-    pub raw: u64,
-}
-
-impl Default for MetricQOS {
-    fn default() -> MetricQOS {
-        MetricQOS {
-            counter: 1,
-            gauge: 1,
-            timer: 1,
-            histogram: 1,
-            raw: 1,
-        }
-    }
-}
-
 fn cmp(left: &TagMap, right: &TagMap) -> Option<Ordering> {
     if left.len() != right.len() {
         left.len().partial_cmp(&right.len())
@@ -545,7 +524,7 @@ mod tests {
     extern crate rand;
     extern crate quickcheck;
 
-    use metric::{Metric, MetricKind, MetricQOS, Event};
+    use metric::{Metric, MetricKind, Event};
     use self::quickcheck::{Arbitrary, Gen, TestResult, QuickCheck};
     use chrono::{UTC, TimeZone};
     use self::rand::{Rand, Rng};
@@ -593,18 +572,6 @@ mod tests {
         }
     }
 
-    impl Rand for MetricQOS {
-        fn rand<R: Rng>(rng: &mut R) -> MetricQOS {
-            MetricQOS {
-                counter: rng.gen_range(1, 60),
-                gauge: rng.gen_range(1, 60),
-                timer: rng.gen_range(1, 60),
-                histogram: rng.gen_range(1, 60),
-                raw: rng.gen_range(1, 60),
-            }
-        }
-    }
-
     impl Rand for Event {
         fn rand<R: Rng>(rng: &mut R) -> Event {
             let i: usize = rng.gen();
@@ -612,12 +579,6 @@ mod tests {
                 0 => Event::TimerFlush,
                 _ => Event::Statsd(rng.gen()),
             }
-        }
-    }
-
-    impl Arbitrary for MetricQOS {
-        fn arbitrary<G: Gen>(g: &mut G) -> MetricQOS {
-            g.gen()
         }
     }
 

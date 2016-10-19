@@ -41,7 +41,7 @@ impl Sink for Console {
         println!("  counters:");
         for (key, value) in self.aggrs.counters() {
             for m in value {
-                if let Some(f) = m.1.value() {
+                if let Some(f) = m.value() {
                     fmt_line(key, f)
                 }
             }
@@ -50,7 +50,7 @@ impl Sink for Console {
         println!("  gauges:");
         for (key, value) in self.aggrs.gauges() {
             for m in value {
-                if let Some(f) = m.1.value() {
+                if let Some(f) = m.value() {
                     fmt_line(key, f)
                 }
             }
@@ -59,7 +59,7 @@ impl Sink for Console {
         println!("  raws:");
         for (key, value) in self.aggrs.raws() {
             for m in value {
-                if let Some(f) = m.1.value() {
+                if let Some(f) = m.value() {
                     fmt_line(key, f)
                 }
             }
@@ -67,7 +67,7 @@ impl Sink for Console {
 
         println!("  histograms:");
         for (key, hists) in self.aggrs.histograms() {
-            for &(_, ref hist) in hists {
+            for hist in hists {
                 for tup in &[("min", 0.0),
                              ("max", 1.0),
                              ("50", 0.5),
@@ -83,7 +83,7 @@ impl Sink for Console {
 
         println!("  timers:");
         for (key, tmrs) in self.aggrs.timers() {
-            for &(_, ref tmr) in tmrs {
+            for tmr in tmrs {
                 for tup in &[("min", 0.0),
                              ("max", 1.0),
                              ("50", 0.5),

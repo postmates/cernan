@@ -64,10 +64,7 @@ fn main() {
         sends.push(wf_send);
         joins.push(thread::spawn(move || {
             cernan::sinks::wavefront::Wavefront::new(&cp_args.wavefront_host.unwrap(),
-                                                     cp_args.wavefront_port.unwrap(),
-                                                     cp_args.tags.clone(),
-                                                     cp_args.qos.clone(),
-                                                     cp_args.flush_interval as i64)
+                                                     cp_args.wavefront_port.unwrap())
                 .run(wf_recv);
         }));
     }
