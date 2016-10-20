@@ -23,11 +23,13 @@ pub struct Args {
     pub fed_receiver_ip: Option<String>,
     pub flush_interval: u64,
     pub console: bool,
+    pub console_bin_width: i64,
     pub null: bool,
     pub firehose_delivery_streams: Vec<String>,
     pub wavefront: bool,
     pub wavefront_port: Option<u16>,
     pub wavefront_host: Option<String>,
+    pub wavefront_bin_width: i64,
     pub fed_transmitter: bool,
     pub fed_transmitter_host: Option<String>,
     pub fed_transmitter_port: Option<u16>,
@@ -102,11 +104,13 @@ pub fn parse_args() -> Args {
                 fed_receiver_port: None,
                 fed_receiver_ip: None,
                 console: mk_console,
+                console_bin_width: 1,
                 null: mk_null,
                 wavefront: mk_wavefront,
                 firehose_delivery_streams: Vec::default(),
                 wavefront_port: wport,
                 wavefront_host: whost,
+                wavefront_bin_width: 1,
                 fed_transmitter: false,
                 fed_transmitter_port: None,
                 fed_transmitter_host: None,
@@ -140,19 +144,33 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     let mk_null = value.lookup("null").is_some();
     let mk_console = value.lookup("console").is_some();
 
-    let (wport, whost) = if mk_wavefront {
+    let cbin = if mk_console {
+         value.lookup("console.bin_width")
+                .unwrap_or(&Value::Integer(1))
+                .as_integer()
+                .map(|i| i as i64).unwrap()
+    } else {
+        1
+    };
+
+    let (wport, whost, wbin) = if mk_wavefront {
         (// wavefront port
          value.lookup("wavefront.port")
-            .unwrap_or(&Value::Integer(2878))
-            .as_integer()
-            .map(|i| i as u16),
+                .unwrap_or(&Value::Integer(2878))
+                .as_integer()
+                .map(|i| i as u16),
          // wavefront host
          value.lookup("wavefront.host")
-            .unwrap_or(&Value::String("127.0.0.1".to_string()))
-            .as_str()
-            .map(|s| s.to_string()))
+                .unwrap_or(&Value::String("127.0.0.1".to_string()))
+                .as_str()
+                .map(|s| s.to_string()),
+            value.lookup("wavefront.bin_width")
+                .unwrap_or(&Value::Integer(1))
+                .as_integer()
+                .map(|i| i as i64).unwrap()
+        )
     } else {
-        (None, None)
+        (None, None, 1)
     };
 
     let (fedtrn_port, fedtrn_host) = if mk_fedtrn {
@@ -259,11 +277,13 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             .as_integer()
             .expect("flush-interval must be integer") as u64,
         console: mk_console,
+        console_bin_width: cbin,
         null: mk_null,
         wavefront: mk_wavefront,
         firehose_delivery_streams: fh_delivery_streams,
         wavefront_port: wport,
         wavefront_host: whost,
+        wavefront_bin_width: wbin,
         fed_transmitter: mk_fedtrn,
         fed_transmitter_port: fedtrn_port,
         fed_transmitter_host: fedtrn_host,
@@ -542,6 +562,7 @@ port = 1024
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.wavefront_bin_width, 1);
         assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.verbose, 4);
     }
@@ -552,6 +573,7 @@ port = 1024
 [wavefront]
 port = 3131
 host = "example.com"
+bin_width = 9
 "#
             .to_string();
 
@@ -566,6 +588,7 @@ host = "example.com"
         assert_eq!(args.wavefront, true);
         assert_eq!(args.wavefront_host, Some("example.com".to_string()));
         assert_eq!(args.wavefront_port, Some(3131));
+        assert_eq!(args.wavefront_bin_width, 9);
         assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.verbose, 4);
     }
@@ -583,6 +606,31 @@ host = "example.com"
         assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, true);
+        assert_eq!(args.console_bin_width, 1);
+        assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, TagMap::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_file_console_explicit_bin_width() {
+        let config = r#"
+[console]
+bin_width = 9
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(2003));
+        assert_eq!(args.flush_interval, 60);
+        assert_eq!(args.console, true);
+        assert_eq!(args.console_bin_width, 9);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
         assert_eq!(args.wavefront, false);

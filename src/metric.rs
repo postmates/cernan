@@ -662,10 +662,12 @@ mod tests {
                 return TestResult::discard();
             }
             let diff = lhs.time - rhs.time;
-            let order = if diff < 0 {
-                Ordering::Less
-            } else if diff > 0 && diff <= (span / 2) {
+            let abs = diff.abs();
+
+            let order = if abs <= span / 2 {
                 Ordering::Equal
+            } else if diff < 0 {
+                Ordering::Less
             } else {
                 Ordering::Greater
             };

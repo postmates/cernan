@@ -8,14 +8,14 @@ pub struct Console {
 }
 
 impl Console {
-    pub fn new() -> Console {
-        Console { aggrs: Buckets::default() }
+    pub fn new(bin_width: i64) -> Console {
+        Console { aggrs: Buckets::new(bin_width) }
     }
 }
 
 impl Default for Console {
     fn default() -> Self {
-        Self::new()
+        Self::new(1)
     }
 }
 

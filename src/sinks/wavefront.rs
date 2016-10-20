@@ -26,14 +26,14 @@ fn fmt_tags(tags: &TagMap) -> String {
 }
 
 impl Wavefront {
-    pub fn new(host: &str, port: u16) -> Wavefront {
+    pub fn new(host: &str, port: u16, bin_width: i64) -> Wavefront {
         match dns_lookup::lookup_host(host) {
             Ok(mut lh) => {
                 let ip = lh.next().expect("No IPs associated with host").unwrap();
                 let addr = SocketAddr::new(ip, port);
                 Wavefront {
                     addr: addr,
-                    aggrs: Buckets::default(),
+                    aggrs: Buckets::new(bin_width),
                 }
             }
             Err(_) => panic!("Could not lookup host"),
@@ -145,7 +145,7 @@ mod test {
     fn test_format_wavefront() {
         let mut tags = TagMap::default();
         tags.insert("source".into(), "test-src".into());
-        let mut wavefront = Wavefront::new("localhost", 2003);
+        let mut wavefront = Wavefront::new("localhost", 2003, 1);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 13).timestamp();
         wavefront.deliver(Metric::new("test.counter", -1.0)
