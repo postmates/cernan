@@ -45,7 +45,11 @@ impl Wavefront {
     pub fn format_stats(&mut self) -> String {
         let mut stats = String::new();
 
-        let flat_aggrs = self.aggrs.counters().iter().chain(self.aggrs.gauges().iter()).chain(self.aggrs.raws().iter());
+        let flat_aggrs = self.aggrs
+            .counters()
+            .iter()
+            .chain(self.aggrs.gauges().iter())
+            .chain(self.aggrs.raws().iter());
 
         for (key, vals) in flat_aggrs {
             for m in vals {

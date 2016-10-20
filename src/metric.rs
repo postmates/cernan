@@ -9,6 +9,7 @@ use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
 use std::cmp::Ordering;
 use std::ops::AddAssign;
+use std::fmt;
 
 pub type TagMap = HashMap<String, String, BuildHasherDefault<FnvHasher>>;
 
@@ -98,11 +99,23 @@ impl PartialOrd for MetricKind {
 
 impl AddAssign for Metric {
     fn add_assign(&mut self, rhs: Metric) {
-        self.value += rhs.value;
         match rhs.kind {
             MetricKind::DeltaGauge | MetricKind::Gauge => self.kind = rhs.kind,
-            _ => (),
+            _ => assert_eq!(self.kind, rhs.kind),
         };
+        self.value += rhs.value;
+    }
+}
+
+impl fmt::Debug for Metric {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,
+               "Metric {{ kind: {:#?}, name: {}, time: {}, tags: {:?}, value: {:?} }}",
+               self.kind,
+               self.name,
+               self.time,
+               self.tags,
+               self.value())
     }
 }
 
@@ -281,6 +294,38 @@ impl Metric {
             MetricKind::Gauge | MetricKind::Raw => self.value.last(),
             MetricKind::DeltaGauge | MetricKind::Counter => self.value.sum(),
             MetricKind::Timer | MetricKind::Histogram => self.value.query(1.0).map(|x| x.1),
+        }
+    }
+
+    pub fn within(&self, span: i64, other: &Metric) -> Ordering {
+        match self.kind.partial_cmp(&other.kind) {
+            Some(Ordering::Equal) => {
+                match self.name.partial_cmp(&other.name) {
+                    Some(Ordering::Equal) => {
+                        match cmp(&self.tags, &other.tags) {
+                            Some(Ordering::Equal) => {
+                                // we take 'within' to be +/- span/2 the time of self,
+                                // that is, is the time of other within the range of
+                                // self if self were in the middle point of an interval
+                                // of span width
+                                let spill = span / 2;
+                                let diff = self.time - other.time;
+                                let abs_diff = diff.abs();
+                                if abs_diff <= spill {
+                                    Ordering::Equal
+                                } else if diff < 0 {
+                                    Ordering::Less
+                                } else {
+                                    Ordering::Greater
+                                }
+                            }
+                            other => other.unwrap(),
+                        }
+                    }
+                    other => other.unwrap(),
+                }
+            }
+            other => other.unwrap(),
         }
     }
 
@@ -531,6 +576,14 @@ mod tests {
     use std::cmp::Ordering;
 
     #[test]
+    fn partial_ord_distinct() {
+        let mc = Metric::new("l6", 0.7913855).counter().time(47);
+        let mg = Metric::new("l6", 0.9683).gauge().time(47);
+
+        assert_eq!(Some(Ordering::Less), mc.partial_cmp(&mg));
+    }
+
+    #[test]
     fn partial_ord_gauges() {
         let mdg = Metric::new("l6", 0.7913855).delta_gauge().time(47);
         let mg = Metric::new("l6", 0.9683).gauge().time(47);
@@ -598,6 +651,31 @@ mod tests {
         fn arbitrary<G: Gen>(g: &mut G) -> Event {
             g.gen()
         }
+    }
+
+    #[test]
+    fn test_metric_within() {
+        fn inner(span: i64, lhs: Metric, rhs: Metric) -> TestResult {
+            if lhs.kind != rhs.kind {
+                return TestResult::discard();
+            } else if lhs.name != rhs.name {
+                return TestResult::discard();
+            }
+            let diff = lhs.time - rhs.time;
+            let order = if diff < 0 {
+                Ordering::Less
+            } else if diff > 0 && diff <= (span / 2) {
+                Ordering::Equal
+            } else {
+                Ordering::Greater
+            };
+            assert_eq!(order, lhs.within(span, &rhs));
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(10000)
+            .max_tests(100000)
+            .quickcheck(inner as fn(i64, Metric, Metric) -> TestResult);
     }
 
     #[test]
