@@ -145,12 +145,77 @@ mod test {
     use std::collections::{HashSet, HashMap};
     use chrono::{UTC, TimeZone};
     use std::cmp::Ordering;
+    use rand::{thread_rng, Rng};
 
     fn within(width: i64, lhs: i64, rhs: i64) -> bool {
         let play = width / 2;
         let diff = (lhs - rhs).abs();
 
         0 <= diff && diff <= play
+    }
+
+    #[test]
+    fn raw_test_variable() {
+        let bin_width = 66;
+        let m0 = Metric::new("lO", 0.807).time(18);
+        let m4 = Metric::new("lO", 0.361).time(75);
+        let m7 = Metric::new("lO", 0.291).time(42);
+
+        let mut bkt = Buckets::new(bin_width);
+        bkt.add(m0);
+        bkt.add(m4);
+        bkt.add(m7);
+
+        let raws = bkt.raws().get("lO").unwrap();
+        println!("RAWS: {:?}", raws);
+        let ref res = raws[0];
+        assert_eq!(18, res.time);
+        assert_eq!(Some(0.2909), res.value());
+    }
+
+
+    #[test]
+    fn shuffled_variable_size_bins() {
+        fn inner(bin_width: u16, ms: Vec<Metric>) -> TestResult {
+            let bin_width: i64 = bin_width as i64;
+            if bin_width == 0 {
+                return TestResult::discard();
+            }
+
+            let mut bkt0 = Buckets::new(bin_width);
+            let mut bkt1 = Buckets::new(bin_width);
+            for m in ms.clone() {
+                bkt0.add(m);
+            }
+            let mut rng = thread_rng();
+            let mut shfl_ms = ms.clone();
+            rng.shuffle(&mut shfl_ms[..]);
+            for m in shfl_ms {
+                bkt1.add(m);
+            }
+
+            let ms0 = bkt0.gauges()
+                .iter()
+                .chain(bkt0.counters().iter())
+                .chain(bkt0.raws().iter())
+                .chain(bkt0.histograms().iter())
+                .chain(bkt0.timers().iter());
+            let ms1 = bkt1.gauges()
+                .iter()
+                .chain(bkt1.counters().iter())
+                .chain(bkt1.raws().iter())
+                .chain(bkt1.histograms().iter())
+                .chain(bkt1.timers().iter());
+
+            for (x,y) in ms0.zip(ms1) {
+                assert_eq!(x,y);
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(10000000)
+            .max_tests(100000000)
+            .quickcheck(inner as fn(u16, Vec<Metric>) -> TestResult);
     }
 
     #[test]
@@ -209,7 +274,7 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new()
-            .tests(10000)
+            .tests(1000)
             .max_tests(100000)
             .quickcheck(inner as fn(u16, Vec<Metric>) -> TestResult);
     }
