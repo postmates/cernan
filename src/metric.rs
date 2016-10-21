@@ -304,20 +304,9 @@ impl Metric {
                     Some(Ordering::Equal) => {
                         match cmp(&self.tags, &other.tags) {
                             Some(Ordering::Equal) => {
-                                // we take 'within' to be +/- span/2 the time of self,
-                                // that is, is the time of other within the range of
-                                // self if self were in the middle point of an interval
-                                // of span width
-                                let spill = span / 2;
-                                let diff = self.time - other.time;
-                                let abs_diff = diff.abs();
-                                if abs_diff <= spill {
-                                    Ordering::Equal
-                                } else if diff < 0 {
-                                    Ordering::Less
-                                } else {
-                                    Ordering::Greater
-                                }
+                                let lhs_bin = self.time / span;
+                                let rhs_bin = other.time / span;
+                                lhs_bin.cmp(&rhs_bin)
                             }
                             other => other.unwrap(),
                         }
@@ -661,16 +650,7 @@ mod tests {
             } else if lhs.name != rhs.name {
                 return TestResult::discard();
             }
-            let diff = lhs.time - rhs.time;
-            let abs = diff.abs();
-
-            let order = if abs <= span / 2 {
-                Ordering::Equal
-            } else if diff < 0 {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            };
+            let order = (lhs.time / span).cmp(&(rhs.time / span));
             assert_eq!(order, lhs.within(span, &rhs));
             TestResult::passed()
         }
