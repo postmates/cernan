@@ -1,24 +1,26 @@
 use bincode::SizeLimit;
+use bincode::serde::deserialize_from;
+use flate2::read::ZlibDecoder;
+use fnv::FnvHasher;
+use metric;
+use mpsc;
+use notify::op::{REMOVE, RENAME, WRITE};
+use notify::{RecommendedWatcher, Error, Watcher};
+use std::collections::HashMap;
+use std::fs::File;
+use std::hash::BuildHasherDefault;
+use std::io::prelude::*;
+use std::io::{Take, SeekFrom, BufReader};
 use std::net::{Ipv6Addr, UdpSocket, SocketAddrV6, SocketAddrV4, Ipv4Addr};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use std::thread::sleep;
-use std::time::Duration;
-use std::thread;
-use std::io::prelude::*;
-use std::io::Take;
-use std::str;
-use metric;
-use std::fs::File;
-use std::io::{SeekFrom, BufReader};
 use std::path::PathBuf;
-use bincode::serde::deserialize_from;
-
+use std::str;
 use std::sync::mpsc::channel;
-use notify::{RecommendedWatcher, Error, Watcher};
-use notify::op::*;
-use mpsc;
+use std::thread::sleep;
+use std::thread;
+use std::time::Duration;
 
-use flate2::read::ZlibDecoder;
+type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 
 #[inline]
 fn send(chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &metric::Event) {
@@ -93,9 +95,7 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>,
     // probably need to fall back to Pollwatcher for that operating system.
     let w: Result<RecommendedWatcher, Error> = Watcher::new(tx);
 
-    let mut fp = File::open(&path).unwrap();
-    fp.seek(SeekFrom::End(0)).expect("could not seek to end of file");
-    let mut reader = BufReader::new(fp);
+    let mut fp_map: HashMapFnv<PathBuf, BufReader<File>> = HashMapFnv::default();
 
     match w {
         Ok(mut watcher) => {
@@ -104,31 +104,44 @@ pub fn file_server(mut chans: Vec<mpsc::Sender<metric::Event>>,
             while let Ok(event) = rx.recv() {
                 match event.op {
                     Ok(op) => {
-                        if op.contains(CREATE) {
-                            let fp = File::open(&path).unwrap();
-                            reader = BufReader::new(fp);
-                        }
-                        if op.contains(WRITE) {
+                        if let Some(path) = event.path {
+                            trace!("OP: {:?} | PATH: {:?} | FP_MAP: {:?}", op, path, fp_map);
                             let mut lines = Vec::new();
-                            loop {
-                                let mut line = String::new();
-                                match reader.read_line(&mut line) {
-                                    Ok(0) => break,
-                                    Ok(_) => {
-                                        let name = format!("{}.lines", path.to_str().unwrap());
-                                        let metric = metric::Metric::new(name, 1.0)
-                                            .counter()
-                                            .overlay_tags_from_map(&tags);
-                                        send(&mut chans, &metric::Event::Statsd(metric));
-                                        lines.push(metric::LogLine::new(String::from(path.to_str()
-                                                                            .unwrap()),
-                                                                        line,
-                                                                        tags.clone()));
+                            if op.contains(REMOVE) || op.contains(RENAME) {
+                                fp_map.remove(&path);
+                            }
+                            if op.contains(WRITE) && !fp_map.contains_key(&path) {
+                                let _ = File::open(&path).map(|fp| {
+                                    let mut reader = BufReader::new(fp);
+                                    reader.seek(SeekFrom::End(0))
+                                        .expect("could not seek to end of file");
+                                    fp_map.insert(path.clone(), reader);
+                                });
+                            }
+                            if op.contains(WRITE) {
+                                if let Some(rdr) = fp_map.get_mut(&path) {
+                                    loop {
+                                        for line in rdr.lines() {
+                                            trace!("PATH: {:?} | LINE: {:?}", path, line);
+                                            lines.push(metric::LogLine::new(path.to_str()
+                                                                                .unwrap(),
+                                                                            line.unwrap(),
+                                                                            tags.clone()));
+                                        }
+                                        if lines.is_empty() {
+                                            trace!("EMPTY LINES, SEEK TO START: {:?}", path);
+                                            rdr.seek(SeekFrom::Start(0))
+                                                .expect("could not seek to start of file");
+                                            continue;
+                                        } else {
+                                            break;
+                                        }
                                     }
-                                    Err(err) => panic!(err),
                                 }
                             }
-                            send(&mut chans, &metric::Event::Log(lines));
+                            if !lines.is_empty() {
+                                send(&mut chans, &metric::Event::Log(lines));
+                            }
                         }
                     }
                     Err(e) => panic!("Unknown file event error: {}", e),

@@ -13,9 +13,11 @@ use std::ops::AddAssign;
 pub type TagMap = HashMap<String, String, BuildHasherDefault<FnvHasher>>;
 
 impl LogLine {
-    pub fn new(path: String, value: String, tags: TagMap) -> LogLine {
+    pub fn new<S>(path: S, value: String, tags: TagMap) -> LogLine
+        where S: Into<String>
+    {
         LogLine {
-            path: path,
+            path: path.into(),
             value: value,
             time: time::now(),
             tags: tags,
