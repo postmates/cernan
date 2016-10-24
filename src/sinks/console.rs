@@ -67,7 +67,7 @@ impl Sink for Console {
 
         println!("  histograms:");
         for (key, hists) in self.aggrs.histograms() {
-            for hist in hists {
+            for h in hists {
                 for tup in &[("min", 0.0),
                              ("max", 1.0),
                              ("50", 0.5),
@@ -76,7 +76,7 @@ impl Sink for Console {
                              ("999", 0.999)] {
                     let stat: &str = tup.0;
                     let quant: f64 = tup.1;
-                    println!("    {}: {} {}", key, stat, hist.query(quant).unwrap());
+                    println!("    {}: {} {}", key, stat, h.query(quant).unwrap());
                 }
             }
         }
