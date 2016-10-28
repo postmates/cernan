@@ -76,16 +76,16 @@ impl Source for Statsd {
         let mut joins = Vec::new();
 
         let addr_v6 = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), self.port, 0, 0);
-        let socket_v6 = UdpSocket::bind(addr_v6).expect("Unable to bind to UDP socket");
+        let socket_v6 = UdpSocket::bind(addr_v6).expect("Unable to bind to UDP V6 socket");
         let chans_v6 = self.chans.clone();
         let tags_v6 = self.tags.clone();
         joins.push(thread::spawn(move || handle_udp(chans_v6, tags_v6, socket_v6)));
 
-        let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
-        let socket_v4 = UdpSocket::bind(addr_v4).expect("Unable to bind to UDP socket");
-        let chans_v4 = self.chans.clone();
-        let tags_v4 = self.tags.clone();
-        joins.push(thread::spawn(move || handle_udp(chans_v4, tags_v4, socket_v4)));
+        // let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
+        // let socket_v4 = UdpSocket::bind(addr_v4).expect("Unable to bind to UDP socket");
+        // let chans_v4 = self.chans.clone();
+        // let tags_v4 = self.tags.clone();
+        // joins.push(thread::spawn(move || handle_udp(chans_v4, tags_v4, socket_v4)));
 
         for jh in joins {
             // TODO Having sub-threads panic will not cause a bubble-up if that

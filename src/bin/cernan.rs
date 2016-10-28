@@ -1,7 +1,10 @@
 extern crate chrono;
-extern crate fern;
 #[macro_use]
-extern crate log;
+pub extern crate slog;
+extern crate slog_stdlog;
+extern crate slog_term;
+
+use slog::DrainExt;
 
 extern crate cernan;
 
@@ -15,21 +18,21 @@ use cernan::sink::Sink;
 fn main() {
     let args = cernan::config::parse_args();
 
-    let level = match args.verbose {
-        0 => log::LogLevelFilter::Error,
-        1 => log::LogLevelFilter::Warn,
-        2 => log::LogLevelFilter::Info,
-        3 => log::LogLevelFilter::Debug,
-        _ => log::LogLevelFilter::Trace,
-    };
+    // let level = match args.verbose {
+    //     0 => log::LogLevelFilter::Error,
+    //     1 => log::LogLevelFilter::Warn,
+    //     2 => log::LogLevelFilter::Info,
+    //     3 => log::LogLevelFilter::Debug,
+    //     _ => log::LogLevelFilter::Trace,
+    // };
 
-    let logger_config = fern::DispatchConfig {
-        format: Box::new(|msg: &str, level: &log::LogLevel, _location: &log::LogLocation| {
-            format!("[{}][{}] {}", level, UTC::now().to_rfc3339(), msg)
-        }),
-        output: vec![fern::OutputConfig::stdout()],
-        level: level,
-    };
+    // let logger_config = fern::DispatchConfig {
+    //     format: Box::new(|msg: &str, level: &log::LogLevel, _location: &log::LogLocation| {
+    //         format!("[{}][{}] {}", level, UTC::now().to_rfc3339(), msg)
+    //     }),
+    //     output: vec![fern::OutputConfig::stdout()],
+    //     level: level,
+    // };
 
     // In some running environments the logger will not initialize, such as
     // under OSX's Instruments.
@@ -37,9 +40,10 @@ fn main() {
     //   IO Error: Permission denied (os error 13)
     //
     // No sense of why.
-    let _ = fern::init_global_logger(logger_config, log::LogLevelFilter::Trace);
+    let drain = slog_term::streamer().async().full().build();
+    let root = slog::Logger::root(drain.fuse(), o!("version" => env!("CARGO_PKG_VERSION")));
 
-    info!("cernan - {}", args.version);
+    info!(root, "cernan - {}", args.version);
     let mut joins = Vec::new();
     let mut sends = Vec::new();
 

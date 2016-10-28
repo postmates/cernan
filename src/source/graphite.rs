@@ -108,11 +108,11 @@ impl Source for Graphite {
         let tags_v6 = self.tags.clone();
         joins.push(thread::spawn(move || handle_tcp(chans_v6, tags_v6, listener_v6)));
 
-        let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
-        let listener_v4 = TcpListener::bind(addr_v4).expect("Unable to bind to TCP V4 socket");
-        let chans_v4 = self.chans.clone();
-        let tags_v4 = self.tags.clone();
-        joins.push(thread::spawn(move || handle_tcp(chans_v4, tags_v4, listener_v4)));
+        // let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
+        // let listener_v4 = TcpListener::bind(addr_v4).expect("Unable to bind to TCP V4 socket");
+        // let chans_v4 = self.chans.clone();
+        // let tags_v4 = self.tags.clone();
+        // joins.push(thread::spawn(move || handle_tcp(chans_v4, tags_v4, listener_v4)));
 
         // TODO thread spawn trick, join on results
         for jh in joins {
