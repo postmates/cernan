@@ -121,7 +121,11 @@ impl Sink for Wavefront {
                         attempts += 1;
                     }
                 }
-                Err(e) => warning!("[wavefront] unable to connect to proxy at addr {} with error {}", self.addr, e),
+                Err(e) => {
+                    info!("[wavefront] unable to connect to proxy at addr {} with error {}",
+                          self.addr,
+                          e)
+                }
             }
         }
     }

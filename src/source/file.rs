@@ -1,6 +1,3 @@
-use bincode::SizeLimit;
-use bincode::serde::deserialize_from;
-use flate2::read::ZlibDecoder;
 use fnv::FnvHasher;
 use metric;
 use mpsc;
@@ -10,15 +7,10 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::hash::BuildHasherDefault;
 use std::io::prelude::*;
-use std::io::{Take, SeekFrom, BufReader};
-use std::net::{Ipv6Addr, UdpSocket, SocketAddrV6, SocketAddrV4, Ipv4Addr};
-use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use std::io::{SeekFrom, BufReader};
 use std::path::PathBuf;
 use std::str;
 use std::sync::mpsc::channel;
-use std::thread::sleep;
-use std::thread;
-use std::time::{Duration, Instant};
 
 use super::send;
 use source::Source;
@@ -32,7 +24,7 @@ pub struct FileServer {
 }
 
 impl FileServer {
-    pub fn new(mut chans: Vec<mpsc::Sender<metric::Event>>,
+    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>,
                path: PathBuf,
                tags: metric::TagMap)
                -> FileServer {

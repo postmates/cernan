@@ -1,58 +1,69 @@
 use bincode::SizeLimit;
 use bincode::serde::deserialize_from;
 use flate2::read::ZlibDecoder;
-use fnv::FnvHasher;
 use metric;
 use mpsc;
-use notify::op::{REMOVE, RENAME, WRITE};
-use notify::{RecommendedWatcher, Error, Watcher};
-use std::collections::HashMap;
-use std::fs::File;
-use std::hash::BuildHasherDefault;
 use std::io::prelude::*;
-use std::io::{Take, SeekFrom, BufReader};
-use std::net::{Ipv6Addr, UdpSocket, SocketAddrV6, SocketAddrV4, Ipv4Addr};
+use std::io::{Take, BufReader};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use std::path::PathBuf;
 use std::str;
-use std::sync::mpsc::channel;
-use std::thread::sleep;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use super::{send, Source};
 
 pub struct FederationReceiver {
     chans: Vec<mpsc::Sender<metric::Event>>,
-    listener: TcpListener,
+    ip: String,
+    port: u16,
     tags: metric::TagMap,
 }
 
 impl FederationReceiver {
-    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>,
-               ip: &str,
-               port: u16,
-               tags: metric::TagMap)
-               -> FederationReceiver {
-        let srv: Vec<_> =
-            (ip, port).to_socket_addrs().expect("unable to make socket addr").collect();
-        let listener = TcpListener::bind(srv.first().unwrap())
-            .expect("Unable to bind to TCP socket");
+    pub fn new<S>(chans: Vec<mpsc::Sender<metric::Event>>,
+                  ip: S,
+                  port: u16,
+                  tags: metric::TagMap)
+                  -> FederationReceiver
+        where S: Into<String>
+    {
         FederationReceiver {
             chans: chans,
-            listener: listener,
+            ip: ip.into(),
+            port: port,
             tags: tags,
         }
     }
+}
 
-    fn handle_receiver_client(&mut self, stream: TcpStream) {
-        let tags = self.tags.clone();
-        let chans = self.chans.clone();
-        thread::spawn(move || {
-            let mut sz_buf = [0; 4];
-            let mut reader = BufReader::new(stream);
-            match reader.read_exact(&mut sz_buf) {
-                Ok(()) => {
+fn handle_tcp(chans: Vec<mpsc::Sender<metric::Event>>,
+              tags: metric::TagMap,
+              listner: TcpListener)
+              -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        for stream in listner.incoming() {
+            if let Ok(stream) = stream {
+                debug!("[graphite] new peer at {:?} | local addr for peer {:?}",
+                       stream.peer_addr(),
+                       stream.local_addr());
+                let tags = tags.clone();
+                let chans = chans.clone();
+                thread::spawn(move || {
+                    handle_stream(chans, tags, stream);
+                });
+            }
+        }
+    })
+}
+
+fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
+                 tags: metric::TagMap,
+                 stream: TcpStream) {
+    thread::spawn(move || {
+        let mut sz_buf = [0; 4];
+        let mut reader = BufReader::new(stream);
+        match reader.read_exact(&mut sz_buf) {
+            Ok(()) => {
                 let payload_size_in_bytes = u8tou32abe(&sz_buf);
                 trace!("[receiver] payload_size_in_bytes: {}", payload_size_in_bytes);
                 let recv_time = Instant::now();
@@ -88,24 +99,25 @@ impl FederationReceiver {
                     }
                 }
             }
-                Err(e) => trace!("[receiver] Unable to read payload: {:?}", e),
-            }
-        });
-    }
+            Err(e) => trace!("[receiver] Unable to read payload: {:?}", e),
+        }
+    });
 }
+
 
 impl Source for FederationReceiver {
     fn run(&mut self) {
-        for stream in self.listener.incoming() {
-            if let Ok(stream) = stream {
-                stream.set_nonblocking(false).expect("could not set TcpStream to block");
-                let srv_chans = self.chans.clone();
-                // NOTE cloning these tags for every TCP connection is _crummy_!
-                // This will increase memory fragmentation / use of memory and will
-                // add latency to connection setup.
-                self.handle_receiver_client(stream);
-            }
-        }
+        let srv: Vec<_> = (self.ip.as_str(), self.port)
+            .to_socket_addrs()
+            .expect("unable to make socket addr")
+            .collect();
+        let listener = TcpListener::bind(srv.first().unwrap())
+            .expect("Unable to bind to TCP socket");
+        let chans = self.chans.clone();
+        let tags = self.tags.clone();
+        let jh = thread::spawn(move || handle_tcp(chans, tags, listener));
+
+        jh.join().expect("Uh oh, child thread paniced!");
     }
 }
 

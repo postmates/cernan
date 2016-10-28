@@ -1,24 +1,7 @@
-use bincode::SizeLimit;
-use bincode::serde::deserialize_from;
-use flate2::read::ZlibDecoder;
-use fnv::FnvHasher;
 use metric;
 use mpsc;
-use notify::op::{REMOVE, RENAME, WRITE};
-use notify::{RecommendedWatcher, Error, Watcher};
-use std::collections::HashMap;
-use std::fs::File;
-use std::hash::BuildHasherDefault;
-use std::io::prelude::*;
-use std::io::{Take, SeekFrom, BufReader};
-use std::net::{Ipv6Addr, UdpSocket, SocketAddrV6, SocketAddrV4, Ipv4Addr};
-use std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use std::path::PathBuf;
-use std::str;
-use std::sync::mpsc::channel;
 use std::thread::sleep;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use super::send;
 use source::Source;
