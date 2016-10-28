@@ -1,12 +1,8 @@
 extern crate chrono;
-#[macro_use]
-pub extern crate slog;
-extern crate slog_stdlog;
-extern crate slog_term;
-
-use slog::DrainExt;
-
 extern crate cernan;
+extern crate fern;
+#[macro_use]
+extern crate log;
 
 use std::str;
 use std::thread;
@@ -18,21 +14,25 @@ use cernan::sink::Sink;
 fn main() {
     let args = cernan::config::parse_args();
 
-    // let level = match args.verbose {
-    //     0 => log::LogLevelFilter::Error,
-    //     1 => log::LogLevelFilter::Warn,
-    //     2 => log::LogLevelFilter::Info,
-    //     3 => log::LogLevelFilter::Debug,
-    //     _ => log::LogLevelFilter::Trace,
-    // };
+    let level = match args.verbose {
+        0 => log::LogLevelFilter::Error,
+        1 => log::LogLevelFilter::Warn,
+        2 => log::LogLevelFilter::Info,
+        3 => log::LogLevelFilter::Debug,
+        _ => log::LogLevelFilter::Trace,
+    };
 
-    // let logger_config = fern::DispatchConfig {
-    //     format: Box::new(|msg: &str, level: &log::LogLevel, _location: &log::LogLocation| {
-    //         format!("[{}][{}] {}", level, UTC::now().to_rfc3339(), msg)
-    //     }),
-    //     output: vec![fern::OutputConfig::stdout()],
-    //     level: level,
-    // };
+    let logger_config = fern::DispatchConfig {
+        format: Box::new(|msg: &str, level: &log::LogLevel, location: &log::LogLocation| {
+            format!("[{}][{}][{}] {}",
+                    location.module_path(),
+                    UTC::now().to_rfc3339(),
+                    level,
+                    msg)
+        }),
+        output: vec![fern::OutputConfig::stdout()],
+        level: level,
+    };
 
     // In some running environments the logger will not initialize, such as
     // under OSX's Instruments.
@@ -40,10 +40,9 @@ fn main() {
     //   IO Error: Permission denied (os error 13)
     //
     // No sense of why.
-    let drain = slog_term::streamer().async().full().build();
-    let root = slog::Logger::root(drain.fuse(), o!("version" => env!("CARGO_PKG_VERSION")));
+    let _ = fern::init_global_logger(logger_config, log::LogLevelFilter::Trace);
 
-    info!(root, "cernan - {}", args.version);
+    info!("cernan - {}", args.version);
     let mut joins = Vec::new();
     let mut sends = Vec::new();
 
@@ -117,28 +116,20 @@ fn main() {
 
     let stags = args.tags.clone();
     if let Some(sport) = args.statsd_port {
-        let udp_server_v4_send = sends.clone();
-        let stags_v4 = stags.clone();
+        let statsd_server_send = sends.clone();
+        let statsd_tags = stags.clone();
         joins.push(thread::spawn(move || {
-            cernan::source::Statsd::new(udp_server_v4_send, sport, stags_v4).run();
-        }));
-        let udp_server_v6_send = sends.clone();
-        joins.push(thread::spawn(move || {
-            cernan::source::Statsd::new(udp_server_v6_send, sport, stags).run();
+            cernan::source::Statsd::new(statsd_server_send, sport, statsd_tags).run();
         }));
     }
 
 
     let gtags = args.tags.clone();
     if let Some(gport) = args.graphite_port {
-        let tcp_server_ipv6_sends = sends.clone();
-        let gtags_v4 = gtags.clone();
+        let graphite_server_sends = sends.clone();
+        let graphite_tags = gtags.clone();
         joins.push(thread::spawn(move || {
-            cernan::source::Graphite::new(tcp_server_ipv6_sends, gport, gtags_v4).run();
-        }));
-        let tcp_server_ipv4_sends = sends.clone();
-        joins.push(thread::spawn(move || {
-            cernan::source::Graphite::new(tcp_server_ipv4_sends, gport, gtags).run();
+            cernan::source::Graphite::new(graphite_server_sends, gport, graphite_tags).run();
         }));
     }
 

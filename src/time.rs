@@ -2,9 +2,15 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use chrono::UTC;
 use std::{cmp, time, thread};
+use std::time::Instant;
 
 lazy_static! {
     static ref NOW: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(UTC::now().timestamp() as usize));
+}
+
+pub fn elapsed_ns(i: Instant) -> u64 {
+    let elapsed = i.elapsed();
+    (elapsed.as_secs().saturating_mul(1_000_000_000)).saturating_add(elapsed.subsec_nanos() as u64)
 }
 
 pub fn now() -> i64 {
@@ -17,7 +23,7 @@ pub fn update_time() {
         thread::sleep(dur);
         let now = UTC::now().timestamp() as usize;
         let order = Ordering::Relaxed;
-        debug!("[time] updated cernan {:?} now, is: {}", order, now);
+        debug!("updated cernan {:?} now, is: {}", order, now);
         NOW.store(now, order);
     }
 }

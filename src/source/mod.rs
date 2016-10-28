@@ -3,6 +3,7 @@ use mpsc;
 use std::str;
 use std::time::Instant;
 use std::fmt;
+use time;
 
 mod graphite;
 mod statsd;
@@ -23,13 +24,11 @@ pub fn send<S>(ctx: S, chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &met
     for mut chan in chans {
         let snd_time = Instant::now();
         chan.send(event);
-        // NOTE this elapsed time is wrong! We must correctly include whole
-        // seconds. STD makes this goofy, I believe chrono makes this simpler.
         trace!("[{}] channel send {:?} to {} elapsed (ns): {}",
                ctx,
                event,
                chan.name(),
-               snd_time.elapsed().subsec_nanos());
+               time::elapsed_ns(snd_time));
     }
 }
 

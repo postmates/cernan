@@ -10,6 +10,7 @@ use std::str;
 use std::thread;
 use std::time::Instant;
 
+use time;
 use super::{send, Source};
 
 pub struct FederationReceiver {
@@ -43,7 +44,7 @@ fn handle_tcp(chans: Vec<mpsc::Sender<metric::Event>>,
     thread::spawn(move || {
         for stream in listner.incoming() {
             if let Ok(stream) = stream {
-                debug!("[graphite] new peer at {:?} | local addr for peer {:?}",
+                debug!("new peer at {:?} | local addr for peer {:?}",
                        stream.peer_addr(),
                        stream.local_addr());
                 let tags = tags.clone();
@@ -65,18 +66,17 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
         match reader.read_exact(&mut sz_buf) {
             Ok(()) => {
                 let payload_size_in_bytes = u8tou32abe(&sz_buf);
-                trace!("[receiver] payload_size_in_bytes: {}", payload_size_in_bytes);
+                trace!("payload_size_in_bytes: {}", payload_size_in_bytes);
                 let recv_time = Instant::now();
                 let hndl = (&mut reader).take(payload_size_in_bytes as u64);
-                // NOTE this elasped time is wrong! See NOTEs throughout this module.
-                debug!("[receiver] recv time elapsed (ns): {}", recv_time.elapsed().subsec_nanos());
+                debug!("recv time elapsed (ns): {}", time::elapsed_ns(recv_time));
                 let mut e = ZlibDecoder::new(hndl);
                 match deserialize_from::<ZlibDecoder<Take<&mut BufReader<TcpStream>>>,
                                          Vec<metric::Event>>(&mut e, SizeLimit::Infinite) {
                     Ok(events) => {
-                        trace!("[receiver] total events in payload: {}", events.len());
+                        trace!("total events in payload: {}", events.len());
                         for mut ev in events {
-                            trace!("[receiver] event: {:?}", ev);
+                            trace!("event: {:?}", ev);
                             ev = match ev {
                                 metric::Event::Statsd(m) => {
                                     metric::Event::Statsd(m.merge_tags_from_map(&tags))
@@ -94,12 +94,12 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                         send("receiver", &mut chans, &metric::Event::Statsd(metric));
                     }
                     Err(e) => {
-                        trace!("[receiver] failed to decode payload with error: {:?}", e);
+                        trace!("failed to decode payload with error: {:?}", e);
                         panic!("Failed decoding. Skipping {:?}", e);
                     }
                 }
             }
-            Err(e) => trace!("[receiver] Unable to read payload: {:?}", e),
+            Err(e) => trace!("Unable to read payload: {:?}", e),
         }
     });
 }

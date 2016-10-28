@@ -8,6 +8,7 @@ use std::str;
 use std::thread;
 use std::time::Instant;
 
+use time;
 use super::{send, Source};
 
 pub struct Graphite {
@@ -36,7 +37,7 @@ fn handle_tcp(chans: Vec<mpsc::Sender<metric::Event>>,
     thread::spawn(move || {
         for stream in listner.incoming() {
             if let Ok(stream) = stream {
-                debug!("[graphite] new peer at {:?} | local addr for peer {:?}",
+                debug!("new peer at {:?} | local addr for peer {:?}",
                        stream.peer_addr(),
                        stream.local_addr());
                 let tags = tags.clone();
@@ -61,7 +62,7 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                     let buf = line.into_bytes();
                     str::from_utf8(&buf)
                         .map(|val| {
-                            trace!("[graphite] {}", val);
+                            trace!("{}", val);
                             let pyld_hndl_time = Instant::now();
                             match metric::Metric::parse_graphite(val) {
                                 Some(metrics) => {
@@ -73,9 +74,8 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                                         m = m.overlay_tags_from_map(&tags);
                                         send("graphite", &mut chans, &metric::Event::Graphite(m));
                                     }
-                                    // NOTE this is wrong! See above NOTE.
-                                    debug!("[graphite] payload handle effective, elapsed (ns): {}",
-                                           pyld_hndl_time.elapsed().subsec_nanos());
+                                    debug!("payload handle effective, elapsed (ns): {}",
+                                           time::elapsed_ns(pyld_hndl_time));
                                 }
                                 None => {
                                     let metric = metric::Metric::new("cernan.graphite.bad_packet",
@@ -83,10 +83,9 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                                         .counter()
                                         .overlay_tags_from_map(&tags);
                                     send("graphite", &mut chans, &metric::Event::Statsd(metric));
-                                    error!("[graphite] bad packet: {:?}", val);
-                                    // NOTE this is wrong! See above NOTE.
-                                    debug!("[graphite] payload handle failure, elapsed (ns): {}",
-                                           pyld_hndl_time.elapsed().subsec_nanos());
+                                    error!("bad packet: {:?}", val);
+                                    debug!("payload handle failure, elapsed (ns): {}",
+                                           time::elapsed_ns(pyld_hndl_time));
                                 }
                             }
                         })
@@ -108,11 +107,11 @@ impl Source for Graphite {
         let tags_v6 = self.tags.clone();
         joins.push(thread::spawn(move || handle_tcp(chans_v6, tags_v6, listener_v6)));
 
-        // let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
-        // let listener_v4 = TcpListener::bind(addr_v4).expect("Unable to bind to TCP V4 socket");
-        // let chans_v4 = self.chans.clone();
-        // let tags_v4 = self.tags.clone();
-        // joins.push(thread::spawn(move || handle_tcp(chans_v4, tags_v4, listener_v4)));
+        let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
+        let listener_v4 = TcpListener::bind(addr_v4).expect("Unable to bind to TCP V4 socket");
+        let chans_v4 = self.chans.clone();
+        let tags_v4 = self.tags.clone();
+        joins.push(thread::spawn(move || handle_tcp(chans_v4, tags_v4, listener_v4)));
 
         // TODO thread spawn trick, join on results
         for jh in joins {

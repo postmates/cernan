@@ -42,9 +42,7 @@ impl<T> Receiver<T>
             })
             .min()
             .unwrap();
-        trace!("[receiver | {}] attempting to open seq_num: {}",
-               name,
-               seq_num);
+        trace!("[{}] attempting to open seq_num: {}", name, seq_num);
         let log = data_dir.join(format!("{}", seq_num));
         let mut fp = fs::OpenOptions::new()
             .read(true)
@@ -88,7 +86,7 @@ impl<T> Iterator for Receiver<T>
             match self.fp.read_exact(&mut sz_buf) {
                 Ok(()) => {
                     let payload_size_in_bytes = u8tou32abe(&sz_buf);
-                    trace!("[receiver | {}] payload_size_in_bytes: {}", self.name, payload_size_in_bytes);
+                    trace!("[{}] payload_size_in_bytes: {}", self.name, payload_size_in_bytes);
                     let mut payload_buf = vec![0; (payload_size_in_bytes as usize)];
                     match self.fp.read_exact(&mut payload_buf) {
                         Ok(()) => {
@@ -134,14 +132,14 @@ impl<T> Iterator for Receiver<T>
                                     })
                                     .min()
                                     .unwrap();
-                                trace!("[receiver | {}] read-only seq_num: {}", self.name, seq_num);
+                                trace!("[{}] read-only seq_num: {}", self.name, seq_num);
                                 let old_log = self.root.join(format!("{}", seq_num));
-                                trace!("[receiver | {}] attempting to remove old log {}",
+                                trace!("[{}] attempting to remove old log {}",
                                        self.name,
                                        old_log.to_string_lossy());
                                 fs::remove_file(old_log).expect("could not remove log");
                                 let lg = self.root.join(format!("{}", seq_num.wrapping_add(1)));
-                                trace!("[receiver | {}] attempting to create new log at {}",
+                                trace!("[{}] attempting to create new log at {}",
                                        self.name,
                                        lg.to_string_lossy());
                                 match fs::OpenOptions::new().read(true).open(&lg) {

@@ -66,9 +66,7 @@ impl<T> Sender<T>
             Some(sn) => sn,
             None => 0,
         };
-        trace!("[sender | {}] attempting to open seq_num: {}",
-               name,
-               seq_num);
+        trace!("[{}] attempting to open seq_num: {}", name, seq_num);
         let log = data_dir.join(format!("{}", seq_num));
         match fs::OpenOptions::new()
             .append(true)
@@ -112,7 +110,7 @@ impl<T> Sender<T>
         // end of its log file--and create a new log file.
         let mut syn = self.fs_lock.lock().expect("Sender fs_lock poisoned");
         let bytes_written = (*syn).bytes_written + t.len();
-        trace!("[sender | {}] bytes_written : {}", self.name, bytes_written);
+        trace!("[{}] bytes_written : {}", self.name, bytes_written);
         if (bytes_written > self.max_bytes) || (self.seq_num != (*syn).sender_seq_num) {
             // Once we've gone over the write limit for our current file or find
             // that we've gotten behind the current queue file we need to seek
@@ -126,7 +124,7 @@ impl<T> Sender<T>
                 let _ = fs::set_permissions(&self.path, permissions);
             });
             if self.seq_num != (*syn).sender_seq_num {
-                trace!("[sender | {}] behind leader, seq_num {} vs. sender_seq_num {}",
+                trace!("[{}] behind leader, seq_num {} vs. sender_seq_num {}",
                        self.name,
                        self.seq_num,
                        (*syn).sender_seq_num);
@@ -141,12 +139,12 @@ impl<T> Sender<T>
                 (*syn).sender_seq_num = self.seq_num.wrapping_add(1);
                 self.seq_num = (*syn).sender_seq_num;
                 (*syn).bytes_written = 0;
-                trace!("[sender | {}] leader, new sender_seq_num: {}",
+                trace!("[{}] leader, new sender_seq_num: {}",
                        self.name,
                        self.seq_num);
             }
             self.path = self.root.join(format!("{}", self.seq_num));
-            trace!("[sender | {}] attempting to open: {}",
+            trace!("[{}] attempting to open: {}",
                    self.name,
                    self.path.to_string_lossy());
             match fs::OpenOptions::new().append(true).create(true).open(&self.path) {
@@ -161,13 +159,13 @@ impl<T> Sender<T>
             Err(e) => panic!("Write error: {}", e),
         }
         fp.flush().expect("unable to flush");
-        trace!("[sender | {}] wrote to disk, bytes_written: {}",
+        trace!("[{}] wrote to disk, bytes_written: {}",
                self.name,
                (*syn).bytes_written);
 
         // Let the Receiver know there's more to read.
         (*syn).writes_to_read += 1;
-        trace!("[sender | {}] writes_to_read now: {}",
+        trace!("[{}] writes_to_read now: {}",
                self.name,
                (*syn).writes_to_read);
     }
