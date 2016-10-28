@@ -63,9 +63,7 @@ impl Sink for FederationTransmitter {
     }
 
     fn flush(&mut self) {
-        trace!("TRANSMISSION FLUSH!");
         let mut e = ZlibEncoder::new(Vec::new(), Compression::Default);
-        trace!("BUFFER: {:?}", &self.buffer);
         serialize_into(&mut e, &self.buffer, SizeLimit::Infinite).expect("could not serialize");
         let mut t = e.finish().expect("unable to finish compression write");
         let pyld_sz_bytes: [u8; 4] = u32tou8abe(t.len() as u32);
@@ -78,7 +76,6 @@ impl Sink for FederationTransmitter {
             .to_socket_addrs()
             .expect("Unable to resolve domain")
             .collect();
-        trace!("SENDING: {:?}", srv);
         match TcpStream::connect(srv.first().unwrap()) {
             Ok(mut stream) => {
                 let res = stream.write(&t[..]);

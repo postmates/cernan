@@ -25,6 +25,7 @@ serde = "0.8"
 serde_json = "0.8"
 toml = "0.2.0"
 rand = "0.3"
+slog = "1.2.0"
 
 [dev-dependencies]
 tempdir = "0.3"

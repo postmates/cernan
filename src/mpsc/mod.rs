@@ -107,8 +107,8 @@ pub fn channel_with_max_bytes<T>(name: &str,
     }
     let fs_lock = Arc::new(Mutex::new(FsSync::default()));
 
-    let sender = sender::Sender::new(&snd_root, max_bytes, fs_lock.clone());
-    let receiver = Receiver::new(&rcv_root, fs_lock);
+    let sender = sender::Sender::new(name, &snd_root, max_bytes, fs_lock.clone());
+    let receiver = Receiver::new(name, &rcv_root, fs_lock);
     (sender, receiver)
 }
 

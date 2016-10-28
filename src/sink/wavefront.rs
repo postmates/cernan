@@ -106,19 +106,22 @@ impl Sink for Wavefront {
     fn flush(&mut self) {
         let mut attempts = 0;
         loop {
+            if attempts > 0 {
+                debug!("[wavefront] delivery attempts: {}", attempts);
+            }
             time::delay(attempts);
             match TcpStream::connect(self.addr) {
                 Ok(mut stream) => {
                     let res = stream.write(self.format_stats().as_bytes());
                     if res.is_ok() {
-                        trace!("flushed to wavefront!");
+                        trace!("[wavefront] flushed to wavefront!");
                         self.aggrs.reset();
                         break;
                     } else {
                         attempts += 1;
                     }
                 }
-                Err(e) => debug!("Unable to connect: {}", e),
+                Err(e) => warning!("[wavefront] unable to connect to proxy at addr {} with error {}", self.addr, e),
             }
         }
     }

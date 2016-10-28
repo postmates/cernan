@@ -15,7 +15,10 @@ pub fn update_time() {
     let dur = time::Duration::from_millis(500);
     loop {
         thread::sleep(dur);
-        NOW.store(UTC::now().timestamp() as usize, Ordering::Relaxed);
+        let now = UTC::now().timestamp() as usize;
+        let order = Ordering::Relaxed;
+        debug!("[time] updated cernan {:?} now, is: {}", order, now);
+        NOW.store(now, order);
     }
 }
 
