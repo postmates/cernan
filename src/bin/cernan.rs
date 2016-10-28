@@ -49,14 +49,14 @@ fn main() {
         sends.push(console_send);
         let bin_width = args.console_bin_width;
         joins.push(thread::spawn(move || {
-            cernan::sinks::console::Console::new(bin_width).run(console_recv);
+            cernan::sink::console::Console::new(bin_width).run(console_recv);
         }));
     }
     if args.null {
         let (null_send, null_recv) = cernan::mpsc::channel("null", &args.data_directory);
         sends.push(null_send);
         joins.push(thread::spawn(move || {
-            cernan::sinks::null::Null::new().run(null_recv);
+            cernan::sink::null::Null::new().run(null_recv);
         }));
     }
     if args.wavefront {
@@ -76,7 +76,7 @@ fn main() {
         let (firehose_send, firehose_recv) = cernan::mpsc::channel(&fh_name, &args.data_directory);
         sends.push(firehose_send);
         joins.push(thread::spawn(move || {
-            cernan::sinks::firehose::Firehose::new(&fh_name).run(firehose_recv);
+            cernan::sink::firehose::Firehose::new(&fh_name).run(firehose_recv);
         }));
     }
 
@@ -85,7 +85,7 @@ fn main() {
         let (cernan_send, cernan_recv) = cernan::mpsc::channel("cernan", &args.data_directory);
         sends.push(cernan_send);
         joins.push(thread::spawn(move || {
-            cernan::sinks::federation_transmitter::FederationTransmitter::new(args_fedtrn.fed_transmitter_port.unwrap(),
+            cernan::sink::federation_transmitter::FederationTransmitter::new(args_fedtrn.fed_transmitter_port.unwrap(),
                                                                               args_fedtrn.fed_transmitter_host.unwrap()).run(cernan_recv);
         }));
     }

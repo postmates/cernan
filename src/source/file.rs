@@ -20,6 +20,9 @@ use std::thread::sleep;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use super::send;
+use source::Source;
+
 type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 
 pub struct FileServer {
@@ -31,7 +34,8 @@ pub struct FileServer {
 impl FileServer {
     pub fn new(mut chans: Vec<mpsc::Sender<metric::Event>>,
                path: PathBuf,
-               tags: metric::TagMap) {
+               tags: metric::TagMap)
+               -> FileServer {
         FileServer {
             chans: chans,
             path: path,
@@ -80,7 +84,7 @@ impl Source for FileServer {
                                             for line in rdr.lines() {
                                                 trace!("PATH: {:?} | LINE: {:?}", path, line);
                                                 lines.push(metric::LogLine::new(path.to_str()
-                                                                                .unwrap(),
+                                                                                    .unwrap(),
                                                                                 line.unwrap(),
                                                                                 self.tags.clone()));
                                             }
@@ -96,7 +100,7 @@ impl Source for FileServer {
                                     }
                                 }
                                 if !lines.is_empty() {
-                                    send("file", self.chans, &metric::Event::Log(lines));
+                                    send("file", &mut self.chans, &metric::Event::Log(lines));
                                 }
                             }
                         }

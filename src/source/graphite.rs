@@ -20,6 +20,8 @@ use std::thread::sleep;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use super::{send, Source};
+
 pub struct Graphite {
     chans: Vec<mpsc::Sender<metric::Event>>,
     listener_v6: TcpListener,
@@ -28,7 +30,10 @@ pub struct Graphite {
 }
 
 impl Graphite {
-    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>, port: u16) {
+    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>,
+               port: u16,
+               tags: metric::TagMap)
+               -> Graphite {
         let addr_v6 = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port, 0, 0);
         let listener_v6 = TcpListener::bind(addr_v6).expect("Unable to bind to TCP V6 socket");
         let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
@@ -37,10 +42,14 @@ impl Graphite {
             chans: chans,
             listener_v4: listener_v4,
             listener_v6: listener_v6,
+            tags: tags,
         }
     }
 
-    fn handle_client(mut chans: Vec<mpsc::Sender<metric::Event>>, stream: TcpStream) {
+    fn handle_client(&mut self, stream: TcpStream) {
+        let tags = self.tags.clone();
+        let chans = self.chans.clone();
+        thread::spawn(move || {
         let line_reader = BufReader::new(stream);
         for line in line_reader.lines() {
             match line {
@@ -54,23 +63,32 @@ impl Graphite {
                                 Some(metrics) => {
                                     let metric = metric::Metric::new("cernan.graphite.packet", 1.0)
                                         .counter()
-                                        .overlay_tags_from_map(&tags);;
-                                    send("graphite", &mut chans, &metric::Event::Statsd(metric));
+                                        .overlay_tags_from_map(&tags);
+                                    send("graphite",
+                                         &mut chans,
+                                         &metric::Event::Statsd(metric));
                                     for mut m in metrics {
                                         m = m.overlay_tags_from_map(&tags);
-                                        send("graphite", &mut chans, &metric::Event::Graphite(m));
+                                        send("graphite",
+                                             &mut chans,
+                                             &metric::Event::Graphite(m));
                                     }
                                     // NOTE this is wrong! See above NOTE.
-                                    debug!("[graphite] payload handle effective, elapsed (ns): {}", pyld_hndl_time.elapsed().subsec_nanos());
+                                    debug!("[graphite] payload handle effective, elapsed (ns): {}",
+                                           pyld_hndl_time.elapsed().subsec_nanos());
                                 }
                                 None => {
-                                    let metric = metric::Metric::new("cernan.graphite.bad_packet", 1.0)
+                                    let metric = metric::Metric::new("cernan.graphite.bad_packet",
+                                                                     1.0)
                                         .counter()
                                         .overlay_tags_from_map(&tags);
-                                    send("graphite", &mut chans, &metric::Event::Statsd(metric));
-                                    error!("BAD PACKET: {:?}", val);
+                                    send("graphite",
+                                         &mut chans,
+                                         &metric::Event::Statsd(metric));
+                                    error!("[graphite] bad packet: {:?}", val);
                                     // NOTE this is wrong! See above NOTE.
-                                    debug!("[graphite] payload handle failure, elapsed (ns): {}", pyld_hndl_time.elapsed().subsec_nanos());
+                                    debug!("[graphite] payload handle failure, elapsed (ns): {}",
+                                           pyld_hndl_time.elapsed().subsec_nanos());
                                 }
                             }
                         })
@@ -79,6 +97,7 @@ impl Graphite {
                 Err(_) => break,
             }
         }
+        });
     }
 }
 
@@ -90,20 +109,20 @@ impl Source for Graphite {
         joins.push(thread::spawn(move || {
             for stream in self.listener_v4.incoming() {
                 if let Ok(stream) = stream {
-                    debug!("[graphite] new peer at {:?} | local addr for peer {:?}", stream.peer_addr(), stream.local_addr());
-                    let srv_chans = chans.clone();
-                    let tags = tags.clone();
-                    thread::spawn(move || handle_client(srv_chans, stream, tags));
+                    debug!("[graphite] new peer at {:?} | local addr for peer {:?}",
+                           stream.peer_addr(),
+                           stream.local_addr());
+                    self.handle_client(stream);
                 }
             }
         }));
         joins.push(thread::spawn(move || {
             for stream in self.listener_v6.incoming() {
                 if let Ok(stream) = stream {
-                    debug!("[graphite] new peer at {:?} | local addr for peer {:?}", stream.peer_addr(), stream.local_addr());
-                    let srv_chans = chans.clone();
-                    let tags = tags.clone();
-                    thread::spawn(move || handle_client(srv_chans, stream, tags));
+                    debug!("[graphite] new peer at {:?} | local addr for peer {:?}",
+                           stream.peer_addr(),
+                           stream.local_addr());
+                    self.handle_client(stream);
                 }
             }
         }));

@@ -5,7 +5,7 @@ use std::fs;
 use std::io::Write;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-
+use std::fmt;
 use mpsc::FSLock;
 
 #[inline]
@@ -34,7 +34,10 @@ impl<T> Clone for Sender<T>
     where T: Serialize + Deserialize
 {
     fn clone(&self) -> Sender<T> {
-        Sender::new(&self.root, self.max_bytes, self.fs_lock.clone())
+        Sender::new(self.name.clone(),
+                    &self.root,
+                    self.max_bytes,
+                    self.fs_lock.clone())
     }
 }
 
@@ -42,7 +45,9 @@ impl<T> Sender<T>
     where T: Serialize
 {
     /// PRIVATE
-    pub fn new<S>(name: S, data_dir: &Path, max_bytes: usize, fs_lock: FSLock) -> Sender<T>  where S: Into<String> {
+    pub fn new<S>(name: S, data_dir: &Path, max_bytes: usize, fs_lock: FSLock) -> Sender<T>
+        where S: Into<String> + fmt::Display
+    {
         let init_fs_lock = fs_lock.clone();
         let mut syn = init_fs_lock.lock().expect("Sender fs_lock poisoned");
         let seq_num = match fs::read_dir(data_dir)
@@ -61,7 +66,9 @@ impl<T> Sender<T>
             Some(sn) => sn,
             None => 0,
         };
-        trace!("[sender | {}] attempting to open seq_num: {}", data_dir, seq_num);
+        trace!("[sender | {}] attempting to open seq_num: {}",
+               name,
+               seq_num);
         let log = data_dir.join(format!("{}", seq_num));
         match fs::OpenOptions::new()
             .append(true)
@@ -119,7 +126,10 @@ impl<T> Sender<T>
                 let _ = fs::set_permissions(&self.path, permissions);
             });
             if self.seq_num != (*syn).sender_seq_num {
-                trace!("[sender | {}] behind leader, seq_num {} vs. sender_seq_num {}", self.name, self.seq_num, (*syn).sender_seq_num);
+                trace!("[sender | {}] behind leader, seq_num {} vs. sender_seq_num {}",
+                       self.name,
+                       self.seq_num,
+                       (*syn).sender_seq_num);
                 // This thread is behind the leader. We've got to set our
                 // current notion of seq_num forward and then open the
                 // corresponding file.
@@ -131,10 +141,14 @@ impl<T> Sender<T>
                 (*syn).sender_seq_num = self.seq_num.wrapping_add(1);
                 self.seq_num = (*syn).sender_seq_num;
                 (*syn).bytes_written = 0;
-                trace!("[sender | {}] leader, new sender_seq_num: {}", self.name, self.seq_num);
+                trace!("[sender | {}] leader, new sender_seq_num: {}",
+                       self.name,
+                       self.seq_num);
             }
             self.path = self.root.join(format!("{}", self.seq_num));
-            trace!("[sender | {}] attempting to open: {}", self.name, self.path);
+            trace!("[sender | {}] attempting to open: {}",
+                   self.name,
+                   self.path.to_string_lossy());
             match fs::OpenOptions::new().append(true).create(true).open(&self.path) {
                 Ok(fp) => self.fp = fp,
                 Err(e) => panic!("FAILED TO OPEN {:?} WITH {:?}", &self.path, e),
@@ -147,14 +161,19 @@ impl<T> Sender<T>
             Err(e) => panic!("Write error: {}", e),
         }
         fp.flush().expect("unable to flush");
-        trace!("[sender | {}] wrote to disk, bytes_written: {}", self.name, (*syn).bytes_written);
+        trace!("[sender | {}] wrote to disk, bytes_written: {}",
+               self.name,
+               (*syn).bytes_written);
 
         // Let the Receiver know there's more to read.
         (*syn).writes_to_read += 1;
-        trace!("[sender | {}] writes_to_read now: {}", self.name, (*syn).writes_to_read);
+        trace!("[sender | {}] writes_to_read now: {}",
+               self.name,
+               (*syn).writes_to_read);
     }
 
+    /// Return the sender's name
     pub fn name(&self) -> &str {
-        self.name
+        &self.name
     }
 }

@@ -4,6 +4,7 @@ use std::fs;
 use std::io::{BufReader, ErrorKind, Read, SeekFrom, Seek};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::fmt;
 
 use mpsc::FSLock;
 
@@ -30,7 +31,9 @@ impl<T> Receiver<T>
     where T: Deserialize
 {
     /// TODO
-    pub fn new<S>(name: S, data_dir: &Path, fs_lock: FSLock) -> Receiver<T> where S: Into<String> {
+    pub fn new<S>(name: S, data_dir: &Path, fs_lock: FSLock) -> Receiver<T>
+        where S: Into<String> + fmt::Display
+    {
         let _ = fs_lock.lock().expect("Sender fs_lock poisoned");
         let seq_num = fs::read_dir(data_dir)
             .unwrap()
@@ -39,7 +42,9 @@ impl<T> Receiver<T>
             })
             .min()
             .unwrap();
-        trace!("[receiver | {}] attempting to open seq_num: {}", data_dir, seq_num);
+        trace!("[receiver | {}] attempting to open seq_num: {}",
+               name,
+               seq_num);
         let log = data_dir.join(format!("{}", seq_num));
         let mut fp = fs::OpenOptions::new()
             .read(true)
@@ -77,7 +82,9 @@ impl<T> Iterator for Receiver<T>
         // written to. It's safe for the Receiver to declare the log done by
         // deleting it and moving on to the next file.
         while (*syn).writes_to_read > 0 {
-            debug!("[reciever | {}] writes to read: {}", self.name, (*syn).writes_to_read);
+            debug!("[reciever | {}] writes to read: {}",
+                   self.name,
+                   (*syn).writes_to_read);
             match self.fp.read_exact(&mut sz_buf) {
                 Ok(()) => {
                     let payload_size_in_bytes = u8tou32abe(&sz_buf);
@@ -129,10 +136,14 @@ impl<T> Iterator for Receiver<T>
                                     .unwrap();
                                 trace!("[receiver | {}] read-only seq_num: {}", self.name, seq_num);
                                 let old_log = self.root.join(format!("{}", seq_num));
-                                trace!("[receiver | {}] attempting to remove old log {}", self.name, old_log);
+                                trace!("[receiver | {}] attempting to remove old log {}",
+                                       self.name,
+                                       old_log.to_string_lossy());
                                 fs::remove_file(old_log).expect("could not remove log");
                                 let lg = self.root.join(format!("{}", seq_num.wrapping_add(1)));
-                                trace!("[receiver | {}] attempting to create new log at {}", self.name, lg);
+                                trace!("[receiver | {}] attempting to create new log at {}",
+                                       self.name,
+                                       lg.to_string_lossy());
                                 match fs::OpenOptions::new().read(true).open(&lg) {
                                     Ok(fp) => {
                                         self.fp = BufReader::new(fp);

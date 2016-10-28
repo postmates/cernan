@@ -517,11 +517,7 @@ impl Metric {
                 None => break,
             }
         }
-        if res.is_empty() {
-            None
-        } else {
-            Some(res)
-        }
+        if res.is_empty() { None } else { Some(res) }
     }
 
     pub fn parse_graphite(source: &str) -> Option<Vec<Metric>> {

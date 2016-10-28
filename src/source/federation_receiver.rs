@@ -20,19 +20,24 @@ use std::thread::sleep;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use super::{send, Source};
+
 pub struct FederationReceiver {
     chans: Vec<mpsc::Sender<metric::Event>>,
     listener: TcpListener,
-    tags: TagMap,
+    tags: metric::TagMap,
 }
 
 impl FederationReceiver {
     pub fn new(chans: Vec<mpsc::Sender<metric::Event>>,
                ip: &str,
                port: u16,
-               tags: metric::TagMap) {
-        let srv: Vec<_> = (ip, port).to_socket_addrs().expect("unable to make socket addr").collect();
-        let listener = TcpListener::bind(srv.first().unwrap()).expect("Unable to bind to TCP socket");
+               tags: metric::TagMap)
+               -> FederationReceiver {
+        let srv: Vec<_> =
+            (ip, port).to_socket_addrs().expect("unable to make socket addr").collect();
+        let listener = TcpListener::bind(srv.first().unwrap())
+            .expect("Unable to bind to TCP socket");
         FederationReceiver {
             chans: chans,
             listener: listener,
@@ -41,10 +46,13 @@ impl FederationReceiver {
     }
 
     fn handle_receiver_client(&mut self, stream: TcpStream) {
-        let mut sz_buf = [0; 4];
-        let mut reader = BufReader::new(stream);
-        match reader.read_exact(&mut sz_buf) {
-            Ok(()) => {
+        let tags = self.tags.clone();
+        let chans = self.chans.clone();
+        thread::spawn(move || {
+            let mut sz_buf = [0; 4];
+            let mut reader = BufReader::new(stream);
+            match reader.read_exact(&mut sz_buf) {
+                Ok(()) => {
                 let payload_size_in_bytes = u8tou32abe(&sz_buf);
                 trace!("[receiver] payload_size_in_bytes: {}", payload_size_in_bytes);
                 let recv_time = Instant::now();
@@ -60,28 +68,29 @@ impl FederationReceiver {
                             trace!("[receiver] event: {:?}", ev);
                             ev = match ev {
                                 metric::Event::Statsd(m) => {
-                                    metric::Event::Statsd(m.merge_tags_from_map(self.tags))
+                                    metric::Event::Statsd(m.merge_tags_from_map(&tags))
                                 }
                                 metric::Event::Graphite(m) => {
-                                    metric::Event::Graphite(m.merge_tags_from_map(self.tags))
+                                    metric::Event::Graphite(m.merge_tags_from_map(&tags))
                                 }
                                 _ => continue, // we refuse to accept any non-telemetry forward for now
                             };
-                            send("receiver", &mut self.chans, &ev);
+                            send("receiver", &mut chans, &ev);
                         }
                         let metric = metric::Metric::new("cernan.federation.receiver.packet", 1.0)
                             .counter()
-                            .overlay_tags_from_map(&tags);;
-                        send(&mut self.chans, &metric::Event::Statsd(metric));
+                            .overlay_tags_from_map(&tags);
+                        send("receiver", &mut chans, &metric::Event::Statsd(metric));
                     }
                     Err(e) => {
                         trace!("[receiver] failed to decode payload with error: {:?}", e);
-                        panic!("Failed decoding. Skipping {:?}", e),
+                        panic!("Failed decoding. Skipping {:?}", e);
                     }
                 }
             }
-            Err(e) => trace!("[receiver] Unable to read payload: {:?}", e),
-        }
+                Err(e) => trace!("[receiver] Unable to read payload: {:?}", e),
+            }
+        });
     }
 }
 
@@ -94,8 +103,7 @@ impl Source for FederationReceiver {
                 // NOTE cloning these tags for every TCP connection is _crummy_!
                 // This will increase memory fragmentation / use of memory and will
                 // add latency to connection setup.
-                let tags = self.tags.clone();
-                thread::spawn(move || self.handle_receiver_client(srv_chans, stream, tags));
+                self.handle_receiver_client(stream);
             }
         }
     }
