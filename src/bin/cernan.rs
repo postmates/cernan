@@ -24,8 +24,9 @@ fn main() {
 
     let logger_config = fern::DispatchConfig {
         format: Box::new(|msg: &str, level: &log::LogLevel, location: &log::LogLocation| {
-            format!("[{}][{}][{}] {}",
+            format!("[{}][{}][{}][{}] {}",
                     location.module_path(),
+                    location.line(),
                     UTC::now().to_rfc3339(),
                     level,
                     msg)
@@ -53,7 +54,7 @@ fn main() {
         sends.push(console_send);
         let bin_width = args.console_bin_width;
         joins.push(thread::spawn(move || {
-            cernan::sink::console::Console::new(bin_width).run(console_recv);
+            cernan::sink::Console::new(bin_width).run(console_recv);
         }));
     }
     if args.null {
@@ -70,8 +71,6 @@ fn main() {
         joins.push(thread::spawn(move || {
             cernan::sink::Wavefront::new(&cp_args.wavefront_host.unwrap(),
                                          cp_args.wavefront_port.unwrap(),
-                                         cp_args.tags.clone(),
-                                         cp_args.qos.clone(),
                                          cp_args.flush_interval as i64)
                 .run(wf_recv);
         }));
