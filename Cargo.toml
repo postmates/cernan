@@ -39,3 +39,4 @@ codegen-units = 4
 [profile.release]
 lto = true
 codegen-units = 4
+panic = "abort"
