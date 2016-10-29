@@ -47,8 +47,9 @@ fn main() {
     if args.console {
         let (console_send, console_recv) = cernan::mpsc::channel("console", &args.data_directory);
         sends.push(console_send);
+        let bin_width = args.console_bin_width;
         joins.push(thread::spawn(move || {
-            cernan::sinks::console::Console::new().run(console_recv);
+            cernan::sinks::console::Console::new(bin_width).run(console_recv);
         }));
     }
     if args.null {
@@ -65,9 +66,7 @@ fn main() {
         joins.push(thread::spawn(move || {
             cernan::sinks::wavefront::Wavefront::new(&cp_args.wavefront_host.unwrap(),
                                                      cp_args.wavefront_port.unwrap(),
-                                                     cp_args.tags.clone(),
-                                                     cp_args.qos.clone(),
-                                                     cp_args.flush_interval as i64)
+                                                     cp_args.wavefront_bin_width)
                 .run(wf_recv);
         }));
     }

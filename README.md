@@ -212,8 +212,7 @@ seconds. [default: 60].  ```
 
 The `flush-interval` does not affect aggregations. A full discussion of cernan's
 aggregation model is discussed in the sub-section
-[Aggregation](#Aggregation). The `flush-interval` does interact with point
-elision, discussed in [Elliding Points](#Elliding-Points).
+[Aggregation](#Aggregation).
 
 ## Where Cernan stores its on-disk queues
 
@@ -234,39 +233,22 @@ create the path `data-directory` points to if it does not exist.
 
 In some cases it's not nessary for cernan to ship the aggregates of each point
 for every second it receives them to achieve a statistically accurate impression
-of your system. To that end, cernan allows the user to control point ellision
-with a Quality of Service knob, which looks like so:
+of your system. To that end, cernan allows the user to control the width of
+aggregation bins on a per-source basis. For instance, the following will
+aggregate points into 1 second bins on the console sink and 10 second bins for
+the wavefront sink:
 
 ```
-[quality-of-service]
-gauge = 15
-counter = 3
-timer = 10
-histogram = 10
+[console]
+bin_width = 1
+
+[wavefront]
+bin_width = 10
 ```
 
 How many points will this ellide? If the `flush-interval` of the system is `F`
 and the QOS for a given type of metic is `Q` then the maximum number of points
-that will be retained in `F` is `floor(F/Q)`. By default, `F=60` so let's assume
-that's the case. Given the values above, the maximum number of points allowed in
-one minute will be:
-
-```
-gauge = floor(60/15) = 4
-counter = floor(60/3) = 20
-timer = floor(60/10) = 6
-histogram = floor(60/10) = 6
-```
-
-What if you have more than `floor(F/Q)` points in an interval `F`? In this case,
-cernan will randomly sample the appropriate amount of points from your
-interval. Random sampling is done to avoid introducing systematic artifacts into
-the resulting time series.
-
-Raw metrics are except from elision.
-
-QOS may be adjusted to reduce load on downstream aggregators or save a little
-money, if you pay by the point.
+that will be retained in `F` is `ceil(F/bin_width)`. By default, `F=60`.
 
 ## Enabling sinks
 
@@ -302,7 +284,11 @@ The console sink accepts points and aggregates them into
 the wavefront sink does. The console sink will, once per `flush-interval`, print
 its aggregations. The console sink is useful for smoke testing applications.
 
-There are no configurable options for the console sink.
+The console sink accepts only one configuration parameter, `bin_width`.
+
+```
+bin_width=<INT>    The width in seconds for aggregating bins. [default: 1].
+```
 
 ### wavefront
 
@@ -312,6 +298,7 @@ proxy runs:
 ```
 port=<INT>         The port wavefront proxy is running on. [default: 2878].
 host=<STRING>      The host wavefront proxy is running on. [default: 127.0.0.1].
+bin_width=<INT>    The width in seconds for aggregating bins. [default: 1].
 ```
 
 You may find an example configuration file in the top-level of this project,

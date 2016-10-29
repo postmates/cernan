@@ -9,7 +9,7 @@ use toml;
 use toml::Value;
 use std::io::Read;
 use std::str::FromStr;
-use metric::{MetricQOS, TagMap};
+use metric::TagMap;
 use std::path::{Path, PathBuf};
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
@@ -23,15 +23,16 @@ pub struct Args {
     pub fed_receiver_ip: Option<String>,
     pub flush_interval: u64,
     pub console: bool,
+    pub console_bin_width: i64,
     pub null: bool,
     pub firehose_delivery_streams: Vec<String>,
     pub wavefront: bool,
     pub wavefront_port: Option<u16>,
     pub wavefront_host: Option<String>,
+    pub wavefront_bin_width: i64,
     pub fed_transmitter: bool,
     pub fed_transmitter_host: Option<String>,
     pub fed_transmitter_port: Option<u16>,
-    pub qos: MetricQOS,
     pub tags: TagMap,
     pub files: Option<Vec<PathBuf>>,
     pub verbose: u64,
@@ -92,8 +93,6 @@ pub fn parse_args() -> Args {
                 0
             };
 
-            let qos = MetricQOS::default();
-
             Args {
                 data_directory: Path::new("/tmp/cernan-data").to_path_buf(),
                 statsd_port: Some(u16::from_str(args.value_of("statsd-port").unwrap())
@@ -105,16 +104,17 @@ pub fn parse_args() -> Args {
                 fed_receiver_port: None,
                 fed_receiver_ip: None,
                 console: mk_console,
+                console_bin_width: 1,
                 null: mk_null,
                 wavefront: mk_wavefront,
                 firehose_delivery_streams: Vec::default(),
                 wavefront_port: wport,
                 wavefront_host: whost,
+                wavefront_bin_width: 1,
                 fed_transmitter: false,
                 fed_transmitter_port: None,
                 fed_transmitter_host: None,
                 tags: TagMap::default(),
-                qos: qos,
                 files: None,
                 verbose: verb,
                 version: VERSION.unwrap().to_string(),
@@ -139,44 +139,38 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         None => TagMap::default(),
     };
 
-    let qos = match value.lookup("quality-of-service") {
-        Some(tbl) => {
-            let ttbl = tbl.as_table().unwrap();
-            let mut hm = MetricQOS::default();
-            for (k, v) in &(*ttbl) {
-                let rate = v.as_integer().expect("value must be an integer") as u64;
-                match k.as_ref() {
-                    "gauge" => hm.gauge = rate,
-                    "counter" => hm.counter = rate,
-                    "timer" => hm.timer = rate,
-                    "histogram" => hm.histogram = rate,
-                    "raw" => hm.raw = rate,
-                    _ => panic!("Unknown quality-of-service value!"),
-                };
-            }
-            hm
-        }
-        None => MetricQOS::default(),
-    };
-
     let mk_wavefront = value.lookup("wavefront").is_some();
     let mk_fedtrn = value.lookup("federation_transmitter").is_some();
     let mk_null = value.lookup("null").is_some();
     let mk_console = value.lookup("console").is_some();
 
-    let (wport, whost) = if mk_wavefront {
+    let cbin = if mk_console {
+         value.lookup("console.bin_width")
+                .unwrap_or(&Value::Integer(1))
+                .as_integer()
+                .map(|i| i as i64).unwrap()
+    } else {
+        1
+    };
+
+    let (wport, whost, wbin) = if mk_wavefront {
         (// wavefront port
          value.lookup("wavefront.port")
-            .unwrap_or(&Value::Integer(2878))
-            .as_integer()
-            .map(|i| i as u16),
+                .unwrap_or(&Value::Integer(2878))
+                .as_integer()
+                .map(|i| i as u16),
          // wavefront host
          value.lookup("wavefront.host")
-            .unwrap_or(&Value::String("127.0.0.1".to_string()))
-            .as_str()
-            .map(|s| s.to_string()))
+                .unwrap_or(&Value::String("127.0.0.1".to_string()))
+                .as_str()
+                .map(|s| s.to_string()),
+            value.lookup("wavefront.bin_width")
+                .unwrap_or(&Value::Integer(1))
+                .as_integer()
+                .map(|i| i as i64).unwrap()
+        )
     } else {
-        (None, None)
+        (None, None, 1)
     };
 
     let (fedtrn_port, fedtrn_host) = if mk_fedtrn {
@@ -283,16 +277,17 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             .as_integer()
             .expect("flush-interval must be integer") as u64,
         console: mk_console,
+        console_bin_width: cbin,
         null: mk_null,
         wavefront: mk_wavefront,
         firehose_delivery_streams: fh_delivery_streams,
         wavefront_port: wport,
         wavefront_host: whost,
+        wavefront_bin_width: wbin,
         fed_transmitter: mk_fedtrn,
         fed_transmitter_port: fedtrn_port,
         fed_transmitter_host: fedtrn_host,
         tags: tags,
-        qos: qos,
         files: Some(paths),
         verbose: verbosity,
         version: VERSION.unwrap().to_string(),
@@ -302,7 +297,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
 #[cfg(test)]
 mod test {
     use super::*;
-    use metric::{MetricQOS, TagMap};
+    use metric::TagMap;
     use std::path::PathBuf;
 
     #[test]
@@ -325,7 +320,6 @@ mod test {
         assert_eq!(args.fed_transmitter, false);
         assert_eq!(args.fed_transmitter_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -351,7 +345,6 @@ port = 1987
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -377,7 +370,6 @@ ip = "127.0.0.1"
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -405,7 +397,6 @@ port = 1987
         assert_eq!(args.fed_transmitter_host, Some(String::from("127.0.0.1")));
         assert_eq!(args.fed_transmitter_port, Some(1987));
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -434,7 +425,6 @@ host = "foo.example.com"
                    Some(String::from("foo.example.com")));
         assert_eq!(args.fed_transmitter_port, Some(1972));
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -457,7 +447,6 @@ statsd-port = 1024
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -481,7 +470,6 @@ port = 1024
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -506,7 +494,6 @@ port = 1024
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -529,7 +516,6 @@ graphite-port = 1024
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -553,7 +539,6 @@ port = 1024
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -577,8 +562,8 @@ port = 1024
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.wavefront_bin_width, 1);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -588,6 +573,7 @@ port = 1024
 [wavefront]
 port = 3131
 host = "example.com"
+bin_width = 9
 "#
             .to_string();
 
@@ -602,8 +588,8 @@ host = "example.com"
         assert_eq!(args.wavefront, true);
         assert_eq!(args.wavefront_host, Some("example.com".to_string()));
         assert_eq!(args.wavefront_port, Some(3131));
+        assert_eq!(args.wavefront_bin_width, 9);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -620,13 +606,37 @@ host = "example.com"
         assert_eq!(args.graphite_port, Some(2003));
         assert_eq!(args.flush_interval, 60);
         assert_eq!(args.console, true);
+        assert_eq!(args.console_bin_width, 1);
         assert_eq!(args.null, false);
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
         assert_eq!(args.wavefront, false);
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
+        assert_eq!(args.verbose, 4);
+    }
+
+    #[test]
+    fn config_file_console_explicit_bin_width() {
+        let config = r#"
+[console]
+bin_width = 9
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsd_port, Some(8125));
+        assert_eq!(args.graphite_port, Some(2003));
+        assert_eq!(args.flush_interval, 60);
+        assert_eq!(args.console, true);
+        assert_eq!(args.console_bin_width, 9);
+        assert_eq!(args.null, false);
+        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert_eq!(args.wavefront, false);
+        assert_eq!(args.wavefront_host, None);
+        assert_eq!(args.wavefront_port, None);
+        assert_eq!(args.tags, TagMap::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -649,7 +659,6 @@ host = "example.com"
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -677,7 +686,6 @@ delivery_stream = "stream_two"
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -702,7 +710,6 @@ path = "/foo/bar.txt"
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -731,7 +738,6 @@ path = "/bar.txt"
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
 
@@ -761,45 +767,8 @@ mission = "from_gad"
         assert_eq!(args.wavefront_host, None);
         assert_eq!(args.wavefront_port, None);
         assert_eq!(args.tags, tags);
-        assert_eq!(args.qos, MetricQOS::default());
         assert_eq!(args.verbose, 4);
     }
-
-    #[test]
-    fn config_file_qos() {
-        let config = r#"
-[quality-of-service]
-gauge = 110
-counter = 12
-timer = 605
-histogram = 609
-raw = 42
-"#
-            .to_string();
-
-        let args = parse_config_file(config, 4);
-
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.qos,
-                   MetricQOS {
-                       gauge: 110,
-                       counter: 12,
-                       timer: 605,
-                       histogram: 609,
-                       raw: 42,
-                   });
-        assert_eq!(args.verbose, 4);
-    }
-
 
     #[test]
     fn config_file_full() {
@@ -824,12 +793,6 @@ source = "cernan"
 purpose = "serious_business"
 mission = "from_gad"
 
-[quality-of-service]
-gauge = 110
-counter = 12
-timer = 605
-histogram = 609
-raw = 42
 "#
             .to_string();
 
@@ -850,14 +813,6 @@ raw = 42
         assert_eq!(args.wavefront_host, Some("example.com".to_string()));
         assert_eq!(args.wavefront_port, Some(3131));
         assert_eq!(args.tags, tags);
-        assert_eq!(args.qos,
-                   MetricQOS {
-                       gauge: 110,
-                       counter: 12,
-                       timer: 605,
-                       histogram: 609,
-                       raw: 42,
-                   });
         assert_eq!(args.verbose, 4);
     }
 }

@@ -12,12 +12,14 @@ pub type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 
 /// Buckets stores all metrics until they are flushed.
 pub struct Buckets {
-    counters: HashMapFnv<String, Vec<(i64, Metric)>>,
-    gauges: HashMapFnv<String, Vec<(i64, Metric)>>,
-    raws: HashMapFnv<String, Vec<(i64, Metric)>>,
+    counters: HashMapFnv<String, Vec<Metric>>,
+    gauges: HashMapFnv<String, Vec<Metric>>,
+    raws: HashMapFnv<String, Vec<Metric>>,
 
-    timers: HashMapFnv<String, Vec<(i64, Metric)>>,
-    histograms: HashMapFnv<String, Vec<(i64, Metric)>>,
+    timers: HashMapFnv<String, Vec<Metric>>,
+    histograms: HashMapFnv<String, Vec<Metric>>,
+
+    bin_width: i64,
 }
 
 impl Default for Buckets {
@@ -39,11 +41,18 @@ impl Default for Buckets {
             raws: HashMapFnv::default(),
             timers: HashMapFnv::default(),
             histograms: HashMapFnv::default(),
+            bin_width: 1,
         }
     }
 }
 
 impl Buckets {
+    pub fn new(bin_width: i64) -> Buckets {
+        let mut b = Buckets::default();
+        b.bin_width = bin_width;
+        b
+    }
+
     /// Resets appropriate aggregates
     ///
     /// # Examples
@@ -88,67 +97,38 @@ impl Buckets {
     /// ```
     pub fn add(&mut self, value: Metric) {
         let name = value.name.to_owned();
-        match value.kind {
-            MetricKind::Counter => {
-                let counter = self.counters.entry(name).or_insert_with(|| vec![]);
-                match (*counter)
-                    .binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap()) {
-                    Ok(idx) => (*counter)[idx].1 += value,
-                    Err(idx) => (*counter).insert(idx, (value.time, value)),
-                }
-            }
-            MetricKind::Gauge | MetricKind::DeltaGauge => {
-                let gauge = self.gauges.entry(name).or_insert_with(|| vec![]);
-                match (*gauge)
-                    .binary_search_by(|&(_, ref probe)| probe.partial_cmp(&value).unwrap()) {
-                    Ok(idx) => (*gauge)[idx].1 += value,
-                    Err(idx) => (*gauge).insert(idx, (value.time, value)),
-                }
-            }
-            MetricKind::Raw => {
-                let raw = self.raws.entry(name).or_insert_with(|| vec![]);
-                // We only want to keep one raw point per second per name. If
-                // someone pushes more than one point in a second interval we'll
-                // overwrite the value of the metric already in-vector.
-                match (*raw).binary_search_by_key(&value.time, |&(t, _)| t) {
-                    Ok(idx) => (*raw)[idx].1 += value,
-                    Err(idx) => (*raw).insert(idx, (value.time, value)),
-                }
-            }
-            MetricKind::Histogram => {
-                let hist = self.histograms.entry(name).or_insert_with(|| vec![]);
-                match (*hist).binary_search_by_key(&value.time, |&(t, _)| t) {
-                    Ok(idx) => (*hist)[idx].1 += value,
-                    Err(idx) => (*hist).insert(idx, (value.time, value)),
-                }
-            }
-            MetricKind::Timer => {
-                let tmr = self.timers.entry(name).or_insert_with(|| vec![]);
-                match (*tmr).binary_search_by_key(&value.time, |&(t, _)| t) {
-                    Ok(idx) => (*tmr)[idx].1 += value,
-                    Err(idx) => (*tmr).insert(idx, (value.time, value)),
-                }
-            }
+        let bkt = match value.kind {
+            MetricKind::Counter => &mut self.counters,
+            MetricKind::Gauge | MetricKind::DeltaGauge => &mut self.gauges,
+            MetricKind::Raw => &mut self.raws,
+            MetricKind::Timer => &mut self.timers,
+            MetricKind::Histogram => &mut self.histograms,
+        };
+        let hsh = bkt.entry(name).or_insert_with(|| vec![]);
+        let bin_width = self.bin_width;
+        match hsh.binary_search_by(|probe| probe.within(bin_width, &value)) {
+            Ok(idx) => hsh[idx] += value,
+            Err(idx) => hsh.insert(idx, value),
         }
     }
 
-    pub fn counters(&self) -> &HashMapFnv<String, Vec<(i64, Metric)>> {
+    pub fn counters(&self) -> &HashMapFnv<String, Vec<Metric>> {
         &self.counters
     }
 
-    pub fn gauges(&self) -> &HashMapFnv<String, Vec<(i64, Metric)>> {
+    pub fn gauges(&self) -> &HashMapFnv<String, Vec<Metric>> {
         &self.gauges
     }
 
-    pub fn raws(&self) -> &HashMapFnv<String, Vec<(i64, Metric)>> {
+    pub fn raws(&self) -> &HashMapFnv<String, Vec<Metric>> {
         &self.raws
     }
 
-    pub fn histograms(&self) -> &HashMapFnv<String, Vec<(i64, Metric)>> {
+    pub fn histograms(&self) -> &HashMapFnv<String, Vec<Metric>> {
         &self.histograms
     }
 
-    pub fn timers(&self) -> &HashMapFnv<String, Vec<(i64, Metric)>> {
+    pub fn timers(&self) -> &HashMapFnv<String, Vec<Metric>> {
         &self.timers
     }
 }
@@ -164,6 +144,160 @@ mod test {
     use metric::{Metric, MetricKind};
     use std::collections::{HashSet, HashMap};
     use chrono::{UTC, TimeZone};
+    use std::cmp::Ordering;
+    use rand::{thread_rng, Rng};
+    use std::env;
+
+    // NOTE working to contribute this upstream so we can have this everywhere
+    fn qc_tests() -> usize {
+        match env::var("QC_TESTS") {
+            Ok(val) => val.parse().expect("could not convert to number"),
+            Err(_) => 1000,
+        }
+    }
+
+    fn max_qc_tests() -> usize {
+        qc_tests() * 100
+    }
+
+    fn within(width: i64, lhs: i64, rhs: i64) -> bool {
+        (lhs / width) == (rhs / width)
+    }
+
+    #[test]
+    fn raw_test_variable() {
+        let bin_width = 66;
+        let m0 = Metric::new("lO", 0.807).time(18);
+        let m4 = Metric::new("lO", 0.361).time(75);
+        let m7 = Metric::new("lO", 0.291).time(42);
+
+        let mut bkt = Buckets::new(bin_width);
+        bkt.add(m0);
+        bkt.add(m4);
+        bkt.add(m7);
+
+        let raws = bkt.raws().get("lO").unwrap();
+        println!("RAWS: {:?}", raws);
+        let ref res = raws[0];
+        assert_eq!(18, res.time);
+        assert_eq!(Some(0.291), res.value());
+    }
+
+
+    #[test]
+    fn shuffled_variable_size_bins() {
+        fn inner(bin_width: u16, ms: Vec<Metric>) -> TestResult {
+            let bin_width: i64 = bin_width as i64;
+            if bin_width == 0 {
+                return TestResult::discard();
+            }
+
+            let mut bkt0 = Buckets::new(bin_width);
+            let mut bkt1 = Buckets::new(bin_width);
+            for m in ms.clone() {
+                bkt0.add(m);
+            }
+            let mut rng = thread_rng();
+            let mut shfl_ms = ms.clone();
+            rng.shuffle(&mut shfl_ms[..]);
+            for m in shfl_ms {
+                bkt1.add(m);
+            }
+
+            let mut ms0 : Vec<(&String, &Vec<Metric>)> = bkt0.gauges()
+                .iter()
+                .chain(bkt0.counters().iter())
+                .chain(bkt0.raws().iter())
+                .chain(bkt0.histograms().iter())
+                .chain(bkt0.timers().iter()).collect();
+            let mut ms1 : Vec<(&String, &Vec<Metric>)> = bkt1.gauges()
+                .iter()
+                .chain(bkt1.counters().iter())
+                .chain(bkt1.raws().iter())
+                .chain(bkt1.histograms().iter())
+                .chain(bkt1.timers().iter()).collect();
+            ms0.sort_by_key(|m| m.0);
+            ms1.sort_by_key(|m| m.0);
+
+            for (x,y) in ms0.iter().zip(ms1.iter()) {
+                let xv = x.1;
+                let yv = y.1;
+                for (i,a) in xv.iter().enumerate() {
+                    assert_eq!(a.name, yv[i].name);
+                    assert_eq!(a.kind, yv[i].kind);
+                    assert_eq!(a.query(1.0), yv[i].query(1.0));
+                    assert_eq!(a.query(0.5), yv[i].query(0.5));
+                    assert_eq!(a.query(0.0), yv[i].query(0.0));
+                }
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(qc_tests())
+            .max_tests(max_qc_tests())
+            .quickcheck(inner as fn(u16, Vec<Metric>) -> TestResult);
+    }
+
+    #[test]
+    fn variable_size_bins() {
+        fn inner(bin_width: u16, ms: Vec<Metric>) -> TestResult {
+            let bin_width: i64 = bin_width as i64;
+            if bin_width == 0 {
+                return TestResult::discard();
+            }
+
+            let mut bucket = Buckets::new(bin_width);
+            for m in ms.clone() {
+                bucket.add(m);
+            }
+
+            let mut mp: Vec<Metric> = Vec::new();
+            let fill_ms = ms.clone();
+            for m in fill_ms {
+                match mp.binary_search_by(|probe| probe.within(bin_width, &m)) {
+                    Ok(idx) => mp[idx] += m,
+                    Err(idx) => mp.insert(idx, m),
+                }
+            }
+
+            let checks = bucket.gauges()
+                .iter()
+                .chain(bucket.counters().iter())
+                .chain(bucket.raws().iter())
+                .chain(bucket.histograms().iter())
+                .chain(bucket.timers().iter());
+            for (name, vs) in checks {
+                for v in vs {
+                    let ref kind = v.kind;
+                    let time = v.time;
+                    let mut found_one = false;
+                    for m in &mp {
+                        if (&m.name == name) && (&m.kind == kind) &&
+                           within(bin_width, m.time, time) {
+                            assert_eq!(Ordering::Equal, m.within(bin_width, v));
+                            found_one = true;
+                            debug_assert!(v.value() == m.value(),
+                                          "{:?} != {:?} |::|::| MP: {:?} |::|::| MS: {:?}",
+                                          v.value(),
+                                          m.value(),
+                                          mp,
+                                          ms);
+                        }
+                    }
+                    debug_assert!(found_one,
+                                  "DID NOT FIND ONE FOR {:?} |::|::| MP: {:?} |::|::| MS: {:?}",
+                                  v,
+                                  mp,
+                                  ms);
+                }
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(qc_tests())
+            .max_tests(max_qc_tests())
+            .quickcheck(inner as fn(u16, Vec<Metric>) -> TestResult);
+    }
 
     #[test]
     fn test_add_increments_total_messages() {
@@ -172,7 +306,6 @@ mod test {
         let metric = Metric::new("some.metric", 1.0).counter();
         buckets.add(metric);
     }
-
     #[test]
     fn test_add_gauge_metric_distinct_tags() {
         let mut buckets = Buckets::default();
@@ -182,8 +315,7 @@ mod test {
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
-        assert_eq!(Some(&vec![(10, m0), (10, m1)]),
-                   buckets.gauges().get("some.metric"));
+        assert_eq!(Some(&vec![m0, m1]), buckets.gauges().get("some.metric"));
     }
 
     #[test]
@@ -196,12 +328,12 @@ mod test {
         assert!(buckets.counters.contains_key(&rmname),
                 "Should contain the metric key");
         assert_eq!(Some(1.0),
-                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
+                   buckets.counters.get_mut(&rmname).unwrap()[0].value());
 
         // Increment counter
         buckets.add(metric);
         assert_eq!(Some(2.0),
-                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
+                   buckets.counters.get_mut(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.counters().len());
         assert_eq!(0, buckets.gauges().len());
     }
@@ -209,19 +341,21 @@ mod test {
     #[test]
     fn test_reset_add_counter_metric() {
         let mut buckets = Buckets::default();
-        let metric = Metric::new("some.metric", 1.0).counter();
-        buckets.add(metric.clone());
+        let m0 = Metric::new("some.metric", 1.0).counter().time(101);
+        let m1 = m0.clone();
+
+        buckets.add(m0);
 
         let rmname = String::from("some.metric");
         assert!(buckets.counters.contains_key(&rmname),
                 "Should contain the metric key");
         assert_eq!(Some(1.0),
-                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
+                   buckets.counters.get_mut(&rmname).unwrap()[0].value());
 
         // Increment counter
-        buckets.add(metric);
+        buckets.add(m1);
         assert_eq!(Some(2.0),
-                   buckets.counters.get_mut(&rmname).unwrap()[0].1.value());
+                   buckets.counters.get_mut(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.counters().len());
 
         buckets.reset();
@@ -247,27 +381,21 @@ mod test {
 
         let hists = buckets.histograms();
         assert!(hists.get(&name).is_some());
-        let ref hist: &Vec<(i64, Metric)> = hists.get(&name).unwrap();
+        let ref hist: &Vec<Metric> = hists.get(&name).unwrap();
 
         assert_eq!(3, hist.len());
 
-        let ref vm0 = hist[0];
-        assert_eq!(844683071, vm0.0);
-        let ref ckms0 = vm0.1;
+        let ref ckms0 = hist[0];
         assert_eq!(1, ckms0.count());
         assert_eq!(Some(1.0), ckms0.query(1.0));
         assert_eq!(Some(1.0), ckms0.query(0.0));
 
-        let ref vm1 = hist[1];
-        assert_eq!(844683072, vm1.0);
-        let ref ckms1 = vm1.1;
+        let ref ckms1 = hist[1];
         assert_eq!(1, ckms1.count());
         assert_eq!(Some(2.0), ckms1.query(1.0));
         assert_eq!(Some(2.0), ckms1.query(0.0));
 
-        let ref vm2 = hist[2];
-        assert_eq!(844683073, vm2.0);
-        let ref ckms2 = vm2.1;
+        let ref ckms2 = hist[2];
         assert_eq!(1, ckms2.count());
         assert_eq!(Some(3.0), ckms2.query(1.0));
         assert_eq!(Some(3.0), ckms2.query(0.0));
@@ -304,7 +432,7 @@ mod test {
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
         assert_eq!(Some(11.5),
-                   buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
+                   buckets.gauges.get_mut(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
@@ -320,7 +448,7 @@ mod test {
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
         assert_eq!(Some(88.5),
-                   buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
+                   buckets.gauges.get_mut(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
@@ -338,7 +466,7 @@ mod test {
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
         assert_eq!(Some(2007.3),
-                   buckets.gauges.get_mut(&rmname).unwrap()[0].1.value());
+                   buckets.gauges.get_mut(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
@@ -353,7 +481,7 @@ mod test {
                 "Should contain the metric key");
 
         assert_eq!(Some(11.5),
-                   buckets.timers.get_mut(&rmname).expect("hwhap")[0].1.query(0.0));
+                   buckets.timers.get_mut(&rmname).expect("hwhap")[0].query(0.0));
 
         let metric_two = Metric::new("some.metric", 99.5).timer();
         buckets.add(metric_two);
@@ -385,11 +513,11 @@ mod test {
         let metrics = buckets.raws.get_mut(&mname).unwrap();
         assert_eq!(2, metrics.len());
 
-        assert_eq!(dt_0, metrics[0].0);
-        assert_eq!(Some(3.0), metrics[0].1.value());
+        assert_eq!(dt_0, metrics[0].time);
+        assert_eq!(Some(3.0), metrics[0].value());
 
-        assert_eq!(dt_1, metrics[1].0);
-        assert_eq!(Some(4.0), metrics[1].1.value());
+        assert_eq!(dt_1, metrics[1].time);
+        assert_eq!(Some(4.0), metrics[1].value());
     }
 
     #[test]
@@ -420,8 +548,8 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new()
-            .tests(100)
-            .max_tests(1000)
+            .tests(qc_tests())
+            .max_tests(max_qc_tests())
             .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
@@ -453,8 +581,8 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new()
-            .tests(100)
-            .max_tests(1000)
+            .tests(qc_tests())
+            .max_tests(max_qc_tests())
             .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
@@ -486,8 +614,8 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new()
-            .tests(100)
-            .max_tests(1000)
+            .tests(qc_tests())
+            .max_tests(max_qc_tests())
             .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
@@ -519,8 +647,8 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new()
-            .tests(100)
-            .max_tests(1000)
+            .tests(qc_tests())
+            .max_tests(max_qc_tests())
             .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
@@ -543,8 +671,8 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new()
-            .tests(100)
-            .max_tests(1000)
+            .tests(qc_tests())
+            .max_tests(max_qc_tests())
             .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
@@ -558,9 +686,9 @@ mod test {
         buckets.add(m1.clone());
 
         assert_eq!(m0,
-                   buckets.gauges.get_mut(&String::from("test.gauge_0")).unwrap()[0].1);
+                   buckets.gauges.get_mut(&String::from("test.gauge_0")).unwrap()[0]);
         assert_eq!(m1,
-                   buckets.gauges.get_mut(&String::from("test.gauge_1")).unwrap()[0].1);
+                   buckets.gauges.get_mut(&String::from("test.gauge_1")).unwrap()[0]);
     }
 
     #[test]
@@ -573,9 +701,9 @@ mod test {
         buckets.add(m1.clone());
 
         assert_eq!(m0,
-                   buckets.counters.get_mut(&String::from("test.counter_0")).unwrap()[0].1);
+                   buckets.counters.get_mut(&String::from("test.counter_0")).unwrap()[0]);
         assert_eq!(m1,
-                   buckets.counters.get_mut(&String::from("test.counter_1")).unwrap()[0].1);
+                   buckets.counters.get_mut(&String::from("test.counter_1")).unwrap()[0]);
     }
 
     #[test]
@@ -605,22 +733,22 @@ mod test {
 
             for (k, v) in bucket.counters().iter() {
                 let mut v = v.clone();
-                v.sort_by_key(|&(t, _)| t);
+                v.sort_by_key(|ref m| m.time);
 
                 let ref cnts_v = *cnts.get(k).unwrap();
                 assert_eq!(cnts_v.len(), v.len());
 
                 for (i, c_v) in cnts_v.iter().enumerate() {
-                    assert_eq!(c_v.0, v[i].1.time);
-                    assert_eq!(Some(c_v.1), v[i].1.value());
+                    assert_eq!(c_v.0, v[i].time);
+                    assert_eq!(Some(c_v.1), v[i].value());
                 }
             }
 
             TestResult::passed()
         }
         QuickCheck::new()
-            .tests(10000)
-            .max_tests(100000)
+            .tests(qc_tests())
+            .max_tests(max_qc_tests())
             .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
@@ -657,22 +785,22 @@ mod test {
             assert_eq!(bucket.gauges().len(), cnts.len());
             for (k, v) in bucket.gauges().iter() {
                 let mut v = v.clone();
-                v.sort_by_key(|&(t, _)| t);
+                v.sort_by_key(|ref m| m.time);
 
                 let ref cnts_v = *cnts.get(k).unwrap();
                 assert_eq!(cnts_v.len(), v.len());
 
                 for (i, c_v) in cnts_v.iter().enumerate() {
-                    assert_eq!(c_v.0, v[i].1.time);
-                    assert_eq!(Some(c_v.1), v[i].1.value());
+                    assert_eq!(c_v.0, v[i].time);
+                    assert_eq!(Some(c_v.1), v[i].value());
                 }
             }
 
             TestResult::passed()
         }
         QuickCheck::new()
-            .tests(10000)
-            .max_tests(100000)
+            .tests(qc_tests())
+            .max_tests(max_qc_tests())
             .quickcheck(inner as fn(Vec<Metric>) -> TestResult);
     }
 }
