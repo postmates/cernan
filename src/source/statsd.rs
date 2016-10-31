@@ -75,12 +75,14 @@ impl Source for Statsd {
         let socket_v6 = UdpSocket::bind(addr_v6).expect("Unable to bind to UDP V6 socket");
         let chans_v6 = self.chans.clone();
         let tags_v6 = self.tags.clone();
+        info!("server started on ::1 {}", self.port);
         joins.push(thread::spawn(move || handle_udp(chans_v6, tags_v6, socket_v6)));
 
         let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
         let socket_v4 = UdpSocket::bind(addr_v4).expect("Unable to bind to UDP socket");
         let chans_v4 = self.chans.clone();
         let tags_v4 = self.tags.clone();
+        info!("server started on 127.0.0.1:{}", self.port);
         joins.push(thread::spawn(move || handle_udp(chans_v4, tags_v4, socket_v4)));
 
         for jh in joins {
