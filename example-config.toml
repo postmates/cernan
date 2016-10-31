@@ -16,24 +16,16 @@ flush-interval = 10
 [tags]
 source = "cernan"
 
-# Independent of our flush-interval, not all metric types need one metric per
-# second reporting. The quality-of-service value controls cernan's report
-# interval for type aggregations.
-[quality-of-service]
-gauge = 1
-counter = 1
-timer = 60
-histogram = 60
-raw = 1
-
 [[file]]
 path = "example.log"
 
 # sinks
 [console]
+bin_width = 5
 
 [null]
 
 [wavefront]
 port = 2878
 host = "127.0.0.1"
+bin_width = 1
