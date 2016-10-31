@@ -5,7 +5,7 @@ use std::fs;
 use std::io::Write;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-
+use std::fmt;
 use mpsc::FSLock;
 
 #[inline]
@@ -20,6 +20,7 @@ fn u32tou8abe(v: u32) -> [u8; 4] {
 /// fashion. Each `Sender` may write a soft maximum number of bytes to disk
 /// before triggering a roll-over to the next queue file.
 pub struct Sender<T> {
+    name: String,
     root: PathBuf, // directory we store our queues in
     path: PathBuf, // active fp filename
     fp: fs::File, // active fp
@@ -33,7 +34,10 @@ impl<T> Clone for Sender<T>
     where T: Serialize + Deserialize
 {
     fn clone(&self) -> Sender<T> {
-        Sender::new(&self.root, self.max_bytes, self.fs_lock.clone())
+        Sender::new(self.name.clone(),
+                    &self.root,
+                    self.max_bytes,
+                    self.fs_lock.clone())
     }
 }
 
@@ -41,7 +45,9 @@ impl<T> Sender<T>
     where T: Serialize
 {
     /// PRIVATE
-    pub fn new(data_dir: &Path, max_bytes: usize, fs_lock: FSLock) -> Sender<T> {
+    pub fn new<S>(name: S, data_dir: &Path, max_bytes: usize, fs_lock: FSLock) -> Sender<T>
+        where S: Into<String> + fmt::Display
+    {
         let init_fs_lock = fs_lock.clone();
         let mut syn = init_fs_lock.lock().expect("Sender fs_lock poisoned");
         let seq_num = match fs::read_dir(data_dir)
@@ -60,6 +66,7 @@ impl<T> Sender<T>
             Some(sn) => sn,
             None => 0,
         };
+        trace!("[{}] attempting to open seq_num: {}", name, seq_num);
         let log = data_dir.join(format!("{}", seq_num));
         match fs::OpenOptions::new()
             .append(true)
@@ -68,6 +75,7 @@ impl<T> Sender<T>
             Ok(fp) => {
                 (*syn).sender_seq_num = seq_num;
                 Sender {
+                    name: name.into(),
                     root: data_dir.to_path_buf(),
                     path: log,
                     fp: fp,
@@ -101,8 +109,9 @@ impl<T> Sender<T>
         // file read-only--which will help the receiver to decide it has hit the
         // end of its log file--and create a new log file.
         let mut syn = self.fs_lock.lock().expect("Sender fs_lock poisoned");
-        if (((*syn).bytes_written + t.len()) > self.max_bytes) ||
-           (self.seq_num != (*syn).sender_seq_num) {
+        let bytes_written = (*syn).bytes_written + t.len();
+        trace!("[{}] bytes_written : {}", self.name, bytes_written);
+        if (bytes_written > self.max_bytes) || (self.seq_num != (*syn).sender_seq_num) {
             // Once we've gone over the write limit for our current file or find
             // that we've gotten behind the current queue file we need to seek
             // forward to find our place in the space of queue files. We mark
@@ -115,6 +124,10 @@ impl<T> Sender<T>
                 let _ = fs::set_permissions(&self.path, permissions);
             });
             if self.seq_num != (*syn).sender_seq_num {
+                trace!("[{}] behind leader, seq_num {} vs. sender_seq_num {}",
+                       self.name,
+                       self.seq_num,
+                       (*syn).sender_seq_num);
                 // This thread is behind the leader. We've got to set our
                 // current notion of seq_num forward and then open the
                 // corresponding file.
@@ -126,28 +139,39 @@ impl<T> Sender<T>
                 (*syn).sender_seq_num = self.seq_num.wrapping_add(1);
                 self.seq_num = (*syn).sender_seq_num;
                 (*syn).bytes_written = 0;
+                trace!("[{}] leader, new sender_seq_num: {}",
+                       self.name,
+                       self.seq_num);
             }
             self.path = self.root.join(format!("{}", self.seq_num));
+            trace!("[{}] attempting to open: {}",
+                   self.name,
+                   self.path.to_string_lossy());
             match fs::OpenOptions::new().append(true).create(true).open(&self.path) {
-                Ok(fp) => {
-                    self.fp = fp;
-                }
+                Ok(fp) => self.fp = fp,
                 Err(e) => panic!("FAILED TO OPEN {:?} WITH {:?}", &self.path, e),
             }
         }
 
         let fp = &mut self.fp;
         match fp.write(&t[..]) {
-            Ok(written) => {
-                (*syn).bytes_written += written;
-            }
-            Err(e) => {
-                panic!("Write error: {}", e);
-            }
+            Ok(written) => (*syn).bytes_written += written,
+            Err(e) => panic!("Write error: {}", e),
         }
         fp.flush().expect("unable to flush");
+        trace!("[{}] wrote to disk, bytes_written: {}",
+               self.name,
+               (*syn).bytes_written);
 
         // Let the Receiver know there's more to read.
         (*syn).writes_to_read += 1;
+        trace!("[{}] writes_to_read now: {}",
+               self.name,
+               (*syn).writes_to_read);
+    }
+
+    /// Return the sender's name
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }

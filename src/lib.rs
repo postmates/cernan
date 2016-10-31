@@ -22,11 +22,4 @@ pub mod buckets;
 pub mod config;
 pub mod metric;
 pub mod time;
-pub mod server;
-pub mod sinks {
-    pub mod console;
-    pub mod wavefront;
-    pub mod null;
-    pub mod firehose;
-    pub mod federation_transmitter;
-}
+pub mod source;

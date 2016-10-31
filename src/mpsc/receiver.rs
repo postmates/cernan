@@ -4,6 +4,7 @@ use std::fs;
 use std::io::{BufReader, ErrorKind, Read, SeekFrom, Seek};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::fmt;
 
 use mpsc::FSLock;
 
@@ -19,6 +20,7 @@ fn u8tou32abe(v: &[u8]) -> u32 {
 /// an EOF. If it hits an EOF on a read-only file, the `Receiver` will delete
 /// the current queue file and move on to the next.
 pub struct Receiver<T> {
+    name: String,
     root: PathBuf, // directory we store our queues in
     fp: BufReader<fs::File>, // active fp
     fs_lock: FSLock,
@@ -29,7 +31,9 @@ impl<T> Receiver<T>
     where T: Deserialize
 {
     /// TODO
-    pub fn new(data_dir: &Path, fs_lock: FSLock) -> Receiver<T> {
+    pub fn new<S>(name: S, data_dir: &Path, fs_lock: FSLock) -> Receiver<T>
+        where S: Into<String> + fmt::Display
+    {
         let _ = fs_lock.lock().expect("Sender fs_lock poisoned");
         let seq_num = fs::read_dir(data_dir)
             .unwrap()
@@ -38,6 +42,7 @@ impl<T> Receiver<T>
             })
             .min()
             .unwrap();
+        trace!("[{}] attempting to open seq_num: {}", name, seq_num);
         let log = data_dir.join(format!("{}", seq_num));
         let mut fp = fs::OpenOptions::new()
             .read(true)
@@ -46,6 +51,7 @@ impl<T> Receiver<T>
         fp.seek(SeekFrom::End(0)).expect("could not get to end of file");
 
         Receiver {
+            name: name.into(),
             root: data_dir.to_path_buf(),
             fp: BufReader::new(fp),
             resource_type: PhantomData,
@@ -74,9 +80,11 @@ impl<T> Iterator for Receiver<T>
         // written to. It's safe for the Receiver to declare the log done by
         // deleting it and moving on to the next file.
         while (*syn).writes_to_read > 0 {
+            debug!("[{}] writes to read: {}", self.name, (*syn).writes_to_read);
             match self.fp.read_exact(&mut sz_buf) {
                 Ok(()) => {
                     let payload_size_in_bytes = u8tou32abe(&sz_buf);
+                    trace!("[{}] payload_size_in_bytes: {}", self.name, payload_size_in_bytes);
                     let mut payload_buf = vec![0; (payload_size_in_bytes as usize)];
                     match self.fp.read_exact(&mut payload_buf) {
                         Ok(()) => {
@@ -107,6 +115,7 @@ impl<T> Iterator for Receiver<T>
                                 .metadata()
                                 .expect("could not get metadata at UnexpectedEof");
                             if metadata.permissions().readonly() {
+                                // TODO all these unwraps are a silent death
                                 let seq_num = fs::read_dir(&self.root)
                                     .unwrap()
                                     .map(|de| {
@@ -121,9 +130,16 @@ impl<T> Iterator for Receiver<T>
                                     })
                                     .min()
                                     .unwrap();
+                                trace!("[{}] read-only seq_num: {}", self.name, seq_num);
                                 let old_log = self.root.join(format!("{}", seq_num));
+                                trace!("[{}] attempting to remove old log {}",
+                                       self.name,
+                                       old_log.to_string_lossy());
                                 fs::remove_file(old_log).expect("could not remove log");
                                 let lg = self.root.join(format!("{}", seq_num.wrapping_add(1)));
+                                trace!("[{}] attempting to create new log at {}",
+                                       self.name,
+                                       lg.to_string_lossy());
                                 match fs::OpenOptions::new().read(true).open(&lg) {
                                     Ok(fp) => {
                                         self.fp = BufReader::new(fp);
