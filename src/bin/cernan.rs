@@ -137,7 +137,7 @@ fn main() {
             let fp_sends = sends.clone();
             let ftags = args.tags.clone();
             joins.push(thread::spawn(move || {
-                cernan::source::FileServer::new(fp_sends, lf, ftags);
+                cernan::source::FileServer::new(fp_sends, lf, ftags).run();
             }));
         }
     }
@@ -148,7 +148,7 @@ fn main() {
     let flush_interval = args.flush_interval;
     let flush_interval_sends = sends.clone();
     joins.push(thread::spawn(move || {
-        cernan::source::FlushTimer::new(flush_interval_sends, flush_interval);
+        cernan::source::FlushTimer::new(flush_interval_sends, flush_interval).run();
     }));
 
     joins.push(thread::spawn(move || {
