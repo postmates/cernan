@@ -40,8 +40,23 @@ impl<T> Receiver<T>
             .map(|de| {
                 de.unwrap().path().file_name().unwrap().to_str().unwrap().parse::<usize>().unwrap()
             })
-            .min()
+            .max()
             .unwrap();
+        // Remove all index files we've fast-forwarded over
+        //
+        // Ideally we'd have some way of effectively restarting MPSC. This is
+        // not yet implemented. As the senders will restart with writes_to_read
+        // at 0, we're going to have to make sure that receiver is on the same
+        // page with regard to its place on disk.
+        for fname in fs::read_dir(data_dir).unwrap() {
+            let path = fname.unwrap().path();
+            let id = path.file_name().unwrap().to_str().unwrap().parse::<usize>().unwrap();
+            let full_path =
+                data_dir.join(format!("{}", path.file_name().unwrap().to_str().unwrap()));
+            if id != seq_num {
+                fs::remove_file(full_path).expect("could not remove index file");
+            }
+        }
         trace!("[{}] attempting to open seq_num: {}", name, seq_num);
         let log = data_dir.join(format!("{}", seq_num));
         let mut fp = fs::OpenOptions::new()
