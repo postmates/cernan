@@ -1,5 +1,7 @@
 data-directory = "data/"
 
+flush-interval = 10
+
 # cernan listens on two telemetry protocols, statsd and graphite. The following
 # two configuration items set the ports cernan will listen on.
 [statsd]

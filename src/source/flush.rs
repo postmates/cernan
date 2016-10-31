@@ -23,6 +23,7 @@ impl FlushTimer {
 impl Source for FlushTimer {
     fn run(&mut self) {
         let duration = Duration::new(self.interval, 0);
+        debug!("flush-interval: {:?}", duration);
         loop {
             sleep(duration);
             send("flush", &mut self.chans, &metric::Event::TimerFlush);
