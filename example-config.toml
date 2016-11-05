@@ -23,7 +23,7 @@ path = "example.log"
 
 # sinks
 [console]
-bin_width = 5
+bin_width = 1
 
 [null]
 
