@@ -95,7 +95,7 @@ impl<T> Iterator for Receiver<T>
         // written to. It's safe for the Receiver to declare the log done by
         // deleting it and moving on to the next file.
         while (*syn).writes_to_read > 0 {
-            debug!("[{}] writes to read: {}", self.name, (*syn).writes_to_read);
+            trace!("[{}] writes to read: {}", self.name, (*syn).writes_to_read);
             match self.fp.read_exact(&mut sz_buf) {
                 Ok(()) => {
                     let payload_size_in_bytes = u8tou32abe(&sz_buf);
