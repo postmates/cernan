@@ -52,7 +52,7 @@ impl<T> Receiver<T>
             let path = fname.unwrap().path();
             let id = path.file_name().unwrap().to_str().unwrap().parse::<usize>().unwrap();
             let full_path =
-                data_dir.join(format!("{}", path.file_name().unwrap().to_str().unwrap()));
+                data_dir.join(path.file_name().unwrap().to_str().unwrap());
             if id != seq_num {
                 fs::remove_file(full_path).expect("could not remove index file");
             }

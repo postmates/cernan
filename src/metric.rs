@@ -647,6 +647,8 @@ mod tests {
                 return TestResult::discard();
             } else if lhs.name != rhs.name {
                 return TestResult::discard();
+            } else if span < 1 {
+                return TestResult::discard();
             }
             let order = (lhs.time / span).cmp(&(rhs.time / span));
             assert_eq!(order, lhs.within(span, &rhs));

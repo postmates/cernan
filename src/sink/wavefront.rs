@@ -12,6 +12,23 @@ pub struct Wavefront {
     aggrs: Buckets,
 }
 
+#[derive(Debug)]
+pub struct WavefrontConfig {
+    pub bin_width: i64,
+    pub host: String,
+    pub port: u16,
+}
+
+impl Default for WavefrontConfig {
+    fn default() -> WavefrontConfig {
+        WavefrontConfig {
+            bin_width: 1,
+            host: String::from("localhost"),
+            port: 2878,
+        }
+    }
+}
+
 #[inline]
 fn fmt_tags(tags: &TagMap) -> String {
     let mut s = String::new();
@@ -26,14 +43,14 @@ fn fmt_tags(tags: &TagMap) -> String {
 }
 
 impl Wavefront {
-    pub fn new(host: &str, port: u16, bin_width: i64) -> Wavefront {
-        match dns_lookup::lookup_host(host) {
+    pub fn new(config: WavefrontConfig) -> Wavefront {
+        match dns_lookup::lookup_host(&config.host) {
             Ok(mut lh) => {
                 let ip = lh.next().expect("No IPs associated with host").unwrap();
-                let addr = SocketAddr::new(ip, port);
+                let addr = SocketAddr::new(ip, config.port);
                 Wavefront {
                     addr: addr,
-                    aggrs: Buckets::new(bin_width),
+                    aggrs: Buckets::new(config.bin_width),
                 }
             }
             Err(_) => panic!("Could not lookup host"),
@@ -152,7 +169,8 @@ mod test {
     fn test_format_wavefront() {
         let mut tags = TagMap::default();
         tags.insert("source".into(), "test-src".into());
-        let mut wavefront = Wavefront::new("localhost", 2003, 1);
+        let config = WavefrontConfig::default();
+        let mut wavefront = Wavefront::new(config);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
