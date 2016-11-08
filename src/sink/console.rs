@@ -8,14 +8,25 @@ pub struct Console {
 }
 
 impl Console {
-    pub fn new(bin_width: i64) -> Console {
-        Console { aggrs: Buckets::new(bin_width) }
+    pub fn new(config: ConsoleConfig) -> Console {
+        Console { aggrs: Buckets::new(config.bin_width) }
     }
 }
 
 impl Default for Console {
-    fn default() -> Self {
-        Self::new(1)
+    fn default() -> Console {
+        Self::new(ConsoleConfig::default())
+    }
+}
+
+#[derive(Debug)]
+pub struct ConsoleConfig {
+    pub bin_width: i64,
+}
+
+impl Default for ConsoleConfig {
+    fn default() -> ConsoleConfig {
+        ConsoleConfig { bin_width: 1 }
     }
 }
 

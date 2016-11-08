@@ -11,11 +11,11 @@ mod file;
 mod flush;
 mod federation_receiver;
 
-pub use self::graphite::Graphite;
-pub use self::statsd::Statsd;
-pub use self::file::FileServer;
+pub use self::graphite::{Graphite, GraphiteConfig};
+pub use self::statsd::{Statsd, StatsdConfig};
+pub use self::file::{FileServer, FileServerConfig};
 pub use self::flush::FlushTimer;
-pub use self::federation_receiver::FederationReceiver;
+pub use self::federation_receiver::{FederationReceiver, FederationReceiverConfig};
 
 #[inline]
 pub fn send<S>(ctx: S, chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &metric::Event)

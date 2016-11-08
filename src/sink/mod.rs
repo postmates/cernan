@@ -8,11 +8,11 @@ mod firehose;
 mod null;
 mod wavefront;
 
-pub use self::console::Console;
-pub use self::federation_transmitter::FederationTransmitter;
+pub use self::console::{Console, ConsoleConfig};
+pub use self::federation_transmitter::{FederationTransmitter, FederationTransmitterConfig};
 pub use self::firehose::Firehose;
-pub use self::null::Null;
-pub use self::wavefront::Wavefront;
+pub use self::null::{Null, NullConfig};
+pub use self::wavefront::{Wavefront, WavefrontConfig};
 
 /// A 'sink' is a sink for metrics.
 pub trait Sink {

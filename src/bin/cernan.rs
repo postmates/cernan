@@ -49,30 +49,32 @@ fn main() {
 
     // SINKS
     //
-    if args.console {
+    if let Some(config) = args.console {
         let (console_send, console_recv) = cernan::mpsc::channel("console", &args.data_directory);
         sends.push(console_send);
-        let bin_width = args.console_bin_width;
         joins.push(thread::spawn(move || {
-            cernan::sink::Console::new(bin_width).run(console_recv);
+            cernan::sink::Console::new(config).run(console_recv);
         }));
     }
-    if args.null {
+    if let Some(config) = args.null {
         let (null_send, null_recv) = cernan::mpsc::channel("null", &args.data_directory);
         sends.push(null_send);
         joins.push(thread::spawn(move || {
-            cernan::sink::Null::new().run(null_recv);
+            cernan::sink::Null::new(config).run(null_recv);
         }));
     }
-    if args.wavefront {
-        let cp_args = args.clone();
+    if let Some(config) = args.wavefront {
         let (wf_send, wf_recv) = cernan::mpsc::channel("wf", &args.data_directory);
         sends.push(wf_send);
         joins.push(thread::spawn(move || {
-            cernan::sink::Wavefront::new(&cp_args.wavefront_host.unwrap(),
-                                         cp_args.wavefront_port.unwrap(),
-                                         cp_args.wavefront_bin_width as i64)
-                .run(wf_recv);
+            cernan::sink::Wavefront::new(config).run(wf_recv);
+        }));
+    }
+    if let Some(config) = args.fed_transmitter {
+        let (cernan_send, cernan_recv) = cernan::mpsc::channel("cernan", &args.data_directory);
+        sends.push(cernan_send);
+        joins.push(thread::spawn(move || {
+            cernan::sink::FederationTransmitter::new(config).run(cernan_recv);
         }));
     }
 
@@ -85,61 +87,35 @@ fn main() {
         }));
     }
 
-    let args_fedtrn = args.clone();
-    if args_fedtrn.fed_transmitter {
-        let (cernan_send, cernan_recv) = cernan::mpsc::channel("cernan", &args.data_directory);
-        sends.push(cernan_send);
-        joins.push(thread::spawn(move || {
-            cernan::sink::FederationTransmitter::new(args_fedtrn.fed_transmitter_port.unwrap(),
-                                                     args_fedtrn.fed_transmitter_host.unwrap())
-                .run(cernan_recv);
-        }));
-    }
-
     // SOURCES
     //
 
-    let args_fedrcv = args.clone();
-    if let Some(crcv_port) = args_fedrcv.fed_receiver_port {
-        let crcv_ip = args_fedrcv.fed_receiver_ip.unwrap();
-        let fed_tags = args_fedrcv.tags;
+    if let Some(config) = args.fed_receiver_config {
         let receiver_server_send = sends.clone();
         joins.push(thread::spawn(move || {
-            cernan::source::FederationReceiver::new(receiver_server_send,
-                                                    crcv_ip,
-                                                    crcv_port,
-                                                    fed_tags)
-                .run();
-        }));
+            cernan::source::FederationReceiver::new(receiver_server_send, config).run();
+        }))
     }
 
-    let stags = args.tags.clone();
-    if let Some(sport) = args.statsd_port {
+    if let Some(config) = args.statsd_config {
         let statsd_server_send = sends.clone();
-        let statsd_tags = stags.clone();
         joins.push(thread::spawn(move || {
-            cernan::source::Statsd::new(statsd_server_send, sport, statsd_tags).run();
+            cernan::source::Statsd::new(statsd_server_send, config).run();
         }));
     }
 
-
-    let gtags = args.tags.clone();
-    if let Some(gport) = args.graphite_port {
+    if let Some(config) = args.graphite_config {
         let graphite_server_sends = sends.clone();
-        let graphite_tags = gtags.clone();
         joins.push(thread::spawn(move || {
-            cernan::source::Graphite::new(graphite_server_sends, gport, graphite_tags).run();
+            cernan::source::Graphite::new(graphite_server_sends, config).run();
         }));
     }
 
-    if let Some(log_files) = args.files {
-        for lf in log_files {
-            let fp_sends = sends.clone();
-            let ftags = args.tags.clone();
-            joins.push(thread::spawn(move || {
-                cernan::source::FileServer::new(fp_sends, lf, ftags).run();
-            }));
-        }
+    for config in args.files {
+        let fp_sends = sends.clone();
+        joins.push(thread::spawn(move || {
+            cernan::source::FileServer::new(fp_sends, config).run();
+        }));
     }
 
     // BACKGROUND

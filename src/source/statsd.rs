@@ -4,6 +4,7 @@ use std::net::{Ipv6Addr, UdpSocket, SocketAddrV6, SocketAddrV4, Ipv4Addr};
 use std::str;
 use std::thread;
 use std::time::Instant;
+use std::sync::Arc;
 
 use time;
 use super::send;
@@ -12,21 +13,38 @@ use source::Source;
 pub struct Statsd {
     chans: Vec<mpsc::Sender<metric::Event>>,
     port: u16,
-    tags: metric::TagMap,
+    tags: Arc<metric::TagMap>,
+}
+
+#[derive(Debug)]
+pub struct StatsdConfig {
+    pub ip: String,
+    pub port: u16,
+    pub tags: metric::TagMap,
+}
+
+impl Default for StatsdConfig {
+    fn default() -> StatsdConfig {
+        StatsdConfig {
+            ip: String::from(""),
+            port: 8125,
+            tags: metric::TagMap::default(),
+        }
+    }
 }
 
 impl Statsd {
-    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>, port: u16, tags: metric::TagMap) -> Statsd {
+    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>, config: StatsdConfig) -> Statsd {
         Statsd {
             chans: chans,
-            port: port,
-            tags: tags,
+            port: config.port,
+            tags: Arc::new(config.tags),
         }
     }
 }
 
 fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>,
-              tags: metric::TagMap,
+              tags: Arc<metric::TagMap>,
               socket: UdpSocket) {
     let mut buf = [0; 8192];
     loop {

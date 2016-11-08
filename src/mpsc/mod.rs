@@ -74,7 +74,8 @@ pub struct FsSync {
 /// PRIVATE -- exposed via `Sender::new`
 pub type FSLock = Arc<Mutex<FsSync>>;
 
-/// Create a (Sender, Reciever) pair in a like fashion to [`std::sync::mpsc::channel`](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html)
+/// Create a (Sender, Reciever) pair in a like fashion to
+/// [`std::sync::mpsc::channel`](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html)
 ///
 /// This function creates a Sender and Receiver pair with name `name` whose
 /// queue files are stored in `data_dir`. The Sender is clonable.
@@ -84,7 +85,8 @@ pub fn channel<T>(name: &str, data_dir: &Path) -> (Sender<T>, Receiver<T>)
     channel_with_max_bytes(name, data_dir, 1_048_576 * 100)
 }
 
-/// Create a (Sender, Reciever) pair in a like fashion to [`std::sync::mpsc::channel`](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html)
+/// Create a (Sender, Reciever) pair in a like fashion to
+/// [`std::sync::mpsc::channel`](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html)
 ///
 /// This function creates a Sender and Receiver pair with name `name` whose
 /// queue files are stored in `data_dir`. The Sender is clonable.

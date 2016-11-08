@@ -14,27 +14,22 @@ use std::path::{Path, PathBuf};
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
-#[derive(Clone, Debug)]
+use super::source::{FederationReceiverConfig, GraphiteConfig, StatsdConfig, FileServerConfig};
+use super::sink::{WavefrontConfig, ConsoleConfig, FederationTransmitterConfig, NullConfig};
+
+#[derive(Debug)]
 pub struct Args {
     pub data_directory: PathBuf,
-    pub statsd_port: Option<u16>,
-    pub graphite_port: Option<u16>,
-    pub fed_receiver_port: Option<u16>,
-    pub fed_receiver_ip: Option<String>,
+    pub statsd_config: Option<StatsdConfig>,
+    pub graphite_config: Option<GraphiteConfig>,
+    pub fed_receiver_config: Option<FederationReceiverConfig>,
     pub flush_interval: u64,
-    pub console: bool,
-    pub console_bin_width: i64,
-    pub null: bool,
+    pub console: Option<ConsoleConfig>,
+    pub null: Option<NullConfig>,
     pub firehose_delivery_streams: Vec<String>,
-    pub wavefront: bool,
-    pub wavefront_port: Option<u16>,
-    pub wavefront_host: Option<String>,
-    pub wavefront_bin_width: i64,
-    pub fed_transmitter: bool,
-    pub fed_transmitter_host: Option<String>,
-    pub fed_transmitter_port: Option<u16>,
-    pub tags: TagMap,
-    pub files: Option<Vec<PathBuf>>,
+    pub wavefront: Option<WavefrontConfig>,
+    pub fed_transmitter: Option<FederationTransmitterConfig>,
+    pub files: Vec<FileServerConfig>,
     pub verbose: u64,
     pub version: String,
 }
@@ -76,15 +71,24 @@ pub fn parse_args() -> Args {
         }
         // We read from CLI arguments
         None => {
-            let mk_wavefront = args.is_present("wavefront");
-            let mk_null = args.is_present("null");
-            let mk_console = args.is_present("console");
-
-            let (wport, whost) = if mk_wavefront {
-                (Some(u16::from_str(args.value_of("wavefront-port").unwrap()).unwrap()),
-                 Some(args.value_of("wavefront-host").unwrap().to_string()))
+            let wavefront = if args.is_present("wavefront") {
+                Some(WavefrontConfig {
+                    port: u16::from_str(args.value_of("wavefront-port").unwrap()).unwrap(),
+                    host: args.value_of("wavefront-host").unwrap().to_string(),
+                    bin_width: 1,
+                })
             } else {
-                (None, None)
+                None
+            };
+            let null = if args.is_present("null") {
+                Some(NullConfig::default())
+            } else {
+                None
+            };
+            let console = if args.is_present("console") {
+                Some(ConsoleConfig::default())
+            } else {
+                None
             };
 
             let verb = if args.is_present("verbose") {
@@ -93,29 +97,31 @@ pub fn parse_args() -> Args {
                 0
             };
 
+            let mut graphite_config = GraphiteConfig::default();
+            if let Some(gport_str) = args.value_of("graphite-port") {
+                graphite_config.port = u16::from_str(gport_str)
+                    .expect("graphite-port must be an integer");
+            }
+
+            let mut statsd_config = StatsdConfig::default();
+            if let Some(sport_str) = args.value_of("statsd-port") {
+                statsd_config.port = u16::from_str(sport_str)
+                    .expect("statsd-port must be an integer");
+            }
+
             Args {
                 data_directory: Path::new("/tmp/cernan-data").to_path_buf(),
-                statsd_port: Some(u16::from_str(args.value_of("statsd-port").unwrap())
-                    .expect("statsd-port must be an integer")),
-                graphite_port: Some(u16::from_str(args.value_of("graphite-port").unwrap())
-                    .expect("graphite-port must be an integer")),
+                statsd_config: Some(statsd_config),
+                graphite_config: Some(graphite_config),
                 flush_interval: u64::from_str(args.value_of("flush-interval").unwrap())
                     .expect("flush-interval must be an integer"),
-                fed_receiver_port: None,
-                fed_receiver_ip: None,
-                console: mk_console,
-                console_bin_width: 1,
-                null: mk_null,
-                wavefront: mk_wavefront,
+                fed_receiver_config: None,
+                console: console,
+                null: null,
+                wavefront: wavefront,
                 firehose_delivery_streams: Vec::default(),
-                wavefront_port: wport,
-                wavefront_host: whost,
-                wavefront_bin_width: 1,
-                fed_transmitter: false,
-                fed_transmitter_port: None,
-                fed_transmitter_host: None,
-                tags: TagMap::default(),
-                files: None,
+                fed_transmitter: None,
+                files: Default::default(),
                 verbose: verb,
                 version: VERSION.unwrap().to_string(),
             }
@@ -139,62 +145,74 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         None => TagMap::default(),
     };
 
-    let mk_wavefront = value.lookup("wavefront").is_some();
-    let mk_fedtrn = value.lookup("federation_transmitter").is_some();
-    let mk_null = value.lookup("null").is_some();
-    let mk_console = value.lookup("console").is_some();
-
-    let cbin = if mk_console {
-         value.lookup("console.bin_width")
-                .unwrap_or(&Value::Integer(1))
-                .as_integer()
-                .map(|i| i as i64).unwrap()
+    let null = if value.lookup("null").is_some() {
+        Some(NullConfig {})
     } else {
-        1
+        None
     };
 
-    let (wport, whost, wbin) = if mk_wavefront {
-        (// wavefront port
-         value.lookup("wavefront.port")
+    let console = if value.lookup("console").is_some() {
+        Some(ConsoleConfig {
+            bin_width: value.lookup("console.bin_width")
+                .unwrap_or(&Value::Integer(1))
+                .as_integer()
+                .map(|i| i as i64)
+                .unwrap(),
+        })
+    } else {
+        None
+    };
+
+    let wavefront = if value.lookup("wavefront").is_some() {
+        Some(WavefrontConfig {
+            port: value.lookup("wavefront.port")
                 .unwrap_or(&Value::Integer(2878))
                 .as_integer()
-                .map(|i| i as u16),
-         // wavefront host
-         value.lookup("wavefront.host")
+                .map(|i| i as u16)
+                .unwrap(),
+            host: value.lookup("wavefront.host")
                 .unwrap_or(&Value::String("127.0.0.1".to_string()))
                 .as_str()
-                .map(|s| s.to_string()),
-            value.lookup("wavefront.bin_width")
+                .map(|s| s.to_string())
+                .unwrap(),
+            bin_width: value.lookup("wavefront.bin_width")
                 .unwrap_or(&Value::Integer(1))
                 .as_integer()
-                .map(|i| i as i64).unwrap()
-        )
+                .map(|i| i as i64)
+                .unwrap(),
+        })
     } else {
-        (None, None, 1)
+        None
     };
 
-    let (fedtrn_port, fedtrn_host) = if mk_fedtrn {
-        (// fed_receiver port
-         value.lookup("federation_transmitter.port")
-            .unwrap_or(&Value::Integer(1972))
-            .as_integer()
-            .map(|i| i as u16),
-         // fed_receiver host
-         value.lookup("federation_transmitter.host")
-            .unwrap_or(&Value::String("127.0.0.1".to_string()))
-            .as_str()
-            .map(|s| s.to_string()))
+    let fedtrn = if value.lookup("federation_transmitter").is_some() {
+        Some(FederationTransmitterConfig {
+            port: value.lookup("federation_transmitter.port")
+                .unwrap_or(&Value::Integer(1972))
+                .as_integer()
+                .map(|i| i as u16)
+                .unwrap(),
+            host: value.lookup("federation_transmitter.host")
+                .unwrap_or(&Value::String("127.0.0.1".to_string()))
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap(),
+        })
     } else {
-        (None, None)
+        None
     };
 
-    let mut paths = Vec::new();
+    let mut files = Vec::new();
     if let Some(array) = value.lookup("file") {
         for tbl in array.as_slice().unwrap() {
             match tbl.lookup("path") {
                 Some(pth) => {
                     let path = Path::new(pth.as_str().unwrap());
-                    paths.push(path.to_path_buf())
+                    let config = FileServerConfig {
+                        path: path.to_path_buf(),
+                        tags: tags.clone(),
+                    };
+                    files.push(config)
                 }
                 None => continue,
             }
@@ -213,53 +231,72 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
     }
 
-    let statsd_port = match value.lookup("statsd-port") {
-        Some(p) => Some(p.as_integer().expect("statsd-port must be integer") as u16),
+    let statsd_config = match value.lookup("statsd-port") {
+        Some(p) => {
+            let mut sconfig = StatsdConfig::default();
+            sconfig.port = p.as_integer().expect("statsd-port must be integer") as u16;
+            sconfig.tags = tags.clone();
+            Some(sconfig)
+        }
         None => {
             let is_enabled = value.lookup("statsd.enabled")
                 .unwrap_or(&Value::Boolean(true))
                 .as_bool()
                 .expect("must be a bool");
             if is_enabled {
-                match value.lookup("statsd.port") {
-                    Some(p) => Some(p.as_integer().expect("statsd-port must be integer") as u16),
-                    None => Some(8125),
+                let mut sconfig = StatsdConfig::default();
+                if let Some(p) = value.lookup("statsd.port") {
+                    sconfig.port = p.as_integer().expect("statsd-port must be integer") as u16;
                 }
+                sconfig.tags = tags.clone();
+                Some(sconfig)
             } else {
                 None
             }
         }
     };
 
-    let graphite_port = match value.lookup("graphite-port") {
-        Some(p) => Some(p.as_integer().expect("graphite-port must be integer") as u16),
+    let graphite_config = match value.lookup("graphite-port") {
+        Some(p) => {
+            let mut gconfig = GraphiteConfig::default();
+            gconfig.port = p.as_integer().expect("graphite-port must be integer") as u16;
+            gconfig.tags = tags.clone();
+            Some(gconfig)
+        }
         None => {
             let is_enabled = value.lookup("graphite.enabled")
                 .unwrap_or(&Value::Boolean(true))
                 .as_bool()
                 .expect("must be a bool");
             if is_enabled {
-                match value.lookup("graphite.port") {
-                    Some(p) => Some(p.as_integer().expect("graphite-port must be integer") as u16),
-                    None => Some(2003),
+                let mut gconfig = GraphiteConfig::default();
+                if let Some(p) = value.lookup("graphite.port") {
+                    gconfig.port = p.as_integer().expect("graphite-port must be integer") as u16;
                 }
+                gconfig.tags = tags.clone();
+                Some(gconfig)
             } else {
                 None
             }
         }
     };
 
-    let (fed_receiver_port, fed_receiver_ip) = if value.lookup("federation_receiver").is_some() {
-        (match value.lookup("federation_receiver.port") {
-            Some(p) => Some(p.as_integer().expect("fed_receiver.port must be integer") as u16),
-            None => Some(1972),
-        },
-         match value.lookup("federation_receiver.ip") {
-            Some(p) => Some(p.as_str().unwrap().to_owned()),
-            None => Some(String::from("0.0.0.0")),
+    let federation_receiver_config = if value.lookup("federation_receiver").is_some() {
+        let port = match value.lookup("federation_receiver.port") {
+            Some(p) => p.as_integer().expect("fed_receiver.port must be integer") as u16,
+            None => 1972,
+        };
+        let ip = match value.lookup("federation_receiver.ip") {
+            Some(p) => p.as_str().unwrap(),
+            None => "0.0.0.0",
+        };
+        Some(FederationReceiverConfig {
+            ip: ip.to_owned(),
+            port: port,
+            tags: tags.clone(),
         })
     } else {
-        (None, None)
+        None
     };
 
     Args {
@@ -268,27 +305,19 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             .as_str()
             .map(|s| Path::new(s).to_path_buf())
             .unwrap(),
-        statsd_port: statsd_port,
-        graphite_port: graphite_port,
-        fed_receiver_port: fed_receiver_port,
-        fed_receiver_ip: fed_receiver_ip,
+        statsd_config: statsd_config,
+        graphite_config: graphite_config,
+        fed_receiver_config: federation_receiver_config,
         flush_interval: value.lookup("flush-interval")
             .unwrap_or(&Value::Integer(60))
             .as_integer()
             .expect("flush-interval must be integer") as u64,
-        console: mk_console,
-        console_bin_width: cbin,
-        null: mk_null,
-        wavefront: mk_wavefront,
+        console: console,
+        null: null,
+        wavefront: wavefront,
         firehose_delivery_streams: fh_delivery_streams,
-        wavefront_port: wport,
-        wavefront_host: whost,
-        wavefront_bin_width: wbin,
-        fed_transmitter: mk_fedtrn,
-        fed_transmitter_port: fedtrn_port,
-        fed_transmitter_host: fedtrn_host,
-        tags: tags,
-        files: Some(paths),
+        fed_transmitter: fedtrn,
+        files: files,
         verbose: verbosity,
         version: VERSION.unwrap().to_string(),
     }
@@ -306,20 +335,17 @@ mod test {
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.fed_receiver_port, None);
-        assert_eq!(args.fed_receiver_ip, None);
+        assert!(args.statsd_config.is_some());
+        assert_eq!(args.statsd_config.unwrap().port, 8125);
+        assert!(args.graphite_config.is_some());
+        assert_eq!(args.graphite_config.unwrap().port, 2003);
+        assert!(args.fed_receiver_config.is_none());
         assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
+        assert!(args.console.is_none());
+        assert!(args.null.is_none());
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.fed_transmitter, false);
-        assert_eq!(args.fed_transmitter_port, None);
-        assert_eq!(args.tags, TagMap::default());
+        assert!(args.wavefront.is_none());
+        assert!(args.fed_transmitter.is_none());
         assert_eq!(args.verbose, 4);
     }
 
@@ -333,19 +359,10 @@ port = 1987
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.fed_receiver_port, Some(1987));
-        assert_eq!(args.fed_receiver_ip, Some(String::from("0.0.0.0")));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.fed_receiver_config.is_some());
+        let fed_receiver_config = args.fed_receiver_config.unwrap();
+        assert_eq!(fed_receiver_config.port, 1987);
+        assert_eq!(fed_receiver_config.ip, String::from("0.0.0.0"));
     }
 
     #[test]
@@ -358,19 +375,10 @@ ip = "127.0.0.1"
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.fed_receiver_port, Some(1972));
-        assert_eq!(args.fed_receiver_ip, Some(String::from("127.0.0.1")));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.fed_receiver_config.is_some());
+        let fed_receiver_config = args.fed_receiver_config.unwrap();
+        assert_eq!(fed_receiver_config.port, 1972);
+        assert_eq!(fed_receiver_config.ip, String::from("127.0.0.1"));
     }
 
     #[test]
@@ -383,21 +391,10 @@ port = 1987
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.fed_receiver_port, None);
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.fed_transmitter, true);
-        assert_eq!(args.fed_transmitter_host, Some(String::from("127.0.0.1")));
-        assert_eq!(args.fed_transmitter_port, Some(1987));
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.fed_transmitter.is_some());
+        let fed_transmitter = args.fed_transmitter.unwrap();
+        assert_eq!(fed_transmitter.host, String::from("127.0.0.1"));
+        assert_eq!(fed_transmitter.port, 1987);
     }
 
     #[test]
@@ -410,22 +407,10 @@ host = "foo.example.com"
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.fed_receiver_port, None);
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.fed_transmitter, true);
-        assert_eq!(args.fed_transmitter_host,
-                   Some(String::from("foo.example.com")));
-        assert_eq!(args.fed_transmitter_port, Some(1972));
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.fed_transmitter.is_some());
+        let fed_transmitter = args.fed_transmitter.unwrap();
+        assert_eq!(fed_transmitter.host, String::from("foo.example.com"));
+        assert_eq!(fed_transmitter.port, 1972);
     }
 
     #[test]
@@ -437,17 +422,8 @@ statsd-port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(1024));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.statsd_config.is_some());
+        assert_eq!(args.statsd_config.unwrap().port, 1024);
     }
 
     #[test]
@@ -460,17 +436,8 @@ port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(1024));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.statsd_config.is_some());
+        assert_eq!(args.statsd_config.unwrap().port, 1024);
     }
 
     #[test]
@@ -484,17 +451,7 @@ port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, None);
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.statsd_config.is_none());
     }
 
     #[test]
@@ -506,17 +463,8 @@ graphite-port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(1024));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.graphite_config.is_some());
+        assert_eq!(args.graphite_config.unwrap().port, 1024);
     }
 
     #[test]
@@ -529,17 +477,8 @@ port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(1024));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.graphite_config.is_some());
+        assert_eq!(args.graphite_config.unwrap().port, 1024);
     }
 
     #[test]
@@ -553,18 +492,7 @@ port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, None);
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.wavefront_bin_width, 1);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.graphite_config.is_none());
     }
 
     #[test]
@@ -579,18 +507,11 @@ bin_width = 9
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, true);
-        assert_eq!(args.wavefront_host, Some("example.com".to_string()));
-        assert_eq!(args.wavefront_port, Some(3131));
-        assert_eq!(args.wavefront_bin_width, 9);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.wavefront.is_some());
+        let wavefront = args.wavefront.unwrap();
+        assert_eq!(wavefront.host, String::from("example.com"));
+        assert_eq!(wavefront.port, 3131);
+        assert_eq!(wavefront.bin_width, 9);
     }
 
     #[test]
@@ -602,18 +523,8 @@ bin_width = 9
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, true);
-        assert_eq!(args.console_bin_width, 1);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.console.is_some());
+        assert_eq!(args.console.unwrap().bin_width, 1);
     }
 
     #[test]
@@ -626,18 +537,8 @@ bin_width = 9
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, true);
-        assert_eq!(args.console_bin_width, 9);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.console.is_some());
+        assert_eq!(args.console.unwrap().bin_width, 9);
     }
 
     #[test]
@@ -649,17 +550,7 @@ bin_width = 9
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, true);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(args.null.is_some());
     }
 
     #[test]
@@ -675,18 +566,8 @@ delivery_stream = "stream_two"
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
         assert_eq!(args.firehose_delivery_streams,
                    vec!["stream_one", "stream_two"]);
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
     }
 
     #[test]
@@ -699,18 +580,8 @@ path = "/foo/bar.txt"
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.files, Some(vec![PathBuf::from("/foo/bar.txt")]));
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(!args.files.is_empty());
+        assert_eq!(args.files[0].path, PathBuf::from("/foo/bar.txt"));
     }
 
     #[test]
@@ -726,19 +597,9 @@ path = "/bar.txt"
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.files,
-                   Some(vec![PathBuf::from("/foo/bar.txt"), PathBuf::from("/bar.txt")]));
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, TagMap::default());
-        assert_eq!(args.verbose, 4);
+        assert!(!args.files.is_empty());
+        assert_eq!(args.files[0].path, PathBuf::from("/foo/bar.txt"));
+        assert_eq!(args.files[1].path, PathBuf::from("/bar.txt"));
     }
 
     #[test]
@@ -748,6 +609,8 @@ path = "/bar.txt"
 source = "cernan"
 purpose = "serious_business"
 mission = "from_gad"
+
+[wavefront]
 "#
             .to_string();
 
@@ -757,17 +620,7 @@ mission = "from_gad"
         tags.insert(String::from("purpose"), String::from("serious_business"));
         tags.insert(String::from("source"), String::from("cernan"));
 
-        assert_eq!(args.statsd_port, Some(8125));
-        assert_eq!(args.graphite_port, Some(2003));
-        assert_eq!(args.flush_interval, 60);
-        assert_eq!(args.console, false);
-        assert_eq!(args.null, false);
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, false);
-        assert_eq!(args.wavefront_host, None);
-        assert_eq!(args.wavefront_port, None);
-        assert_eq!(args.tags, tags);
-        assert_eq!(args.verbose, 4);
+        assert_eq!(args.graphite_config.unwrap().tags, tags);
     }
 
     #[test]
@@ -803,16 +656,22 @@ mission = "from_gad"
         tags.insert(String::from("purpose"), String::from("serious_business"));
         tags.insert(String::from("source"), String::from("cernan"));
 
-        assert_eq!(args.statsd_port, Some(1024));
-        assert_eq!(args.graphite_port, Some(1034));
+        assert!(args.statsd_config.is_some());
+        let statsd_config = args.statsd_config.unwrap();
+        assert_eq!(statsd_config.port, 1024);
+        assert_eq!(statsd_config.tags, tags);
+        assert!(args.graphite_config.is_some());
+        let graphite_config = args.graphite_config.unwrap();
+        assert_eq!(graphite_config.port, 1034);
+        assert_eq!(graphite_config.tags, tags);
         assert_eq!(args.flush_interval, 128);
-        assert_eq!(args.console, true);
-        assert_eq!(args.null, true);
+        assert!(args.console.is_some());
+        assert!(args.null.is_some());
         assert_eq!(true, args.firehose_delivery_streams.is_empty());
-        assert_eq!(args.wavefront, true);
-        assert_eq!(args.wavefront_host, Some("example.com".to_string()));
-        assert_eq!(args.wavefront_port, Some(3131));
-        assert_eq!(args.tags, tags);
+        assert!(args.wavefront.is_some());
+        let wavefront = args.wavefront.unwrap();
+        assert_eq!(wavefront.host, String::from("example.com"));
+        assert_eq!(wavefront.port, 3131);
         assert_eq!(args.verbose, 4);
     }
 }

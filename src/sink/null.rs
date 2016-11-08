@@ -5,14 +5,24 @@ pub struct Null {
 }
 
 impl Null {
-    pub fn new() -> Null {
+    pub fn new(_config: NullConfig) -> Null {
         Null {}
     }
 }
 
 impl Default for Null {
     fn default() -> Self {
-        Self::new()
+        Self::new(NullConfig::default())
+    }
+}
+
+#[derive(Debug)]
+pub struct NullConfig {
+}
+
+impl Default for NullConfig {
+    fn default() -> NullConfig {
+        NullConfig {}
     }
 }
 

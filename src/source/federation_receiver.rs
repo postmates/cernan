@@ -20,19 +20,22 @@ pub struct FederationReceiver {
     tags: metric::TagMap,
 }
 
+#[derive(Debug)]
+pub struct FederationReceiverConfig {
+    pub ip: String,
+    pub port: u16,
+    pub tags: metric::TagMap,
+}
+
 impl FederationReceiver {
-    pub fn new<S>(chans: Vec<mpsc::Sender<metric::Event>>,
-                  ip: S,
-                  port: u16,
-                  tags: metric::TagMap)
-                  -> FederationReceiver
-        where S: Into<String>
-    {
+    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>,
+               config: FederationReceiverConfig)
+               -> FederationReceiver {
         FederationReceiver {
             chans: chans,
-            ip: ip.into(),
-            port: port,
-            tags: tags,
+            ip: config.ip,
+            port: config.port,
+            tags: config.tags,
         }
     }
 }
@@ -84,7 +87,9 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                                 metric::Event::Graphite(m) => {
                                     metric::Event::Graphite(m.merge_tags_from_map(&tags))
                                 }
-                                _ => continue, // we refuse to accept any non-telemetry forward for now
+                                // we refuse to accept any non-telemetry forward
+                                // for now
+                                _ => continue,
                             };
                             send("receiver", &mut chans, &ev);
                         }

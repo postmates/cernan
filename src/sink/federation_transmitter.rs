@@ -16,11 +16,17 @@ pub struct FederationTransmitter {
     buffer: Vec<metric::Event>,
 }
 
+#[derive(Debug)]
+pub struct FederationTransmitterConfig {
+    pub port: u16,
+    pub host: String,
+}
+
 impl FederationTransmitter {
-    pub fn new(port: u16, host: String) -> FederationTransmitter {
+    pub fn new(config: FederationTransmitterConfig) -> FederationTransmitter {
         FederationTransmitter {
-            port: port,
-            host: host,
+            port: config.port,
+            host: config.host,
             buffer: Vec::new(),
         }
     }

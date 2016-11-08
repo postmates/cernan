@@ -23,15 +23,18 @@ pub struct FileServer {
     tags: metric::TagMap,
 }
 
+#[derive(Debug)]
+pub struct FileServerConfig {
+    pub path: PathBuf,
+    pub tags: metric::TagMap,
+}
+
 impl FileServer {
-    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>,
-               path: PathBuf,
-               tags: metric::TagMap)
-               -> FileServer {
+    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>, config: FileServerConfig) -> FileServer {
         FileServer {
             chans: chans,
-            path: path,
-            tags: tags,
+            path: config.path,
+            tags: config.tags,
         }
     }
 }

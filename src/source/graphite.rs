@@ -7,6 +7,7 @@ use std::net::{TcpListener, TcpStream};
 use std::str;
 use std::thread;
 use std::time::Instant;
+use std::sync::Arc;
 
 use time;
 use super::{send, Source};
@@ -14,24 +15,38 @@ use super::{send, Source};
 pub struct Graphite {
     chans: Vec<mpsc::Sender<metric::Event>>,
     port: u16,
-    tags: metric::TagMap,
+    tags: Arc<metric::TagMap>,
+}
+
+#[derive(Debug)]
+pub struct GraphiteConfig {
+    pub ip: String,
+    pub port: u16,
+    pub tags: metric::TagMap,
+}
+
+impl Default for GraphiteConfig {
+    fn default() -> GraphiteConfig {
+        GraphiteConfig {
+            ip: String::from(""),
+            port: 2003,
+            tags: metric::TagMap::default(),
+        }
+    }
 }
 
 impl Graphite {
-    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>,
-               port: u16,
-               tags: metric::TagMap)
-               -> Graphite {
+    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>, config: GraphiteConfig) -> Graphite {
         Graphite {
             chans: chans,
-            port: port,
-            tags: tags,
+            port: config.port,
+            tags: Arc::new(config.tags),
         }
     }
 }
 
 fn handle_tcp(chans: Vec<mpsc::Sender<metric::Event>>,
-              tags: metric::TagMap,
+              tags: Arc<metric::TagMap>,
               listner: TcpListener)
               -> thread::JoinHandle<()> {
     thread::spawn(move || {
@@ -52,7 +67,7 @@ fn handle_tcp(chans: Vec<mpsc::Sender<metric::Event>>,
 
 
 fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
-                 tags: metric::TagMap,
+                 tags: Arc<metric::TagMap>,
                  stream: TcpStream) {
     thread::spawn(move || {
         let line_reader = BufReader::new(stream);
