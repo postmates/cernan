@@ -183,6 +183,22 @@ mod test {
         assert_eq!(Some(0.291), res.value());
     }
 
+    #[test]
+    fn test_gauge_small_bin_width() {
+        let bin_width = 1;
+        let m0 = Metric::new("lO", 3.211).time(645181811).gauge();
+        let m1 = Metric::new("lO", 4.322).time(645181812).gauge();
+        let m2 = Metric::new("lO", 5.433).time(645181813).gauge();
+
+        let mut bkt = Buckets::new(bin_width);
+        bkt.add(m0);
+        bkt.add(m1);
+        bkt.add(m2);
+
+        let v = bkt.gauges().get("lO").unwrap();
+        assert_eq!(3, v.len());
+    }
+
 
     #[test]
     fn shuffled_variable_size_bins() {
@@ -204,25 +220,27 @@ mod test {
                 bkt1.add(m);
             }
 
-            let mut ms0 : Vec<(&String, &Vec<Metric>)> = bkt0.gauges()
+            let mut ms0: Vec<(&String, &Vec<Metric>)> = bkt0.gauges()
                 .iter()
                 .chain(bkt0.counters().iter())
                 .chain(bkt0.raws().iter())
                 .chain(bkt0.histograms().iter())
-                .chain(bkt0.timers().iter()).collect();
-            let mut ms1 : Vec<(&String, &Vec<Metric>)> = bkt1.gauges()
+                .chain(bkt0.timers().iter())
+                .collect();
+            let mut ms1: Vec<(&String, &Vec<Metric>)> = bkt1.gauges()
                 .iter()
                 .chain(bkt1.counters().iter())
                 .chain(bkt1.raws().iter())
                 .chain(bkt1.histograms().iter())
-                .chain(bkt1.timers().iter()).collect();
+                .chain(bkt1.timers().iter())
+                .collect();
             ms0.sort_by_key(|m| m.0);
             ms1.sort_by_key(|m| m.0);
 
-            for (x,y) in ms0.iter().zip(ms1.iter()) {
+            for (x, y) in ms0.iter().zip(ms1.iter()) {
                 let xv = x.1;
                 let yv = y.1;
-                for (i,a) in xv.iter().enumerate() {
+                for (i, a) in xv.iter().enumerate() {
                     assert_eq!(a.name, yv[i].name);
                     assert_eq!(a.kind, yv[i].kind);
                     assert_eq!(a.query(1.0), yv[i].query(1.0));
@@ -584,6 +602,64 @@ mod test {
             .tests(qc_tests())
             .max_tests(max_qc_tests())
             .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+    }
+
+    #[test]
+    fn correct_bin_count() {
+        fn inner(ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::new(1);
+
+            for m in ms.clone() {
+                bucket.add(m);
+            }
+
+            let mut coll: HashMap<(MetricKind, String), HashSet<i64>> = HashMap::new();
+            for m in ms {
+                let kind = if m.kind == MetricKind::DeltaGauge {
+                    MetricKind::Gauge
+                } else {
+                    m.kind
+                };
+                let name = m.name;
+                let time = m.time;
+
+                let entry = coll.entry((kind, name)).or_insert(HashSet::new());
+                (*entry).insert(time);
+            }
+
+            let mut expected_counters = 0;
+            let mut expected_gauges = 0;
+            let mut expected_raws = 0;
+            let mut expected_histograms = 0;
+            let mut expected_timers = 0;
+
+            for (&(ref kind, _), val) in coll.iter() {
+                match kind {
+                    &MetricKind::Gauge |
+                    &MetricKind::DeltaGauge => expected_gauges += val.len(),
+                    &MetricKind::Counter => expected_counters += val.len(),
+                    &MetricKind::Timer => expected_timers += val.len(),
+                    &MetricKind::Histogram => expected_histograms += val.len(),
+                    &MetricKind::Raw => expected_raws += val.len(),
+                }
+            }
+            assert_eq!(expected_raws,
+                       bucket.raws().iter().fold(0, |acc, (_k, v)| acc + v.len()));
+            assert_eq!(expected_counters,
+                       bucket.counters().iter().fold(0, |acc, (_k, v)| acc + v.len()));
+            assert_eq!(expected_gauges,
+                       bucket.gauges().iter().fold(0, |acc, (_k, v)| acc + v.len()));
+            assert_eq!(expected_histograms,
+                       bucket.histograms().iter().fold(0, |acc, (_k, v)| acc + v.len()));
+            assert_eq!(expected_timers,
+                       bucket.timers().iter().fold(0, |acc, (_k, v)| acc + v.len()));
+
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(qc_tests())
+            .max_tests(max_qc_tests())
+            .quickcheck(inner as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
