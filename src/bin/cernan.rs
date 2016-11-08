@@ -71,7 +71,7 @@ fn main() {
         joins.push(thread::spawn(move || {
             cernan::sink::Wavefront::new(&cp_args.wavefront_host.unwrap(),
                                          cp_args.wavefront_port.unwrap(),
-                                         cp_args.flush_interval as i64)
+                                         cp_args.wavefront_bin_width as i64)
                 .run(wf_recv);
         }));
     }

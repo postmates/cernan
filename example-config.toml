@@ -11,10 +11,6 @@ port = 8125
 enabled = true
 port = 2003
 
-# There is one global timing interval on which cernan will sync from its sources
-# to its sinks. This value is in seconds.
-flush-interval = 10
-
 [tags]
 source = "cernan"
 

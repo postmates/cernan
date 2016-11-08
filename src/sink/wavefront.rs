@@ -153,8 +153,9 @@ mod test {
         let mut tags = TagMap::default();
         tags.insert("source".into(), "test-src".into());
         let mut wavefront = Wavefront::new("localhost", 2003, 1);
-        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 12).timestamp();
-        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(10, 11, 12, 13).timestamp();
+        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
+        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
+        let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
         wavefront.deliver(Metric::new("test.counter", -1.0)
             .time(dt_0)
             .counter()
@@ -169,6 +170,14 @@ mod test {
             .overlay_tags_from_map(&tags));
         wavefront.deliver(Metric::new("test.gauge", 3.211)
             .time(dt_0)
+            .gauge()
+            .overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.gauge", 4.322)
+            .time(dt_1)
+            .gauge()
+            .overlay_tags_from_map(&tags));
+        wavefront.deliver(Metric::new("test.gauge", 5.433)
+            .time(dt_2)
             .gauge()
             .overlay_tags_from_map(&tags));
         wavefront.deliver(Metric::new("test.timer", 12.101)
@@ -189,10 +198,12 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(19, lines.len());
+        assert_eq!(21, lines.len());
         assert!(lines.contains(&"test.counter 1 645181811 source=test-src"));
-        assert!(lines.contains(&"test.counter 3 645185472 source=test-src"));
+        assert!(lines.contains(&"test.counter 3 645181812 source=test-src"));
         assert!(lines.contains(&"test.gauge 3.211 645181811 source=test-src"));
+        assert!(lines.contains(&"test.gauge 4.322 645181812 source=test-src"));
+        assert!(lines.contains(&"test.gauge 5.433 645181813 source=test-src"));
         assert!(lines.contains(&"test.timer.min 1.101 645181811 source=test-src"));
         assert!(lines.contains(&"test.timer.max 12.101 645181811 source=test-src"));
         assert!(lines.contains(&"test.timer.2 1.101 645181811 source=test-src"));
