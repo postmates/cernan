@@ -145,20 +145,6 @@ mod test {
     use std::collections::{HashSet, HashMap};
     use chrono::{UTC, TimeZone};
     use std::cmp::Ordering;
-    use rand::{thread_rng, Rng};
-    use std::env;
-
-    // NOTE working to contribute this upstream so we can have this everywhere
-    fn qc_tests() -> usize {
-        match env::var("QC_TESTS") {
-            Ok(val) => val.parse().expect("could not convert to number"),
-            Err(_) => 1000,
-        }
-    }
-
-    fn max_qc_tests() -> usize {
-        qc_tests() * 100
-    }
 
     fn within(width: i64, lhs: i64, rhs: i64) -> bool {
         (lhs / width) == (rhs / width)
@@ -197,63 +183,6 @@ mod test {
 
         let v = bkt.gauges().get("lO").unwrap();
         assert_eq!(3, v.len());
-    }
-
-
-    #[test]
-    fn shuffled_variable_size_bins() {
-        fn inner(bin_width: u16, ms: Vec<Metric>) -> TestResult {
-            let bin_width: i64 = bin_width as i64;
-            if bin_width == 0 {
-                return TestResult::discard();
-            }
-
-            let mut bkt0 = Buckets::new(bin_width);
-            let mut bkt1 = Buckets::new(bin_width);
-            for m in ms.clone() {
-                bkt0.add(m);
-            }
-            let mut rng = thread_rng();
-            let mut shfl_ms = ms.clone();
-            rng.shuffle(&mut shfl_ms[..]);
-            for m in shfl_ms {
-                bkt1.add(m);
-            }
-
-            let mut ms0: Vec<(&String, &Vec<Metric>)> = bkt0.gauges()
-                .iter()
-                .chain(bkt0.counters().iter())
-                .chain(bkt0.raws().iter())
-                .chain(bkt0.histograms().iter())
-                .chain(bkt0.timers().iter())
-                .collect();
-            let mut ms1: Vec<(&String, &Vec<Metric>)> = bkt1.gauges()
-                .iter()
-                .chain(bkt1.counters().iter())
-                .chain(bkt1.raws().iter())
-                .chain(bkt1.histograms().iter())
-                .chain(bkt1.timers().iter())
-                .collect();
-            ms0.sort_by_key(|m| m.0);
-            ms1.sort_by_key(|m| m.0);
-
-            for (x, y) in ms0.iter().zip(ms1.iter()) {
-                let xv = x.1;
-                let yv = y.1;
-                for (i, a) in xv.iter().enumerate() {
-                    assert_eq!(a.name, yv[i].name);
-                    assert_eq!(a.kind, yv[i].kind);
-                    assert_eq!(a.query(1.0), yv[i].query(1.0));
-                    assert_eq!(a.query(0.5), yv[i].query(0.5));
-                    assert_eq!(a.query(0.0), yv[i].query(0.0));
-                }
-            }
-            TestResult::passed()
-        }
-        QuickCheck::new()
-            .tests(qc_tests())
-            .max_tests(max_qc_tests())
-            .quickcheck(inner as fn(u16, Vec<Metric>) -> TestResult);
     }
 
     #[test]
@@ -311,10 +240,7 @@ mod test {
             }
             TestResult::passed()
         }
-        QuickCheck::new()
-            .tests(qc_tests())
-            .max_tests(max_qc_tests())
-            .quickcheck(inner as fn(u16, Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(inner as fn(u16, Vec<Metric>) -> TestResult);
     }
 
     #[test]
@@ -565,10 +491,7 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new()
-            .tests(qc_tests())
-            .max_tests(max_qc_tests())
-            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
@@ -598,10 +521,7 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new()
-            .tests(qc_tests())
-            .max_tests(max_qc_tests())
-            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
@@ -656,10 +576,7 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new()
-            .tests(qc_tests())
-            .max_tests(max_qc_tests())
-            .quickcheck(inner as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(inner as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
@@ -689,10 +606,7 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new()
-            .tests(qc_tests())
-            .max_tests(max_qc_tests())
-            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
@@ -722,10 +636,7 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new()
-            .tests(qc_tests())
-            .max_tests(max_qc_tests())
-            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
@@ -746,10 +657,7 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new()
-            .tests(qc_tests())
-            .max_tests(max_qc_tests())
-            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
@@ -822,10 +730,7 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new()
-            .tests(qc_tests())
-            .max_tests(max_qc_tests())
-            .quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
     }
 
     #[test]
@@ -874,9 +779,6 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new()
-            .tests(qc_tests())
-            .max_tests(max_qc_tests())
-            .quickcheck(inner as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(inner as fn(Vec<Metric>) -> TestResult);
     }
 }

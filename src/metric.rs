@@ -102,10 +102,19 @@ impl PartialOrd for MetricKind {
 impl AddAssign for Metric {
     fn add_assign(&mut self, rhs: Metric) {
         match rhs.kind {
-            MetricKind::DeltaGauge | MetricKind::Gauge => self.kind = rhs.kind,
-            _ => assert_eq!(self.kind, rhs.kind),
-        };
-        self.value += rhs.value;
+            MetricKind::DeltaGauge => {
+                self.kind = rhs.kind;
+                self.value += rhs.value;
+            }
+            MetricKind::Gauge => {
+                self.kind = rhs.kind;
+                self.value = rhs.value;
+            } 
+            _ => {
+                self.value += rhs.value;
+                assert_eq!(self.kind, rhs.kind);
+            }
+        }
     }
 }
 
