@@ -1,14 +1,15 @@
-use std::net::{SocketAddr, TcpStream};
+use std::net::TcpStream;
 use std::fmt::Write;
 use std::io::Write as IoWrite;
 use metric::{Metric, LogLine, TagMap};
 use buckets::Buckets;
 use sink::Sink;
-use dns_lookup;
+use std::net::ToSocketAddrs;
 use time;
 
 pub struct Wavefront {
-    addr: SocketAddr,
+    host: String,
+    port: u16,
     aggrs: Buckets,
 }
 
@@ -44,16 +45,10 @@ fn fmt_tags(tags: &TagMap) -> String {
 
 impl Wavefront {
     pub fn new(config: WavefrontConfig) -> Wavefront {
-        match dns_lookup::lookup_host(&config.host) {
-            Ok(mut lh) => {
-                let ip = lh.next().expect("No IPs associated with host").unwrap();
-                let addr = SocketAddr::new(ip, config.port);
-                Wavefront {
-                    addr: addr,
-                    aggrs: Buckets::new(config.bin_width),
-                }
-            }
-            Err(_) => panic!("Could not lookup host"),
+        Wavefront {
+            host: config.host,
+            port: config.port,
+            aggrs: Buckets::new(config.bin_width),
         }
     }
 
@@ -127,21 +122,36 @@ impl Sink for Wavefront {
                 debug!("delivery attempts: {}", attempts);
             }
             time::delay(attempts);
-            match TcpStream::connect(self.addr) {
-                Ok(mut stream) => {
-                    let res = stream.write(self.format_stats().as_bytes());
-                    if res.is_ok() {
-                        trace!("flushed to wavefront!");
-                        self.aggrs.reset();
-                        break;
-                    } else {
-                        attempts += 1;
+            let addrs = (self.host.as_str(), self.port).to_socket_addrs();
+            match addrs {
+                Ok(srv) => {
+                    let ips: Vec<_> = srv.collect();
+                    for ip in ips {
+                        match TcpStream::connect(ip) {
+                            Ok(mut stream) => {
+                                let res = stream.write(self.format_stats().as_bytes());
+                                if res.is_ok() {
+                                    trace!("flushed to wavefront!");
+                                    self.aggrs.reset();
+                                    return;
+                                } else {
+                                    attempts += 1;
+                                }
+                            }
+                            Err(e) => {
+                                info!("Unable to connect to proxy at {} using addr {} with error \
+                                       {}",
+                                      self.host,
+                                      ip,
+                                      e)
+                            }
+                        }
                     }
                 }
                 Err(e) => {
-                    info!("unable to connect to proxy at addr {} with error {}",
-                          self.addr,
-                          e)
+                    info!("Unable to perform DNS lookup on host {} with error {}",
+                          self.host,
+                          e);
                 }
             }
         }

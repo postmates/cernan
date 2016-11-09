@@ -78,18 +78,34 @@ impl Sink for FederationTransmitter {
         t.insert(0, pyld_sz_bytes[2]);
         t.insert(0, pyld_sz_bytes[3]);
 
-        let srv: Vec<_> = (self.host.as_str(), self.port)
-            .to_socket_addrs()
-            .expect("Unable to resolve domain")
-            .collect();
-        match TcpStream::connect(srv.first().unwrap()) {
-            Ok(mut stream) => {
-                let res = stream.write(&t[..]);
-                if res.is_ok() {
-                    self.buffer.clear();
+        let addrs = (self.host.as_str(), self.port).to_socket_addrs();
+        match addrs {
+            Ok(srv) => {
+                let ips: Vec<_> = srv.collect();
+                for ip in ips {
+                    match TcpStream::connect(ip) {
+                        Ok(mut stream) => {
+                            let res = stream.write(&t[..]);
+                            if res.is_ok() {
+                                self.buffer.clear();
+                                return;
+                            }
+                        }
+                        Err(e) => {
+                            info!("Unable to connect to proxy at {} using addr {} with error \
+                                       {}",
+                                  self.host,
+                                  ip,
+                                  e)
+                        }
+                    }
                 }
+            } 
+            Err(e) => {
+                info!("Unable to perform DNS lookup on host {} with error {}",
+                      self.host,
+                      e);
             }
-            Err(e) => debug!("Unable to connect: {}", e),
         }
     }
 }

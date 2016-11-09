@@ -2,7 +2,6 @@ extern crate toml;
 extern crate clap;
 extern crate chrono;
 extern crate fnv;
-extern crate dns_lookup;
 extern crate notify;
 extern crate bincode;
 extern crate serde;
