@@ -28,7 +28,7 @@ toml = "0.2.0"
 
 [dev-dependencies]
 tempdir = "0.3"
-quickcheck = "0.3"
+quickcheck = { git = "https://github.com/burntsushi/quickcheck.git", rev = "570f6a84de55706257ca302ab76c16879f6b2af5" }
 
 [build-dependencies]
 serde_codegen = "0.8"
