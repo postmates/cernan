@@ -14,6 +14,7 @@ extern crate rusoto;
 extern crate lazy_static;
 extern crate flate2;
 extern crate rand;
+extern crate regex;
 extern crate quantiles;
 
 pub mod mpsc;
@@ -23,3 +24,4 @@ pub mod config;
 pub mod metric;
 pub mod time;
 pub mod source;
+pub mod filter;
