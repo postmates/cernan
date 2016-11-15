@@ -9,6 +9,7 @@ use std::thread;
 use chrono::UTC;
 
 use cernan::source::Source;
+use cernan::filter::Filter;
 use cernan::sink::{Sink, FirehoseConfig};
 
 fn main() {
@@ -98,17 +99,22 @@ fn main() {
         }))
     }
 
-    let statsd_sends = sends.clone();
     if let Some(config) = args.statsd_config {
+        let statsd_sends = sends.clone();
         joins.push(thread::spawn(move || {
             cernan::source::Statsd::new(statsd_sends, config).run();
         }));
     }
 
+    let (graphite_scrub_send, graphite_scrub_recv) = cernan::mpsc::channel("graphite_scrub",
+                                                                           &args.data_directory);
     let graphite_sends = sends.clone();
+    joins.push(thread::spawn(move || {
+        cernan::filter::CollectdScrub::new("foo").run(graphite_scrub_recv, graphite_sends)
+    }));
     if let Some(config) = args.graphite_config {
         joins.push(thread::spawn(move || {
-            cernan::source::Graphite::new(graphite_sends, config).run();
+            cernan::source::Graphite::new(vec![graphite_scrub_send], config).run();
         }));
     }
 

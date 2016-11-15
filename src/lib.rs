@@ -15,6 +15,8 @@ extern crate flate2;
 extern crate rand;
 extern crate regex;
 extern crate quantiles;
+extern crate lua;
+extern crate libc;
 
 pub mod mpsc;
 pub mod sink;
