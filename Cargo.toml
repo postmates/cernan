@@ -20,6 +20,7 @@ log = "0.3.6"
 notify = "2.6.3"
 quantiles = "0.2.0"
 rand = "0.3"
+regex = "0.1"
 rusoto = {version = "0.17.0", features = ["firehose"]}
 serde = "0.8"
 serde_json = "0.8"
