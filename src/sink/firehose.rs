@@ -1,4 +1,4 @@
-use sink::Sink;
+use sink::{Sink, Valve};
 use metric::{Metric, LogLine};
 use chrono::naive::datetime::NaiveDateTime;
 use chrono::datetime::DateTime;
@@ -103,13 +103,19 @@ impl Sink for Firehose {
         self.buffer.clear();
     }
 
-    fn deliver(&mut self, _: Metric) {
+    fn deliver(&mut self, _: Metric) -> Valve<Metric> {
         // nothing, intentionally
+        Valve::Open
     }
 
-    fn deliver_lines(&mut self, mut lines: Vec<LogLine>) {
-        let l = &mut lines;
-        self.buffer.append(l);
+    fn deliver_lines(&mut self, mut lines: Vec<LogLine>) -> Valve<Vec<LogLine>> {
+        if self.buffer.len() > 10_000 {
+            Valve::Closed(lines)
+        } else {
+            let l = &mut lines;
+            self.buffer.append(l);
+            Valve::Open
+        }
     }
 }
 

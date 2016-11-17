@@ -1,4 +1,4 @@
-use sink::Sink;
+use sink::{Sink, Valve};
 use metric::{Metric, LogLine};
 
 pub struct Null {
@@ -27,12 +27,14 @@ impl Default for NullConfig {
 }
 
 impl Sink for Null {
-    fn deliver(&mut self, _: Metric) {
+    fn deliver(&mut self, _: Metric) -> Valve<Metric> {
         // discard point
+        Valve::Open
     }
 
-    fn deliver_lines(&mut self, _: Vec<LogLine>) {
+    fn deliver_lines(&mut self, _: Vec<LogLine>) -> Valve<Vec<LogLine>> {
         // discard point
+        Valve::Open
     }
 
     fn flush(&mut self) {
