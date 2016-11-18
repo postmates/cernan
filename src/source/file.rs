@@ -1,16 +1,17 @@
 use fnv::FnvHasher;
+use glob::glob;
 use metric;
 use mpsc;
-use notify::op::{REMOVE, RENAME, WRITE};
-use notify::{RecommendedWatcher, Error, Watcher};
 use std::collections::HashMap;
-use std::fs::File;
 use std::hash::BuildHasherDefault;
 use std::io::prelude::*;
-use std::io::{SeekFrom, BufReader};
 use std::path::PathBuf;
 use std::str;
-use std::sync::mpsc::channel;
+use std::time::Duration;
+use std::io;
+use std::fs;
+use time;
+use std::time::{SystemTime, Instant};
 
 use super::send;
 use source::Source;
@@ -39,71 +40,122 @@ impl FileServer {
     }
 }
 
-impl Source for FileServer {
-    fn run(&mut self) {
-        let (tx, rx) = channel();
-        // NOTE on OSX fsevent will _not_ let us watch a file we don't own
-        // effectively. See
-        // https://developer.apple.com/library/mac/documentation/Darwin/Conceptual/FSEvents_ProgGuide/FileSystemEventSecurity/FileSystemEventSecurity.html
-        // for more details. If we must properly support _all_ files on OSX we
-        // will probably need to fall back to Pollwatcher for that operating
-        // system.
-        let w: Result<RecommendedWatcher, Error> = Watcher::new(tx);
+pub struct FileWatcher {
+    pub path: PathBuf,
+    pub reader: io::BufReader<fs::File>,
+    pub created: SystemTime,
+}
 
-        let mut fp_map: HashMapFnv<PathBuf, BufReader<File>> = HashMapFnv::default();
+impl FileWatcher {
+    pub fn new(path: PathBuf) -> FileWatcher {
+        let f = fs::File::open(&path).unwrap();
+        let mut rdr = io::BufReader::new(f);
+        let _ = rdr.seek(io::SeekFrom::End(0));
+        let created = fs::metadata(&path).unwrap().created().unwrap();
 
-        match w {
-            Ok(mut watcher) => {
-                watcher.watch(&self.path).expect("could not set up watch for path");
+        FileWatcher {
+            path: path,
+            reader: rdr,
+            created: created,
+        }
+    }
 
-                while let Ok(event) = rx.recv() {
-                    match event.op {
-                        Ok(op) => {
-                            if let Some(path) = event.path {
-                                trace!("OP: {:?} | PATH: {:?} | FP_MAP: {:?}", op, path, fp_map);
-                                let mut lines = Vec::new();
-                                if op.contains(REMOVE) || op.contains(RENAME) {
-                                    fp_map.remove(&path);
-                                }
-                                if op.contains(WRITE) && !fp_map.contains_key(&path) {
-                                    let _ = File::open(&path).map(|fp| {
-                                        let mut reader = BufReader::new(fp);
-                                        reader.seek(SeekFrom::End(0))
-                                            .expect("could not seek to end of file");
-                                        fp_map.insert(path.clone(), reader);
-                                    });
-                                }
-                                if op.contains(WRITE) {
-                                    if let Some(rdr) = fp_map.get_mut(&path) {
-                                        loop {
-                                            for line in rdr.lines() {
-                                                trace!("PATH: {:?} | LINE: {:?}", path, line);
-                                                lines.push(metric::LogLine::new(path.to_str()
-                                                                                    .unwrap(),
-                                                                                line.unwrap(),
-                                                                                self.tags.clone()));
-                                            }
-                                            if lines.is_empty() {
-                                                trace!("EMPTY LINES, SEEK TO START: {:?}", path);
-                                                rdr.seek(SeekFrom::Start(0))
-                                                    .expect("could not seek to start of file");
-                                                continue;
-                                            } else {
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                                if !lines.is_empty() {
-                                    send("file", &mut self.chans, &metric::Event::Log(lines));
-                                }
+    pub fn read_line(&mut self, mut buffer: &mut String) -> io::Result<usize> {
+        let max_attempts = 5;
+        loop {
+            let mut attempts = 0;
+            // read lines
+            loop {
+                match self.reader.read_line(&mut buffer) {
+                    Ok(sz) => {
+                        if sz == 0 {
+                            time::delay(1);
+                            attempts += 1;
+                            if attempts > max_attempts {
+                                break;
+                            } else {
+                                continue;
                             }
+                        } else {
+                            return Ok(sz);
                         }
-                        Err(e) => panic!("Unknown file event error: {}", e),
+                    }
+                    Err(e) => {
+                        return Err(e);
                     }
                 }
             }
-            Err(e) => panic!("Could not create file watcher: {}", e),
+
+            let new_created = fs::metadata(&self.path).unwrap().created().unwrap();
+            if new_created != self.created {
+                self.created = new_created;
+                let f = fs::File::open(&self.path).unwrap();
+                let rdr = io::BufReader::new(f);
+                self.reader = rdr;
+            } else {
+                return Err(io::Error::last_os_error());
+            }
+        }
+    }
+}
+
+impl Source for FileServer {
+    fn run(&mut self) {
+        let mut fp_map: HashMapFnv<PathBuf, FileWatcher> = HashMapFnv::default();
+        let glob_delay = Duration::from_secs(60);
+        let mut buffer = String::new();
+
+        let mut lines = Vec::new();
+
+        loop {
+            for entry in glob(&self.path.to_str().unwrap()).expect("Failed to read glob pattern") {
+                match entry {
+                    Ok(path) => {
+                        let _ = fp_map.entry(path.clone()).or_insert(FileWatcher::new(path));
+                    }
+                    Err(e) => {
+                        debug!("glob error: {}", e);
+                    }
+                }
+            }
+            let start = Instant::now();
+            loop {
+                for file in fp_map.values_mut() {
+                    loop {
+                        let mut lines_read = 0;
+                        match file.read_line(&mut buffer) {
+                            Ok(sz) => {
+                                if sz > 0 {
+                                    lines_read += 1;
+                                    buffer.pop();
+                                    trace!("{} | {}", file.path.to_str().unwrap(), buffer);
+                                    lines.push(metric::LogLine::new(file.path.to_str().unwrap(),
+                                                                    buffer.clone(),
+                                                                    self.tags.clone()));
+                                    buffer.clear();
+                                    if lines_read > 10_000 {
+                                        break;
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                match e.kind() {
+                                    io::ErrorKind::TimedOut => {}
+                                    _ => trace!("read-line error: {}", e),
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    if lines.len() > 0 {
+                        send("file", &mut self.chans, &metric::Event::Log(lines));
+                        lines = Vec::new();
+                    }
+                }
+                if start.elapsed() >= glob_delay {
+                    break;
+                }
+            }
         }
     }
 }
