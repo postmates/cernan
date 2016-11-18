@@ -10,7 +10,7 @@ mod wavefront;
 
 pub use self::console::{Console, ConsoleConfig};
 pub use self::federation_transmitter::{FederationTransmitter, FederationTransmitterConfig};
-pub use self::firehose::Firehose;
+pub use self::firehose::{Firehose, FirehoseConfig};
 pub use self::null::{Null, NullConfig};
 pub use self::wavefront::{Wavefront, WavefrontConfig};
 
