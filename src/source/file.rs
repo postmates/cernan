@@ -11,7 +11,8 @@ use std::time::Duration;
 use std::io;
 use std::fs;
 use time;
-use std::time::{SystemTime, Instant};
+use std::time::Instant;
+use std::os::unix::fs::MetadataExt;
 
 use super::send;
 use source::Source;
@@ -43,7 +44,7 @@ impl FileServer {
 pub struct FileWatcher {
     pub path: PathBuf,
     pub reader: io::BufReader<fs::File>,
-    pub created: SystemTime,
+    pub file_id: (u64, u64), // (dev, ino)
 }
 
 impl FileWatcher {
@@ -52,15 +53,15 @@ impl FileWatcher {
             Ok(f) => {
                 let mut rdr = io::BufReader::new(f);
                 let _ = rdr.seek(io::SeekFrom::End(0));
-                let created = fs::metadata(&path)
-                    .expect(&format!("no metadata in FileWatcher::new : {:?}", &path))
-                    .created()
-                    .expect("no 'created' info in file metadata");
+                let metadata = fs::metadata(&path)
+                    .expect(&format!("no metadata in FileWatcher::new : {:?}", &path));
+                let dev = metadata.dev();
+                let ino = metadata.ino();
 
                 Some(FileWatcher {
                     path: path,
                     reader: rdr,
-                    created: created,
+                    file_id: (dev, ino),
                 })
             }
             Err(_) => None,
@@ -94,10 +95,12 @@ impl FileWatcher {
             }
 
             if let Some(metadata) = fs::metadata(&self.path).ok() {
-                let new_created = metadata.created().expect("no 'created' info in file metadata");
-                if new_created != self.created {
+                let dev = metadata.dev();
+                let ino = metadata.ino();
+
+                if (dev, ino) != self.file_id {
                     if let Some(f) = fs::File::open(&self.path).ok() {
-                        self.created = new_created;
+                        self.file_id = (dev, ino);
                         let rdr = io::BufReader::new(f);
                         self.reader = rdr;
                     }
