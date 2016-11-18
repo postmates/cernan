@@ -47,16 +47,23 @@ pub struct FileWatcher {
 }
 
 impl FileWatcher {
-    pub fn new(path: PathBuf) -> FileWatcher {
-        let f = fs::File::open(&path).unwrap();
-        let mut rdr = io::BufReader::new(f);
-        let _ = rdr.seek(io::SeekFrom::End(0));
-        let created = fs::metadata(&path).unwrap().created().unwrap();
+    pub fn new(path: PathBuf) -> Option<FileWatcher> {
+        match fs::File::open(&path) {
+            Ok(f) => {
+                let mut rdr = io::BufReader::new(f);
+                let _ = rdr.seek(io::SeekFrom::End(0));
+                let created = fs::metadata(&path)
+                    .expect(&format!("no metadata in FileWatcher::new : {:?}", &path))
+                    .created()
+                    .expect("no 'created' info in file metadata");
 
-        FileWatcher {
-            path: path,
-            reader: rdr,
-            created: created,
+                Some(FileWatcher {
+                    path: path,
+                    reader: rdr,
+                    created: created,
+                })
+            }
+            Err(_) => None,
         }
     }
 
@@ -86,14 +93,17 @@ impl FileWatcher {
                 }
             }
 
-            let new_created = fs::metadata(&self.path).unwrap().created().unwrap();
-            if new_created != self.created {
-                self.created = new_created;
-                let f = fs::File::open(&self.path).unwrap();
-                let rdr = io::BufReader::new(f);
-                self.reader = rdr;
-            } else {
-                return Err(io::Error::last_os_error());
+            if let Some(metadata) = fs::metadata(&self.path).ok() {
+                let new_created = metadata.created().expect("no 'created' info in file metadata");
+                if new_created != self.created {
+                    if let Some(f) = fs::File::open(&self.path).ok() {
+                        self.created = new_created;
+                        let rdr = io::BufReader::new(f);
+                        self.reader = rdr;
+                    }
+                } else {
+                    return Err(io::Error::last_os_error());
+                }
             }
         }
     }
@@ -108,10 +118,17 @@ impl Source for FileServer {
         let mut lines = Vec::new();
 
         loop {
-            for entry in glob(&self.path.to_str().unwrap()).expect("Failed to read glob pattern") {
+            for entry in glob(&self.path.to_str().expect("no ability to glob"))
+                .expect("Failed to read glob pattern") {
                 match entry {
                     Ok(path) => {
-                        let _ = fp_map.entry(path.clone()).or_insert(FileWatcher::new(path));
+                        let entry = fp_map.entry(path.clone());
+                        match FileWatcher::new(path) {
+                            Some(fw) => {
+                                entry.or_insert(fw);
+                            }
+                            None => {}
+                        };
                     }
                     Err(e) => {
                         debug!("glob error: {}", e);
@@ -128,8 +145,10 @@ impl Source for FileServer {
                                 if sz > 0 {
                                     lines_read += 1;
                                     buffer.pop();
-                                    trace!("{} | {}", file.path.to_str().unwrap(), buffer);
-                                    lines.push(metric::LogLine::new(file.path.to_str().unwrap(),
+                                    let path_name =
+                                        file.path.to_str().expect("could not make path_name");
+                                    trace!("{} | {}", path_name, buffer);
+                                    lines.push(metric::LogLine::new(path_name,
                                                                     buffer.clone(),
                                                                     self.tags.clone()));
                                     buffer.clear();
