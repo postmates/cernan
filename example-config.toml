@@ -15,7 +15,15 @@ port = 2003
 source = "cernan"
 
 [[file]]
-path = "/Users/briantroutwine/logs/*.log"
+path = "example.log"
+
+# sinks
+[console]
+bin_width = 1
 
 [null]
 
+[wavefront]
+port = 2878
+host = "127.0.0.1"
+bin_width = 1
