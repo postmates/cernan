@@ -1,4 +1,4 @@
-use sink::Sink;
+use sink::{Sink, Valve};
 use buckets::Buckets;
 use metric::{Metric, LogLine};
 use chrono;
@@ -37,12 +37,14 @@ fn fmt_line(key: &str, value: f64) {
 
 
 impl Sink for Console {
-    fn deliver(&mut self, point: Metric) {
+    fn deliver(&mut self, point: Metric) -> Valve<Metric> {
         self.aggrs.add(point);
+        Valve::Open
     }
 
-    fn deliver_lines(&mut self, _: Vec<LogLine>) {
-        // nothing, intentionally
+    fn deliver_lines(&mut self, _: Vec<LogLine>) -> Valve<Vec<LogLine>> {
+        // drop the line, intentionally
+        Valve::Open
     }
 
     fn flush(&mut self) {

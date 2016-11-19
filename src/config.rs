@@ -11,11 +11,13 @@ use std::io::Read;
 use std::str::FromStr;
 use metric::TagMap;
 use std::path::{Path, PathBuf};
+use rusoto::Region;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 use super::source::{FederationReceiverConfig, GraphiteConfig, StatsdConfig, FileServerConfig};
-use super::sink::{WavefrontConfig, ConsoleConfig, FederationTransmitterConfig, NullConfig};
+use super::sink::{WavefrontConfig, ConsoleConfig, FederationTransmitterConfig, NullConfig,
+                  FirehoseConfig};
 
 #[derive(Debug)]
 pub struct Args {
@@ -26,9 +28,9 @@ pub struct Args {
     pub flush_interval: u64,
     pub console: Option<ConsoleConfig>,
     pub null: Option<NullConfig>,
-    pub firehose_delivery_streams: Vec<String>,
     pub wavefront: Option<WavefrontConfig>,
     pub fed_transmitter: Option<FederationTransmitterConfig>,
+    pub firehosen: Vec<FirehoseConfig>,
     pub files: Vec<FileServerConfig>,
     pub verbose: u64,
     pub version: String,
@@ -119,7 +121,7 @@ pub fn parse_args() -> Args {
                 console: console,
                 null: null,
                 wavefront: wavefront,
-                firehose_delivery_streams: Vec::default(),
+                firehosen: Vec::default(),
                 fed_transmitter: None,
                 files: Default::default(),
                 verbose: verb,
@@ -219,12 +221,41 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
     }
 
-    let mut fh_delivery_streams: Vec<String> = Vec::new();
+    let mut firehosen: Vec<FirehoseConfig> = Vec::new();
     if let Some(array) = value.lookup("firehose") {
         if let Some(tbl) = array.as_slice() {
             for val in tbl {
-                match val.lookup("delivery_stream") {
-                    Some(ds) => fh_delivery_streams.push(ds.as_str().unwrap().to_owned()),
+                match val.lookup("delivery_stream").map(|x| x.as_str()) {
+                    Some(ds) => {
+                        let bs = val.lookup("batch_size")
+                            .unwrap_or(&Value::Integer(450))
+                            .as_integer()
+                            .map(|i| i as usize)
+                            .unwrap();
+                        let r = val.lookup("region")
+                            .unwrap_or(&Value::String("us-west-2".into()))
+                            .as_str()
+                            .map(|s| match s {
+                                "ap-northeast-1" => Region::ApNortheast1,
+                                "ap-northeast-2" => Region::ApNortheast2,
+                                "ap-south-1" => Region::ApSouth1,
+                                "ap-southeast-1" => Region::ApSoutheast1,
+                                "ap-southeast-2" => Region::ApSoutheast2,
+                                "cn-north-1" => Region::CnNorth1,
+                                "eu-central-1" => Region::EuCentral1,
+                                "eu-west-1" => Region::EuWest1,
+                                "sa-east-1" => Region::SaEast1,
+                                "us-east-1" => Region::UsEast1,
+                                "us-west-1" => Region::UsWest1,
+                                "us-west-2" => Region::UsWest2,
+                                _ => Region::UsWest2,
+                            });
+                        firehosen.push(FirehoseConfig {
+                            delivery_stream: ds.unwrap().to_string(),
+                            batch_size: bs,
+                            region: r.unwrap(),
+                        })
+                    }
                     None => continue,
                 }
             }
@@ -315,7 +346,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         console: console,
         null: null,
         wavefront: wavefront,
-        firehose_delivery_streams: fh_delivery_streams,
+        firehosen: firehosen,
         fed_transmitter: fedtrn,
         files: files,
         verbose: verbosity,
@@ -328,6 +359,7 @@ mod test {
     use super::*;
     use metric::TagMap;
     use std::path::PathBuf;
+    use rusoto::Region;
 
     #[test]
     fn config_file_default() {
@@ -343,7 +375,7 @@ mod test {
         assert_eq!(args.flush_interval, 60);
         assert!(args.console.is_none());
         assert!(args.null.is_none());
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert_eq!(true, args.firehosen.is_empty());
         assert!(args.wavefront.is_none());
         assert!(args.fed_transmitter.is_none());
         assert_eq!(args.verbose, 4);
@@ -566,8 +598,42 @@ delivery_stream = "stream_two"
 
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.firehose_delivery_streams,
-                   vec!["stream_one", "stream_two"]);
+        assert_eq!(args.firehosen.len(), 2);
+
+        assert_eq!(args.firehosen[0].delivery_stream, "stream_one");
+        assert_eq!(args.firehosen[0].batch_size, 450);
+        assert_eq!(args.firehosen[0].region, Region::UsWest2);
+
+        assert_eq!(args.firehosen[1].delivery_stream, "stream_two");
+        assert_eq!(args.firehosen[1].batch_size, 450);
+        assert_eq!(args.firehosen[1].region, Region::UsWest2);
+    }
+
+    #[test]
+    fn config_file_firehose_complicated() {
+        let config = r#"
+[[firehose]]
+delivery_stream = "stream_one"
+batch_size = 20
+
+[[firehose]]
+delivery_stream = "stream_two"
+batch_size = 800
+region = "us-east-1"
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.firehosen.len(), 2);
+
+        assert_eq!(args.firehosen[0].delivery_stream, "stream_one");
+        assert_eq!(args.firehosen[0].batch_size, 20);
+        assert_eq!(args.firehosen[0].region, Region::UsWest2);
+
+        assert_eq!(args.firehosen[1].delivery_stream, "stream_two");
+        assert_eq!(args.firehosen[1].batch_size, 800);
+        assert_eq!(args.firehosen[1].region, Region::UsEast1);
     }
 
     #[test]
@@ -667,7 +733,7 @@ mission = "from_gad"
         assert_eq!(args.flush_interval, 128);
         assert!(args.console.is_some());
         assert!(args.null.is_some());
-        assert_eq!(true, args.firehose_delivery_streams.is_empty());
+        assert!(args.firehosen.is_empty());
         assert!(args.wavefront.is_some());
         let wavefront = args.wavefront.unwrap();
         assert_eq!(wavefront.host, String::from("example.com"));

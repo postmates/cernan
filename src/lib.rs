@@ -2,7 +2,7 @@ extern crate toml;
 extern crate clap;
 extern crate chrono;
 extern crate fnv;
-extern crate notify;
+extern crate glob;
 extern crate bincode;
 extern crate serde;
 #[macro_use]

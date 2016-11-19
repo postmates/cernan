@@ -1,4 +1,4 @@
-use sink::Sink;
+use sink::{Sink, Valve};
 use metric::{Metric, LogLine};
 use chrono::naive::datetime::NaiveDateTime;
 use chrono::datetime::DateTime;
@@ -12,16 +12,27 @@ use rusoto::{DefaultCredentialsProvider, Region};
 use rusoto::firehose::{KinesisFirehoseClient, PutRecordBatchInput, Record};
 use rusoto::firehose::PutRecordBatchError::*;
 
+#[derive(Debug, Clone)]
+pub struct FirehoseConfig {
+    pub delivery_stream: String,
+    pub batch_size: usize,
+    pub region: Region,
+}
+
 pub struct Firehose {
     buffer: Vec<LogLine>,
     delivery_stream_name: String,
+    region: Region,
+    batch_size: usize,
 }
 
 impl Firehose {
-    pub fn new(delivery_stream: &str) -> Firehose {
+    pub fn new(config: FirehoseConfig) -> Firehose {
         Firehose {
             buffer: Vec::new(),
-            delivery_stream_name: delivery_stream.to_string(),
+            delivery_stream_name: config.delivery_stream,
+            region: config.region,
+            batch_size: config.batch_size,
         }
     }
 }
@@ -29,13 +40,13 @@ impl Firehose {
 impl Sink for Firehose {
     fn flush(&mut self) {
         let provider = DefaultCredentialsProvider::new().unwrap();
-        let client = KinesisFirehoseClient::new(provider, Region::UsWest2);
+        let client = KinesisFirehoseClient::new(provider, self.region);
 
         if self.buffer.is_empty() {
             return;
         }
 
-        for chunk in self.buffer.chunks(450) {
+        for chunk in self.buffer.chunks(self.batch_size) {
             let prbi = PutRecordBatchInput {
                 delivery_stream_name: self.delivery_stream_name.clone(),
                 records: chunk.iter()
@@ -103,13 +114,19 @@ impl Sink for Firehose {
         self.buffer.clear();
     }
 
-    fn deliver(&mut self, _: Metric) {
+    fn deliver(&mut self, _: Metric) -> Valve<Metric> {
         // nothing, intentionally
+        Valve::Open
     }
 
-    fn deliver_lines(&mut self, mut lines: Vec<LogLine>) {
-        let l = &mut lines;
-        self.buffer.append(l);
+    fn deliver_lines(&mut self, mut lines: Vec<LogLine>) -> Valve<Vec<LogLine>> {
+        if self.buffer.len() > 10_000 {
+            Valve::Closed(lines)
+        } else {
+            let l = &mut lines;
+            self.buffer.append(l);
+            Valve::Open
+        }
     }
 }
 

@@ -3,7 +3,7 @@ use std::fmt::Write;
 use std::io::Write as IoWrite;
 use metric::{Metric, LogLine, TagMap};
 use buckets::Buckets;
-use sink::Sink;
+use sink::{Sink, Valve};
 use std::net::ToSocketAddrs;
 use time;
 
@@ -157,12 +157,14 @@ impl Sink for Wavefront {
         }
     }
 
-    fn deliver(&mut self, point: Metric) {
+    fn deliver(&mut self, point: Metric) -> Valve<Metric> {
         self.aggrs.add(point);
+        Valve::Open
     }
 
-    fn deliver_lines(&mut self, _: Vec<LogLine>) {
+    fn deliver_lines(&mut self, _: Vec<LogLine>) -> Valve<Vec<LogLine>> {
         // nothing, intentionally
+        Valve::Open
     }
 }
 

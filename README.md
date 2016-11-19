@@ -199,8 +199,38 @@ port = 8125
 port = 2003
 ```
 
-The `federation_receiver` interface is opt-in. It is discussed in the section
-[Federation](#federation).
+In addition to network ports, cernan is able to ingest log files. This is
+configured in a different manner than the above as there may be many different
+file ingesters.
+
+```
+[[file]]
+path = "/var/log/upstart/very_important.log"
+```
+
+Will follow a single file. 
+
+```
+[[file]]
+path = "/var/log/**/*.log"
+```
+
+Will follow all files that match the above pattern. 
+
+```
+[[file]]
+path = "/var/log/**/*.log"
+
+[[file]]
+path = "/tmp/temporary.log"
+```
+
+Will follow all the files that match `/var/log/**/*.log` as well as
+`/tmp/temporary.log`. Cernan will pick up new files that match the given
+patterns, though it make take up to a minute for cernan to start ingesting them.
+
+The `federation_receiver` interface is opt-in. It is discussed in the
+section [Federation](#federation).
 
 ## Changing how frequently metrics are output
 
@@ -261,6 +291,7 @@ enabled with their default:
 [console]
 [wavefront]
 [null]
+[[firehose]]
 ```
 
 For sinks which support it cernan can report metadata about the
@@ -328,6 +359,30 @@ to. In the following, the transmitter is enabled and configured to ship to a
 port = 1972
 host = "127.0.0.1"
 ```
+
+### firehose 
+
+The `firehose` sink accepts logging information and emits it
+into
+[Amazon Kinesis Firehose](https://aws.amazon.com/kinesis/firehose/). Kinesis
+Firehose can be configured to emit into multiple targets. 
+
+You may configure multiple firehoses. In the following, two firehoses are
+configured: 
+
+```
+[[firehose]]
+delivery_stream = "stream_one"
+batch_size = 20
+
+[[firehose]]
+delivery_stream = "stream_two"
+batch_size = 800
+region = "us-east-1"
+```
+
+By default, region is equivalent to `us-west-2`. In the above `stream_one`
+should exist in `us-west-2` and `stream_two` in `us-east-1`. 
 
 ## Federation
 

@@ -9,8 +9,7 @@ use std::thread;
 use chrono::UTC;
 
 use cernan::source::Source;
-use cernan::sink::Sink;
-use cernan::filter::Filter;
+use cernan::sink::{Sink, FirehoseConfig};
 
 fn main() {
     let args = cernan::config::parse_args();
@@ -79,12 +78,13 @@ fn main() {
         }));
     }
 
-    for ds in &args.firehose_delivery_streams {
-        let fh_name = ds.clone();
-        let (firehose_send, firehose_recv) = cernan::mpsc::channel(&fh_name, &args.data_directory);
+    for fh in &args.firehosen {
+        let f: FirehoseConfig = fh.clone();
+        let ds: String = f.delivery_stream.clone();
+        let (firehose_send, firehose_recv) = cernan::mpsc::channel(&ds, &args.data_directory);
         sends.push(firehose_send);
         joins.push(thread::spawn(move || {
-            cernan::sink::Firehose::new(&fh_name).run(firehose_recv);
+            cernan::sink::Firehose::new(f).run(firehose_recv);
         }));
     }
 
@@ -98,28 +98,19 @@ fn main() {
         }))
     }
 
-    let (statsd_id_send, statsd_id_recv) = cernan::mpsc::channel("statsd_id", &args.data_directory);
+    let statsd_sends = sends.clone();
     if let Some(config) = args.statsd_config {
         joins.push(thread::spawn(move || {
-            cernan::source::Statsd::new(vec![statsd_id_send], config).run();
+            cernan::source::Statsd::new(statsd_sends, config).run();
         }));
     }
-    let statsd_id_sends = sends.clone();
-    joins.push(thread::spawn(move || {
-        cernan::filter::Id::new().run(statsd_id_recv, statsd_id_sends)
-    }));
 
-    let (graphite_scrub_send, graphite_scrub_recv) = cernan::mpsc::channel("graphite_scrub",
-                                                                           &args.data_directory);
+    let graphite_sends = sends.clone();
     if let Some(config) = args.graphite_config {
         joins.push(thread::spawn(move || {
-            cernan::source::Graphite::new(vec![graphite_scrub_send], config).run();
+            cernan::source::Graphite::new(graphite_sends, config).run();
         }));
     }
-    let graphite_scrub_sends = sends.clone();
-    joins.push(thread::spawn(move || {
-        cernan::filter::CollectdScrub::new().run(graphite_scrub_recv, graphite_scrub_sends)
-    }));
 
     for config in args.files {
         let fp_sends = sends.clone();
