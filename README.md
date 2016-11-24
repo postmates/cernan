@@ -30,13 +30,13 @@ by issuing
 
 and following the onscreen instructions. Run
 
-    > cargo run -- --console
+    > cargo run -- -C example-config.toml
 
 and you're good to go. `cargo install` will drop a binary in your path or you
 can `cargo run` from inside this project. If you would like to debug your
 service--to determine if the telemetry you intend is issued--run cernan like
 
-    > cargo run -- --console -vvvv
+    > cargo run -- -C example-config.toml -vvvv
 
 and full trace output will be reported to the tty.
 
