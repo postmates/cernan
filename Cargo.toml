@@ -22,7 +22,6 @@ lazy_static = "0.2.1"
 log = "0.3.6"
 quantiles = "0.2.0"
 rand = "0.3"
-regex = "0.1"
 rusoto = {version = "0.19.1", features = ["firehose"]}
 serde = "0.8"
 serde_json = "0.8"

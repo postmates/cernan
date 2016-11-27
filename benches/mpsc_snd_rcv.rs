@@ -8,7 +8,7 @@ extern crate bincode;
 use self::test::Bencher;
 
 use cernan::mpsc;
-use cernan::metric::{Event,Metric};
+use cernan::metric::{Event, Metric};
 
 use bincode::serde::{serialize, deserialize};
 use bincode::SizeLimit;
@@ -26,7 +26,7 @@ fn bench_serialize_deserialize_metric(b: &mut Bencher) {
     let m = Metric::new("bench", 1.0).counter();
     b.iter(|| {
         let s = serialize(&m, SizeLimit::Infinite).unwrap();
-        let new_m : Metric = deserialize(s.as_slice()).unwrap();
+        let new_m: Metric = deserialize(s.as_slice()).unwrap();
         assert_eq!(Some(1.0), new_m.value());
     });
 }

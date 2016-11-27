@@ -2,7 +2,7 @@ use bincode::SizeLimit;
 use bincode::serde::serialize_into;
 use metric;
 use mpsc;
-use sink::{Sink,Valve};
+use sink::{Sink, Valve};
 use std::io::Write;
 use std::net::{TcpStream, ToSocketAddrs};
 use time;
@@ -59,7 +59,7 @@ impl Sink for FederationTransmitter {
             time::delay(attempts);
             if self.buffer.len() > 10_000 {
                 attempts += 1;
-                continue 
+                continue;
             }
             match recv.next() {
                 None => attempts += 1,

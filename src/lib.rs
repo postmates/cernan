@@ -13,7 +13,6 @@ extern crate rusoto;
 extern crate lazy_static;
 extern crate flate2;
 extern crate rand;
-extern crate regex;
 extern crate quantiles;
 extern crate lua;
 extern crate libc;

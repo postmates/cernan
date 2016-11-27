@@ -7,7 +7,7 @@ extern crate rand;
 
 use self::test::Bencher;
 
-use chrono::{UTC,TimeZone};
+use chrono::{UTC, TimeZone};
 use cernan::buckets;
 use cernan::metric::Metric;
 use rand::Rng;
@@ -211,8 +211,10 @@ fn bench_multi_counters(b: &mut Bencher) {
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
-        for name in &["a", "aa", "aaa", "aaaa", "aaaaa", "aaaaaa", "aaaaaa"] {       // 7
-            for i in &[-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0] { // 11
+        for name in &["a", "aa", "aaa", "aaaa", "aaaaa", "aaaaaa", "aaaaaa"] {
+            // 7
+            for i in &[-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0] {
+                // 11
                 bucket.add(Metric::new(*name, *i).time(dt_0).counter());
                 bucket.add(Metric::new(*name, *i).time(dt_1).counter());
             }
@@ -240,8 +242,10 @@ fn bench_multi_gauges(b: &mut Bencher) {
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
-        for name in &["a", "aa", "aaa", "aaaa", "aaaaa", "aaaaaa", "aaaaaa"] {       // 7
-            for i in &[-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0] { // 11
+        for name in &["a", "aa", "aaa", "aaaa", "aaaaa", "aaaaaa", "aaaaaa"] {
+            // 7
+            for i in &[-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0] {
+                // 11
                 bucket.add(Metric::new(*name, *i).time(dt_0).gauge());
                 bucket.add(Metric::new(*name, *i).time(dt_1).gauge());
             }

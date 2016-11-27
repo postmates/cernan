@@ -2,12 +2,11 @@ use metric;
 use mpsc;
 use time;
 
-mod collectd_scrub;
+mod programmable_filter;
 
-pub use self::collectd_scrub::CollectdScrub;
+pub use self::programmable_filter::ProgrammableFilter;
 
 pub trait Filter {
-    fn new<S>(name: S) -> Self where S: Into<String>;
     // TODO There should be a way to send a modified event to some channels, not
     // to others etc.
     fn process<'a>(&mut self,

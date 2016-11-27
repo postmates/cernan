@@ -110,7 +110,7 @@ fn main() {
                                                                            &args.data_directory);
     let graphite_sends = sends.clone();
     joins.push(thread::spawn(move || {
-        cernan::filter::CollectdScrub::new("foo").run(graphite_scrub_recv, graphite_sends)
+        cernan::filter::ProgrammableFilter::new("foo", "/Users/briantroutwine/postmates/cernan/scripts/cernan_bridge.lua").run(graphite_scrub_recv, graphite_sends)
     }));
     if let Some(config) = args.graphite_config {
         joins.push(thread::spawn(move || {
