@@ -4,7 +4,7 @@ use time;
 
 mod programmable_filter;
 
-pub use self::programmable_filter::ProgrammableFilter;
+pub use self::programmable_filter::{ProgrammableFilter, ProgrammableFilterConfig};
 
 pub trait Filter {
     // TODO There should be a way to send a modified event to some channels, not

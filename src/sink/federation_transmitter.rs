@@ -106,7 +106,7 @@ impl Sink for FederationTransmitter {
                         }
                     }
                 }
-            } 
+            }
             Err(e) => {
                 info!("Unable to perform DNS lookup on host {} with error {}",
                       self.host,

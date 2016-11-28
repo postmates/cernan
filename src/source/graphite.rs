@@ -23,6 +23,7 @@ pub struct GraphiteConfig {
     pub ip: String,
     pub port: u16,
     pub tags: metric::TagMap,
+    pub forwards: Vec<String>,
 }
 
 impl Default for GraphiteConfig {
@@ -31,6 +32,7 @@ impl Default for GraphiteConfig {
             ip: String::from(""),
             port: 2003,
             tags: metric::TagMap::default(),
+            forwards: Vec::new(),
         }
     }
 }

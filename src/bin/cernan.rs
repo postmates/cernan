@@ -7,9 +7,10 @@ extern crate log;
 use std::str;
 use std::thread;
 use chrono::UTC;
+use std::path::{Path, PathBuf};
 
 use cernan::source::Source;
-use cernan::filter::Filter;
+use cernan::filter::{Filter, ProgrammableFilterConfig};
 use cernan::sink::{Sink, FirehoseConfig};
 
 fn main() {
@@ -110,7 +111,16 @@ fn main() {
                                                                            &args.data_directory);
     let graphite_sends = sends.clone();
     joins.push(thread::spawn(move || {
-        cernan::filter::ProgrammableFilter::new("foo", "/Users/briantroutwine/postmates/cernan/scripts/cernan_bridge.lua").run(graphite_scrub_recv, graphite_sends)
+        let script: PathBuf =
+            Path::new("/Users/briantroutwine/postmates/cernan/scripts/cernan_bridge.lua")
+                .to_path_buf();
+        let config = ProgrammableFilterConfig {
+            script: script,
+            forwards: Vec::new(),
+        };
+        let mut pf: cernan::filter::ProgrammableFilter =
+            cernan::filter::ProgrammableFilter::new(config);
+        pf.run(graphite_scrub_recv, graphite_sends)
     }));
     if let Some(config) = args.graphite_config {
         joins.push(thread::spawn(move || {

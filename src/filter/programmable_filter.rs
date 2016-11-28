@@ -6,6 +6,7 @@ use lua;
 use lua::ffi::lua_State;
 use lua::{State, Function};
 use libc::c_int;
+use std::path::PathBuf;
 
 struct Payload {
     metric: metric::Metric,
@@ -75,10 +76,14 @@ pub struct ProgrammableFilter {
     state: lua::State,
 }
 
+#[derive(Debug)]
+pub struct ProgrammableFilterConfig {
+    pub script: PathBuf,
+    pub forwards: Vec<String>,
+}
+
 impl ProgrammableFilter {
-    pub fn new<S>(_name: S, prog: &str) -> ProgrammableFilter
-        where S: Into<String>
-    {
+    pub fn new(config: ProgrammableFilterConfig) -> ProgrammableFilter {
         let mut state = lua::State::new();
         state.open_libs();
 
@@ -86,7 +91,7 @@ impl ProgrammableFilter {
         state.set_fns(&PAYLOAD_LIB, 0);
         state.set_global("payload");
 
-        println!("{:?}", state.load_file(prog));
+        println!("{:?}", state.load_file(&config.script.to_str().unwrap()));
         state.pcall(0, 0, 0);
 
         state.get_global("process");
@@ -142,12 +147,16 @@ mod tests {
     use filter::Filter;
     use metric;
     use mpsc::channel;
+    use std::path::Path;
 
     #[test]
     fn test_collectd_non_ip_extraction() {
-        let mut cs = ProgrammableFilter::new("foo",
-                                             "/Users/briantroutwine/postmates/cernan/scripts/cernan_bridge.\
-                                              lua");
+        let config = ProgrammableFilterConfig {
+            script: Path::new("/Users/briantroutwine/postmates/cernan/scripts/cernan_bridge.lua")
+                .to_path_buf(),
+            forwards: Vec::new(),
+        };
+        let mut cs = ProgrammableFilter::new(config);
 
         let orig = "collectd.totally_fine.interface-lo.if_errors.tx 0 1478751126";
         let expected = "collectd.interface-lo.if_errors.tx 0 1478751126";
@@ -176,9 +185,12 @@ mod tests {
 
     #[test]
     fn test_non_collectd_extraction() {
-        let mut cs = ProgrammableFilter::new("foo",
-                                             "/Users/briantroutwine/postmates/cernan/scripts/cernan_bridge.\
-                                              lua");
+        let config = ProgrammableFilterConfig {
+            script: Path::new("/Users/briantroutwine/postmates/cernan/scripts/cernan_bridge.lua")
+                .to_path_buf(),
+            forwards: Vec::new(),
+        };
+        let mut cs = ProgrammableFilter::new(config);
 
         let orig = "totally_fine.interface-lo.if_errors.tx 0 1478751126";
         let expected = "totally_fine.interface-lo.if_errors.tx 0 1478751126";

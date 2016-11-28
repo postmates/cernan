@@ -21,6 +21,7 @@ pub struct StatsdConfig {
     pub ip: String,
     pub port: u16,
     pub tags: metric::TagMap,
+    pub forwards: Vec<String>,
 }
 
 impl Default for StatsdConfig {
@@ -29,6 +30,7 @@ impl Default for StatsdConfig {
             ip: String::from(""),
             port: 8125,
             tags: metric::TagMap::default(),
+            forwards: Vec::new(),
         }
     }
 }

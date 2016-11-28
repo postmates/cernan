@@ -29,6 +29,7 @@ pub struct FileServer {
 pub struct FileServerConfig {
     pub path: PathBuf,
     pub tags: metric::TagMap,
+    pub forwards: Vec<String>,
 }
 
 impl FileServer {

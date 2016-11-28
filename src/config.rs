@@ -12,16 +12,19 @@ use std::str::FromStr;
 use metric::TagMap;
 use std::path::{Path, PathBuf};
 use rusoto::Region;
+use std::collections::HashMap;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 use super::source::{FederationReceiverConfig, GraphiteConfig, StatsdConfig, FileServerConfig};
 use super::sink::{WavefrontConfig, ConsoleConfig, FederationTransmitterConfig, NullConfig,
                   FirehoseConfig};
+use super::filter::ProgrammableFilterConfig;
 
 #[derive(Debug)]
 pub struct Args {
     pub data_directory: PathBuf,
+    pub scripts_directory: PathBuf,
     pub statsd_config: Option<StatsdConfig>,
     pub graphite_config: Option<GraphiteConfig>,
     pub fed_receiver_config: Option<FederationReceiverConfig>,
@@ -113,6 +116,7 @@ pub fn parse_args() -> Args {
 
             Args {
                 data_directory: Path::new("/tmp/cernan-data").to_path_buf(),
+                scripts_directory: Path::new("/tmp/cernan-scripts").to_path_buf(),
                 statsd_config: Some(statsd_config),
                 graphite_config: Some(graphite_config),
                 flush_interval: u64::from_str(args.value_of("flush-interval").unwrap())
@@ -147,15 +151,16 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         None => TagMap::default(),
     };
 
-    let null = if value.lookup("null").is_some() {
+    let null = if value.lookup("null").or(value.lookup("sinks.null")).is_some() {
         Some(NullConfig {})
     } else {
         None
     };
 
-    let console = if value.lookup("console").is_some() {
+    let console = if value.lookup("console").or(value.lookup("sinks.console")).is_some() {
         Some(ConsoleConfig {
             bin_width: value.lookup("console.bin_width")
+                .or(value.lookup("sinks.console.bin_width"))
                 .unwrap_or(&Value::Integer(1))
                 .as_integer()
                 .map(|i| i as i64)
@@ -165,19 +170,22 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         None
     };
 
-    let wavefront = if value.lookup("wavefront").is_some() {
+    let wavefront = if value.lookup("wavefront").or(value.lookup("sinks.wavefront")).is_some() {
         Some(WavefrontConfig {
             port: value.lookup("wavefront.port")
+                .or(value.lookup("sinks.wavefront.port"))
                 .unwrap_or(&Value::Integer(2878))
                 .as_integer()
                 .map(|i| i as u16)
                 .unwrap(),
             host: value.lookup("wavefront.host")
+                .or(value.lookup("sinks.wavefront.host"))
                 .unwrap_or(&Value::String("127.0.0.1".to_string()))
                 .as_str()
                 .map(|s| s.to_string())
                 .unwrap(),
             bin_width: value.lookup("wavefront.bin_width")
+                .or(value.lookup("sinks.wavefront.bin_width"))
                 .unwrap_or(&Value::Integer(1))
                 .as_integer()
                 .map(|i| i as i64)
@@ -187,14 +195,18 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         None
     };
 
-    let fedtrn = if value.lookup("federation_transmitter").is_some() {
+    let fedtrn = if value.lookup("federation_transmitter")
+        .or(value.lookup("sinks.federation_transmitter"))
+        .is_some() {
         Some(FederationTransmitterConfig {
             port: value.lookup("federation_transmitter.port")
+                .or(value.lookup("sinks.federation_transmitter.port"))
                 .unwrap_or(&Value::Integer(1972))
                 .as_integer()
                 .map(|i| i as u16)
                 .unwrap(),
             host: value.lookup("federation_transmitter.host")
+                .or(value.lookup("sinks.federation_transmitter.host"))
                 .unwrap_or(&Value::String("127.0.0.1".to_string()))
                 .as_str()
                 .map(|s| s.to_string())
@@ -205,62 +217,176 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     };
 
     let mut files = Vec::new();
-    if let Some(array) = value.lookup("file") {
-        for tbl in array.as_slice().unwrap() {
-            match tbl.lookup("path") {
+    match value.lookup("file") {
+        Some(array) => {
+            for tbl in array.as_slice().unwrap() {
+                match tbl.lookup("path") {
+                    Some(pth) => {
+                        let path = Path::new(pth.as_str().unwrap());
+                        let fwds = match tbl.lookup("forwards") {
+                            Some(fwds) => {
+                                fwds.as_slice()
+                                    .expect("forwards must be an array")
+                                    .to_vec()
+                                    .iter()
+                                    .map(|s| s.as_str().unwrap().to_string())
+                                    .collect()
+                            }
+                            None => Vec::new(),
+                        };
+                        let config = FileServerConfig {
+                            path: path.to_path_buf(),
+                            tags: tags.clone(),
+                            forwards: fwds,
+                        };
+                        files.push(config)
+                    }
+                    None => continue,
+                }
+            }
+        }
+        None => {
+            if let Some(tbls) = value.lookup("sources.files") {
+                for tbl in tbls.as_table().unwrap().values() {
+                    match tbl.lookup("path") {
+                        Some(pth) => {
+                            let path = Path::new(pth.as_str().unwrap());
+                            let fwds = match tbl.lookup("forwards") {
+                                Some(fwds) => {
+                                    fwds.as_slice()
+                                        .expect("forwards must be an array")
+                                        .to_vec()
+                                        .iter()
+                                        .map(|s| s.as_str().unwrap().to_string())
+                                        .collect()
+                                }
+                                None => Vec::new(),
+                            };
+                            let config = FileServerConfig {
+                                path: path.to_path_buf(),
+                                tags: tags.clone(),
+                                forwards: fwds,
+                            };
+                            files.push(config)
+                        }
+                        None => continue,
+                    }
+                }
+            }
+        }
+    }
+
+    let mut filters = HashMap::new();
+    if let Some(tbls) = value.lookup("filters") {
+        for (name, tbl) in tbls.as_table().unwrap().iter() {
+            match tbl.lookup("script") {
                 Some(pth) => {
                     let path = Path::new(pth.as_str().unwrap());
-                    let config = FileServerConfig {
-                        path: path.to_path_buf(),
-                        tags: tags.clone(),
+                    let fwds = match tbl.lookup("forwards") {
+                        Some(fwds) => {
+                            fwds.as_slice()
+                                .expect("forwards must be an array")
+                                .to_vec()
+                                .iter()
+                                .map(|s| s.as_str().unwrap().to_string())
+                                .collect()
+                        }
+                        None => Vec::new(),
                     };
-                    files.push(config)
+                    let config = ProgrammableFilterConfig {
+                        script: path.to_path_buf(),
+                        forwards: fwds,
+                    };
+                    filters.insert(name, config);
                 }
                 None => continue,
             }
         }
     }
 
+
     let mut firehosen: Vec<FirehoseConfig> = Vec::new();
-    if let Some(array) = value.lookup("firehose") {
-        if let Some(tbl) = array.as_slice() {
-            for val in tbl {
-                match val.lookup("delivery_stream").map(|x| x.as_str()) {
-                    Some(ds) => {
-                        let bs = val.lookup("batch_size")
-                            .unwrap_or(&Value::Integer(450))
-                            .as_integer()
-                            .map(|i| i as usize)
-                            .unwrap();
-                        let r = val.lookup("region")
-                            .unwrap_or(&Value::String("us-west-2".into()))
-                            .as_str()
-                            .map(|s| match s {
-                                "ap-northeast-1" => Region::ApNortheast1,
-                                "ap-northeast-2" => Region::ApNortheast2,
-                                "ap-south-1" => Region::ApSouth1,
-                                "ap-southeast-1" => Region::ApSoutheast1,
-                                "ap-southeast-2" => Region::ApSoutheast2,
-                                "cn-north-1" => Region::CnNorth1,
-                                "eu-central-1" => Region::EuCentral1,
-                                "eu-west-1" => Region::EuWest1,
-                                "sa-east-1" => Region::SaEast1,
-                                "us-east-1" => Region::UsEast1,
-                                "us-west-1" => Region::UsWest1,
-                                "us-west-2" => Region::UsWest2,
-                                _ => Region::UsWest2,
-                            });
-                        firehosen.push(FirehoseConfig {
-                            delivery_stream: ds.unwrap().to_string(),
-                            batch_size: bs,
-                            region: r.unwrap(),
-                        })
+    match value.lookup("firehose") {
+        Some(array) => {
+            if let Some(tbl) = array.as_slice() {
+                for val in tbl {
+                    match val.lookup("delivery_stream").map(|x| x.as_str()) {
+                        Some(ds) => {
+                            let bs = val.lookup("batch_size")
+                                .unwrap_or(&Value::Integer(450))
+                                .as_integer()
+                                .map(|i| i as usize)
+                                .unwrap();
+                            let r = val.lookup("region")
+                                .unwrap_or(&Value::String("us-west-2".into()))
+                                .as_str()
+                                .map(|s| match s {
+                                    "ap-northeast-1" => Region::ApNortheast1,
+                                    "ap-northeast-2" => Region::ApNortheast2,
+                                    "ap-south-1" => Region::ApSouth1,
+                                    "ap-southeast-1" => Region::ApSoutheast1,
+                                    "ap-southeast-2" => Region::ApSoutheast2,
+                                    "cn-north-1" => Region::CnNorth1,
+                                    "eu-central-1" => Region::EuCentral1,
+                                    "eu-west-1" => Region::EuWest1,
+                                    "sa-east-1" => Region::SaEast1,
+                                    "us-east-1" => Region::UsEast1,
+                                    "us-west-1" => Region::UsWest1,
+                                    "us-west-2" => Region::UsWest2,
+                                    _ => Region::UsWest2,
+                                });
+                            firehosen.push(FirehoseConfig {
+                                delivery_stream: ds.unwrap().to_string(),
+                                batch_size: bs,
+                                region: r.unwrap(),
+                            })
+                        }
+                        None => continue,
                     }
-                    None => continue,
+                }
+            }
+        }
+        None => {
+            if let Some(tbls) = value.lookup("sinks.firehose") {
+                for tbl in tbls.as_table().unwrap().values() {
+                    match tbl.lookup("delivery_stream").map(|x| x.as_str()) {
+                        Some(ds) => {
+                            let bs = tbl.lookup("batch_size")
+                                .unwrap_or(&Value::Integer(450))
+                                .as_integer()
+                                .map(|i| i as usize)
+                                .unwrap();
+                            let r = tbl.lookup("region")
+                                .unwrap_or(&Value::String("us-west-2".into()))
+                                .as_str()
+                                .map(|s| match s {
+                                    "ap-northeast-1" => Region::ApNortheast1,
+                                    "ap-northeast-2" => Region::ApNortheast2,
+                                    "ap-south-1" => Region::ApSouth1,
+                                    "ap-southeast-1" => Region::ApSoutheast1,
+                                    "ap-southeast-2" => Region::ApSoutheast2,
+                                    "cn-north-1" => Region::CnNorth1,
+                                    "eu-central-1" => Region::EuCentral1,
+                                    "eu-west-1" => Region::EuWest1,
+                                    "sa-east-1" => Region::SaEast1,
+                                    "us-east-1" => Region::UsEast1,
+                                    "us-west-1" => Region::UsWest1,
+                                    "us-west-2" => Region::UsWest2,
+                                    _ => Region::UsWest2,
+                                });
+                            firehosen.push(FirehoseConfig {
+                                delivery_stream: ds.unwrap().to_string(),
+                                batch_size: bs,
+                                region: r.unwrap(),
+                            })
+                        }
+                        None => continue,
+                    }
                 }
             }
         }
     }
+
 
     let statsd_config = match value.lookup("statsd-port") {
         Some(p) => {
@@ -271,13 +397,24 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
         None => {
             let is_enabled = value.lookup("statsd.enabled")
+                .or(value.lookup("sources.statsd.enabled"))
                 .unwrap_or(&Value::Boolean(true))
                 .as_bool()
                 .expect("must be a bool");
             if is_enabled {
                 let mut sconfig = StatsdConfig::default();
-                if let Some(p) = value.lookup("statsd.port") {
+                if let Some(p) = value.lookup("statsd.port")
+                    .or(value.lookup("sources.statsd.port")) {
                     sconfig.port = p.as_integer().expect("statsd-port must be integer") as u16;
+                }
+                if let Some(fwds) = value.lookup("statsd.forwards")
+                    .or(value.lookup("sources.statsd.forwards")) {
+                    sconfig.forwards = fwds.as_slice()
+                        .expect("forwards must be an array")
+                        .to_vec()
+                        .iter()
+                        .map(|s| s.as_str().unwrap().to_string())
+                        .collect();
                 }
                 sconfig.tags = tags.clone();
                 Some(sconfig)
@@ -296,13 +433,24 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
         None => {
             let is_enabled = value.lookup("graphite.enabled")
+                .or(value.lookup("sources.graphite.enabled"))
                 .unwrap_or(&Value::Boolean(true))
                 .as_bool()
                 .expect("must be a bool");
             if is_enabled {
                 let mut gconfig = GraphiteConfig::default();
-                if let Some(p) = value.lookup("graphite.port") {
+                if let Some(p) = value.lookup("graphite.port")
+                    .or(value.lookup("sources.graphite.port")) {
                     gconfig.port = p.as_integer().expect("graphite-port must be integer") as u16;
+                }
+                if let Some(fwds) = value.lookup("graphite.forwards")
+                    .or(value.lookup("sources.graphite.forwards")) {
+                    gconfig.forwards = fwds.as_slice()
+                        .expect("forwards must be an array")
+                        .to_vec()
+                        .iter()
+                        .map(|s| s.as_str().unwrap().to_string())
+                        .collect();
                 }
                 gconfig.tags = tags.clone();
                 Some(gconfig)
@@ -312,19 +460,36 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
     };
 
-    let federation_receiver_config = if value.lookup("federation_receiver").is_some() {
-        let port = match value.lookup("federation_receiver.port") {
+    let federation_receiver_config = if value.lookup("federation_receiver")
+        .or(value.lookup("sources.federation_receiver"))
+        .is_some() {
+        let port = match value.lookup("federation_receiver.port")
+            .or(value.lookup("sources.federation_receiver.port")) {
             Some(p) => p.as_integer().expect("fed_receiver.port must be integer") as u16,
             None => 1972,
         };
-        let ip = match value.lookup("federation_receiver.ip") {
+        let ip = match value.lookup("federation_receiver.ip")
+            .or(value.lookup("sources.federation_receiver.ip")) {
             Some(p) => p.as_str().unwrap(),
             None => "0.0.0.0",
+        };
+        let fwds = match value.lookup("graphite.forwards")
+            .or(value.lookup("sources.graphite.forwards")) {
+            Some(fwds) => {
+                fwds.as_slice()
+                    .expect("forwards must be an array")
+                    .to_vec()
+                    .iter()
+                    .map(|s| s.as_str().unwrap().to_string())
+                    .collect()
+            }
+            None => Vec::new(),
         };
         Some(FederationReceiverConfig {
             ip: ip.to_owned(),
             port: port,
             tags: tags.clone(),
+            forwards: fwds,
         })
     } else {
         None
@@ -333,6 +498,11 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     Args {
         data_directory: value.lookup("data-directory")
             .unwrap_or(&Value::String("/tmp/cernan-data".to_string()))
+            .as_str()
+            .map(|s| Path::new(s).to_path_buf())
+            .unwrap(),
+        scripts_directory: value.lookup("scripts-directory")
+            .unwrap_or(&Value::String("/tmp/cernan-scripts".to_string()))
             .as_str()
             .map(|s| Path::new(s).to_path_buf())
             .unwrap(),
@@ -358,8 +528,50 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
 mod test {
     use super::*;
     use metric::TagMap;
-    use std::path::PathBuf;
+    use std::path::{PathBuf, Path};
     use rusoto::Region;
+
+    #[test]
+    fn config_file_data_directory() {
+        let config = r#"
+data-directory = "/foo/bar"
+"#
+            .to_string();
+        let args = parse_config_file(config, 4);
+        let dir = Path::new("/foo/bar").to_path_buf();
+
+        assert_eq!(args.data_directory, dir);
+    }
+
+    #[test]
+    fn config_file_data_directory_default() {
+        let config = r#""#.to_string();
+        let args = parse_config_file(config, 4);
+        let dir = Path::new("/tmp/cernan-data").to_path_buf();
+
+        assert_eq!(args.data_directory, dir);
+    }
+
+    #[test]
+    fn config_file_scripts_directory() {
+        let config = r#"
+scripts-directory = "/foo/bar"
+"#
+            .to_string();
+        let args = parse_config_file(config, 4);
+        let dir = Path::new("/foo/bar").to_path_buf();
+
+        assert_eq!(args.scripts_directory, dir);
+    }
+
+    #[test]
+    fn config_file_scripts_directory_default() {
+        let config = r#""#.to_string();
+        let args = parse_config_file(config, 4);
+        let dir = Path::new("/tmp/cernan-scripts").to_path_buf();
+
+        assert_eq!(args.scripts_directory, dir);
+    }
 
     #[test]
     fn config_file_default() {
@@ -414,6 +626,24 @@ ip = "127.0.0.1"
     }
 
     #[test]
+    fn config_fed_receiver_sources_style() {
+        let config = r#"
+[sources]
+  [sources.federation_receiver]
+  ip = "127.0.0.1"
+  port = 1972
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.fed_receiver_config.is_some());
+        let fed_receiver_config = args.fed_receiver_config.unwrap();
+        assert_eq!(fed_receiver_config.port, 1972);
+        assert_eq!(fed_receiver_config.ip, String::from("127.0.0.1"));
+    }
+
+    #[test]
     fn config_fed_transmitter() {
         let config = r#"
 [federation_transmitter]
@@ -434,6 +664,24 @@ port = 1987
         let config = r#"
 [federation_transmitter]
 host = "foo.example.com"
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.fed_transmitter.is_some());
+        let fed_transmitter = args.fed_transmitter.unwrap();
+        assert_eq!(fed_transmitter.host, String::from("foo.example.com"));
+        assert_eq!(fed_transmitter.port, 1972);
+    }
+
+    #[test]
+    fn config_fed_transmitter_distinct_host_sinks_style() {
+        let config = r#"
+[sinks]
+  [sinks.federation_transmitter]
+  host = "foo.example.com"
+  port = 1972
 "#
             .to_string();
 
@@ -487,6 +735,26 @@ port = 1024
     }
 
     #[test]
+    fn config_statsd_sources_style() {
+        let config = r#"
+[sources]
+  [sources.statsd]
+  enabled = true
+  port = 1024
+  forwards = ["sinks.console", "sinks.null"]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.statsd_config.is_some());
+        let config = args.statsd_config.unwrap();
+        assert_eq!(config.port, 1024);
+        assert_eq!(config.forwards,
+                   vec!["sinks.console".to_string(), "sinks.null".to_string()]);
+    }
+
+    #[test]
     fn config_graphite_backward_compat() {
         let config = r#"
 graphite-port = 1024
@@ -528,12 +796,51 @@ port = 1024
     }
 
     #[test]
+    fn config_graphite_sources_style() {
+        let config = r#"
+[sources]
+  [sources.graphite]
+  enabled = true
+  port = 2003
+  forwards = ["filters.collectd_scrub"]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.graphite_config.is_some());
+        let config = args.graphite_config.unwrap();
+        assert_eq!(config.port, 2003);
+        assert_eq!(config.forwards, vec!["filters.collectd_scrub"]);
+    }
+
+    #[test]
     fn config_file_wavefront() {
         let config = r#"
 [wavefront]
 port = 3131
 host = "example.com"
 bin_width = 9
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.wavefront.is_some());
+        let wavefront = args.wavefront.unwrap();
+        assert_eq!(wavefront.host, String::from("example.com"));
+        assert_eq!(wavefront.port, 3131);
+        assert_eq!(wavefront.bin_width, 9);
+    }
+
+    #[test]
+    fn config_file_wavefront_sinks_style() {
+        let config = r#"
+[sinks]
+  [sinks.wavefront]
+  port = 3131
+  host = "example.com"
+  bin_width = 9
 "#
             .to_string();
 
@@ -574,9 +881,37 @@ bin_width = 9
     }
 
     #[test]
+    fn config_file_console_explicit_bin_width_sinks_style() {
+        let config = r#"
+[sinks]
+  [sinks.console]
+  bin_width = 9
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.console.is_some());
+        assert_eq!(args.console.unwrap().bin_width, 9);
+    }
+
+    #[test]
     fn config_file_null() {
         let config = r#"
 [null]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.null.is_some());
+    }
+
+    #[test]
+    fn config_file_null_sinks_style() {
+        let config = r#"
+[sinks]
+  [sinks.null]
 "#
             .to_string();
 
@@ -637,6 +972,34 @@ region = "us-east-1"
     }
 
     #[test]
+    fn config_file_firehose_complicated_sinks_style() {
+        let config = r#"
+[sinks]
+  [sinks.firehose.stream_one]
+  delivery_stream = "stream_one"
+  batch_size = 20
+
+  [sinks.firehose.stream_two]
+  delivery_stream = "stream_two"
+  batch_size = 800
+  region = "us-east-1"
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.firehosen.len(), 2);
+
+        assert_eq!(args.firehosen[0].delivery_stream, "stream_one");
+        assert_eq!(args.firehosen[0].batch_size, 20);
+        assert_eq!(args.firehosen[0].region, Region::UsWest2);
+
+        assert_eq!(args.firehosen[1].delivery_stream, "stream_two");
+        assert_eq!(args.firehosen[1].batch_size, 800);
+        assert_eq!(args.firehosen[1].region, Region::UsEast1);
+    }
+
+    #[test]
     fn config_file_file_source_single() {
         let config = r#"
 [[file]]
@@ -666,6 +1029,48 @@ path = "/bar.txt"
         assert!(!args.files.is_empty());
         assert_eq!(args.files[0].path, PathBuf::from("/foo/bar.txt"));
         assert_eq!(args.files[1].path, PathBuf::from("/bar.txt"));
+    }
+
+    #[test]
+    fn config_file_file_source_single_sources_style() {
+        let config = r#"
+[sources]
+  [sources.files]
+  [sources.files.foo_bar_txt]
+  path = "/foo/bar.txt"
+  forwards = ["sink.blech"]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(!args.files.is_empty());
+        assert_eq!(args.files[0].path, PathBuf::from("/foo/bar.txt"));
+        assert_eq!(args.files[0].forwards, vec!["sink.blech"]);
+    }
+
+    #[test]
+    fn config_file_file_source_multiple_sources_style() {
+        let config = r#"
+[sources]
+  [sources.files]
+  [sources.files.foo_bar_txt]
+  path = "/foo/bar.txt"
+  forwards = ["sink.blech"]
+
+  [sources.files.bar_txt]
+  path = "/bar.txt"
+  forwards = ["sink.bar.blech"]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(!args.files.is_empty());
+        assert_eq!(args.files[1].path, PathBuf::from("/foo/bar.txt"));
+        assert_eq!(args.files[1].forwards, vec!["sink.blech"]);
+        assert_eq!(args.files[0].path, PathBuf::from("/bar.txt"));
+        assert_eq!(args.files[0].forwards, vec!["sink.bar.blech"]);
     }
 
     #[test]
