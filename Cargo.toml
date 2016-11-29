@@ -26,6 +26,7 @@ rusoto = {version = "0.19.1", features = ["firehose"]}
 serde = "0.8"
 serde_json = "0.8"
 toml = "0.2.0"
+uuid = {version = "0.2", features = ["v4"]}
 
 [dev-dependencies]
 tempdir = "0.3"

@@ -16,6 +16,7 @@ extern crate rand;
 extern crate quantiles;
 extern crate lua;
 extern crate libc;
+extern crate uuid;
 
 pub mod mpsc;
 pub mod sink;
