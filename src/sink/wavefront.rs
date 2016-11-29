@@ -112,12 +112,12 @@ impl Sink for Wavefront {
             if attempts > 0 {
                 debug!("delivery attempts: {}", attempts);
             }
-            time::delay(attempts);
             let addrs = (self.host.as_str(), self.port).to_socket_addrs();
             match addrs {
                 Ok(srv) => {
                     let ips: Vec<_> = srv.collect();
                     for ip in ips {
+                        time::delay(attempts);
                         match TcpStream::connect(ip) {
                             Ok(mut stream) => {
                                 let res = stream.write(self.format_stats().as_bytes());

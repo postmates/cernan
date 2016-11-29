@@ -81,7 +81,6 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                     let buf = line.into_bytes();
                     str::from_utf8(&buf)
                         .map(|val| {
-                            trace!("{}", val);
                             let pyld_hndl_time = Instant::now();
                             match metric::Metric::parse_graphite(val) {
                                 Some(metrics) => {
@@ -93,7 +92,7 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                                         m = m.overlay_tags_from_map(&tags);
                                         send("graphite", &mut chans, &metric::Event::Graphite(m));
                                     }
-                                    debug!("payload handle effective, elapsed (ns): {}",
+                                    trace!("payload handle effective, elapsed (ns): {}",
                                            time::elapsed_ns(pyld_hndl_time));
                                 }
                                 None => {
@@ -103,7 +102,7 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                                         .overlay_tags_from_map(&tags);
                                     send("graphite", &mut chans, &metric::Event::Statsd(metric));
                                     error!("bad packet: {:?}", val);
-                                    debug!("payload handle failure, elapsed (ns): {}",
+                                    trace!("payload handle failure, elapsed (ns): {}",
                                            time::elapsed_ns(pyld_hndl_time));
                                 }
                             }

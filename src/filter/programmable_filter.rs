@@ -4,7 +4,7 @@ use mpsc;
 
 use lua;
 use lua::ffi::lua_State;
-use lua::{State, Function};
+use lua::{State, Function, ThreadStatus};
 use libc::c_int;
 use std::path::PathBuf;
 
@@ -91,10 +91,29 @@ impl ProgrammableFilter {
         state.set_fns(&PAYLOAD_LIB, 0);
         state.set_global("payload");
 
-        println!("{:?}", state.load_file(&config.script.to_str().unwrap()));
-        state.pcall(0, 0, 0);
-
-        state.get_global("process");
+        let script_path = &config.script.to_str().unwrap();
+        match state.load_file(script_path) {
+            ThreadStatus::Ok => trace!("was able to load script at {}", script_path),
+            ThreadStatus::SyntaxError => {
+                error!("syntax error in script at {}", script_path);
+                panic!()
+            }
+            other => {
+                error!("unknown status: {:?}", other);
+                panic!()
+            }
+        }
+        match state.pcall(0, 0, 0) {
+            ThreadStatus::Ok => trace!("was able to load script at {}", script_path),
+            ThreadStatus::SyntaxError => {
+                error!("syntax error in script at {}", script_path);
+                panic!()
+            }
+            other => {
+                error!("unknown status: {:?}", other);
+                panic!()
+            }
+        }
 
         ProgrammableFilter { state: state }
     }
@@ -109,7 +128,9 @@ impl filter::Filter for ProgrammableFilter {
         let event = event.clone();
         match event {
             metric::Event::Graphite(m) => {
-                let mut point = Payload::new(m);
+                self.state.get_global("process"); // function to be called 
+
+                let mut point = Payload::new(m); // push first argument 
                 unsafe {
                     self.state.push_light_userdata::<Payload>(&mut point);
                 }
@@ -117,11 +138,9 @@ impl filter::Filter for ProgrammableFilter {
                 self.state.set_metatable(-2);
 
                 self.state.call(1, 0);
-                println!("NAME: {}", point.metric.name);
 
-                debug!("adjusted name: {}", point.metric.name);
                 let new_event = metric::Event::Graphite(point.metric);
-                debug!("new_event: {:?}", new_event);
+
                 let mut emitts = Vec::new();
                 for chan in chans {
                     emitts.push((chan, vec![new_event.clone()]))

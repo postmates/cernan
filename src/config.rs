@@ -141,6 +141,12 @@ pub fn parse_args() -> Args {
 pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     let value: toml::Value = buffer.parse().unwrap();
 
+    let scripts_dir: PathBuf = value.lookup("scripts-directory")
+        .unwrap_or(&Value::String("/tmp/cernan-scripts".to_string()))
+        .as_str()
+        .map(|s| Path::new(s).to_path_buf())
+        .unwrap();
+
     let tags: TagMap = match value.lookup("tags") {
         Some(tbl) => {
             let mut tags = TagMap::default();
@@ -306,7 +312,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                     };
                     let config_path = format!("filters.{}", name);
                     let config = ProgrammableFilterConfig {
-                        script: path.to_path_buf(),
+                        script: scripts_dir.join(path),
                         forwards: fwds,
                         config_path: config_path.clone(),
                     };
@@ -516,11 +522,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             .as_str()
             .map(|s| Path::new(s).to_path_buf())
             .unwrap(),
-        scripts_directory: value.lookup("scripts-directory")
-            .unwrap_or(&Value::String("/tmp/cernan-scripts".to_string()))
-            .as_str()
-            .map(|s| Path::new(s).to_path_buf())
-            .unwrap(),
+        scripts_directory: scripts_dir,
         statsd_config: statsd_config,
         graphite_config: graphite_config,
         fed_receiver_config: federation_receiver_config,
@@ -847,7 +849,30 @@ port = 1024
         println!("{:?}", args.filters);
         let config0: &ProgrammableFilterConfig =
             args.filters.get("filters.collectd_scrub").unwrap();
-        assert_eq!(config0.script.to_str().unwrap(), "cernan_bridge.lua");
+        assert_eq!(config0.script.to_str().unwrap(),
+                   "/tmp/cernan-scripts/cernan_bridge.lua");
+        assert_eq!(config0.forwards, vec!["sinks.console"]);
+    }
+
+    #[test]
+    fn config_filters_sources_style_non_default() {
+        let config = r#"
+scripts-directory = "data/"
+[filters]
+  [filters.collectd_scrub]
+  script = "cernan_bridge.lua"
+  forwards = ["sinks.console"]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.filters.len(), 1);
+
+        println!("{:?}", args.filters);
+        let config0: &ProgrammableFilterConfig =
+            args.filters.get("filters.collectd_scrub").unwrap();
+        assert_eq!(config0.script.to_str().unwrap(), "data/cernan_bridge.lua");
         assert_eq!(config0.forwards, vec!["sinks.console"]);
     }
 

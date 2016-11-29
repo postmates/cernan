@@ -57,7 +57,7 @@ fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>,
             Ok(r) => r,
             Err(_) => panic!("Could not read UDP socket."),
         };
-        debug!("recv time elapsed (ns): {}", time::elapsed_ns(recv_time));
+        trace!("recv time elapsed (ns): {}", time::elapsed_ns(recv_time));
         str::from_utf8(&buf[..len])
             .map(|val| {
                 trace!("{}", val);
@@ -71,7 +71,7 @@ fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>,
                         let mut metric = metric::Metric::new("cernan.statsd.packet", 1.0).counter();
                         metric = metric.overlay_tags_from_map(&tags);
                         send("statsd", &mut chans, &metric::Event::Statsd(metric));
-                        debug!("payload handle effective, elapsed (ns): {}",
+                        trace!("payload handle effective, elapsed (ns): {}",
                                time::elapsed_ns(pyld_hndl_time));
                     }
                     None => {
@@ -80,7 +80,7 @@ fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>,
                         metric = metric.overlay_tags_from_map(&tags);
                         send("statsd", &mut chans, &metric::Event::Statsd(metric));
                         error!("BAD PACKET: {:?}", val);
-                        debug!("payload handle failure, elapsed (ns): {}",
+                        trace!("payload handle failure, elapsed (ns): {}",
                                time::elapsed_ns(pyld_hndl_time));
                     }
                 }

@@ -17,8 +17,8 @@ use cernan::mpsc;
 use cernan::metric;
 
 fn populate_forwards(sends: &mut Vec<mpsc::Sender<metric::Event>>,
-                     forwards: &Vec<String>,
-                     config_path: &String,
+                     forwards: &[String],
+                     config_path: &str,
                      available_sends: &HashMap<String, mpsc::Sender<metric::Event>>) {
     for fwd in forwards {
         match available_sends.get(fwd) {

@@ -22,6 +22,7 @@ pub trait Filter {
             match recv.next() {
                 None => attempts += 1,
                 Some(mut event) => {
+                    attempts = 0;
                     for &mut (ref mut chan, ref events) in
                         &mut self.process(&mut event, &mut chans) {
                         for ev in events {
