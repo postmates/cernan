@@ -548,6 +548,7 @@ mod test {
     use metric::TagMap;
     use std::path::{PathBuf, Path};
     use rusoto::Region;
+    use filter::ProgrammableFilterConfig;
 
     #[test]
     fn config_file_data_directory() {
