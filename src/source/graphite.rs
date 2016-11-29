@@ -24,6 +24,7 @@ pub struct GraphiteConfig {
     pub port: u16,
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
+    pub config_path: String,
 }
 
 impl Default for GraphiteConfig {
@@ -33,6 +34,7 @@ impl Default for GraphiteConfig {
             port: 2003,
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
+            config_path: "sources.graphite".to_string(),
         }
     }
 }

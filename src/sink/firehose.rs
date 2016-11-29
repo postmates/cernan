@@ -17,6 +17,7 @@ pub struct FirehoseConfig {
     pub delivery_stream: String,
     pub batch_size: usize,
     pub region: Region,
+    pub config_path: String,
 }
 
 pub struct Firehose {

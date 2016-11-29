@@ -14,7 +14,7 @@ struct Payload {
 
 impl Payload {
     fn new(m: metric::Metric) -> Payload {
-        return Payload { metric: m };
+        Payload { metric: m }
     }
 
     #[allow(non_snake_case)]
@@ -29,8 +29,7 @@ impl Payload {
     unsafe extern "C" fn lua_set_metric_name(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let point = state.to_userdata(1) as *mut Payload;
-        let new_name = state.check_string(2).clone();
-        (*point).metric.name = new_name.into();
+        (*point).metric.name = state.check_string(2).into();
         0
     }
 
@@ -76,10 +75,11 @@ pub struct ProgrammableFilter {
     state: lua::State,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProgrammableFilterConfig {
     pub script: PathBuf,
     pub forwards: Vec<String>,
+    pub config_path: String,
 }
 
 impl ProgrammableFilter {
@@ -155,6 +155,7 @@ mod tests {
             script: Path::new("/Users/briantroutwine/postmates/cernan/scripts/cernan_bridge.lua")
                 .to_path_buf(),
             forwards: Vec::new(),
+            config_path: "filters.collectd_scrub".to_string(),
         };
         let mut cs = ProgrammableFilter::new(config);
 
@@ -189,6 +190,7 @@ mod tests {
             script: Path::new("/Users/briantroutwine/postmates/cernan/scripts/cernan_bridge.lua")
                 .to_path_buf(),
             forwards: Vec::new(),
+            config_path: "filters.collectd_scrub".to_string(),
         };
         let mut cs = ProgrammableFilter::new(config);
 

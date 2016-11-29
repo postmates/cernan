@@ -18,16 +18,7 @@ pub struct WavefrontConfig {
     pub bin_width: i64,
     pub host: String,
     pub port: u16,
-}
-
-impl Default for WavefrontConfig {
-    fn default() -> WavefrontConfig {
-        WavefrontConfig {
-            bin_width: 1,
-            host: String::from("localhost"),
-            port: 2878,
-        }
-    }
+    pub config_path: String,
 }
 
 #[inline]
@@ -181,7 +172,12 @@ mod test {
     fn test_format_wavefront() {
         let mut tags = TagMap::default();
         tags.insert("source".into(), "test-src".into());
-        let config = WavefrontConfig::default();
+        let config = WavefrontConfig {
+            bin_width: 1,
+            host: "127.0.0.1".to_string(),
+            port: 1987,
+            config_path: "sinks.wavefront".to_string(),
+        };
         let mut wavefront = Wavefront::new(config);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();

@@ -35,6 +35,7 @@ pub struct Args {
     pub fed_transmitter: Option<FederationTransmitterConfig>,
     pub firehosen: Vec<FirehoseConfig>,
     pub files: Vec<FileServerConfig>,
+    pub filters: HashMap<String, ProgrammableFilterConfig>,
     pub verbose: u64,
     pub version: String,
 }
@@ -81,17 +82,18 @@ pub fn parse_args() -> Args {
                     port: u16::from_str(args.value_of("wavefront-port").unwrap()).unwrap(),
                     host: args.value_of("wavefront-host").unwrap().to_string(),
                     bin_width: 1,
+                    config_path: "sinks.wavefront".to_string(),
                 })
             } else {
                 None
             };
             let null = if args.is_present("null") {
-                Some(NullConfig::default())
+                Some(NullConfig::new("sinks.null".to_string()))
             } else {
                 None
             };
             let console = if args.is_present("console") {
-                Some(ConsoleConfig::default())
+                Some(ConsoleConfig::new("sinks.console".to_string()))
             } else {
                 None
             };
@@ -128,6 +130,7 @@ pub fn parse_args() -> Args {
                 firehosen: Vec::default(),
                 fed_transmitter: None,
                 files: Default::default(),
+                filters: Default::default(),
                 verbose: verb,
                 version: VERSION.unwrap().to_string(),
             }
@@ -152,7 +155,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     };
 
     let null = if value.lookup("null").or(value.lookup("sinks.null")).is_some() {
-        Some(NullConfig {})
+        Some(NullConfig { config_path: "sinks.null".to_string() })
     } else {
         None
     };
@@ -165,6 +168,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .as_integer()
                 .map(|i| i as i64)
                 .unwrap(),
+            config_path: "sinks.console".to_string(),
         })
     } else {
         None
@@ -190,6 +194,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .as_integer()
                 .map(|i| i as i64)
                 .unwrap(),
+            config_path: "sinks.wavefront".to_string(),
         })
     } else {
         None
@@ -211,6 +216,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .as_str()
                 .map(|s| s.to_string())
                 .unwrap(),
+            config_path: "sinks.federation_transmitter".to_string(),
         })
     } else {
         None
@@ -234,10 +240,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                             }
                             None => Vec::new(),
                         };
+                        let path_buf = path.to_path_buf();
                         let config = FileServerConfig {
-                            path: path.to_path_buf(),
+                            path: path_buf.clone(),
                             tags: tags.clone(),
                             forwards: fwds,
+                            config_path: format!("sources.files.{}", path_buf.to_str().unwrap()),
                         };
                         files.push(config)
                     }
@@ -262,10 +270,13 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                                 }
                                 None => Vec::new(),
                             };
+                            let path_buf = path.to_path_buf();
                             let config = FileServerConfig {
-                                path: path.to_path_buf(),
+                                path: path_buf.clone(),
                                 tags: tags.clone(),
                                 forwards: fwds,
+                                config_path: format!("sources.files.{}",
+                                                     path_buf.to_str().unwrap()),
                             };
                             files.push(config)
                         }
@@ -276,7 +287,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
     }
 
-    let mut filters = HashMap::new();
+    let mut filters: HashMap<String, ProgrammableFilterConfig> = HashMap::new();
     if let Some(tbls) = value.lookup("filters") {
         for (name, tbl) in tbls.as_table().unwrap().iter() {
             match tbl.lookup("script") {
@@ -293,11 +304,13 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                         }
                         None => Vec::new(),
                     };
+                    let config_path = format!("filters.{}", name);
                     let config = ProgrammableFilterConfig {
                         script: path.to_path_buf(),
                         forwards: fwds,
+                        config_path: config_path.clone(),
                     };
-                    filters.insert(name, config);
+                    filters.insert(config_path, config);
                 }
                 None => continue,
             }
@@ -332,13 +345,14 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                                     "sa-east-1" => Region::SaEast1,
                                     "us-east-1" => Region::UsEast1,
                                     "us-west-1" => Region::UsWest1,
-                                    "us-west-2" => Region::UsWest2,
-                                    _ => Region::UsWest2,
+                                    "us-west-2" | _ => Region::UsWest2,
                                 });
+                            let delivery_stream = ds.unwrap().to_string();
                             firehosen.push(FirehoseConfig {
-                                delivery_stream: ds.unwrap().to_string(),
+                                delivery_stream: delivery_stream.clone(),
                                 batch_size: bs,
                                 region: r.unwrap(),
+                                config_path: format!("sinks.firehose.{}", delivery_stream),
                             })
                         }
                         None => continue,
@@ -348,7 +362,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
         None => {
             if let Some(tbls) = value.lookup("sinks.firehose") {
-                for tbl in tbls.as_table().unwrap().values() {
+                for (key, tbl) in tbls.as_table().unwrap().iter() {
                     match tbl.lookup("delivery_stream").map(|x| x.as_str()) {
                         Some(ds) => {
                             let bs = tbl.lookup("batch_size")
@@ -371,13 +385,13 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                                     "sa-east-1" => Region::SaEast1,
                                     "us-east-1" => Region::UsEast1,
                                     "us-west-1" => Region::UsWest1,
-                                    "us-west-2" => Region::UsWest2,
-                                    _ => Region::UsWest2,
+                                    "us-west-2" | _ => Region::UsWest2,
                                 });
                             firehosen.push(FirehoseConfig {
                                 delivery_stream: ds.unwrap().to_string(),
                                 batch_size: bs,
                                 region: r.unwrap(),
+                                config_path: format!("sinks.firehose.{}", key),
                             })
                         }
                         None => continue,
@@ -490,6 +504,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             port: port,
             tags: tags.clone(),
             forwards: fwds,
+            config_path: "sources.federation_receiver".to_string(),
         })
     } else {
         None
@@ -519,6 +534,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         firehosen: firehosen,
         fed_transmitter: fedtrn,
         files: files,
+        filters: filters,
         verbose: verbosity,
         version: VERSION.unwrap().to_string(),
     }
@@ -812,6 +828,27 @@ port = 1024
         let config = args.graphite_config.unwrap();
         assert_eq!(config.port, 2003);
         assert_eq!(config.forwards, vec!["filters.collectd_scrub"]);
+    }
+
+    #[test]
+    fn config_filters_sources_style() {
+        let config = r#"
+[filters]
+  [filters.collectd_scrub]
+  script = "cernan_bridge.lua"
+  forwards = ["sinks.console"]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.filters.len(), 1);
+
+        println!("{:?}", args.filters);
+        let config0: &ProgrammableFilterConfig =
+            args.filters.get("filters.collectd_scrub").unwrap();
+        assert_eq!(config0.script.to_str().unwrap(), "cernan_bridge.lua");
+        assert_eq!(config0.forwards, vec!["sinks.console"]);
     }
 
     #[test]

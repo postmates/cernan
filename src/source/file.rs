@@ -30,6 +30,7 @@ pub struct FileServerConfig {
     pub path: PathBuf,
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
+    pub config_path: String,
 }
 
 impl FileServer {
@@ -95,12 +96,12 @@ impl FileWatcher {
                 }
             }
 
-            if let Some(metadata) = fs::metadata(&self.path).ok() {
+            if let Ok(metadata) = fs::metadata(&self.path) {
                 let dev = metadata.dev();
                 let ino = metadata.ino();
 
                 if (dev, ino) != self.file_id {
-                    if let Some(f) = fs::File::open(&self.path).ok() {
+                    if let Ok(f) = fs::File::open(&self.path) {
                         self.file_id = (dev, ino);
                         let rdr = io::BufReader::new(f);
                         self.reader = rdr;
@@ -122,16 +123,13 @@ impl Source for FileServer {
         let mut lines = Vec::new();
 
         loop {
-            for entry in glob(&self.path.to_str().expect("no ability to glob"))
+            for entry in glob(self.path.to_str().expect("no ability to glob"))
                 .expect("Failed to read glob pattern") {
                 match entry {
                     Ok(path) => {
                         let entry = fp_map.entry(path.clone());
-                        match FileWatcher::new(path) {
-                            Some(fw) => {
-                                entry.or_insert(fw);
-                            }
-                            None => {}
+                        if let Some(fw) = FileWatcher::new(path) {
+                            entry.or_insert(fw);
                         };
                     }
                     Err(e) => {
@@ -170,7 +168,7 @@ impl Source for FileServer {
                             }
                         }
                     }
-                    if lines.len() > 0 {
+                    if !lines.is_empty() {
                         send("file", &mut self.chans, &metric::Event::Log(lines));
                         lines = Vec::new();
                     }

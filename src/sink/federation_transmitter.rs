@@ -20,6 +20,7 @@ pub struct FederationTransmitter {
 pub struct FederationTransmitterConfig {
     pub port: u16,
     pub host: String,
+    pub config_path: String,
 }
 
 impl FederationTransmitter {
