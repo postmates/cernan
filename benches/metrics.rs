@@ -5,7 +5,7 @@ extern crate cernan;
 
 use self::test::Bencher;
 
-use cernan::metric::{Metric};
+use cernan::metric::Metric;
 
 #[bench]
 fn bench_statsd_incr_gauge_no_sample(b: &mut Bencher) {

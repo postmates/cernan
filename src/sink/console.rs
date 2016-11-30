@@ -13,20 +13,18 @@ impl Console {
     }
 }
 
-impl Default for Console {
-    fn default() -> Console {
-        Self::new(ConsoleConfig::default())
-    }
-}
-
 #[derive(Debug)]
 pub struct ConsoleConfig {
+    pub config_path: String,
     pub bin_width: i64,
 }
 
-impl Default for ConsoleConfig {
-    fn default() -> ConsoleConfig {
-        ConsoleConfig { bin_width: 1 }
+impl ConsoleConfig {
+    pub fn new(config_path: String) -> ConsoleConfig {
+        ConsoleConfig {
+            config_path: config_path,
+            bin_width: 1,
+        }
     }
 }
 
@@ -34,7 +32,6 @@ impl Default for ConsoleConfig {
 fn fmt_line(key: &str, value: f64) {
     println!("    {}: {}", key, value)
 }
-
 
 impl Sink for Console {
     fn deliver(&mut self, point: Metric) -> Valve<Metric> {

@@ -4,6 +4,7 @@ use chrono::naive::datetime::NaiveDateTime;
 use chrono::datetime::DateTime;
 use chrono::offset::utc::UTC;
 use time;
+use uuid::Uuid;
 
 use serde_json;
 use serde_json::Map;
@@ -17,6 +18,7 @@ pub struct FirehoseConfig {
     pub delivery_stream: String,
     pub batch_size: usize,
     pub region: Region,
+    pub config_path: String,
 }
 
 pub struct Firehose {
@@ -52,9 +54,14 @@ impl Sink for Firehose {
                 records: chunk.iter()
                     .map(|m| {
                         let mut pyld = Map::new();
-                        pyld.insert(String::from("fs_path"), (*m.path).to_string());
-                        pyld.insert(String::from("line"), m.value.clone());
+                        pyld.insert(String::from("Path"), (*m.path).to_string());
+                        pyld.insert(String::from("Payload"), m.value.clone());
                         pyld.insert(String::from("timestamp"), format_time(m.time));
+                        pyld.insert(String::from("Uuid"),
+                                    Uuid::new_v4().hyphenated().to_string());
+                        for (k, v) in m.tags.iter() {
+                            pyld.insert(k.clone(), v.clone());
+                        }
                         Record { data: serde_json::ser::to_vec(&pyld).unwrap() }
                     })
                     .collect(),

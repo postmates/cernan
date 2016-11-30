@@ -109,7 +109,7 @@ impl AddAssign for Metric {
             MetricKind::Gauge => {
                 self.kind = rhs.kind;
                 self.value = rhs.value;
-            } 
+            }
             _ => {
                 self.value += rhs.value;
                 assert_eq!(self.kind, rhs.kind);

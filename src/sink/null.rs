@@ -10,19 +10,14 @@ impl Null {
     }
 }
 
-impl Default for Null {
-    fn default() -> Self {
-        Self::new(NullConfig::default())
-    }
-}
-
 #[derive(Debug)]
 pub struct NullConfig {
+    pub config_path: String,
 }
 
-impl Default for NullConfig {
-    fn default() -> NullConfig {
-        NullConfig {}
+impl NullConfig {
+    pub fn new(config_path: String) -> NullConfig {
+        NullConfig { config_path: config_path }
     }
 }
 

@@ -25,6 +25,8 @@ pub struct FederationReceiverConfig {
     pub ip: String,
     pub port: u16,
     pub tags: metric::TagMap,
+    pub forwards: Vec<String>,
+    pub config_path: String,
 }
 
 impl FederationReceiver {

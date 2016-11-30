@@ -2,11 +2,9 @@ use metric;
 use mpsc;
 use time;
 
-mod id;
-mod collectd_scrub;
+mod programmable_filter;
 
-pub use self::id::Id;
-pub use self::collectd_scrub::CollectdScrub;
+pub use self::programmable_filter::{ProgrammableFilter, ProgrammableFilterConfig};
 
 pub trait Filter {
     // TODO There should be a way to send a modified event to some channels, not
@@ -24,6 +22,7 @@ pub trait Filter {
             match recv.next() {
                 None => attempts += 1,
                 Some(mut event) => {
+                    attempts = 0;
                     for &mut (ref mut chan, ref events) in
                         &mut self.process(&mut event, &mut chans) {
                         for ev in events {

@@ -2,7 +2,7 @@ use bincode::SizeLimit;
 use bincode::serde::serialize_into;
 use metric;
 use mpsc;
-use sink::{Sink,Valve};
+use sink::{Sink, Valve};
 use std::io::Write;
 use std::net::{TcpStream, ToSocketAddrs};
 use time;
@@ -20,6 +20,7 @@ pub struct FederationTransmitter {
 pub struct FederationTransmitterConfig {
     pub port: u16,
     pub host: String,
+    pub config_path: String,
 }
 
 impl FederationTransmitter {
@@ -59,7 +60,7 @@ impl Sink for FederationTransmitter {
             time::delay(attempts);
             if self.buffer.len() > 10_000 {
                 attempts += 1;
-                continue 
+                continue;
             }
             match recv.next() {
                 None => attempts += 1,
@@ -106,7 +107,7 @@ impl Sink for FederationTransmitter {
                         }
                     }
                 }
-            } 
+            }
             Err(e) => {
                 info!("Unable to perform DNS lookup on host {} with error {}",
                       self.host,

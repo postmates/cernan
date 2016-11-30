@@ -172,17 +172,17 @@ config file.
 
 ## Configuration
 
-The cernan server has options to control which ports its ingestion interfaces
-run on:
+The cernan server has options to control which ports and protocols are running
+ingestion interfaces. These are referred to as 'sources'. 
 
 ```
-[statsd]
+[sources.statsd.primary]
 port = 8125 # UDP port to bind for statsd traffic. [default: 8125]
 
-[graphite]
+[sources.graphite.primary]
 port = 2003 # TCP port to bind for graphite traffic. [default: 2003]
 
-[federation_receiver]
+[sources.federation_receiver]
 port = 1972 # TCP port to bind for Federation traffic. [default: 1972]
 ```
 
@@ -191,37 +191,48 @@ default. To disable set `enabled = false`. For example, this configuration
 disables the statsd listeners but keeps graphite going:
 
 ```
-[statsd]
+[sources.statsd.primary]
 enabled = false
 port = 8125
 
-[graphite]
+[sources.statsd.secondary]
+enabled = false
+port = 8126
+
+[sources.graphite.primary]
 port = 2003
 ```
 
+It is possible to run multiple sources that cover the same protocol so long as
+they are offset on different ports. Each source must be named uniquely. In the
+above we have three sources--only one of which is enabled--named
+`sources.statsd.primary`, `sources.statsd.secondary` and
+`sources.graphite.primary`. There may only be one `federation_receiver`
+source. All others _must_ have a unique name.
+
 In addition to network ports, cernan is able to ingest log files. This is
 configured in a different manner than the above as there may be many different
-file ingesters.
+file ingesters. Files are also considered sources. 
 
 ```
-[[file]]
+[sources.files.very_important]
 path = "/var/log/upstart/very_important.log"
 ```
 
 Will follow a single file. 
 
 ```
-[[file]]
+[sources.files.var_log_logs]
 path = "/var/log/**/*.log"
 ```
 
 Will follow all files that match the above pattern. 
 
 ```
-[[file]]
+[sources.files.var_log_logs]
 path = "/var/log/**/*.log"
 
-[[file]]
+[sources.files.temporary_log]
 path = "/tmp/temporary.log"
 ```
 
@@ -231,6 +242,45 @@ patterns, though it make take up to a minute for cernan to start ingesting them.
 
 The `federation_receiver` interface is opt-in. It is discussed in the
 section [Federation](#federation).
+
+## Forwards
+
+A forward is a routing distination from one source to potentially many
+sinks. Each source _must_ set at least one forward. Forwards are configured
+through the `forwards` parameter on each source. Consider the following:
+
+```
+[sources]
+  [sources.statsd.primary] 
+  enabled = true
+  port = 8125
+  forwards = ["sinks.console"]
+  
+  [sources.statsd.secondary] 
+  enabled = true
+  port = 8126
+  forwards = ["sinks.federation_transmitter"]
+
+  [sources.graphite.primary] 
+  enabled = true
+  port = 2004
+  forwards = ["sinks.federation_transmitter", "sinks.console"]
+
+[sinks]
+  [sinks.console] 
+  bin_width = 1
+
+  [sinks.federation_transmitter] 
+  host = "127.0.0.1"
+  port = 1972
+```
+
+This sets up a cernan to have two statsd sources, running on ports 8125 and
+8126, named 'primary' and 'secondary'. Additionally, a sole graphite source is
+enabled. The primary statsd source is will forward all of its metrics to the
+console sink while the secondary statsd source will forward to the federation
+transmitter sink. The graphite source will forward its metrics to all available
+sinks.
 
 ## Changing how frequently metrics are output
 
@@ -269,10 +319,10 @@ aggregate points into 1 second bins on the console sink and 10 second bins for
 the wavefront sink:
 
 ```
-[console]
+[sinks.console]
 bin_width = 1
 
-[wavefront]
+[sinks.wavefront]
 bin_width = 10
 ```
 
@@ -288,10 +338,11 @@ it is sufficient to make an entry for it. In the following, all sinks are
 enabled with their default:
 
 ```
-[console]
-[wavefront]
-[null]
-[[firehose]]
+[sinks]
+  [sinks.console]
+  [sinks.wavefront]
+  [sinks.null]
+  [sinks.firehose.stream_one]
 ```
 
 For sinks which support it cernan can report metadata about the
@@ -371,11 +422,11 @@ You may configure multiple firehoses. In the following, two firehoses are
 configured: 
 
 ```
-[[firehose]]
+[sinks.firehose.stream_one]
 delivery_stream = "stream_one"
 batch_size = 20
 
-[[firehose]]
+[sinks.firehose.stream_two]
 delivery_stream = "stream_two"
 batch_size = 800
 region = "us-east-1"
@@ -391,11 +442,6 @@ another cernan instance. The Federation subsystem is for you. The 'receiver'
 cernan instance will listen on a TCP port, ingest points and then emit them
 through its own sinks. The 'transmitter' host will emit to its configured
 'reciever'.
-
-Until [issue 39](https://github.com/postmates/cernan/issues/39) is resolved
-_all_ points inbound will go to all sinks. Once that issue is resolved, it will
-be possible to route points into different sinks, one of which may be
-`federation_transmitter`.
 
 ## Prior Art
 
