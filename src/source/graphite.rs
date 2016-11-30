@@ -18,7 +18,7 @@ pub struct Graphite {
     tags: Arc<metric::TagMap>,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct GraphiteConfig {
     pub ip: String,
     pub port: u16,

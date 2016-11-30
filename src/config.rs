@@ -25,8 +25,8 @@ use super::filter::ProgrammableFilterConfig;
 pub struct Args {
     pub data_directory: PathBuf,
     pub scripts_directory: PathBuf,
-    pub statsd_config: Option<StatsdConfig>,
-    pub graphite_config: Option<GraphiteConfig>,
+    pub statsds: HashMap<String, StatsdConfig>,
+    pub graphites: HashMap<String, GraphiteConfig>,
     pub fed_receiver_config: Option<FederationReceiverConfig>,
     pub flush_interval: u64,
     pub console: Option<ConsoleConfig>,
@@ -109,18 +109,22 @@ pub fn parse_args() -> Args {
                 graphite_config.port = u16::from_str(gport_str)
                     .expect("graphite-port must be an integer");
             }
+            let mut graphites = HashMap::new();
+            graphites.insert("sources.graphite".to_string(), graphite_config);
 
             let mut statsd_config = StatsdConfig::default();
             if let Some(sport_str) = args.value_of("statsd-port") {
                 statsd_config.port = u16::from_str(sport_str)
                     .expect("statsd-port must be an integer");
             }
+            let mut statsds = HashMap::new();
+            statsds.insert("sources.statsd".to_string(), statsd_config);
 
             Args {
                 data_directory: Path::new("/tmp/cernan-data").to_path_buf(),
                 scripts_directory: Path::new("/tmp/cernan-scripts").to_path_buf(),
-                statsd_config: Some(statsd_config),
-                graphite_config: Some(graphite_config),
+                statsds: statsds,
+                graphites: graphites,
                 flush_interval: u64::from_str(args.value_of("flush-interval").unwrap())
                     .expect("flush-interval must be an integer"),
                 fed_receiver_config: None,
@@ -407,75 +411,120 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
     }
 
-
-    let statsd_config = match value.lookup("statsd-port") {
+    let mut statsds = HashMap::new();
+    match value.lookup("statsd-port") {
         Some(p) => {
             let mut sconfig = StatsdConfig::default();
             sconfig.port = p.as_integer().expect("statsd-port must be integer") as u16;
             sconfig.tags = tags.clone();
-            Some(sconfig)
+            statsds.insert("sources.statsd".to_string(), sconfig);
         }
         None => {
-            let is_enabled = value.lookup("statsd.enabled")
-                .or(value.lookup("sources.statsd.enabled"))
-                .unwrap_or(&Value::Boolean(true))
-                .as_bool()
-                .expect("must be a bool");
-            if is_enabled {
-                let mut sconfig = StatsdConfig::default();
-                if let Some(p) = value.lookup("statsd.port")
-                    .or(value.lookup("sources.statsd.port")) {
-                    sconfig.port = p.as_integer().expect("statsd-port must be integer") as u16;
+            if let Some(tbls) = value.lookup("sources.statsd") {
+                for (name, tbl) in tbls.as_table().unwrap().iter() {
+                    let is_enabled = tbl.lookup("enabled")
+                        .unwrap_or(&Value::Boolean(true))
+                        .as_bool()
+                        .expect("must be a bool");
+                    if is_enabled {
+                        let mut sconfig = StatsdConfig::default();
+                        if let Some(p) = tbl.lookup("port") {
+                            sconfig.port =
+                                p.as_integer().expect("statsd-port must be integer") as u16;
+                        }
+                        if let Some(fwds) = tbl.lookup("forwards") {
+                            sconfig.forwards = fwds.as_slice()
+                                .expect("forwards must be an array")
+                                .to_vec()
+                                .iter()
+                                .map(|s| s.as_str().unwrap().to_string())
+                                .collect();
+                        }
+                        sconfig.tags = tags.clone();
+                        statsds.insert(format!("sources.statsd.{}", name), sconfig);
+                    }
                 }
-                if let Some(fwds) = value.lookup("statsd.forwards")
-                    .or(value.lookup("sources.statsd.forwards")) {
-                    sconfig.forwards = fwds.as_slice()
-                        .expect("forwards must be an array")
-                        .to_vec()
-                        .iter()
-                        .map(|s| s.as_str().unwrap().to_string())
-                        .collect();
-                }
-                sconfig.tags = tags.clone();
-                Some(sconfig)
             } else {
-                None
+                let is_enabled = value.lookup("statsd.enabled")
+                    .unwrap_or(&Value::Boolean(true))
+                    .as_bool()
+                    .expect("must be a bool");
+                if is_enabled {
+                    let mut sconfig = StatsdConfig::default();
+                    if let Some(p) = value.lookup("statsd.port") {
+                        sconfig.port =
+                            p.as_integer().expect("statsd-port must be integer") as u16;
+                    }
+                    if let Some(fwds) = value.lookup("statsd.forwards") {
+                        sconfig.forwards = fwds.as_slice()
+                            .expect("forwards must be an array")
+                            .to_vec()
+                            .iter()
+                            .map(|s| s.as_str().unwrap().to_string())
+                            .collect();
+                    }
+                    sconfig.tags = tags.clone();
+                    statsds.insert("sources.statsd".to_string(), sconfig);
+                }
             }
         }
     };
 
-    let graphite_config = match value.lookup("graphite-port") {
+    let mut graphites = HashMap::new();
+    match value.lookup("graphite-port") {
         Some(p) => {
             let mut gconfig = GraphiteConfig::default();
             gconfig.port = p.as_integer().expect("graphite-port must be integer") as u16;
             gconfig.tags = tags.clone();
-            Some(gconfig)
+            graphites.insert("sources.graphite".to_string(), gconfig);
         }
         None => {
-            let is_enabled = value.lookup("graphite.enabled")
-                .or(value.lookup("sources.graphite.enabled"))
-                .unwrap_or(&Value::Boolean(true))
-                .as_bool()
-                .expect("must be a bool");
-            if is_enabled {
-                let mut gconfig = GraphiteConfig::default();
-                if let Some(p) = value.lookup("graphite.port")
-                    .or(value.lookup("sources.graphite.port")) {
-                    gconfig.port = p.as_integer().expect("graphite-port must be integer") as u16;
+            if let Some(tbls) = value.lookup("sources.graphite") {
+                for (name, tbl) in tbls.as_table().unwrap().iter() {
+                    let is_enabled = tbl.lookup("enabled")
+                        .unwrap_or(&Value::Boolean(true))
+                        .as_bool()
+                        .expect("must be a bool");
+                    if is_enabled {
+                        let mut gconfig = GraphiteConfig::default();
+                        if let Some(p) = tbl.lookup("port") {
+                            gconfig.port =
+                                p.as_integer().expect("graphite-port must be integer") as u16;
+                        }
+                        if let Some(fwds) = tbl.lookup("forwards") {
+                            gconfig.forwards = fwds.as_slice()
+                                .expect("forwards must be an array")
+                                .to_vec()
+                                .iter()
+                                .map(|s| s.as_str().unwrap().to_string())
+                                .collect();
+                        }
+                        gconfig.tags = tags.clone();
+                        graphites.insert(format!("sources.graphite.{}", name), gconfig);
+                    }
                 }
-                if let Some(fwds) = value.lookup("graphite.forwards")
-                    .or(value.lookup("sources.graphite.forwards")) {
-                    gconfig.forwards = fwds.as_slice()
-                        .expect("forwards must be an array")
-                        .to_vec()
-                        .iter()
-                        .map(|s| s.as_str().unwrap().to_string())
-                        .collect();
-                }
-                gconfig.tags = tags.clone();
-                Some(gconfig)
             } else {
-                None
+                let is_enabled = value.lookup("graphite.enabled")
+                    .unwrap_or(&Value::Boolean(true))
+                    .as_bool()
+                    .expect("must be a bool");
+                if is_enabled {
+                    let mut gconfig = GraphiteConfig::default();
+                    if let Some(p) = value.lookup("graphite.port") {
+                        gconfig.port =
+                            p.as_integer().expect("graphite-port must be integer") as u16;
+                    }
+                    if let Some(fwds) = value.lookup("graphite.forwards") {
+                        gconfig.forwards = fwds.as_slice()
+                            .expect("forwards must be an array")
+                            .to_vec()
+                            .iter()
+                            .map(|s| s.as_str().unwrap().to_string())
+                            .collect();
+                    }
+                    gconfig.tags = tags.clone();
+                    graphites.insert("sources.graphite".to_string(), gconfig);
+                }
             }
         }
     };
@@ -523,8 +572,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             .map(|s| Path::new(s).to_path_buf())
             .unwrap(),
         scripts_directory: scripts_dir,
-        statsd_config: statsd_config,
-        graphite_config: graphite_config,
+        statsds: statsds,
+        graphites: graphites,
         fed_receiver_config: federation_receiver_config,
         flush_interval: value.lookup("flush-interval")
             .unwrap_or(&Value::Integer(60))
@@ -598,10 +647,10 @@ scripts-directory = "/foo/bar"
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.statsd_config.is_some());
-        assert_eq!(args.statsd_config.unwrap().port, 8125);
-        assert!(args.graphite_config.is_some());
-        assert_eq!(args.graphite_config.unwrap().port, 2003);
+        assert!(!args.statsds.is_empty());
+        assert_eq!(args.statsds.get("sources.statsd").unwrap().port, 8125);
+        assert!(!args.graphites.is_empty());
+        assert_eq!(args.graphites.get("sources.graphite").unwrap().port, 2003);
         assert!(args.fed_receiver_config.is_none());
         assert_eq!(args.flush_interval, 60);
         assert!(args.console.is_none());
@@ -721,8 +770,10 @@ statsd-port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.statsd_config.is_some());
-        assert_eq!(args.statsd_config.unwrap().port, 1024);
+        assert_eq!(args.statsds.len(), 1);
+
+        let config0 = args.statsds.get("sources.statsd").unwrap();
+        assert_eq!(config0.port, 1024);
     }
 
     #[test]
@@ -735,8 +786,8 @@ port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.statsd_config.is_some());
-        assert_eq!(args.statsd_config.unwrap().port, 1024);
+        assert!(!args.statsds.is_empty());
+        assert_eq!(args.statsds.get("sources.statsd").unwrap().port, 1024);
     }
 
     #[test]
@@ -750,14 +801,14 @@ port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.statsd_config.is_none());
+        assert!(args.statsds.is_empty());
     }
 
     #[test]
     fn config_statsd_sources_style() {
         let config = r#"
 [sources]
-  [sources.statsd]
+  [sources.statsd.primary]
   enabled = true
   port = 1024
   forwards = ["sinks.console", "sinks.null"]
@@ -766,11 +817,42 @@ port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.statsd_config.is_some());
-        let config = args.statsd_config.unwrap();
-        assert_eq!(config.port, 1024);
-        assert_eq!(config.forwards,
+        assert_eq!(args.statsds.len(), 1);
+
+        let config0 = args.statsds.get("sources.statsd.primary").unwrap();
+        assert_eq!(config0.port, 1024);
+        assert_eq!(config0.forwards,
                    vec!["sinks.console".to_string(), "sinks.null".to_string()]);
+    }
+
+    #[test]
+    fn config_statsd_sources_style_multiple() {
+        let config = r#"
+[sources]
+  [sources.statsd.lower]
+  enabled = true
+  port = 1024
+  forwards = ["sinks.console", "sinks.null"]
+
+  [sources.statsd.higher]
+  enabled = true
+  port = 4048
+  forwards = ["sinks.wavefront"]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.statsds.len(), 2);
+
+        let config0 = args.statsds.get("sources.statsd.lower").unwrap();
+        assert_eq!(config0.port, 1024);
+        assert_eq!(config0.forwards,
+                   vec!["sinks.console".to_string(), "sinks.null".to_string()]);
+
+        let config1 = args.statsds.get("sources.statsd.higher").unwrap();
+        assert_eq!(config1.port, 4048);
+        assert_eq!(config1.forwards, vec!["sinks.wavefront".to_string()]);
     }
 
     #[test]
@@ -782,8 +864,10 @@ graphite-port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.graphite_config.is_some());
-        assert_eq!(args.graphite_config.unwrap().port, 1024);
+        assert_eq!(args.graphites.len(), 1);
+
+        let config0 = args.graphites.get("sources.graphite").unwrap();
+        assert_eq!(config0.port, 1024);
     }
 
     #[test]
@@ -796,8 +880,10 @@ port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.graphite_config.is_some());
-        assert_eq!(args.graphite_config.unwrap().port, 1024);
+        assert_eq!(args.graphites.len(), 1);
+
+        let config0 = args.graphites.get("sources.graphite").unwrap();
+        assert_eq!(config0.port, 1024);
     }
 
     #[test]
@@ -811,14 +897,14 @@ port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.graphite_config.is_none());
+        assert!(args.graphites.is_empty());
     }
 
     #[test]
     fn config_graphite_sources_style() {
         let config = r#"
 [sources]
-  [sources.graphite]
+  [sources.graphite.primary]
   enabled = true
   port = 2003
   forwards = ["filters.collectd_scrub"]
@@ -827,10 +913,42 @@ port = 1024
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.graphite_config.is_some());
-        let config = args.graphite_config.unwrap();
-        assert_eq!(config.port, 2003);
-        assert_eq!(config.forwards, vec!["filters.collectd_scrub"]);
+        println!("{:?}", args.graphites);
+        assert_eq!(args.graphites.len(), 1);
+
+        let config0 = args.graphites.get("sources.graphite.primary").unwrap();
+        assert_eq!(config0.port, 2003);
+        assert_eq!(config0.forwards, vec!["filters.collectd_scrub".to_string()]);
+    }
+
+    #[test]
+    fn config_graphite_sources_style_multiple() {
+        let config = r#"
+[sources]
+  [sources.graphite.lower]
+  enabled = true
+  port = 2003
+  forwards = ["filters.collectd_scrub"]
+
+  [sources.graphite.higher]
+  enabled = true
+  port = 2004
+  forwards = ["sinks.wavefront"]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        println!("{:?}", args.graphites);
+        assert_eq!(args.graphites.len(), 2);
+
+        let config0 = args.graphites.get("sources.graphite.lower").unwrap();
+        assert_eq!(config0.port, 2003);
+        assert_eq!(config0.forwards, vec!["filters.collectd_scrub".to_string()]);
+
+        let config1 = args.graphites.get("sources.graphite.higher").unwrap();
+        assert_eq!(config1.port, 2004);
+        assert_eq!(config1.forwards, vec!["sinks.wavefront".to_string()]);
     }
 
     #[test]
@@ -1154,7 +1272,7 @@ mission = "from_gad"
         tags.insert(String::from("purpose"), String::from("serious_business"));
         tags.insert(String::from("source"), String::from("cernan"));
 
-        assert_eq!(args.graphite_config.unwrap().tags, tags);
+        assert_eq!(args.graphites.get("sources.graphite").unwrap().tags, tags);
     }
 
     #[test]
@@ -1190,12 +1308,12 @@ mission = "from_gad"
         tags.insert(String::from("purpose"), String::from("serious_business"));
         tags.insert(String::from("source"), String::from("cernan"));
 
-        assert!(args.statsd_config.is_some());
-        let statsd_config = args.statsd_config.unwrap();
+        assert!(!args.statsds.is_empty());
+        let statsd_config = args.statsds.get("sources.statsd").unwrap();
         assert_eq!(statsd_config.port, 1024);
         assert_eq!(statsd_config.tags, tags);
-        assert!(args.graphite_config.is_some());
-        let graphite_config = args.graphite_config.unwrap();
+        assert!(!args.graphites.is_empty());
+        let graphite_config = args.graphites.get("sources.graphite").unwrap();
         assert_eq!(graphite_config.port, 1034);
         assert_eq!(graphite_config.tags, tags);
         assert_eq!(args.flush_interval, 128);

@@ -16,7 +16,7 @@ pub struct Statsd {
     tags: Arc<metric::TagMap>,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct StatsdConfig {
     pub ip: String,
     pub port: u16,

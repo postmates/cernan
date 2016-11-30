@@ -128,9 +128,9 @@ impl filter::Filter for ProgrammableFilter {
         let event = event.clone();
         match event {
             metric::Event::Graphite(m) => {
-                self.state.get_global("process"); // function to be called 
+                self.state.get_global("process"); // function to be called
 
-                let mut point = Payload::new(m); // push first argument 
+                let mut point = Payload::new(m); // push first argument
                 unsafe {
                     self.state.push_light_userdata::<Payload>(&mut point);
                 }

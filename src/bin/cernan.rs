@@ -143,25 +143,27 @@ fn main() {
         }))
     }
 
-    if let Some(config) = args.statsd_config {
+    for config in args.statsds.values() {
+        let c = (*config).clone();
         let mut statsd_sends = Vec::new();
         populate_forwards(&mut statsd_sends,
                           &config.forwards,
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
-            cernan::source::Statsd::new(statsd_sends, config).run();
+            cernan::source::Statsd::new(statsd_sends, c).run();
         }));
     }
 
-    if let Some(config) = args.graphite_config {
+    for config in args.graphites.values() {
+        let c = (*config).clone();
         let mut graphite_sends = Vec::new();
         populate_forwards(&mut graphite_sends,
                           &config.forwards,
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
-            cernan::source::Graphite::new(graphite_sends, config).run();
+            cernan::source::Graphite::new(graphite_sends, c).run();
         }));
     }
 
