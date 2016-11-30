@@ -207,7 +207,8 @@ It is possible to run multiple sources that cover the same protocol so long as
 they are offset on different ports. Each source must be named uniquely. In the
 above we have three sources--only one of which is enabled--named
 `sources.statsd.primary`, `sources.statsd.secondary` and
-`sources.graphite.primary`.
+`sources.graphite.primary`. There may only be one `federation_receiver`
+source. All others _must_ have a unique name.
 
 In addition to network ports, cernan is able to ingest log files. This is
 configured in a different manner than the above as there may be many different
