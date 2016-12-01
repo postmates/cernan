@@ -83,6 +83,7 @@ pub fn parse_args() -> Args {
                     host: args.value_of("wavefront-host").unwrap().to_string(),
                     bin_width: 1,
                     config_path: "sinks.wavefront".to_string(),
+                    tags: Default::default(),
                 })
             } else {
                 None
@@ -205,6 +206,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .map(|i| i as i64)
                 .unwrap(),
             config_path: "sinks.wavefront".to_string(),
+            tags: tags.clone(),
         })
     } else {
         None
@@ -452,8 +454,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 if is_enabled {
                     let mut sconfig = StatsdConfig::default();
                     if let Some(p) = value.lookup("statsd.port") {
-                        sconfig.port =
-                            p.as_integer().expect("statsd-port must be integer") as u16;
+                        sconfig.port = p.as_integer().expect("statsd-port must be integer") as u16;
                     }
                     if let Some(fwds) = value.lookup("statsd.forwards") {
                         sconfig.forwards = fwds.as_slice()
