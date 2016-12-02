@@ -7,6 +7,7 @@ use metric::{Metric, MetricKind};
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
+use time;
 
 pub type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 
@@ -81,6 +82,7 @@ impl Buckets {
             if len > 0 {
                 v.swap(0, len - 1);
                 v.truncate(1);
+                v[0].time = time::now();
             }
         }
     }
