@@ -300,6 +300,11 @@ impl Metric {
         self
     }
 
+    pub fn insert_value(mut self, value: f64) -> Metric {
+        self.value.insert(value);
+        self
+    }
+
     pub fn value(&self) -> Option<f64> {
         match self.kind {
             MetricKind::Gauge | MetricKind::Raw => self.value.last(),
