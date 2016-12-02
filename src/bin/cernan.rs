@@ -18,11 +18,18 @@ use cernan::metric;
 
 fn populate_forwards(sends: &mut Vec<mpsc::Sender<metric::Event>>,
                      forwards: &[String],
+                     flush_sends: &mut Vec<mpsc::Sender<metric::Event>>,
                      config_path: &str,
                      available_sends: &HashMap<String, mpsc::Sender<metric::Event>>) {
     for fwd in forwards {
         match available_sends.get(fwd) {
-            Some(snd) => sends.push(snd.clone()),
+            Some(snd) => {
+                match flush_sends.binary_search(snd) {
+                    Err(idx) => flush_sends.insert(idx, snd.clone()),
+                    _ => {}
+                };
+                sends.push(snd.clone());
+            }
             None => {
                 error!("Unable to fulfill configured forward: {} => {}",
                        config_path,
@@ -115,6 +122,7 @@ fn main() {
 
     // FILTERS
     //
+    let mut flush_sends = Vec::new();
     for config in args.filters.values() {
         let c: ProgrammableFilterConfig = (*config).clone();
         let (flt_send, flt_recv) = cernan::mpsc::channel(&config.config_path, &args.data_directory);
@@ -122,6 +130,7 @@ fn main() {
         let mut upstream_sends = Vec::new();
         populate_forwards(&mut upstream_sends,
                           &config.forwards,
+                          &mut flush_sends,
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
@@ -131,11 +140,11 @@ fn main() {
 
     // SOURCES
     //
-
     if let Some(config) = args.fed_receiver_config {
         let mut receiver_server_send = Vec::new();
         populate_forwards(&mut receiver_server_send,
                           &config.forwards,
+                          &mut flush_sends,
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
@@ -148,6 +157,7 @@ fn main() {
         let mut statsd_sends = Vec::new();
         populate_forwards(&mut statsd_sends,
                           &config.forwards,
+                          &mut flush_sends,
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
@@ -160,6 +170,7 @@ fn main() {
         let mut graphite_sends = Vec::new();
         populate_forwards(&mut graphite_sends,
                           &config.forwards,
+                          &mut flush_sends,
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
@@ -169,7 +180,11 @@ fn main() {
 
     for config in args.files {
         let mut fp_sends = Vec::new();
-        populate_forwards(&mut fp_sends, &config.forwards, &config.config_path, &sends);
+        populate_forwards(&mut fp_sends,
+                          &config.forwards,
+                          &mut flush_sends,
+                          &config.config_path,
+                          &sends);
         joins.push(thread::spawn(move || {
             cernan::source::FileServer::new(fp_sends, config).run();
         }));
@@ -179,12 +194,8 @@ fn main() {
     //
 
     let flush_interval = args.flush_interval;
-    let mut flush_interval_sends = Vec::new();
-    for snd in sends.values() {
-        flush_interval_sends.push(snd.clone());
-    }
     joins.push(thread::spawn(move || {
-        cernan::source::FlushTimer::new(flush_interval_sends, flush_interval).run();
+        cernan::source::FlushTimer::new(flush_sends, flush_interval).run();
     }));
 
     joins.push(thread::spawn(move || {

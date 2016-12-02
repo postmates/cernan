@@ -1,4 +1,4 @@
-function process(n)
+function process_metric(n)
    local old_name = payload.metric_name(n)
    local collectd, rest = string.match(old_name, "^(collectd)[%.@][%w_]+(.*)")
    if collectd ~= nil then
@@ -6,3 +6,9 @@ function process(n)
       payload.set_metric_name(n, new_name)
    end
 end
+
+function process_log(n)
+end
+
+function tick()
+end 

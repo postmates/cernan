@@ -119,6 +119,9 @@ impl ProgrammableFilter {
     }
 }
 
+// TODO payload is just a Vec and all established routes are
+// respected. Programmable filters cannot change routing.
+
 impl filter::Filter for ProgrammableFilter {
     fn process<'a>(&mut self,
                    event: &'a mut metric::Event,
@@ -127,8 +130,9 @@ impl filter::Filter for ProgrammableFilter {
         trace!("received event: {:?}", event);
         let event = event.clone();
         match event {
-            metric::Event::Graphite(m) => {
-                self.state.get_global("process"); // function to be called
+            metric::Event::Graphite(m) |
+            metric::Event::Statsd(m) => {
+                self.state.get_global("process_metric"); // function to be called
 
                 let mut point = Payload::new(m); // push first argument
                 unsafe {
@@ -147,7 +151,19 @@ impl filter::Filter for ProgrammableFilter {
                 }
                 emitts
             }
+            // metric::Event::TimerFlush => {
+            //     self.state.get_global("tick"); // function to be called
+            //
+            //     self.state.call(1, 0);
+            //
+            //     let mut emitts = Vec::new();
+            //     for chan in chans {
+            //         emitts.push((chan, vec![new_event.clone()]))
+            //     }
+            //     emitts
+            // }
             other => {
+                // TODO handle each type explicitly
                 let mut emitts = Vec::new();
                 for chan in chans {
                     emitts.push((chan, vec![other.clone()]))

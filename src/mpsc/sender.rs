@@ -7,6 +7,7 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::fmt;
 use mpsc::FSLock;
+use std::cmp::Ordering;
 
 #[inline]
 fn u32tou8abe(v: u32) -> [u8; 4] {
@@ -28,6 +29,26 @@ pub struct Sender<T> {
     max_bytes: usize,
     fs_lock: FSLock,
     resource_type: PhantomData<T>,
+}
+
+impl<T> PartialEq for Sender<T> {
+    fn eq(&self, other: &Sender<T>) -> bool {
+        self.name == other.name
+    }
+}
+
+impl<T> Eq for Sender<T> {}
+
+impl<T> Ord for Sender<T> {
+    fn cmp(&self, other: &Sender<T>) -> Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
+impl<T> PartialOrd for Sender<T> {
+    fn partial_cmp(&self, other: &Sender<T>) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl<T> Clone for Sender<T>

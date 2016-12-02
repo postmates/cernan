@@ -7,20 +7,20 @@ flush-interval = 5
 source = "cernan"
 
 [sources]
-  [sources.statsd.primary] 
-  enabled = true
-  port = 8125
-  forwards = ["sinks.console", "sinks.null", "sinks.wavefront"]
+  # [sources.statsd.primary] 
+  # enabled = true
+  # port = 8125
+  # forwards = ["sinks.console"]
   
-  [sources.statsd.secondary] 
-  enabled = true
-  port = 8126
-  forwards = ["sinks.federation_transmitter"]
+  # [sources.statsd.secondary] 
+  # enabled = true
+  # port = 8126
+  # forwards = ["sinks.federation_transmitter"]
 
   [sources.graphite.primary] 
   enabled = true
   port = 2004
-  forwards = ["filters.collectd_scrub"]
+  forwards = ["sinks.console", "sinks.wavefront"]
 
   # [sources.files] 
   # [sources.files.example_log] 
@@ -35,16 +35,16 @@ source = "cernan"
   # port = 1972
   # ip = "0.0.0.0"
 
-[filters] 
-  [filters.collectd_scrub] 
-  script = "cernan_bridge.lua"
-  forwards = ["sinks.console", "sinks.null", "sinks.wavefront"]
+# [filters] 
+#   [filters.collectd_scrub] 
+#   script = "cernan_bridge.lua"
+#   forwards = ["sinks.console", "sinks.null", "sinks.wavefront"]
 
 [sinks]
   [sinks.console] 
   bin_width = 1
 
-  [sinks.null] 
+  # [sinks.null] 
 
   [sinks.wavefront] 
   port = 2878
@@ -56,6 +56,6 @@ source = "cernan"
   # batch_size = 800
   # region = "us-east-1"
 
-  [sinks.federation_transmitter] 
-  host = "127.0.0.1"
-  port = 1972
+  # [sinks.federation_transmitter] 
+  # host = "127.0.0.1"
+  # port = 1972
