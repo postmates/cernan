@@ -70,13 +70,18 @@ impl<'a> Payload<'a> {
 
     #[allow(non_snake_case)]
     unsafe extern "C" fn lua_push_metric(L: *mut lua_State) -> c_int {
-        println!("PUSH METRIC");
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let val = state.to_number(3) as f64;
-        let name = state.to_str(2).unwrap(); // TODO no unwrap
-        let m = metric::Metric::new(name, val).overlay_tags_from_map((*pyld).global_tags);
-        (*pyld).metrics.push(m);
+        match state.to_str(2) {
+            Some(name) => {
+                let m = metric::Metric::new(name, val).overlay_tags_from_map((*pyld).global_tags);
+                (*pyld).metrics.push(m);
+            }
+            None => {
+                error!("[push_metric] no name argument given");
+            }
+        }
         0
     }
 
@@ -84,9 +89,16 @@ impl<'a> Payload<'a> {
     unsafe extern "C" fn lua_push_log(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
-        let line = state.to_str(2).unwrap(); // TODO no unwrap
-        let l = metric::LogLine::new((*pyld).path, line).overlay_tags_from_map((*pyld).global_tags);
-        (*pyld).logs.push(l);
+        match state.to_str(2) {
+            Some(line) => {
+                let l = metric::LogLine::new((*pyld).path, line)
+                    .overlay_tags_from_map((*pyld).global_tags);
+                (*pyld).logs.push(l);
+            }
+            None => {
+                error!("[push_log] no line argument given");
+            }
+        };
         0
     }
 
@@ -111,12 +123,19 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2) as i64, (*pyld).logs.len());
-        let key = state.to_str(3).unwrap().to_owned(); // TODO no unwrap
-        match (*pyld).logs[idx].tags.get(&key) {
-            Some(v) => {
-                state.push_string(v);
-            }
+        match state.to_str(3).map(|k| k.to_owned()) {
+            Some(key) => {
+                match (*pyld).logs[idx].tags.get(&key) {
+                    Some(v) => {
+                        state.push_string(v);
+                    }
+                    None => {
+                        state.push_nil();
+                    }
+                }
+            } 
             None => {
+                error!("[log_tag_value] no key provided");
                 state.push_nil();
             }
         }
@@ -128,12 +147,19 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2) as i64, (*pyld).metrics.len());
-        let key = state.to_str(3).unwrap().to_owned(); // TODO no unwrap
-        match (*pyld).metrics[idx].tags.get(&key) {
-            Some(v) => {
-                state.push_string(v);
-            }
+        match state.to_str(3).map(|k| k.to_owned()) {
+            Some(key) => {
+                match (*pyld).metrics[idx].tags.get(&key) {
+                    Some(v) => {
+                        state.push_string(v);
+                    }
+                    None => {
+                        state.push_nil();
+                    }
+                }
+            } 
             None => {
+                error!("[log_tag_value] no key provided");
                 state.push_nil();
             }
         }
@@ -145,13 +171,27 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2) as i64, (*pyld).metrics.len());
-        let key = state.to_str(3).unwrap().to_owned(); // TODO no unwrap
-        let val = state.to_str(4).unwrap().to_owned(); // TODO no unwrap
-        match (*pyld).metrics[idx].tags.insert(key, val) {
-            Some(old_v) => {
-                state.push_string(&old_v);
-            }
+        match state.to_str(3).map(|k| k.to_owned()) {
+            Some(key) => {
+                match state.to_str(4).map(|v| v.to_owned()) {
+                    Some(val) => {
+                        match (*pyld).metrics[idx].tags.insert(key, val) {
+                            Some(old_v) => {
+                                state.push_string(&old_v);
+                            }
+                            None => {
+                                state.push_nil();
+                            }
+                        }
+                    },
+                    None => {
+                        error!("[metric_set_tag] no key provided");
+                        state.push_nil();
+                    }
+                }
+            },
             None => {
+                error!("[metric_set_tag] no val provided");
                 state.push_nil();
             }
         }
@@ -163,13 +203,27 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2) as i64, (*pyld).logs.len());
-        let key = state.to_str(3).unwrap().to_owned(); // TODO no unwrap
-        let val = state.to_str(4).unwrap().to_owned(); // TODO no unwrap
-        match (*pyld).logs[idx].tags.insert(key, val) {
-            Some(old_v) => {
-                state.push_string(&old_v);
-            }
+        match state.to_str(3).map(|k| k.to_owned()) {
+            Some(key) => {
+                match state.to_str(4).map(|v| v.to_owned()) {
+                    Some(val) => {
+                        match (*pyld).logs[idx].tags.insert(key, val) {
+                            Some(old_v) => {
+                                state.push_string(&old_v);
+                            }
+                            None => {
+                                state.push_nil();
+                            }
+                        }
+                    },
+                    None => {
+                        error!("[log_set_tag] no key provided");
+                        state.push_nil();
+                    }
+                }
+            },
             None => {
+                error!("[log_set_tag] no val provided");
                 state.push_nil();
             }
         }
@@ -181,12 +235,19 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2) as i64, (*pyld).metrics.len());
-        let key = state.to_str(3).unwrap().to_owned(); // TODO no unwrap
-        match (*pyld).metrics[idx].tags.remove(&key) {
-            Some(old_v) => {
-                state.push_string(&old_v);
-            }
+        match state.to_str(3).map(|k| k.to_owned()) {
+            Some(key) => {
+                match (*pyld).metrics[idx].tags.remove(&key) {
+                    Some(old_v) => {
+                        state.push_string(&old_v);
+                    }
+                    None => {
+                        state.push_nil();
+                    }
+                }
+            },
             None => {
+                error!("[metric_remove_tag] no val provided");
                 state.push_nil();
             }
         }
@@ -198,12 +259,19 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2) as i64, (*pyld).logs.len());
-        let key = state.to_str(3).unwrap().to_owned(); // TODO no unwrap
-        match (*pyld).logs[idx].tags.remove(&key) {
-            Some(old_v) => {
-                state.push_string(&old_v);
-            }
+        match state.to_str(3).map(|k| k.to_owned()) {
+            Some(key) => {
+                match (*pyld).logs[idx].tags.remove(&key) {
+                    Some(old_v) => {
+                        state.push_string(&old_v);
+                    }
+                    None => {
+                        state.push_nil();
+                    }
+                }
+            },
             None => {
+                error!("[log_remove_tag] no val provided");
                 state.push_nil();
             }
         }
