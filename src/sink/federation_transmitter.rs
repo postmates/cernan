@@ -49,7 +49,7 @@ impl Sink for FederationTransmitter {
         Valve::Open
     }
 
-    fn deliver_lines(&mut self, _: Vec<metric::LogLine>) -> Valve<Vec<metric::LogLine>> {
+    fn deliver_line(&mut self, _: metric::LogLine) -> Valve<metric::LogLine> {
         // intentionally nothing
         Valve::Open
     }

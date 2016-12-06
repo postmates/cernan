@@ -196,7 +196,7 @@ impl Sink for Wavefront {
         Valve::Open
     }
 
-    fn deliver_lines(&mut self, _: Vec<LogLine>) -> Valve<Vec<LogLine>> {
+    fn deliver_line(&mut self, _: LogLine) -> Valve<LogLine> {
         // nothing, intentionally
         Valve::Open
     }

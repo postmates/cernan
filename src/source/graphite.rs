@@ -87,10 +87,10 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                                     let metric = metric::Metric::new("cernan.graphite.packet", 1.0)
                                         .counter()
                                         .overlay_tags_from_map(&tags);
-                                    send("graphite", &mut chans, &metric::Event::Statsd(metric));
+                                    send("graphite", &mut chans, &metric::Event::Telemetry(metric));
                                     for mut m in metrics {
                                         m = m.overlay_tags_from_map(&tags);
-                                        send("graphite", &mut chans, &metric::Event::Graphite(m));
+                                        send("graphite", &mut chans, &metric::Event::Telemetry(m));
                                     }
                                     trace!("payload handle effective, elapsed (ns): {}",
                                            time::elapsed_ns(pyld_hndl_time));
@@ -100,7 +100,7 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                                                                      1.0)
                                         .counter()
                                         .overlay_tags_from_map(&tags);
-                                    send("graphite", &mut chans, &metric::Event::Statsd(metric));
+                                    send("graphite", &mut chans, &metric::Event::Telemetry(metric));
                                     error!("bad packet: {:?}", val);
                                     trace!("payload handle failure, elapsed (ns): {}",
                                            time::elapsed_ns(pyld_hndl_time));

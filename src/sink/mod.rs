@@ -23,7 +23,7 @@ pub enum Valve<T> {
 pub trait Sink {
     fn flush(&mut self) -> ();
     fn deliver(&mut self, point: Metric) -> Valve<Metric>;
-    fn deliver_lines(&mut self, lines: Vec<LogLine>) -> Valve<Vec<LogLine>>;
+    fn deliver_line(&mut self, line: LogLine) -> Valve<LogLine>;
     fn run(&mut self, mut recv: mpsc::Receiver<Event>) {
         let mut attempts = 0;
         loop {
@@ -34,8 +34,7 @@ pub trait Sink {
                     attempts = 0;
                     match event {
                         Event::TimerFlush => self.flush(),
-                        Event::Graphite(mut metric) |
-                        Event::Statsd(mut metric) => {
+                        Event::Telemetry(mut metric) => {
                             let mut delivery_attempts = 0;
                             loop {
                                 time::delay(delivery_attempts);
@@ -53,17 +52,17 @@ pub trait Sink {
                             }
                         }
 
-                        Event::Log(mut lines) => {
+                        Event::Log(mut line) => {
                             let mut delivery_attempts = 0;
                             loop {
                                 time::delay(delivery_attempts);
-                                match self.deliver_lines(lines) {
+                                match self.deliver_line(line) {
                                     Valve::Open => {
                                         // success, move on
                                         break;
                                     }
                                     Valve::Closed(l) => {
-                                        lines = l;
+                                        line = l;
                                         delivery_attempts += 1;
                                         continue;
                                     }

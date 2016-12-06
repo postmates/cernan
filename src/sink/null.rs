@@ -27,7 +27,7 @@ impl Sink for Null {
         Valve::Open
     }
 
-    fn deliver_lines(&mut self, _: Vec<LogLine>) -> Valve<Vec<LogLine>> {
+    fn deliver_line(&mut self, _: LogLine) -> Valve<LogLine> {
         // discard point
         Valve::Open
     }

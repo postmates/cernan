@@ -83,11 +83,8 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                         for mut ev in events {
                             trace!("event: {:?}", ev);
                             ev = match ev {
-                                metric::Event::Statsd(m) => {
-                                    metric::Event::Statsd(m.merge_tags_from_map(&tags))
-                                }
-                                metric::Event::Graphite(m) => {
-                                    metric::Event::Graphite(m.merge_tags_from_map(&tags))
+                                metric::Event::Telemetry(m) => {
+                                    metric::Event::Telemetry(m.merge_tags_from_map(&tags))
                                 }
                                 // we refuse to accept any non-telemetry forward
                                 // for now
@@ -98,7 +95,7 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                         let metric = metric::Metric::new("cernan.federation.receiver.packet", 1.0)
                             .counter()
                             .overlay_tags_from_map(&tags);
-                        send("receiver", &mut chans, &metric::Event::Statsd(metric));
+                        send("receiver", &mut chans, &metric::Event::Telemetry(metric));
                     }
                     Err(e) => {
                         trace!("failed to decode payload with error: {:?}", e);

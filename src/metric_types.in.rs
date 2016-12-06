@@ -17,9 +17,8 @@ pub struct Metric {
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub enum Event {
-    Statsd(Metric),
-    Graphite(Metric),
-    Log(Vec<LogLine>),
+    Telemetry(Metric),
+    Log(LogLine),
     TimerFlush,
 }
 
