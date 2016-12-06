@@ -170,7 +170,9 @@ by one. So:
 The `--config` flag allows for more fine grained control of cernan via the
 config file.
 
-## Configuration
+# Configuration
+
+## Sources
 
 The cernan server has options to control which ports and protocols are running
 ingestion interfaces. These are referred to as 'sources'. 
@@ -330,7 +332,83 @@ How many points will this ellide? If the `flush-interval` of the system is `F`
 and the QOS for a given type of metic is `Q` then the maximum number of points
 that will be retained in `F` is `ceil(F/bin_width)`. By default, `F=60`.
 
-## Enabling sinks
+## Filters
+
+Cernan provides a facility for transforming in-flight telemetry and logs. This
+facility is the 'filter'. Filters are programmable
+in [lua 5.3](https://www.lua.org/). The full API is documented in the project
+wiki [here](https://github.com/postmates/cernan/wiki/Filter-API). 
+
+Let's say we want to write a filter to strip instance metadata from collectd
+metrics. Recall that collectd metric names look like so:
+
+    collectd.computer_name.interface-lo.if_errors.tx
+
+and what we'd like to do is avoid emitting the 'computer_name' to our
+sinks. Enabling filters in configuration is much like enabling a sink or source. 
+
+```
+scripts-directory = "examples/scripts/"
+
+[sources]
+  [sources.graphite.primary]
+  enabled = true
+  port = 2004
+  forwards = ["filters.collectd_scrub"]
+
+[filters]
+  [filters.collectd_scrub]
+  script = "collectd_scrub.lua"
+  forwards = ["sinks.console"]
+
+[sinks]
+  [sinks.console]
+  bin_width = 1
+```
+
+Note that `scripts-directory` must exist and contain the file
+`collectd_scrub.lua`. The scrub program:
+
+```
+count_per_tick = 0
+
+function process_metric(pyld)
+   count_per_tick = count_per_tick + 1
+
+   local old_name = payload.metric_name(pyld, 1)
+   local collectd, rest = string.match(old_name, "^(collectd)[%.@][%w_]+(.*)")
+   if collectd ~= nil then
+      local new_name = string.format("%s%s", collectd, rest)
+      payload.set_metric_name(pyld, 1, new_name)
+   end
+end
+
+function process_log(pyld)
+end
+
+function tick(pyld)
+   payload.push_metric(pyld, "count_per_tick", count_per_tick)
+   payload.push_log(pyld, string.format("count_per_tick: %s", count_per_tick))
+   count_per_tick = 0
+end 
+```
+
+Cernan will pass every metric through the function `process_metric` and this
+program will inspect the name, extract the offending bit of metadata and reset
+the name in the payload metric. 
+
+There's a little more than filtering going on here. Every `flush-interval` a
+filter's `tick` will be called. `collectd_scrub` is pushing a new metric called
+`count_per_tick` into the payload, as well as a new log line. 
+
+Payloads are indexed from 1. Negative offsets are also supported, as in
+Lua. This is a break from similar systems like heka that index from 0. Metrics
+and logs are indexed separately. 
+
+Please see [the wiki](https://github.com/postmates/cernan/wiki/Filter-API) for
+information on the full API.
+
+## Sinks
 
 By default no sinks are enabled. In this mode cernan server doesn't do that
 much. Sinks are configured individually, by name. To enable a sink with defaults
@@ -383,9 +461,8 @@ host=<STRING>      The host wavefront proxy is running on. [default: 127.0.0.1].
 bin_width=<INT>    The width in seconds for aggregating bins. [default: 1].
 ```
 
-You may find an example configuration file in the top-level of this project,
-`example-config.toml`. The TOML specification is
-[here](https://github.com/toml-lang/toml).
+You may find an example configuration file in `examples/configs/basic.toml` The
+TOML specification is [here](https://github.com/toml-lang/toml).
 
 ### null
 
