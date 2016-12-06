@@ -209,8 +209,9 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig = "collectd.totally_fine.interface-lo.if_errors.tx 0 1478751126";
-            let expected = "collectd.interface-lo.if_errors.tx 0 1478751126";
+            let orig = "collectd.cernan-llrv-prod-b3fbb697.protocols-TcpExt.\
+                        protocol_counter-TCPFastOpenActive";
+            let expected = "collectd.protocols-TcpExt.protocol_counter-TCPFastOpenActive";
 
             let metric = metric::Metric::new(orig, 12.0);
             let mut event = metric::Event::Telemetry(metric);
