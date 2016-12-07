@@ -9,8 +9,9 @@ pub struct LogLine {
 #[derive(PartialEq, Serialize, Deserialize, Clone)]
 pub struct Metric {
     pub kind: MetricKind,
-    pub name: String,
     pub time: i64,
+    pub created_time: i64,
+    pub name: String,
     pub tags: TagMap,
     value: CKMS<f64>,
 }
