@@ -221,6 +221,7 @@ impl Wavefront {
         for ref spread in &[&time_spreads,
                             &gauge_time_spreads,
                             &raw_time_spreads,
+                            &counter_time_spreads,
                             &timer_time_spreads,
                             &histogram_time_spreads] {
             for tup in &[("min", 0.0),
@@ -398,7 +399,7 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(63, lines.len());
+        assert_eq!(70, lines.len());
         assert!(lines.contains(&"test.counter 1 645181811 source=test-src"));
         assert!(lines.contains(&"test.counter 3 645181812 source=test-src"));
         assert!(lines.contains(&"test.gauge 3.211 645181811 source=test-src"));
