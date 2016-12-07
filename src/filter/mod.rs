@@ -8,7 +8,19 @@ pub use self::programmable_filter::{ProgrammableFilter, ProgrammableFilterConfig
 
 #[derive(Debug)]
 pub enum FilterError {
-    NoSuchFunction(&'static str),
+    NoSuchFunction(&'static str, metric::Event),
+}
+
+fn name_in_fe(fe: &FilterError) -> &'static str {
+    match fe {
+        &FilterError::NoSuchFunction(n, _) => n,
+    }
+}
+
+fn metric_in_fe(fe: &FilterError) -> &metric::Event {
+    match fe {
+        &FilterError::NoSuchFunction(_, ref m) => m,
+    }
 }
 
 pub trait Filter {
@@ -33,9 +45,10 @@ pub trait Filter {
                                 }
                             }
                         }
-                        Err(e) => {
-                            error!("Failed to run filter with error: {:?}", e);
+                        Err(fe) => {
+                            error!("Failed to run filter with error: {:?}", name_in_fe(&fe));
                             for chan in chans.iter_mut() {
+                                chan.send(metric_in_fe(&fe));
                                 chan.send(&event)
                             }
                         }
