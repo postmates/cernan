@@ -6,10 +6,15 @@ mod programmable_filter;
 
 pub use self::programmable_filter::{ProgrammableFilter, ProgrammableFilterConfig};
 
+#[derive(Debug)]
+pub enum FilterError {
+    NoSuchFunction(&'static str),
+}
+
 pub trait Filter {
-    // TODO There should be a way to send a modified event to some channels, not
-    // to others etc.
-    fn process<'a>(&mut self, event: &'a mut metric::Event) -> Vec<metric::Event>;
+    fn process<'a>(&mut self,
+                   event: &'a mut metric::Event)
+                   -> Result<Vec<metric::Event>, FilterError>;
     fn run(&mut self,
            mut recv: mpsc::Receiver<metric::Event>,
            mut chans: Vec<mpsc::Sender<metric::Event>>) {
@@ -20,9 +25,19 @@ pub trait Filter {
                 None => attempts += 1,
                 Some(mut event) => {
                     attempts = 0;
-                    for ev in &mut self.process(&mut event) {
-                        for chan in chans.iter_mut() {
-                            chan.send(ev)
+                    match self.process(&mut event) {
+                        Ok(events) => {
+                            for ev in events {
+                                for chan in chans.iter_mut() {
+                                    chan.send(&ev)
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to run filter with error: {:?}", e);
+                            for chan in chans.iter_mut() {
+                                chan.send(&event)
+                            }
                         }
                     }
                 }

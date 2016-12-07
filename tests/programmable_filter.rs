@@ -24,8 +24,10 @@ mod integration {
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
             let mut event = metric::Event::Telemetry(metric);
-            let events = cs.process(&mut event);
 
+            let res = cs.process(&mut event);
+            assert!(res.is_ok());
+            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
             assert_eq!(events[0], event);
@@ -54,8 +56,10 @@ mod integration {
                 .overlay_tag("foo", "bar");
             let mut orig_event = metric::Event::Log(orig_log);
             let expected_event = metric::Event::Log(expected_log);
-            let events = cs.process(&mut orig_event);
 
+            let res = cs.process(&mut orig_event);
+            assert!(res.is_ok());
+            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
             assert_eq!(events[0], expected_event);
@@ -80,11 +84,63 @@ mod integration {
             let expected_metric = metric::Metric::new("identity", 12.0).overlay_tag("foo", "bar");
             let mut orig_event = metric::Event::Telemetry(orig_metric);
             let expected_event = metric::Event::Telemetry(expected_metric);
-            let events = cs.process(&mut orig_event);
 
+            let res = cs.process(&mut orig_event);
+            assert!(res.is_ok());
+            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
             assert_eq!(events[0], expected_event);
+        }
+
+        #[test]
+        fn test_insufficient_args_no_crash() {
+            let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            script.push("resources/tests/scripts/insufficient_args.lua");
+
+            let config = ProgrammableFilterConfig {
+                script: script,
+                forwards: Vec::new(),
+                config_path: "filters.no_args_no_crash".to_string(),
+                tags: Default::default(),
+            };
+            let mut cs = ProgrammableFilter::new(config);
+
+            let orig_metric = metric::Metric::new("identity", 12.0)
+                .overlay_tag("foo", "bar")
+                .overlay_tag("bizz", "bazz");
+
+            let mut orig_event = metric::Event::Telemetry(orig_metric);
+
+            let res = cs.process(&mut orig_event);
+            assert!(res.is_ok());
+            let events = res.ok().unwrap();
+            assert!(!events.is_empty());
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0], orig_event);
+        }
+
+        #[test]
+        fn test_missing_func() {
+            let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            script.push("resources/tests/scripts/missing_func.lua");
+
+            let config = ProgrammableFilterConfig {
+                script: script,
+                forwards: Vec::new(),
+                config_path: "filters.missing_func".to_string(),
+                tags: Default::default(),
+            };
+            let mut cs = ProgrammableFilter::new(config);
+
+            let orig_metric = metric::Metric::new("identity", 12.0)
+                .overlay_tag("foo", "bar")
+                .overlay_tag("bizz", "bazz");
+
+            let mut orig_event = metric::Event::Telemetry(orig_metric);
+
+            let res = cs.process(&mut orig_event);
+            assert!(res.is_err());
         }
 
         #[test]
@@ -110,8 +166,10 @@ mod integration {
                 .overlay_tag("foo", "bar");
             let mut orig_event = metric::Event::Log(orig_log);
             let expected_event = metric::Event::Log(expected_log);
-            let events = cs.process(&mut orig_event);
 
+            let res = cs.process(&mut orig_event);
+            assert!(res.is_ok());
+            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
             assert_eq!(events[0], expected_event);
@@ -136,8 +194,10 @@ mod integration {
             let orig_metric = metric::Metric::new("identity", 12.0).overlay_tag("foo", "bar");
             let mut orig_event = metric::Event::Telemetry(orig_metric);
             let expected_event = metric::Event::Telemetry(expected_metric);
-            let events = cs.process(&mut orig_event);
 
+            let res = cs.process(&mut orig_event);
+            assert!(res.is_ok());
+            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
             assert_eq!(events[0], expected_event);
@@ -170,7 +230,9 @@ mod integration {
             for mut ev in &mut [metric0, metric1, metric2, log0, log1] {
                 let _ = cs.process(&mut ev);
             }
-            let events = cs.process(&mut flush);
+            let res = cs.process(&mut flush);
+            assert!(res.is_ok());
+            let events = res.ok().unwrap();
 
             assert!(!events.is_empty());
             assert_eq!(events.len(), 2);
@@ -184,7 +246,9 @@ mod integration {
             for mut ev in &mut [log2, log3] {
                 let _ = cs.process(&mut ev);
             }
-            let events = cs.process(&mut flush);
+            let res = cs.process(&mut flush);
+            assert!(res.is_ok());
+            let events = res.ok().unwrap();
 
             assert!(!events.is_empty());
             assert_eq!(events.len(), 2);
@@ -215,8 +279,10 @@ mod integration {
 
             let metric = metric::Metric::new(orig, 12.0);
             let mut event = metric::Event::Telemetry(metric);
-            let events = cs.process(&mut event);
 
+            let res = cs.process(&mut event);
+            assert!(res.is_ok());
+            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
 
@@ -250,8 +316,10 @@ mod integration {
 
             let metric = metric::Metric::new(orig, 12.0);
             let mut event = metric::Event::Telemetry(metric);
-            let events = cs.process(&mut event);
 
+            let res = cs.process(&mut event);
+            assert!(res.is_ok());
+            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
 

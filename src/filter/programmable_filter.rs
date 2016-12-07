@@ -366,12 +366,14 @@ impl ProgrammableFilter {
 }
 
 impl filter::Filter for ProgrammableFilter {
-    fn process<'a>(&mut self, event: &'a mut metric::Event) -> Vec<metric::Event> {
-        trace!("received event: {:?}", event);
+    fn process<'a>(&mut self, event: &'a mut metric::Event) -> Result<Vec<metric::Event>, filter::FilterError> {
         let event = event.clone();
         match event {
             metric::Event::Telemetry(m) => {
                 self.state.get_global("process_metric");
+                if !self.state.is_fn(-1) {
+                    return Err(filter::FilterError::NoSuchFunction("process_metric"))
+                }
 
                 let mut pyld = Payload::from_metric(m, &self.global_tags, self.path.as_str());
                 unsafe {
@@ -382,14 +384,17 @@ impl filter::Filter for ProgrammableFilter {
 
                 self.state.call(1, 0);
 
-                pyld.logs
+                Ok(pyld.logs
                     .iter()
                     .map(|m| metric::Event::Log(m.clone()))
                     .chain(pyld.metrics.iter().map(|m| metric::Event::Telemetry(m.clone())))
-                    .collect()
+                    .collect())
             }
             metric::Event::TimerFlush => {
                 self.state.get_global("tick");
+                if !self.state.is_fn(-1) {
+                    return Err(filter::FilterError::NoSuchFunction("process_metric"))
+                }
 
                 let mut pyld = Payload::blank(&self.global_tags, self.path.as_str());
                 unsafe {
@@ -400,14 +405,17 @@ impl filter::Filter for ProgrammableFilter {
 
                 self.state.call(1, 0);
 
-                pyld.logs
+                Ok(pyld.logs
                     .iter()
                     .map(|m| metric::Event::Log(m.clone()))
                     .chain(pyld.metrics.iter().map(|m| metric::Event::Telemetry(m.clone())))
-                    .collect()
+                    .collect())
             }
             metric::Event::Log(l) => {
                 self.state.get_global("process_log");
+                if !self.state.is_fn(-1) {
+                    return Err(filter::FilterError::NoSuchFunction("process_metric"))
+                }
 
                 let mut pyld = Payload::from_log(l, &self.global_tags, self.path.as_str());
                 unsafe {
@@ -418,11 +426,11 @@ impl filter::Filter for ProgrammableFilter {
 
                 self.state.call(1, 0);
 
-                pyld.logs
+                Ok(pyld.logs
                     .iter()
                     .map(|m| metric::Event::Log(m.clone()))
                     .chain(pyld.metrics.iter().map(|m| metric::Event::Telemetry(m.clone())))
-                    .collect()
+                    .collect())
             }
         }
     }
