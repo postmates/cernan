@@ -150,9 +150,8 @@ impl Source for FileServer {
                                     let path_name =
                                         file.path.to_str().expect("could not make path_name");
                                     trace!("{} | {}", path_name, buffer);
-                                    lines.push(metric::LogLine::new(path_name,
-                                                                    buffer.clone(),
-                                                                    self.tags.clone()));
+                                    lines.push(metric::LogLine::new(path_name, &buffer)
+                                        .overlay_tags_from_map(&self.tags));
                                     buffer.clear();
                                     if lines_read > 10_000 {
                                         break;
@@ -169,7 +168,9 @@ impl Source for FileServer {
                         }
                     }
                     if !lines.is_empty() {
-                        send("file", &mut self.chans, &metric::Event::Log(lines));
+                        for l in lines {
+                            send("file", &mut self.chans, &metric::Event::Log(l));
+                        }
                         lines = Vec::new();
                     }
                 }

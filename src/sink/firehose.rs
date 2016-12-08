@@ -126,12 +126,11 @@ impl Sink for Firehose {
         Valve::Open
     }
 
-    fn deliver_lines(&mut self, mut lines: Vec<LogLine>) -> Valve<Vec<LogLine>> {
+    fn deliver_line(&mut self, line: LogLine) -> Valve<LogLine> {
         if self.buffer.len() > 10_000 {
-            Valve::Closed(lines)
+            Valve::Closed(line)
         } else {
-            let l = &mut lines;
-            self.buffer.append(l);
+            self.buffer.push(line);
             Valve::Open
         }
     }

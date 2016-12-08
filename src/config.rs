@@ -321,6 +321,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                         script: scripts_dir.join(path),
                         forwards: fwds,
                         config_path: config_path.clone(),
+                        tags: tags.clone(),
                     };
                     filters.insert(config_path, config);
                 }

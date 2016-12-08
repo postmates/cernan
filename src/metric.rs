@@ -14,15 +14,29 @@ use std::fmt;
 pub type TagMap = HashMap<String, String, BuildHasherDefault<FnvHasher>>;
 
 impl LogLine {
-    pub fn new<S>(path: S, value: String, tags: TagMap) -> LogLine
+    pub fn new<S>(path: S, value: S) -> LogLine
         where S: Into<String>
     {
         LogLine {
             path: path.into(),
-            value: value,
+            value: value.into(),
             time: time::now(),
-            tags: tags,
+            tags: Default::default(),
         }
+    }
+
+    pub fn overlay_tag<S>(mut self, key: S, val: S) -> LogLine
+        where S: Into<String>
+    {
+        self.tags.insert(key.into(), val.into());
+        self
+    }
+
+    pub fn overlay_tags_from_map(mut self, map: &TagMap) -> LogLine {
+        for (k, v) in map.iter() {
+            self.tags.insert(k.clone(), v.clone());
+        }
+        self
     }
 }
 
@@ -637,7 +651,7 @@ mod tests {
             let i: usize = rng.gen();
             match i % 4 {
                 0 => Event::TimerFlush,
-                _ => Event::Statsd(rng.gen()),
+                _ => Event::Telemetry(rng.gen()),
             }
         }
     }

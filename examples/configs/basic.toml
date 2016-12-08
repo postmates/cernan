@@ -1,0 +1,56 @@
+data-directory = "data/"
+scripts-directory = "examples/scripts/"
+
+flush-interval = 5
+
+[tags]
+source = "cernan"
+
+[sources]
+  [sources.statsd.primary]
+  enabled = true
+  port = 8125
+  forwards = ["sinks.console", "sinks.wavefront"]
+
+  [sources.graphite.primary]
+  enabled = true
+  port = 2004
+  forwards = ["filters.collectd_scrub"]
+
+  # [sources.files]
+  # [sources.files.example_log]
+  # path = "example.log"
+  # forwards = ["sinks.firehose.stream_two"]
+
+  # [sources.files.foo_log]
+  # path = "foo.log"
+  # forwards = ["sinks.firehose.stream_two"]
+
+  # [sources.federation_receiver]
+  # port = 1972
+  # ip = "0.0.0.0"
+
+[filters]
+  [filters.collectd_scrub]
+  script = "collectd_scrub.lua"
+  forwards = ["sinks.console", "sinks.null", "sinks.wavefront"]
+
+[sinks]
+  [sinks.console]
+  bin_width = 1
+
+  [sinks.null]
+
+  [sinks.wavefront]
+  port = 2878
+  host = "127.0.0.1"
+  bin_width = 1
+
+  # [sinks.firehose.stream_two]
+  # delivery_stream = "stream_two"
+  # batch_size = 800
+  # region = "us-east-1"
+
+  # [sinks.federation_transmitter]
+  # host = "127.0.0.1"
+  # port = 1972

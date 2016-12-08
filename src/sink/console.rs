@@ -39,7 +39,7 @@ impl Sink for Console {
         Valve::Open
     }
 
-    fn deliver_lines(&mut self, _: Vec<LogLine>) -> Valve<Vec<LogLine>> {
+    fn deliver_line(&mut self, _: LogLine) -> Valve<LogLine> {
         // drop the line, intentionally
         Valve::Open
     }

@@ -6,13 +6,27 @@ mod programmable_filter;
 
 pub use self::programmable_filter::{ProgrammableFilter, ProgrammableFilterConfig};
 
+#[derive(Debug)]
+pub enum FilterError {
+    NoSuchFunction(&'static str, metric::Event),
+}
+
+fn name_in_fe(fe: &FilterError) -> &'static str {
+    match fe {
+        &FilterError::NoSuchFunction(n, _) => n,
+    }
+}
+
+fn metric_in_fe(fe: &FilterError) -> &metric::Event {
+    match fe {
+        &FilterError::NoSuchFunction(_, ref m) => m,
+    }
+}
+
 pub trait Filter {
-    // TODO There should be a way to send a modified event to some channels, not
-    // to others etc.
     fn process<'a>(&mut self,
-                   event: &'a mut metric::Event,
-                   chans: &'a mut Vec<mpsc::Sender<metric::Event>>)
-                   -> Vec<(&'a mut mpsc::Sender<metric::Event>, Vec<metric::Event>)>;
+                   event: &'a mut metric::Event)
+                   -> Result<Vec<metric::Event>, FilterError>;
     fn run(&mut self,
            mut recv: mpsc::Receiver<metric::Event>,
            mut chans: Vec<mpsc::Sender<metric::Event>>) {
@@ -23,10 +37,20 @@ pub trait Filter {
                 None => attempts += 1,
                 Some(mut event) => {
                     attempts = 0;
-                    for &mut (ref mut chan, ref events) in
-                        &mut self.process(&mut event, &mut chans) {
-                        for ev in events {
-                            chan.send(ev)
+                    match self.process(&mut event) {
+                        Ok(events) => {
+                            for ev in events {
+                                for chan in chans.iter_mut() {
+                                    chan.send(&ev)
+                                }
+                            }
+                        }
+                        Err(fe) => {
+                            error!("Failed to run filter with error: {:?}", name_in_fe(&fe));
+                            for chan in chans.iter_mut() {
+                                chan.send(metric_in_fe(&fe));
+                                chan.send(&event)
+                            }
                         }
                     }
                 }

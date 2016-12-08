@@ -22,7 +22,9 @@ fn populate_forwards(sends: &mut Vec<mpsc::Sender<metric::Event>>,
                      available_sends: &HashMap<String, mpsc::Sender<metric::Event>>) {
     for fwd in forwards {
         match available_sends.get(fwd) {
-            Some(snd) => sends.push(snd.clone()),
+            Some(snd) => {
+                sends.push(snd.clone());
+            }
             None => {
                 error!("Unable to fulfill configured forward: {} => {}",
                        config_path,
@@ -71,9 +73,11 @@ fn main() {
 
     // SINKS
     //
+    let mut flush_sends = Vec::new();
     if let Some(config) = args.console {
         let (console_send, console_recv) = cernan::mpsc::channel(&config.config_path,
                                                                  &args.data_directory);
+        flush_sends.push(console_send.clone());
         sends.insert(config.config_path.clone(), console_send);
         joins.push(thread::spawn(move || {
             cernan::sink::Console::new(config).run(console_recv);
@@ -82,6 +86,7 @@ fn main() {
     if let Some(config) = args.null {
         let (null_send, null_recv) = cernan::mpsc::channel(&config.config_path,
                                                            &args.data_directory);
+        flush_sends.push(null_send.clone());
         sends.insert(config.config_path.clone(), null_send);
         joins.push(thread::spawn(move || {
             cernan::sink::Null::new(config).run(null_recv);
@@ -89,6 +94,7 @@ fn main() {
     }
     if let Some(config) = args.wavefront {
         let (wf_send, wf_recv) = cernan::mpsc::channel(&config.config_path, &args.data_directory);
+        flush_sends.push(wf_send.clone());
         sends.insert(config.config_path.clone(), wf_send);
         joins.push(thread::spawn(move || {
             cernan::sink::Wavefront::new(config).run(wf_recv);
@@ -97,6 +103,7 @@ fn main() {
     if let Some(config) = args.fed_transmitter {
         let (cernan_send, cernan_recv) = cernan::mpsc::channel(&config.config_path,
                                                                &args.data_directory);
+        flush_sends.push(cernan_send.clone());
         sends.insert(config.config_path.clone(), cernan_send);
         joins.push(thread::spawn(move || {
             cernan::sink::FederationTransmitter::new(config).run(cernan_recv);
@@ -107,6 +114,7 @@ fn main() {
         let f: FirehoseConfig = config.clone();
         let (firehose_send, firehose_recv) = cernan::mpsc::channel(&config.config_path,
                                                                    &args.data_directory);
+        flush_sends.push(firehose_send.clone());
         sends.insert(config.config_path.clone(), firehose_send);
         joins.push(thread::spawn(move || {
             cernan::sink::Firehose::new(f).run(firehose_recv);
@@ -131,7 +139,6 @@ fn main() {
 
     // SOURCES
     //
-
     if let Some(config) = args.fed_receiver_config {
         let mut receiver_server_send = Vec::new();
         populate_forwards(&mut receiver_server_send,
@@ -179,12 +186,8 @@ fn main() {
     //
 
     let flush_interval = args.flush_interval;
-    let mut flush_interval_sends = Vec::new();
-    for snd in sends.values() {
-        flush_interval_sends.push(snd.clone());
-    }
     joins.push(thread::spawn(move || {
-        cernan::source::FlushTimer::new(flush_interval_sends, flush_interval).run();
+        cernan::source::FlushTimer::new(flush_sends, flush_interval).run();
     }));
 
     joins.push(thread::spawn(move || {
