@@ -98,9 +98,23 @@ impl Wavefront {
                         }
                     }
                 }
-                &MetricKind::Gauge |
-                &MetricKind::DeltaGauge => {
+                &MetricKind::Gauge => {
                     for (key, vals) in self.aggrs.gauges().iter() {
+                        for m in vals {
+                            if let Some(v) = m.value() {
+                                payload_size = payload_size.saturating_add(1);
+                                gauge_payload_size = gauge_payload_size.saturating_add(1);
+                                time_spreads =
+                                    time_spreads.insert_value((m.created_time - now).abs() as f64);
+                                gauge_time_spreads = gauge_time_spreads.insert_value((m.created_time - now).abs() as f64);
+                                write!(stats, "{} {} {} {}\n", key, v, m.time, fmt_tags(&m.tags))
+                                    .unwrap();
+                            }
+                        }
+                    }
+                }
+                &MetricKind::DeltaGauge => {
+                    for (key, vals) in self.aggrs.delta_gauges().iter() {
                         for m in vals {
                             if let Some(v) = m.value() {
                                 payload_size = payload_size.saturating_add(1);

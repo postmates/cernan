@@ -23,7 +23,7 @@ pub enum Event {
     TimerFlush,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub enum MetricKind {
     Counter,
     Gauge,

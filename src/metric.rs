@@ -52,67 +52,6 @@ fn cmp(left: &TagMap, right: &TagMap) -> Option<Ordering> {
     }
 }
 
-impl PartialEq for MetricKind {
-    fn eq(&self, other: &MetricKind) -> bool {
-        match (self, other) {
-            (&MetricKind::Gauge, &MetricKind::Gauge) |
-            (&MetricKind::Gauge, &MetricKind::DeltaGauge) |
-            (&MetricKind::DeltaGauge, &MetricKind::DeltaGauge) |
-            (&MetricKind::DeltaGauge, &MetricKind::Gauge) |
-            (&MetricKind::Counter, &MetricKind::Counter) |
-            (&MetricKind::Timer, &MetricKind::Timer) |
-            (&MetricKind::Histogram, &MetricKind::Histogram) |
-            (&MetricKind::Raw, &MetricKind::Raw) => true,
-            _ => false,
-        }
-    }
-}
-
-impl PartialOrd for MetricKind {
-    fn partial_cmp(&self, other: &MetricKind) -> Option<Ordering> {
-        match (self, other) {
-            (&MetricKind::Counter, &MetricKind::DeltaGauge) |
-            (&MetricKind::Counter, &MetricKind::Gauge) |
-            (&MetricKind::Counter, &MetricKind::Histogram) |
-            (&MetricKind::Counter, &MetricKind::Raw) |
-            (&MetricKind::Counter, &MetricKind::Timer) |
-            (&MetricKind::Histogram, &MetricKind::Raw) |
-            (&MetricKind::DeltaGauge, &MetricKind::Histogram) |
-            (&MetricKind::DeltaGauge, &MetricKind::Raw) |
-            (&MetricKind::DeltaGauge, &MetricKind::Timer) |
-            (&MetricKind::Gauge, &MetricKind::Histogram) |
-            (&MetricKind::Gauge, &MetricKind::Raw) |
-            (&MetricKind::Gauge, &MetricKind::Timer) |
-            (&MetricKind::Timer, &MetricKind::Histogram) |
-            (&MetricKind::Timer, &MetricKind::Raw) => Some(Ordering::Less),
-
-            (&MetricKind::Counter, &MetricKind::Counter) |
-            (&MetricKind::DeltaGauge, &MetricKind::DeltaGauge) |
-            (&MetricKind::DeltaGauge, &MetricKind::Gauge) |
-            (&MetricKind::Gauge, &MetricKind::DeltaGauge) |
-            (&MetricKind::Gauge, &MetricKind::Gauge) |
-            (&MetricKind::Histogram, &MetricKind::Histogram) |
-            (&MetricKind::Raw, &MetricKind::Raw) |
-            (&MetricKind::Timer, &MetricKind::Timer) => Some(Ordering::Equal),
-
-            (&MetricKind::DeltaGauge, &MetricKind::Counter) |
-            (&MetricKind::Gauge, &MetricKind::Counter) |
-            (&MetricKind::Histogram, &MetricKind::Counter) |
-            (&MetricKind::Histogram, &MetricKind::DeltaGauge) |
-            (&MetricKind::Histogram, &MetricKind::Gauge) |
-            (&MetricKind::Histogram, &MetricKind::Timer) |
-            (&MetricKind::Raw, &MetricKind::Counter) |
-            (&MetricKind::Raw, &MetricKind::DeltaGauge) |
-            (&MetricKind::Raw, &MetricKind::Gauge) |
-            (&MetricKind::Raw, &MetricKind::Histogram) |
-            (&MetricKind::Raw, &MetricKind::Timer) |
-            (&MetricKind::Timer, &MetricKind::Counter) |
-            (&MetricKind::Timer, &MetricKind::DeltaGauge) |
-            (&MetricKind::Timer, &MetricKind::Gauge) => Some(Ordering::Greater),
-        }
-    }
-}
-
 impl AddAssign for Metric {
     fn add_assign(&mut self, rhs: Metric) {
         match rhs.kind {
@@ -609,8 +548,8 @@ mod tests {
         let mdg = Metric::new("l6", 0.7913855).delta_gauge().time(47);
         let mg = Metric::new("l6", 0.9683).gauge().time(47);
 
-        assert_eq!(Some(Ordering::Equal), mg.partial_cmp(&mdg));
-        assert_eq!(Some(Ordering::Equal), mdg.partial_cmp(&mg));
+        assert_eq!(Some(Ordering::Less), mg.partial_cmp(&mdg));
+        assert_eq!(Some(Ordering::Greater), mdg.partial_cmp(&mg));
     }
 
     impl Rand for MetricKind {
@@ -649,7 +588,7 @@ mod tests {
     impl Rand for Event {
         fn rand<R: Rng>(rng: &mut R) -> Event {
             let i: usize = rng.gen();
-            match i % 4 {
+            match i % 3 {
                 0 => Event::TimerFlush,
                 _ => Event::Telemetry(rng.gen()),
             }
