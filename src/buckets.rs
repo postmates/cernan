@@ -15,6 +15,7 @@ pub type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 pub struct Buckets {
     counters: HashMapFnv<String, Vec<Metric>>,
     gauges: HashMapFnv<String, Vec<Metric>>,
+    delta_gauges: HashMapFnv<String, Vec<Metric>>,
     raws: HashMapFnv<String, Vec<Metric>>,
 
     timers: HashMapFnv<String, Vec<Metric>>,
@@ -39,6 +40,7 @@ impl Default for Buckets {
         Buckets {
             counters: HashMapFnv::default(),
             gauges: HashMapFnv::default(),
+            delta_gauges: HashMapFnv::default(),
             raws: HashMapFnv::default(),
             timers: HashMapFnv::default(),
             histograms: HashMapFnv::default(),
@@ -77,7 +79,8 @@ impl Buckets {
         self.raws.clear();
         self.histograms.clear();
         self.timers.clear();
-        for (_, v) in &mut self.gauges {
+        self.gauges.clear();
+        for (_, v) in &mut self.delta_gauges {
             let len = v.len();
             if len > 0 {
                 v.swap(0, len - 1);
@@ -101,7 +104,8 @@ impl Buckets {
         let name = value.name.to_owned();
         let bkt = match value.kind {
             MetricKind::Counter => &mut self.counters,
-            MetricKind::Gauge | MetricKind::DeltaGauge => &mut self.gauges,
+            MetricKind::Gauge => &mut self.gauges,
+            MetricKind::DeltaGauge => &mut self.delta_gauges,
             MetricKind::Raw => &mut self.raws,
             MetricKind::Timer => &mut self.timers,
             MetricKind::Histogram => &mut self.histograms,
@@ -110,7 +114,20 @@ impl Buckets {
         let bin_width = self.bin_width;
         match hsh.binary_search_by(|probe| probe.within(bin_width, &value)) {
             Ok(idx) => hsh[idx] += value,
-            Err(idx) => hsh.insert(idx, value),
+            Err(idx) => {
+                match value.kind {
+                    MetricKind::DeltaGauge => {
+                        if idx > 0 {
+                            let mut cur: Metric = hsh[idx - 1].clone().time(value.time);
+                            cur += value;
+                            hsh.insert(idx, cur)
+                        } else {
+                            hsh.insert(idx, value)
+                        }
+                    }
+                    _ => hsh.insert(idx, value),
+                }
+            }
         }
     }
 
@@ -120,6 +137,10 @@ impl Buckets {
 
     pub fn gauges(&self) -> &HashMapFnv<String, Vec<Metric>> {
         &self.gauges
+    }
+
+    pub fn delta_gauges(&self) -> &HashMapFnv<String, Vec<Metric>> {
+        &self.delta_gauges
     }
 
     pub fn raws(&self) -> &HashMapFnv<String, Vec<Metric>> {
@@ -385,6 +406,10 @@ mod test {
 
     #[test]
     fn test_add_delta_gauge_metric() {
+        // A gauge that transitions from gauge to delta gauge does _not_ retain
+        // its previous value. Other statsd aggregations require that you reset
+        // the value to zero before moving to a delta gauge. Cernan does not
+        // require this explicit reset, only the +/- on the metric value.
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
         let metric = Metric::new("some.metric", 100.0).gauge();
@@ -393,9 +418,12 @@ mod test {
         buckets.add(delta_metric);
         assert!(buckets.gauges.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(Some(88.5),
+        assert_eq!(Some(100.0),
                    buckets.gauges.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(Some(-11.5),
+                   buckets.delta_gauges.get_mut(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.gauges().len());
+        assert_eq!(1, buckets.delta_gauges().len());
         assert_eq!(0, buckets.counters().len());
     }
 
@@ -507,7 +535,7 @@ mod test {
 
             let gauges: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
                 match m.kind {
-                    MetricKind::Gauge | MetricKind::DeltaGauge => {
+                    MetricKind::Gauge => {
                         acc.insert(m.name.clone());
                         acc
                     }
@@ -527,6 +555,36 @@ mod test {
     }
 
     #[test]
+    fn unique_names_preserved_delta_gauges() {
+        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+            let mut bucket = Buckets::default();
+
+            for m in ms.clone() {
+                bucket.add(m);
+            }
+
+            let dgauges: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
+                match m.kind {
+                    MetricKind::DeltaGauge => {
+                        acc.insert(m.name.clone());
+                        acc
+                    }
+                    _ => acc,
+                }
+            });
+            let b_gauges: HashSet<String> =
+                bucket.delta_gauges().iter().fold(HashSet::default(), |mut acc, (k, _)| {
+                    acc.insert(k.clone());
+                    acc
+                });
+            assert_eq!(dgauges, b_gauges);
+
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+    }
+
+    #[test]
     fn correct_bin_count() {
         fn inner(ms: Vec<Metric>) -> TestResult {
             let mut bucket = Buckets::new(1);
@@ -537,11 +595,7 @@ mod test {
 
             let mut coll: HashMap<(MetricKind, String), HashSet<i64>> = HashMap::new();
             for m in ms {
-                let kind = if m.kind == MetricKind::DeltaGauge {
-                    MetricKind::Gauge
-                } else {
-                    m.kind
-                };
+                let kind = m.kind;
                 let name = m.name;
                 let time = m.time;
 
@@ -551,14 +605,15 @@ mod test {
 
             let mut expected_counters = 0;
             let mut expected_gauges = 0;
+            let mut expected_delta_gauges = 0;
             let mut expected_raws = 0;
             let mut expected_histograms = 0;
             let mut expected_timers = 0;
 
             for (&(ref kind, _), val) in coll.iter() {
                 match kind {
-                    &MetricKind::Gauge |
-                    &MetricKind::DeltaGauge => expected_gauges += val.len(),
+                    &MetricKind::Gauge => expected_gauges += val.len(),
+                    &MetricKind::DeltaGauge => expected_delta_gauges += val.len(),
                     &MetricKind::Counter => expected_counters += val.len(),
                     &MetricKind::Timer => expected_timers += val.len(),
                     &MetricKind::Histogram => expected_histograms += val.len(),
@@ -571,6 +626,8 @@ mod test {
                        bucket.counters().iter().fold(0, |acc, (_k, v)| acc + v.len()));
             assert_eq!(expected_gauges,
                        bucket.gauges().iter().fold(0, |acc, (_k, v)| acc + v.len()));
+            assert_eq!(expected_delta_gauges,
+                       bucket.delta_gauges().iter().fold(0, |acc, (_k, v)| acc + v.len()));
             assert_eq!(expected_histograms,
                        bucket.histograms().iter().fold(0, |acc, (_k, v)| acc + v.len()));
             assert_eq!(expected_timers,
@@ -744,36 +801,58 @@ mod test {
                 bucket.add(m);
             }
 
-            let mut cnts: HashMap<String, Vec<(i64, f64)>> = HashMap::default();
+            let mut g_cnts: HashMap<String, Vec<(i64, f64)>> = HashMap::default();
+            let mut dg_cnts: HashMap<String, Vec<(i64, f64)>> = HashMap::default();
             for m in ms {
                 match m.kind {
                     MetricKind::Gauge => {
-                        let c = cnts.entry(m.name.clone()).or_insert(vec![]);
+                        let c = g_cnts.entry(m.name.clone()).or_insert(vec![]);
                         match c.binary_search_by_key(&m.time, |&(a, _)| a) {
                             Ok(idx) => c[idx] = (m.time, m.value().unwrap()),
                             Err(idx) => c.insert(idx, (m.time, m.value().unwrap())),
                         }
                     }
                     MetricKind::DeltaGauge => {
-                        let c = cnts.entry(m.name.clone()).or_insert(vec![]);
+                        let c = dg_cnts.entry(m.name.clone()).or_insert(vec![]);
                         match c.binary_search_by_key(&m.time, |&(a, _)| a) {
                             Ok(idx) => c[idx].1 += m.value().unwrap(),
-                            Err(idx) => c.insert(idx, (m.time, m.value().unwrap())),
+                            Err(idx) => {
+                                if idx > 0 {
+                                    let mut val = c[idx - 1].1.clone();
+                                    val += m.value().unwrap();
+                                    c.insert(idx, (m.time, val))
+                                } else {
+                                    c.insert(idx, (m.time, m.value().unwrap()))
+                                }
+                            }
                         }
                     }
                     _ => continue,
                 }
             }
 
-            assert_eq!(bucket.gauges().len(), cnts.len());
+            assert_eq!(bucket.gauges().len(), g_cnts.len());
             for (k, v) in bucket.gauges().iter() {
                 let mut v = v.clone();
                 v.sort_by_key(|ref m| m.time);
 
-                let ref cnts_v = *cnts.get(k).unwrap();
-                assert_eq!(cnts_v.len(), v.len());
+                let ref g_cnts_v = *g_cnts.get(k).unwrap();
+                assert_eq!(g_cnts_v.len(), v.len());
 
-                for (i, c_v) in cnts_v.iter().enumerate() {
+                for (i, c_v) in g_cnts_v.iter().enumerate() {
+                    assert_eq!(c_v.0, v[i].time);
+                    assert_eq!(Some(c_v.1), v[i].value());
+                }
+            }
+            assert_eq!(bucket.delta_gauges().len(), dg_cnts.len());
+            for (k, v) in bucket.delta_gauges().iter() {
+                let mut v = v.clone();
+                v.sort_by_key(|ref m| m.time);
+
+                let ref dg_cnts_v = *dg_cnts.get(k).unwrap();
+                assert_eq!(dg_cnts_v.len(), v.len());
+
+                for (i, c_v) in dg_cnts_v.iter().enumerate() {
                     assert_eq!(c_v.0, v[i].time);
                     assert_eq!(Some(c_v.1), v[i].value());
                 }

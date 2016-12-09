@@ -29,8 +29,8 @@ impl ConsoleConfig {
 }
 
 /// Print a single stats line.
-fn fmt_line(key: &str, value: f64) {
-    println!("    {}: {}", key, value)
+fn fmt_line(key: &str, time: i64, value: f64) {
+    println!("    {}({}): {}", key, time, value)
 }
 
 impl Sink for Console {
@@ -45,14 +45,13 @@ impl Sink for Console {
     }
 
     fn flush(&mut self) {
-        let now = chrono::UTC::now();
-        println!("Flushing metrics: {}", now.to_rfc3339());
+        println!("Flushing metrics: {}", chrono::UTC::now().to_rfc3339());
 
         println!("  counters:");
         for (key, value) in self.aggrs.counters() {
             for m in value {
                 if let Some(f) = m.value() {
-                    fmt_line(key, f)
+                    fmt_line(key, m.time, f)
                 }
             }
         }
@@ -61,7 +60,14 @@ impl Sink for Console {
         for (key, value) in self.aggrs.gauges() {
             for m in value {
                 if let Some(f) = m.value() {
-                    fmt_line(key, f)
+                    fmt_line(key, m.time, f)
+                }
+            }
+        }
+        for (key, value) in self.aggrs.delta_gauges() {
+            for m in value {
+                if let Some(f) = m.value() {
+                    fmt_line(key, m.time, f)
                 }
             }
         }
@@ -70,7 +76,7 @@ impl Sink for Console {
         for (key, value) in self.aggrs.raws() {
             for m in value {
                 if let Some(f) = m.value() {
-                    fmt_line(key, f)
+                    fmt_line(key, m.time, f)
                 }
             }
         }
