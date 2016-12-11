@@ -24,11 +24,6 @@ pub fn send<S>(ctx: S, chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &met
     for mut chan in chans {
         let snd_time = Instant::now();
         chan.send(event);
-        trace!("[{}] channel send {:?} to {} elapsed (ns): {}",
-               ctx,
-               event,
-               chan.name(),
-               time::elapsed_ns(snd_time));
     }
 }
 
