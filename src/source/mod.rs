@@ -1,9 +1,6 @@
 use metric;
 use mpsc;
-use std::str;
-use std::time::Instant;
 use std::fmt;
-use time;
 
 mod graphite;
 mod statsd;
@@ -18,17 +15,11 @@ pub use self::flush::FlushTimer;
 pub use self::federation_receiver::{FederationReceiver, FederationReceiverConfig};
 
 #[inline]
-pub fn send<S>(ctx: S, chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &metric::Event)
+pub fn send<S>(_ctx: S, chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &metric::Event)
     where S: Into<String> + fmt::Display
 {
     for mut chan in chans {
-        let snd_time = Instant::now();
         chan.send(event);
-        trace!("[{}] channel send {:?} to {} elapsed (ns): {}",
-               ctx,
-               event,
-               chan.name(),
-               time::elapsed_ns(snd_time));
     }
 }
 

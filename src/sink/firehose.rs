@@ -59,7 +59,7 @@ impl Sink for Firehose {
                         pyld.insert(String::from("timestamp"), format_time(m.time));
                         pyld.insert(String::from("Uuid"),
                                     Uuid::new_v4().hyphenated().to_string());
-                        for (k, v) in m.tags.iter() {
+                        for &(ref k, ref v) in m.tags.iter() {
                             pyld.insert(k.clone(), v.clone());
                         }
                         Record { data: serde_json::ser::to_vec(&pyld).unwrap() }

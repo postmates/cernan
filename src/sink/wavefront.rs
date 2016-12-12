@@ -29,9 +29,9 @@ pub struct WavefrontConfig {
 fn fmt_tags(tags: &TagMap) -> String {
     let mut s = String::new();
     let mut iter = tags.iter();
-    if let Some((fk, fv)) = iter.next() {
+    if let Some(&(ref fk, ref fv)) = iter.next() {
         write!(s, "{}={}", fk, fv).unwrap();
-        for (k, v) in iter {
+        for &(ref k, ref v) in iter {
             write!(s, " {}={}", k, v).unwrap();
         }
     }

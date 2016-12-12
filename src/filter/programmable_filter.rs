@@ -183,13 +183,13 @@ impl<'a> Payload<'a> {
                                 state.push_nil();
                             }
                         }
-                    },
+                    }
                     None => {
                         error!("[metric_set_tag] no key provided");
                         state.push_nil();
                     }
                 }
-            },
+            }
             None => {
                 error!("[metric_set_tag] no val provided");
                 state.push_nil();
@@ -215,13 +215,13 @@ impl<'a> Payload<'a> {
                                 state.push_nil();
                             }
                         }
-                    },
+                    }
                     None => {
                         error!("[log_set_tag] no key provided");
                         state.push_nil();
                     }
                 }
-            },
+            }
             None => {
                 error!("[log_set_tag] no val provided");
                 state.push_nil();
@@ -245,7 +245,7 @@ impl<'a> Payload<'a> {
                         state.push_nil();
                     }
                 }
-            },
+            }
             None => {
                 error!("[metric_remove_tag] no val provided");
                 state.push_nil();
@@ -269,7 +269,7 @@ impl<'a> Payload<'a> {
                         state.push_nil();
                     }
                 }
-            },
+            }
             None => {
                 error!("[log_remove_tag] no val provided");
                 state.push_nil();
@@ -366,14 +366,22 @@ impl ProgrammableFilter {
 }
 
 impl filter::Filter for ProgrammableFilter {
-    fn process<'a>(&mut self, event: &'a mut metric::Event) -> Result<Vec<metric::Event>, filter::FilterError> {
+    fn process<'a>(&mut self,
+                   event: &'a mut metric::Event)
+                   -> Result<Vec<metric::Event>, filter::FilterError> {
         let event = event.clone();
         match event {
             metric::Event::Telemetry(m) => {
                 self.state.get_global("process_metric");
                 if !self.state.is_fn(-1) {
-                    let fail = metric::Event::Telemetry(metric::Metric::new(format!("cernan.filture.{}.process_metric.failure", self.path), 1.0).counter());
-                    return Err(filter::FilterError::NoSuchFunction("process_metric", fail))
+                    let fail =
+                        metric::Event::Telemetry(metric::Metric::new(format!("cernan.filture.\
+                                                                              {}.process_metric.\
+                                                                              failure",
+                                                                             self.path),
+                                                                     1.0)
+                            .counter());
+                    return Err(filter::FilterError::NoSuchFunction("process_metric", fail));
                 }
 
                 let mut pyld = Payload::from_metric(m, &self.global_tags, self.path.as_str());
@@ -394,8 +402,13 @@ impl filter::Filter for ProgrammableFilter {
             metric::Event::TimerFlush => {
                 self.state.get_global("tick");
                 if !self.state.is_fn(-1) {
-                    let fail = metric::Event::Telemetry(metric::Metric::new(format!("cernan.filter.{}.tick.failure", self.path), 1.0).counter());
-                    return Err(filter::FilterError::NoSuchFunction("tick", fail))
+                    let fail =
+                        metric::Event::Telemetry(metric::Metric::new(format!("cernan.filter.{}.\
+                                                                              tick.failure",
+                                                                             self.path),
+                                                                     1.0)
+                            .counter());
+                    return Err(filter::FilterError::NoSuchFunction("tick", fail));
                 }
 
                 let mut pyld = Payload::blank(&self.global_tags, self.path.as_str());
@@ -416,8 +429,14 @@ impl filter::Filter for ProgrammableFilter {
             metric::Event::Log(l) => {
                 self.state.get_global("process_log");
                 if !self.state.is_fn(-1) {
-                    let fail = metric::Event::Telemetry(metric::Metric::new(format!("cernan.filter.{}.process_log.failure", self.path), 1.0).counter());
-                    return Err(filter::FilterError::NoSuchFunction("process_log", fail))
+                    let fail =
+                        metric::Event::Telemetry(metric::Metric::new(format!("cernan.filter.{}.\
+                                                                              process_log.\
+                                                                              failure",
+                                                                             self.path),
+                                                                     1.0)
+                            .counter());
+                    return Err(filter::FilterError::NoSuchFunction("process_log", fail));
                 }
 
                 let mut pyld = Payload::from_log(l, &self.global_tags, self.path.as_str());
