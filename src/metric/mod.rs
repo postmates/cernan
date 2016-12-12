@@ -141,10 +141,10 @@ impl Metric {
     /// assert!(m.tags.is_empty());
     ///
     /// m = m.overlay_tag("foo", "bar");
-    /// assert_eq!(Some(&"bar".into()), m.tags.get("foo".into()));
+    /// assert_eq!(Some(&"bar".into()), m.tags.get(&String::from("foo")));
     ///
     /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get("foo".into()));
+    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
     /// ```
     pub fn overlay_tag<S>(mut self, key: S, val: S) -> Metric
         where S: Into<String>
@@ -169,15 +169,15 @@ impl Metric {
     /// assert!(m.tags.is_empty());
     ///
     /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get("foo".into()));
+    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
     ///
     /// let mut tag_map = TagMap::default();
     /// tag_map.insert("foo".into(), "bar".into());
     /// tag_map.insert("oof".into(), "rab".into());
     ///
     /// m = m.overlay_tags_from_map(&tag_map);
-    /// assert_eq!(Some(&"bar".into()), m.tags.get("foo".into()));
-    /// assert_eq!(Some(&"rab".into()), m.tags.get("oof".into()));
+    /// assert_eq!(Some(&"bar".into()), m.tags.get(&String::from("foo")));
+    /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
     /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Metric {
         for &(ref k, ref v) in map.iter() {
@@ -203,15 +203,15 @@ impl Metric {
     /// assert!(m.tags.is_empty());
     ///
     /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get("foo".into()));
+    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
     ///
     /// let mut tag_map = TagMap::default();
     /// tag_map.insert("foo".into(), "bar".into());
     /// tag_map.insert("oof".into(), "rab".into());
     ///
     /// m = m.merge_tags_from_map(&tag_map);
-    /// assert_eq!(Some(&"22".into()), m.tags.get("foo".into()));
-    /// assert_eq!(Some(&"rab".into()), m.tags.get("oof".into()));
+    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
+    /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
     /// ```
     pub fn merge_tags_from_map(mut self, map: &TagMap) -> Metric {
         self.tags.merge(map);

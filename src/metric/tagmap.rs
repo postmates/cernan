@@ -58,6 +58,10 @@ impl<K, V> TagMap<K, V>
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
     pub fn merge(&mut self, other: &TagMap<K, V>)
         where K: Clone,
               V: Clone
