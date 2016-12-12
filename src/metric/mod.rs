@@ -2,16 +2,17 @@ use time;
 use std::str::FromStr;
 use quantiles::CKMS;
 
+mod tagmap;
+
+pub use self::tagmap::cmp;
+
 include!(concat!(env!("OUT_DIR"), "/metric_types.rs"));
 
-use std::collections::HashMap;
-use std::hash::BuildHasherDefault;
-use fnv::FnvHasher;
 use std::cmp::Ordering;
 use std::ops::AddAssign;
 use std::fmt;
 
-pub type TagMap = HashMap<String, String, BuildHasherDefault<FnvHasher>>;
+pub type TagMap = self::tagmap::TagMap<String, String>;
 
 impl LogLine {
     pub fn new<S>(path: S, value: S) -> LogLine
@@ -33,24 +34,13 @@ impl LogLine {
     }
 
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> LogLine {
-        for (k, v) in map.iter() {
+        for &(ref k, ref v) in map.iter() {
             self.tags.insert(k.clone(), v.clone());
         }
         self
     }
 }
 
-fn cmp(left: &TagMap, right: &TagMap) -> Option<Ordering> {
-    if left.len() != right.len() {
-        left.len().partial_cmp(&right.len())
-    } else {
-        let mut l: Vec<(&String, &String)> = left.iter().collect();
-        l.sort();
-        let mut r: Vec<(&String, &String)> = right.iter().collect();
-        r.sort();
-        l.partial_cmp(&r)
-    }
-}
 
 impl AddAssign for Metric {
     fn add_assign(&mut self, rhs: Metric) {
@@ -190,7 +180,7 @@ impl Metric {
     /// assert_eq!(Some(&"rab".into()), m.tags.get("oof".into()));
     /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Metric {
-        for (k, v) in map.iter() {
+        for &(ref k, ref v) in map.iter() {
             self.tags.insert(k.clone(), v.clone());
         }
         self
@@ -224,9 +214,7 @@ impl Metric {
     /// assert_eq!(Some(&"rab".into()), m.tags.get("oof".into()));
     /// ```
     pub fn merge_tags_from_map(mut self, map: &TagMap) -> Metric {
-        for (k, v) in map.iter() {
-            self.tags.entry(k.clone()).or_insert(v.clone());
-        }
+        self.tags.merge(map);
         self
     }
 
