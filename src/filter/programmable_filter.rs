@@ -8,8 +8,8 @@ use libc::c_int;
 use std::path::PathBuf;
 
 struct Payload<'a> {
-    metrics: Vec<metric::Metric>,
-    logs: Vec<metric::LogLine>,
+    metrics: Vec<Box<metric::Metric>>,
+    logs: Vec<Box<metric::LogLine>>,
     global_tags: &'a metric::TagMap,
     path: &'a str,
 }
@@ -25,17 +25,20 @@ fn idx(n: i64, top: usize) -> usize {
 impl<'a> Payload<'a> {
     fn from_metric(m: metric::Metric, tags: &'a metric::TagMap, path: &'a str) -> Payload<'a> {
         Payload {
-            metrics: vec![m],
+            metrics: vec![Box::new(m)],
             logs: Vec::new(),
             global_tags: tags,
             path: path,
         }
     }
 
-    fn from_log(l: metric::LogLine, tags: &'a metric::TagMap, path: &'a str) -> Payload<'a> {
+    fn from_log(l: metric::LogLine,
+                tags: &'a metric::TagMap,
+                path: &'a str)
+                -> Payload<'a> {
         Payload {
             metrics: Vec::new(),
-            logs: vec![l],
+            logs: vec![Box::new(l)],
             global_tags: tags,
             path: path,
         }
@@ -76,7 +79,7 @@ impl<'a> Payload<'a> {
         match state.to_str(2) {
             Some(name) => {
                 let m = metric::Metric::new(name, val).overlay_tags_from_map((*pyld).global_tags);
-                (*pyld).metrics.push(m);
+                (*pyld).metrics.push(Box::new(m));
             }
             None => {
                 error!("[push_metric] no name argument given");
@@ -93,7 +96,7 @@ impl<'a> Payload<'a> {
             Some(line) => {
                 let l = metric::LogLine::new((*pyld).path, line)
                     .overlay_tags_from_map((*pyld).global_tags);
-                (*pyld).logs.push(l);
+                (*pyld).logs.push(Box::new(l));
             }
             None => {
                 error!("[push_log] no line argument given");
@@ -133,7 +136,7 @@ impl<'a> Payload<'a> {
                         state.push_nil();
                     }
                 }
-            } 
+            }
             None => {
                 error!("[log_tag_value] no key provided");
                 state.push_nil();
@@ -367,9 +370,8 @@ impl ProgrammableFilter {
 
 impl filter::Filter for ProgrammableFilter {
     fn process<'a>(&mut self,
-                   event: &'a mut metric::Event)
+                   event: metric::Event)
                    -> Result<Vec<metric::Event>, filter::FilterError> {
-        let event = event.clone();
         match event {
             metric::Event::Telemetry(m) => {
                 self.state.get_global("process_metric");
@@ -394,9 +396,9 @@ impl filter::Filter for ProgrammableFilter {
                 self.state.call(1, 0);
 
                 Ok(pyld.logs
-                    .iter()
-                    .map(|m| metric::Event::Log(m.clone()))
-                    .chain(pyld.metrics.iter().map(|m| metric::Event::Telemetry(m.clone())))
+                    .into_iter()
+                    .map(|m| metric::Event::Log(*m))
+                    .chain(pyld.metrics.into_iter().map(|m| metric::Event::Telemetry(*m)))
                     .collect())
             }
             metric::Event::TimerFlush => {
@@ -421,9 +423,9 @@ impl filter::Filter for ProgrammableFilter {
                 self.state.call(1, 0);
 
                 Ok(pyld.logs
-                    .iter()
-                    .map(|m| metric::Event::Log(m.clone()))
-                    .chain(pyld.metrics.iter().map(|m| metric::Event::Telemetry(m.clone())))
+                    .into_iter()
+                    .map(|m| metric::Event::Log(*m))
+                    .chain(pyld.metrics.into_iter().map(|m| metric::Event::Telemetry(*m)))
                     .collect())
             }
             metric::Event::Log(l) => {
@@ -449,9 +451,9 @@ impl filter::Filter for ProgrammableFilter {
                 self.state.call(1, 0);
 
                 Ok(pyld.logs
-                    .iter()
-                    .map(|m| metric::Event::Log(m.clone()))
-                    .chain(pyld.metrics.iter().map(|m| metric::Event::Telemetry(m.clone())))
+                   .into_iter()
+                    .map(|m| metric::Event::Log(*m))
+                    .chain(pyld.metrics.into_iter().map(|m| metric::Event::Telemetry(*m)))
                     .collect())
             }
         }

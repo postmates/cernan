@@ -17,16 +17,14 @@ fn name_in_fe(fe: &FilterError) -> &'static str {
     }
 }
 
-fn metric_in_fe(fe: &FilterError) -> &metric::Event {
+fn event_in_fe(fe: &FilterError) -> &metric::Event {
     match fe {
         &FilterError::NoSuchFunction(_, ref m) => m,
     }
 }
 
 pub trait Filter {
-    fn process<'a>(&mut self,
-                   event: &'a mut metric::Event)
-                   -> Result<Vec<metric::Event>, FilterError>;
+    fn process<'a>(&mut self, event: metric::Event) -> Result<Vec<metric::Event>, FilterError>;
     fn run(&mut self,
            mut recv: mpsc::Receiver<metric::Event>,
            mut chans: Vec<mpsc::Sender<metric::Event>>) {
@@ -35,9 +33,9 @@ pub trait Filter {
             time::delay(attempts);
             match recv.next() {
                 None => attempts += 1,
-                Some(mut event) => {
+                Some(event) => {
                     attempts = 0;
-                    match self.process(&mut event) {
+                    match self.process(event) {
                         Ok(events) => {
                             for ev in events {
                                 for chan in chans.iter_mut() {
@@ -48,8 +46,7 @@ pub trait Filter {
                         Err(fe) => {
                             error!("Failed to run filter with error: {:?}", name_in_fe(&fe));
                             for chan in chans.iter_mut() {
-                                chan.send(metric_in_fe(&fe));
-                                chan.send(&event)
+                                chan.send(event_in_fe(&fe));
                             }
                         }
                     }

@@ -10,13 +10,12 @@ source = "cernan"
   [sources.statsd.primary]
   enabled = true
   port = 8125
-  forwards = ["sinks.console"] #, "sinks.wavefront"]
+  forwards = ["sinks.null"] #, "sinks.wavefront"]
 
   [sources.graphite.primary]
   enabled = true
   port = 2004
-  forwards = ["sinks.console"]
-#  forwards = ["filters.collectd_scrub"]
+  forwards = ["filters.collectd_scrub"]
 
   # [sources.files]
   # [sources.files.example_log]
@@ -31,16 +30,17 @@ source = "cernan"
   # port = 1972
   # ip = "0.0.0.0"
 
-# [filters]
-#   [filters.collectd_scrub]
-#   script = "collectd_scrub.lua"
-#   forwards = ["sinks.console", "sinks.null", "sinks.wavefront"]
+[filters]
+  [filters.collectd_scrub]
+  script = "collectd_scrub.lua"
+#  forwards = ["sinks.console", "sinks.null", "sinks.wavefront"]
+  forwards = ["sinks.null"]
 
 [sinks]
-  [sinks.console]
-  bin_width = 1
+#  [sinks.console]
+#  bin_width = 1
 
-  # [sinks.null]
+  [sinks.null]
 
   # [sinks.wavefront]
   # port = 2878

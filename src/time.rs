@@ -30,7 +30,8 @@ pub fn update_time() {
 
 #[inline]
 pub fn delay(attempts: u32) {
-    let delay = cmp::min(500, 2u32.pow(attempts));
+    let attempts = cmp::min(9, attempts);
+    let delay = cmp::min(512, 2u32.pow(attempts));
     let sleep_time = time::Duration::from_millis(delay as u64);
     thread::sleep(sleep_time);
 }
