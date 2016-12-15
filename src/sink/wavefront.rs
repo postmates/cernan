@@ -261,6 +261,13 @@ impl Wavefront {
                        fmt_tags(&self.global_tags))
                     .unwrap()
             }
+            write!(stats,
+                   "{}.count {} {} {}\n",
+                   spread.name,
+                   spread.count(),
+                   now, 
+                   fmt_tags(&self.global_tags))
+                .unwrap();
         }
 
         write!(stats,
@@ -299,9 +306,7 @@ impl Sink for Wavefront {
             if self.delivery_attempts > 0 {
                 debug!("delivery attempts: {}", self.delivery_attempts);
             }
-            debug!("DNS START {}", time::now());
             let addrs = (self.host.as_str(), self.port).to_socket_addrs();
-            debug!("DNS SUCCESS {}", time::now());
             match addrs {
                 Ok(srv) => {
                     let ips: Vec<_> = srv.collect();
@@ -343,6 +348,7 @@ impl Sink for Wavefront {
     }
 
     fn deliver(&mut self, point: Metric) -> Valve<Metric> {
+        debug!("delivered point: {:?}", point);
         self.aggrs.add(point);
         Valve::Open
     }
@@ -425,7 +431,6 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(78, lines.len());
         assert!(lines.contains(&"test.counter 1 645181811 source=test-src"));
         assert!(lines.contains(&"test.counter 3 645181812 source=test-src"));
         assert!(lines.contains(&"test.gauge 3.211 645181811 source=test-src"));
