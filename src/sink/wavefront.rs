@@ -289,17 +289,22 @@ impl Wavefront {
 impl Sink for Wavefront {
     fn flush(&mut self) {
         loop {
+            debug!("LOOP START {} | ATTEMPTS {}", time::now(), self.delivery_attempts);
             if self.delivery_attempts > 0 {
                 debug!("delivery attempts: {}", self.delivery_attempts);
             }
+            debug!("DNS START {}", time::now());
             let addrs = (self.host.as_str(), self.port).to_socket_addrs();
+            debug!("DNS SUCCESS {}", time::now());
             match addrs {
                 Ok(srv) => {
                     let ips: Vec<_> = srv.collect();
                     for ip in ips {
                         time::delay(self.delivery_attempts);
+                        debug!("CONNECT START {}", time::now());
                         match TcpStream::connect(ip) {
                             Ok(mut stream) => {
+                                debug!("CONNECT SUCCESS {}", time::now());
                                 let res = stream.write(self.format_stats(time::now()).as_bytes());
                                 if res.is_ok() {
                                     trace!("flushed to wavefront!");
@@ -312,6 +317,7 @@ impl Sink for Wavefront {
                                 }
                             }
                             Err(e) => {
+                                debug!("CONNECT FAIL {}", time::now());
                                 info!("Unable to connect to proxy at {} using addr {} with error \
                                        {}",
                                       self.host,
