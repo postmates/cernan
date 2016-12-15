@@ -344,7 +344,6 @@ impl Sink for Wavefront {
     }
 
     fn deliver(&mut self, point: Metric) -> Valve<Metric> {
-        debug!("delivered point: {:?}", point);
         self.aggrs.add(point);
         Valve::Open
     }
