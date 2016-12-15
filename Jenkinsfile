@@ -29,16 +29,9 @@ node {
    sh "curl -sSf https://static.rust-lang.org/rustup.sh > rustup.sh"
    sh "chmod +x rustup.sh"
 
-   stage 'Stable Tests'
-   sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust --channel=stable"
-   sh "cargo test"
-
-   stage 'Beta Tests'
-   sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust --channel=beta"
-   sh "cargo test"
-
    stage 'Build Artifact'
    sh "./rustup.sh --yes --disable-sudo --prefix=${env.WORKSPACE}/rust --channel=stable"
+   sh "cargo test"
    sh "cargo build --release"
 
    sh "aws s3 cp target/release/cernan s3://artifacts.postmates.com/binaries/cernan/cernan-${env.VERSION}"
