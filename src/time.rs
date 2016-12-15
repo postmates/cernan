@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use chrono::UTC;
-use std::{cmp, time, thread};
+use std::{time, thread};
 use std::time::Instant;
 
 lazy_static! {
@@ -30,8 +30,18 @@ pub fn update_time() {
 
 #[inline]
 pub fn delay(attempts: u32) {
-    let attempts = cmp::min(9, attempts);
-    let delay = cmp::min(512, 2u32.pow(attempts));
+    let delay = match attempts {
+        0 => return,
+        1 => 1,
+        2 => 4,
+        3 => 8,
+        4 => 16,
+        5 => 32,
+        6 => 64,
+        7 => 128,
+        8 => 256,
+        _ => 512,
+    };
     let sleep_time = time::Duration::from_millis(delay as u64);
     thread::sleep(sleep_time);
 }
