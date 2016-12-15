@@ -79,6 +79,7 @@ impl Wavefront {
 
         for kind in &[MetricKind::Counter,
                       MetricKind::Gauge,
+                      MetricKind::DeltaGauge,
                       MetricKind::Timer,
                       MetricKind::Histogram,
                       MetricKind::Raw] {
