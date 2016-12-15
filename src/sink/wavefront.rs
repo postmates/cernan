@@ -56,6 +56,7 @@ impl Wavefront {
         let mut stats = String::new();
         let mut payload_size: u32 = 0;
         let mut gauge_payload_size: u32 = 0;
+        let mut delta_gauge_payload_size: u32 = 0;
         let mut raw_payload_size: u32 = 0;
         let mut counter_payload_size: u32 = 0;
         let mut timer_payload_size: u32 = 0;
@@ -68,6 +69,8 @@ impl Wavefront {
             .histogram();
         let mut gauge_time_spreads =
             Metric::new(format!("cernan.{}.gauge.time_spreads", self.sink_name), 0.0).histogram();
+        let mut delta_gauge_time_spreads =
+            Metric::new(format!("cernan.{}.delta_gauge.time_spreads", self.sink_name), 0.0).histogram();
         let mut raw_time_spreads =
             Metric::new(format!("cernan.{}.raw.time_spreads", self.sink_name), 0.0).histogram();
         let mut timer_time_spreads =
@@ -119,10 +122,10 @@ impl Wavefront {
                         for m in vals {
                             if let Some(v) = m.value() {
                                 payload_size = payload_size.saturating_add(1);
-                                gauge_payload_size = gauge_payload_size.saturating_add(1);
+                                delta_gauge_payload_size = delta_gauge_payload_size.saturating_add(1);
                                 time_spreads =
                                     time_spreads.insert_value((m.created_time - now).abs() as f64);
-                                gauge_time_spreads = gauge_time_spreads.insert_value((m.created_time - now).abs() as f64);
+                                delta_gauge_time_spreads = delta_gauge_time_spreads.insert_value((m.created_time - now).abs() as f64);
                                 write!(stats, "{} {} {} {}\n", key, v, m.time, fmt_tags(&m.tags))
                                     .unwrap();
                             }
@@ -235,6 +238,7 @@ impl Wavefront {
 
         for ref spread in &[&time_spreads,
                             &gauge_time_spreads,
+                            &delta_gauge_time_spreads,
                             &raw_time_spreads,
                             &counter_time_spreads,
                             &timer_time_spreads,
@@ -269,6 +273,7 @@ impl Wavefront {
 
         for &(sz, nm) in &[(payload_size, "payload_size"),
                            (gauge_payload_size, "gauge_payload_size"),
+                           (delta_gauge_payload_size, "delta_gauge_payload_size"),
                            (raw_payload_size, "raw_payload_size"),
                            (counter_payload_size, "counter_payload_size"),
                            (timer_payload_size, "timer_payload_size"),
@@ -420,7 +425,7 @@ mod test {
         let lines: Vec<&str> = result.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(70, lines.len());
+        assert_eq!(78, lines.len());
         assert!(lines.contains(&"test.counter 1 645181811 source=test-src"));
         assert!(lines.contains(&"test.counter 3 645181812 source=test-src"));
         assert!(lines.contains(&"test.gauge 3.211 645181811 source=test-src"));
