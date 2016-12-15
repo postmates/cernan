@@ -10,7 +10,7 @@ use cernan::metric::{Metric, TagMap};
 #[bench]
 fn bench_merge_tags_from_map(b: &mut Bencher) {
     b.iter(|| {
-        let mut m0 = Metric::new("one", 1.0)
+        let m0 = Metric::new("one", 1.0)
             .overlay_tag("one", "1")
             .overlay_tag("two", "2")
             .overlay_tag("three", "3");

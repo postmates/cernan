@@ -23,9 +23,9 @@ mod integration {
             let metric = metric::Metric::new("identity", 12.0)
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
-            let mut event = metric::Event::Telemetry(metric);
+            let event = metric::Event::Telemetry(metric);
 
-            let res = cs.process(&mut event);
+            let res = cs.process(event.clone());
             assert!(res.is_ok());
             let events = res.ok().unwrap();
             assert!(!events.is_empty());
@@ -54,10 +54,10 @@ mod integration {
                                                     "i am the very model of the modern major \
                                                      general")
                 .overlay_tag("foo", "bar");
-            let mut orig_event = metric::Event::Log(orig_log);
+            let orig_event = metric::Event::Log(orig_log);
             let expected_event = metric::Event::Log(expected_log);
 
-            let res = cs.process(&mut orig_event);
+            let res = cs.process(orig_event.clone());
             assert!(res.is_ok());
             let events = res.ok().unwrap();
             assert!(!events.is_empty());
@@ -82,10 +82,10 @@ mod integration {
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
             let expected_metric = metric::Metric::new("identity", 12.0).overlay_tag("foo", "bar");
-            let mut orig_event = metric::Event::Telemetry(orig_metric);
-            let expected_event = metric::Event::Telemetry(expected_metric);
+            let orig_event = metric::Event::Telemetry((orig_metric));
+            let expected_event = metric::Event::Telemetry((expected_metric));
 
-            let res = cs.process(&mut orig_event);
+            let res = cs.process(orig_event.clone());
             assert!(res.is_ok());
             let events = res.ok().unwrap();
             assert!(!events.is_empty());
@@ -110,9 +110,9 @@ mod integration {
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
 
-            let mut orig_event = metric::Event::Telemetry(orig_metric);
+            let orig_event = metric::Event::Telemetry((orig_metric));
 
-            let res = cs.process(&mut orig_event);
+            let res = cs.process(orig_event.clone());
             assert!(res.is_ok());
             let events = res.ok().unwrap();
             assert!(!events.is_empty());
@@ -137,9 +137,9 @@ mod integration {
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
 
-            let mut orig_event = metric::Event::Telemetry(orig_metric);
+            let orig_event = metric::Event::Telemetry((orig_metric));
 
-            let res = cs.process(&mut orig_event);
+            let res = cs.process(orig_event);
             assert!(res.is_err());
         }
 
@@ -164,10 +164,10 @@ mod integration {
             let orig_log = metric::LogLine::new("identity",
                                                 "i am the very model of the modern major general")
                 .overlay_tag("foo", "bar");
-            let mut orig_event = metric::Event::Log(orig_log);
+            let orig_event = metric::Event::Log(orig_log);
             let expected_event = metric::Event::Log(expected_log);
 
-            let res = cs.process(&mut orig_event);
+            let res = cs.process(orig_event);
             assert!(res.is_ok());
             let events = res.ok().unwrap();
             assert!(!events.is_empty());
@@ -192,10 +192,10 @@ mod integration {
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
             let orig_metric = metric::Metric::new("identity", 12.0).overlay_tag("foo", "bar");
-            let mut orig_event = metric::Event::Telemetry(orig_metric);
-            let expected_event = metric::Event::Telemetry(expected_metric);
+            let orig_event = metric::Event::Telemetry((orig_metric));
+            let expected_event = metric::Event::Telemetry((expected_metric));
 
-            let res = cs.process(&mut orig_event);
+            let res = cs.process(orig_event);
             assert!(res.is_ok());
             let events = res.ok().unwrap();
             assert!(!events.is_empty());
@@ -216,21 +216,21 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let metric0 = metric::Event::Telemetry(metric::Metric::new("identity", 12.0));
-            let metric1 = metric::Event::Telemetry(metric::Metric::new("identity", 13.0));
-            let metric2 = metric::Event::Telemetry(metric::Metric::new("identity", 14.0));
+            let metric0 = metric::Event::Telemetry((metric::Metric::new("identity", 12.0)));
+            let metric1 = metric::Event::Telemetry((metric::Metric::new("identity", 13.0)));
+            let metric2 = metric::Event::Telemetry((metric::Metric::new("identity", 14.0)));
 
             let log0 = metric::Event::Log(metric::LogLine::new("identity", "a log line"));
             let log1 = metric::Event::Log(metric::LogLine::new("identity", "another"));
             let log2 = metric::Event::Log(metric::LogLine::new("identity", "more"));
             let log3 = metric::Event::Log(metric::LogLine::new("identity", "less"));
 
-            let mut flush = metric::Event::TimerFlush;
+            let flush = metric::Event::TimerFlush;
 
-            for mut ev in &mut [metric0, metric1, metric2, log0, log1] {
-                let _ = cs.process(&mut ev);
+            for ev in &[metric0, metric1, metric2, log0, log1] {
+                let _ = cs.process(ev.clone());
             }
-            let res = cs.process(&mut flush);
+            let res = cs.process(flush.clone());
             assert!(res.is_ok());
             let events = res.ok().unwrap();
 
@@ -238,15 +238,15 @@ mod integration {
             assert_eq!(events.len(), 2);
             println!("EVENTS: {:?}", events);
             assert_eq!(events[1],
-                       metric::Event::Telemetry(metric::Metric::new("count_per_tick", 5.0)));
+                       metric::Event::Telemetry((metric::Metric::new("count_per_tick", 5.0))));
             assert_eq!(events[0],
                        metric::Event::Log(metric::LogLine::new("filters.keep_count",
                                                                "count_per_tick: 5")));
 
-            for mut ev in &mut [log2, log3] {
-                let _ = cs.process(&mut ev);
+            for ev in &[log2, log3] {
+                let _ = cs.process(ev.clone());
             }
-            let res = cs.process(&mut flush);
+            let res = cs.process(flush);
             assert!(res.is_ok());
             let events = res.ok().unwrap();
 
@@ -254,7 +254,7 @@ mod integration {
             assert_eq!(events.len(), 2);
             println!("EVENTS: {:?}", events);
             assert_eq!(events[1],
-                       metric::Event::Telemetry(metric::Metric::new("count_per_tick", 2.0)));
+                       metric::Event::Telemetry((metric::Metric::new("count_per_tick", 2.0))));
             assert_eq!(events[0],
                        metric::Event::Log(metric::LogLine::new("filters.keep_count",
                                                                "count_per_tick: 2")));
@@ -278,9 +278,9 @@ mod integration {
             let expected = "collectd.protocols-TcpExt.protocol_counter-TCPFastOpenActive";
 
             let metric = metric::Metric::new(orig, 12.0);
-            let mut event = metric::Event::Telemetry(metric);
+            let event = metric::Event::Telemetry(metric);
 
-            let res = cs.process(&mut event);
+            let res = cs.process(event);
             assert!(res.is_ok());
             let events = res.ok().unwrap();
             assert!(!events.is_empty());
@@ -315,9 +315,9 @@ mod integration {
             let expected = "totally_fine.interface-lo.if_errors.tx 0 1478751126";
 
             let metric = metric::Metric::new(orig, 12.0);
-            let mut event = metric::Event::Telemetry(metric);
+            let event = metric::Event::Telemetry(metric);
 
-            let res = cs.process(&mut event);
+            let res = cs.process(event);
             assert!(res.is_ok());
             let events = res.ok().unwrap();
             assert!(!events.is_empty());
