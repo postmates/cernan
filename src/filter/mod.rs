@@ -1,6 +1,7 @@
 use metric;
 use mpsc;
 use time;
+use source;
 
 mod programmable_filter;
 
@@ -38,17 +39,13 @@ pub trait Filter {
                     match self.process(event) {
                         Ok(events) => {
                             for ev in events {
-                                for chan in chans.iter_mut() {
-                                    chan.send(ev.clone())
-                                }
+                                source::send("filter", &mut chans, ev)
                             }
                         }
                         Err(fe) => {
                             error!("Failed to run filter with error: {:?}", name_in_fe(&fe));
                             let event = event_in_fe(fe);
-                            for chan in chans.iter_mut() {
-                                chan.send(event.clone());
-                            }
+                            source::send("filter.error_path", &mut chans, event);
                         }
                     }
                 }
