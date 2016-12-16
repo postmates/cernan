@@ -17,9 +17,9 @@ fn name_in_fe(fe: &FilterError) -> &'static str {
     }
 }
 
-fn event_in_fe(fe: &FilterError) -> &metric::Event {
+fn event_in_fe(fe: FilterError) -> metric::Event {
     match fe {
-        &FilterError::NoSuchFunction(_, ref m) => m,
+        FilterError::NoSuchFunction(_, m) => m,
     }
 }
 
@@ -39,14 +39,15 @@ pub trait Filter {
                         Ok(events) => {
                             for ev in events {
                                 for chan in chans.iter_mut() {
-                                    chan.send(&ev)
+                                    chan.send(ev.clone())
                                 }
                             }
                         }
                         Err(fe) => {
                             error!("Failed to run filter with error: {:?}", name_in_fe(&fe));
+                            let event = event_in_fe(fe);
                             for chan in chans.iter_mut() {
-                                chan.send(event_in_fe(&fe));
+                                chan.send(event.clone());
                             }
                         }
                     }

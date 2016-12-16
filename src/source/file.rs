@@ -169,7 +169,7 @@ impl Source for FileServer {
                     }
                     if !lines.is_empty() {
                         for l in lines {
-                            send("file", &mut self.chans, &metric::Event::Log(l));
+                            send("file", &mut self.chans, metric::Event::Log(l));
                         }
                         lines = Vec::new();
                     }

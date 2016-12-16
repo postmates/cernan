@@ -15,11 +15,11 @@ pub use self::flush::FlushTimer;
 pub use self::federation_receiver::{FederationReceiver, FederationReceiverConfig};
 
 #[inline]
-pub fn send<S>(_ctx: S, chans: &mut Vec<mpsc::Sender<metric::Event>>, event: &metric::Event)
+pub fn send<S>(_ctx: S, chans: &mut Vec<mpsc::Sender<metric::Event>>, event: metric::Event)
     where S: Into<String> + fmt::Display
 {
     for mut chan in chans {
-        chan.send(event);
+        chan.send(event.clone());
     }
 }
 

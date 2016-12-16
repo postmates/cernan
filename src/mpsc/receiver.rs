@@ -23,7 +23,7 @@ pub struct Receiver<T> {
     name: String,
     root: PathBuf, // directory we store our queues in
     fp: BufReader<fs::File>, // active fp
-    fs_lock: FSLock,
+    fs_lock: FSLock<T>,
     resource_type: PhantomData<T>,
 }
 
@@ -31,7 +31,7 @@ impl<T> Receiver<T>
     where T: Deserialize
 {
     /// TODO
-    pub fn new<S>(name: S, data_dir: &Path, fs_lock: FSLock) -> Receiver<T>
+    pub fn new<S>(name: S, data_dir: &Path, fs_lock: FSLock<T>) -> Receiver<T>
         where S: Into<String> + fmt::Display
     {
         let _ = fs_lock.lock().expect("Sender fs_lock poisoned");
@@ -95,8 +95,16 @@ impl<T> Iterator for Receiver<T>
         // deleting it and moving on to the next file.
         while (*syn).writes_to_read > 0 {
             trace!("[{}] writes to read: {}", self.name, (*syn).writes_to_read);
-            match self.fp.read_exact(&mut sz_buf) {
-                Ok(()) => {
+            if (*syn).writes_to_read <= (*syn).max_small_buffer {
+                let event = (*syn)
+                    .small_buffer
+                    .pop_back()
+                    .expect("there was not an event in the in-memory buffer!");
+                (*syn).writes_to_read -= 1;
+                return Some(event);
+            } else {
+                match self.fp.read_exact(&mut sz_buf) {
+                    Ok(()) => {
                     let payload_size_in_bytes = u8tou32abe(&sz_buf);
                     trace!("[{}] payload_size_in_bytes: {}", self.name, payload_size_in_bytes);
                     let mut payload_buf = vec![0; (payload_size_in_bytes as usize)];
@@ -117,54 +125,55 @@ impl<T> Iterator for Receiver<T>
                         }
                     }
                 }
-                Err(e) => {
-                    match e.kind() {
-                        ErrorKind::UnexpectedEof => {
-                            // Okay, we're pretty sure that no one snuck data in
-                            // on us. We check the metadata condition of the
-                            // file and, if we find it read-only, switch on over
-                            // to a new log file.
-                            let metadata = self.fp
-                                .get_ref()
-                                .metadata()
-                                .expect("could not get metadata at UnexpectedEof");
-                            if metadata.permissions().readonly() {
-                                // TODO all these unwraps are a silent death
-                                let seq_num = fs::read_dir(&self.root)
-                                    .unwrap()
-                                    .map(|de| {
-                                        de.unwrap()
-                                            .path()
-                                            .file_name()
-                                            .unwrap()
-                                            .to_str()
-                                            .unwrap()
-                                            .parse::<usize>()
-                                            .unwrap()
-                                    })
-                                    .min()
-                                    .unwrap();
-                                trace!("[{}] read-only seq_num: {}", self.name, seq_num);
-                                let old_log = self.root.join(format!("{}", seq_num));
-                                trace!("[{}] attempting to remove old log {}",
-                                       self.name,
-                                       old_log.to_string_lossy());
-                                fs::remove_file(old_log).expect("could not remove log");
-                                let lg = self.root.join(format!("{}", seq_num.wrapping_add(1)));
-                                trace!("[{}] attempting to create new log at {}",
-                                       self.name,
-                                       lg.to_string_lossy());
-                                match fs::OpenOptions::new().read(true).open(&lg) {
-                                    Ok(fp) => {
-                                        self.fp = BufReader::new(fp);
-                                        continue;
+                    Err(e) => {
+                        match e.kind() {
+                            ErrorKind::UnexpectedEof => {
+                                // Okay, we're pretty sure that no one snuck data in
+                                // on us. We check the metadata condition of the
+                                // file and, if we find it read-only, switch on over
+                                // to a new log file.
+                                let metadata = self.fp
+                                    .get_ref()
+                                    .metadata()
+                                    .expect("could not get metadata at UnexpectedEof");
+                                if metadata.permissions().readonly() {
+                                    // TODO all these unwraps are a silent death
+                                    let seq_num = fs::read_dir(&self.root)
+                                        .unwrap()
+                                        .map(|de| {
+                                            de.unwrap()
+                                                .path()
+                                                .file_name()
+                                                .unwrap()
+                                                .to_str()
+                                                .unwrap()
+                                                .parse::<usize>()
+                                                .unwrap()
+                                        })
+                                        .min()
+                                        .unwrap();
+                                    trace!("[{}] read-only seq_num: {}", self.name, seq_num);
+                                    let old_log = self.root.join(format!("{}", seq_num));
+                                    trace!("[{}] attempting to remove old log {}",
+                                           self.name,
+                                           old_log.to_string_lossy());
+                                    fs::remove_file(old_log).expect("could not remove log");
+                                    let lg = self.root.join(format!("{}", seq_num.wrapping_add(1)));
+                                    trace!("[{}] attempting to create new log at {}",
+                                           self.name,
+                                           lg.to_string_lossy());
+                                    match fs::OpenOptions::new().read(true).open(&lg) {
+                                        Ok(fp) => {
+                                            self.fp = BufReader::new(fp);
+                                            continue;
+                                        }
+                                        Err(e) => panic!("[Receiver] could not open {:?}", e),
                                     }
-                                    Err(e) => panic!("[Receiver] could not open {:?}", e),
                                 }
                             }
-                        }
-                        _ => {
-                            panic!("unable to cope");
+                            _ => {
+                                panic!("unable to cope");
+                            }
                         }
                     }
                 }

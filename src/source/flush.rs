@@ -26,7 +26,7 @@ impl Source for FlushTimer {
         debug!("flush-interval: {:?}", duration);
         loop {
             sleep(duration);
-            send("flush", &mut self.chans, &metric::Event::TimerFlush);
+            send("flush", &mut self.chans, metric::Event::TimerFlush);
         }
     }
 }

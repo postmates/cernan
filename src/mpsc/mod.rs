@@ -62,17 +62,20 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::collections::VecDeque;
 
 /// PRIVATE -- exposed via `Sender::new`
 #[derive(Default, Debug)]
-pub struct FsSync {
+pub struct FsSync<T> {
+    small_buffer: VecDeque<T>,
+    max_small_buffer: usize,
     bytes_written: usize,
     writes_to_read: usize,
     sender_seq_num: usize,
 }
 
 /// PRIVATE -- exposed via `Sender::new`
-pub type FSLock = Arc<Mutex<FsSync>>;
+pub type FSLock<T> = Arc<Mutex<FsSync<T>>>;
 
 /// Create a (Sender, Reciever) pair in a like fashion to
 /// [`std::sync::mpsc::channel`](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html)
@@ -107,7 +110,13 @@ pub fn channel_with_max_bytes<T>(name: &str,
     if !root.is_dir() {
         fs::create_dir_all(root).expect("could not create directory");
     }
-    let fs_lock = Arc::new(Mutex::new(FsSync::default()));
+    let fs_lock = Arc::new(Mutex::new(FsSync {
+        small_buffer: VecDeque::with_capacity(1024),
+        max_small_buffer: 1024,
+        bytes_written: 0,
+        writes_to_read: 0,
+        sender_seq_num: 0,
+    }));
 
     let sender = sender::Sender::new(name, &snd_root, max_bytes, fs_lock.clone());
     let receiver = Receiver::new(name, &rcv_root, fs_lock);
@@ -128,7 +137,7 @@ mod test {
         let dir = tempdir::TempDir::new("cernan").unwrap();
         let (mut snd, mut rcv) = channel("one_item_round_trip", dir.path());
 
-        snd.send(&1);
+        snd.send(1);
 
         assert_eq!(Some(1), rcv.next());
     }
@@ -140,7 +149,7 @@ mod test {
 
         assert_eq!(None, rcv.next());
 
-        snd.send(&1);
+        snd.send(1);
         assert_eq!(Some(1), rcv.next());
     }
 
@@ -152,7 +161,7 @@ mod test {
                 channel_with_max_bytes("round_trip_order_preserved", dir.path(), max_bytes);
 
             for ev in evs.clone() {
-                snd.send(&ev);
+                snd.send(ev);
             }
 
             for ev in evs {
@@ -169,13 +178,14 @@ mod test {
     #[test]
     fn round_trip_small_max_bytes() {
         fn rnd_trip(evs: Vec<Vec<u32>>) -> TestResult {
+            println!("START {:?}", evs);
             let max_bytes: usize = 128;
             let dir = tempdir::TempDir::new("cernan").unwrap();
             let (mut snd, mut rcv) =
                 channel_with_max_bytes("small_max_bytes", dir.path(), max_bytes);
 
             for ev in evs.clone() {
-                snd.send(&ev);
+                snd.send(ev);
             }
 
             let mut total = evs.len();
@@ -235,7 +245,7 @@ mod test {
             joins.push(thread::spawn(move || {
                 let base = i * max_sz;
                 for p in 0..max_sz {
-                    thr_snd.send(&(base + p));
+                    thr_snd.send(base + p);
                 }
             }));
         }
@@ -278,7 +288,7 @@ mod test {
                 let thr_evs = evs.clone();
                 joins.push(thread::spawn(move || {
                     for e in thr_evs {
-                        thr_snd.send(&e);
+                        thr_snd.send(e);
                     }
                 }));
             }
