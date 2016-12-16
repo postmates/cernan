@@ -8,7 +8,7 @@ pub use self::tagmap::cmp;
 
 include!(concat!(env!("OUT_DIR"), "/metric_types.rs"));
 
-use std::cmp::Ordering;
+use std::cmp::{Ordering, PartialOrd};
 use std::ops::AddAssign;
 use std::fmt;
 
@@ -38,6 +38,116 @@ impl LogLine {
             self.tags.insert(k.clone(), v.clone());
         }
         self
+    }
+}
+
+impl AddAssign for MetricValue {
+    fn add_assign(&mut self, rhs: MetricValue) {
+        match rhs.kind {
+            MetricValueKind::Single => self.insert(rhs.single.unwrap()),
+            MetricValueKind::Many => self.merge(rhs.many.unwrap()),
+        }
+    }
+}
+
+impl MetricValue {
+    fn new(value: f64) -> MetricValue {
+        MetricValue {
+            kind: MetricValueKind::Single,
+            single: Some(value),
+            many: None,
+        }
+    }
+
+    fn insert(&mut self, value: f64) -> () {
+        match self.kind {
+            MetricValueKind::Single => {
+                let mut ckms = CKMS::new(0.001);
+                ckms.insert(self.single.unwrap());
+                ckms.insert(value);
+                self.many = Some(ckms);
+                self.single = None;
+                self.kind = MetricValueKind::Many;
+            }
+            MetricValueKind::Many => {
+                match self.many.as_mut() {
+                    None => {}
+                    Some(ckms) => ckms.insert(value),
+                };
+            }
+        }
+    }
+
+    fn merge(&mut self, mut value: CKMS<f64>) -> () {
+        match self.kind {
+            MetricValueKind::Single => {
+                value.insert(self.single.unwrap());
+                self.many = Some(value);
+                self.single = None;
+            }
+            MetricValueKind::Many => {
+                match self.many.as_mut() {
+                    None => {}
+                    Some(ckms) => *ckms += value, 
+                };
+            }
+        }
+    }
+
+    fn last(&self) -> Option<f64> {
+        match self.kind {
+            MetricValueKind::Single => {
+                self.single
+            }
+            MetricValueKind::Many => {
+                match self.many {
+                    Some(ref ckms) => ckms.last(),
+                    None => None,
+                }
+            }
+        }
+    }
+
+    fn sum(&self) -> Option<f64> {
+        match self.kind {
+            MetricValueKind::Single => {
+                self.single
+            }
+            MetricValueKind::Many => {
+                match self.many {
+                    Some(ref ckms) => ckms.sum(),
+                    None => None,
+                }
+            }
+        }
+    }
+
+    fn count(&self) -> usize {
+        match self.kind {
+            MetricValueKind::Single => {
+                1
+            }
+            MetricValueKind::Many => {
+                match self.many {
+                    Some(ref ckms) => ckms.count(),
+                    None => 0,
+                }
+            }
+        }
+    }
+
+    fn query(&self, query: f64) -> Option<(usize, f64)> {
+        match self.kind {
+            MetricValueKind::Single => {
+                Some((1 as usize, self.single.unwrap()))
+            }
+            MetricValueKind::Many => {
+                match self.many {
+                    Some(ref ckms) => ckms.query(query),
+                    None => None,
+                }
+            }
+        }
     }
 }
 
@@ -113,15 +223,14 @@ impl Metric {
     pub fn new<S>(name: S, value: f64) -> Metric
         where S: Into<String>
     {
-        let mut ckms = CKMS::new(0.001);
-        ckms.insert(value);
+        let val = MetricValue::new(value);
         Metric {
             kind: MetricKind::Raw,
             name: name.into(),
             tags: TagMap::default(),
             created_time: time::now(),
             time: time::now(),
-            value: ckms,
+            value: val,
         }
     }
 
@@ -237,8 +346,7 @@ impl Metric {
     /// assert_eq!(m.value(), Some(10.10));
     /// ```
     pub fn set_value(mut self, value: f64) -> Metric {
-        self.value = CKMS::new(0.001);
-        self.value.insert(value);
+        self.value = MetricValue::new(value);
         self
     }
 
