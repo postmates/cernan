@@ -1,6 +1,7 @@
 use metric;
 use mpsc;
 use time;
+use source;
 
 mod programmable_filter;
 
@@ -17,9 +18,9 @@ fn name_in_fe(fe: &FilterError) -> &'static str {
     }
 }
 
-fn event_in_fe(fe: &FilterError) -> &metric::Event {
+fn event_in_fe(fe: FilterError) -> metric::Event {
     match fe {
-        &FilterError::NoSuchFunction(_, ref m) => m,
+        FilterError::NoSuchFunction(_, m) => m,
     }
 }
 
@@ -38,16 +39,13 @@ pub trait Filter {
                     match self.process(event) {
                         Ok(events) => {
                             for ev in events {
-                                for chan in chans.iter_mut() {
-                                    chan.send(&ev)
-                                }
+                                source::send("filter", &mut chans, ev)
                             }
                         }
                         Err(fe) => {
                             error!("Failed to run filter with error: {:?}", name_in_fe(&fe));
-                            for chan in chans.iter_mut() {
-                                chan.send(event_in_fe(&fe));
-                            }
+                            let event = event_in_fe(fe);
+                            source::send("filter.error_path", &mut chans, event);
                         }
                     }
                 }

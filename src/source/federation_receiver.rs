@@ -90,12 +90,12 @@ fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
                                 // for now
                                 _ => continue,
                             };
-                            send("receiver", &mut chans, &ev);
+                            send("receiver", &mut chans, ev);
                         }
                         let metric = metric::Metric::new("cernan.federation.receiver.packet", 1.0)
                             .counter()
                             .overlay_tags_from_map(&tags);
-                        send("receiver", &mut chans, &metric::Event::Telemetry(metric));
+                        send("receiver", &mut chans, metric::Event::Telemetry(metric));
                     }
                     Err(e) => {
                         trace!("failed to decode payload with error: {:?}", e);
