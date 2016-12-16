@@ -13,7 +13,7 @@ pub struct Metric {
     pub created_time: i64,
     pub name: String,
     pub tags: TagMap,
-    value: CKMS<f64>,
+    value: MetricValue,
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
@@ -21,6 +21,19 @@ pub enum Event {
     Telemetry(Metric),
     Log(LogLine),
     TimerFlush,
+}
+
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
+pub enum MetricValueKind {
+    Single,
+    Many,
+}
+
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
+pub struct MetricValue {
+    kind: MetricValueKind,
+    single: Option<f64>,
+    many: Option<CKMS<f64>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Hash)]
