@@ -110,9 +110,10 @@ pub fn channel_with_max_bytes<T>(name: &str,
     if !root.is_dir() {
         fs::create_dir_all(root).expect("could not create directory");
     }
+    let cap: usize = 1024;
     let fs_lock = Arc::new(Mutex::new(FsSync {
-        small_buffer: VecDeque::with_capacity(1024),
-        max_small_buffer: 1024,
+        small_buffer: VecDeque::with_capacity(cap),
+        max_small_buffer: cap,
         bytes_written: 0,
         writes_to_read: 0,
         sender_seq_num: 0,
