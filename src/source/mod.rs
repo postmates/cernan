@@ -22,10 +22,10 @@ pub fn send<S>(_ctx: S, chans: &mut Vec<mpsc::Sender<metric::Event>>, event: met
     if max == 0 {
         chans[0].send(event)
     } else {
-        for mut chan in &mut chans[0..max - 1] {
+        for mut chan in &mut chans[1..] {
             chan.send(event.clone());
         }
-        chans[max].send(event)
+        chans[0].send(event);
     }
 }
 
