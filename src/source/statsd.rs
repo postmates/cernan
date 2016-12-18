@@ -1,5 +1,5 @@
 use metric;
-use mpsc;
+use hopper;
 use std::net::{Ipv6Addr, UdpSocket, SocketAddrV6, SocketAddrV4, Ipv4Addr};
 use std::str;
 use std::thread;
@@ -11,7 +11,7 @@ use super::send;
 use source::Source;
 
 pub struct Statsd {
-    chans: Vec<mpsc::Sender<metric::Event>>,
+    chans: Vec<hopper::Sender<metric::Event>>,
     port: u16,
     tags: Arc<metric::TagMap>,
 }
@@ -38,7 +38,7 @@ impl Default for StatsdConfig {
 }
 
 impl Statsd {
-    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>, config: StatsdConfig) -> Statsd {
+    pub fn new(chans: Vec<hopper::Sender<metric::Event>>, config: StatsdConfig) -> Statsd {
         Statsd {
             chans: chans,
             port: config.port,
@@ -47,7 +47,7 @@ impl Statsd {
     }
 }
 
-fn handle_udp(mut chans: Vec<mpsc::Sender<metric::Event>>,
+fn handle_udp(mut chans: Vec<hopper::Sender<metric::Event>>,
               tags: Arc<metric::TagMap>,
               socket: UdpSocket) {
     let mut buf = [0; 8192];

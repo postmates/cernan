@@ -1,5 +1,5 @@
 use metric;
-use mpsc;
+use hopper;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::net::{Ipv6Addr, SocketAddrV6, SocketAddrV4, Ipv4Addr};
@@ -13,7 +13,7 @@ use time;
 use super::{send, Source};
 
 pub struct Graphite {
-    chans: Vec<mpsc::Sender<metric::Event>>,
+    chans: Vec<hopper::Sender<metric::Event>>,
     port: u16,
     tags: Arc<metric::TagMap>,
 }
@@ -40,7 +40,7 @@ impl Default for GraphiteConfig {
 }
 
 impl Graphite {
-    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>, config: GraphiteConfig) -> Graphite {
+    pub fn new(chans: Vec<hopper::Sender<metric::Event>>, config: GraphiteConfig) -> Graphite {
         Graphite {
             chans: chans,
             port: config.port,
@@ -49,7 +49,7 @@ impl Graphite {
     }
 }
 
-fn handle_tcp(chans: Vec<mpsc::Sender<metric::Event>>,
+fn handle_tcp(chans: Vec<hopper::Sender<metric::Event>>,
               tags: Arc<metric::TagMap>,
               listner: TcpListener)
               -> thread::JoinHandle<()> {
@@ -70,7 +70,7 @@ fn handle_tcp(chans: Vec<mpsc::Sender<metric::Event>>,
 }
 
 
-fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
+fn handle_stream(mut chans: Vec<hopper::Sender<metric::Event>>,
                  tags: Arc<metric::TagMap>,
                  stream: TcpStream) {
     thread::spawn(move || {

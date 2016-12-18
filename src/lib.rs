@@ -17,8 +17,8 @@ extern crate quantiles;
 extern crate lua;
 extern crate libc;
 extern crate uuid;
+extern crate hopper;
 
-pub mod mpsc;
 pub mod sink;
 pub mod buckets;
 pub mod config;

@@ -1,7 +1,7 @@
 use fnv::FnvHasher;
 use glob::glob;
 use metric;
-use mpsc;
+use hopper;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use std::io::prelude::*;
@@ -20,7 +20,7 @@ use source::Source;
 type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 
 pub struct FileServer {
-    chans: Vec<mpsc::Sender<metric::Event>>,
+    chans: Vec<hopper::Sender<metric::Event>>,
     path: PathBuf,
     tags: metric::TagMap,
 }
@@ -34,7 +34,7 @@ pub struct FileServerConfig {
 }
 
 impl FileServer {
-    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>, config: FileServerConfig) -> FileServer {
+    pub fn new(chans: Vec<hopper::Sender<metric::Event>>, config: FileServerConfig) -> FileServer {
         FileServer {
             chans: chans,
             path: config.path,

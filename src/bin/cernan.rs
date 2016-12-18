@@ -3,6 +3,7 @@ extern crate cernan;
 extern crate fern;
 #[macro_use]
 extern crate log;
+extern crate hopper;
 
 use std::str;
 use std::thread;
@@ -13,13 +14,12 @@ use chrono::UTC;
 use cernan::source::Source;
 use cernan::filter::{Filter, ProgrammableFilterConfig};
 use cernan::sink::{Sink, FirehoseConfig};
-use cernan::mpsc;
 use cernan::metric;
 
-fn populate_forwards(sends: &mut Vec<mpsc::Sender<metric::Event>>,
+fn populate_forwards(sends: &mut Vec<hopper::Sender<metric::Event>>,
                      forwards: &[String],
                      config_path: &str,
-                     available_sends: &HashMap<String, mpsc::Sender<metric::Event>>) {
+                     available_sends: &HashMap<String, hopper::Sender<metric::Event>>) {
     for fwd in forwards {
         match available_sends.get(fwd) {
             Some(snd) => {
@@ -75,8 +75,8 @@ fn main() {
     //
     let mut flush_sends = Vec::new();
     if let Some(config) = args.console {
-        let (console_send, console_recv) = cernan::mpsc::channel(&config.config_path,
-                                                                 &args.data_directory);
+        let (console_send, console_recv) =
+            hopper::channel(&config.config_path, &args.data_directory).unwrap();
         flush_sends.push(console_send.clone());
         sends.insert(config.config_path.clone(), console_send);
         joins.push(thread::spawn(move || {
@@ -84,8 +84,8 @@ fn main() {
         }));
     }
     if let Some(config) = args.null {
-        let (null_send, null_recv) = cernan::mpsc::channel(&config.config_path,
-                                                           &args.data_directory);
+        let (null_send, null_recv) = hopper::channel(&config.config_path, &args.data_directory)
+            .unwrap();
         flush_sends.push(null_send.clone());
         sends.insert(config.config_path.clone(), null_send);
         joins.push(thread::spawn(move || {
@@ -93,7 +93,8 @@ fn main() {
         }));
     }
     if let Some(config) = args.wavefront {
-        let (wf_send, wf_recv) = cernan::mpsc::channel(&config.config_path, &args.data_directory);
+        let (wf_send, wf_recv) = hopper::channel(&config.config_path, &args.data_directory)
+            .unwrap();
         flush_sends.push(wf_send.clone());
         sends.insert(config.config_path.clone(), wf_send);
         joins.push(thread::spawn(move || {
@@ -101,8 +102,8 @@ fn main() {
         }));
     }
     if let Some(config) = args.fed_transmitter {
-        let (cernan_send, cernan_recv) = cernan::mpsc::channel(&config.config_path,
-                                                               &args.data_directory);
+        let (cernan_send, cernan_recv) = hopper::channel(&config.config_path, &args.data_directory)
+            .unwrap();
         flush_sends.push(cernan_send.clone());
         sends.insert(config.config_path.clone(), cernan_send);
         joins.push(thread::spawn(move || {
@@ -112,8 +113,8 @@ fn main() {
 
     for config in &args.firehosen {
         let f: FirehoseConfig = config.clone();
-        let (firehose_send, firehose_recv) = cernan::mpsc::channel(&config.config_path,
-                                                                   &args.data_directory);
+        let (firehose_send, firehose_recv) =
+            hopper::channel(&config.config_path, &args.data_directory).unwrap();
         flush_sends.push(firehose_send.clone());
         sends.insert(config.config_path.clone(), firehose_send);
         joins.push(thread::spawn(move || {
@@ -125,7 +126,8 @@ fn main() {
     //
     for config in args.filters.values() {
         let c: ProgrammableFilterConfig = (*config).clone();
-        let (flt_send, flt_recv) = cernan::mpsc::channel(&config.config_path, &args.data_directory);
+        let (flt_send, flt_recv) = hopper::channel(&config.config_path, &args.data_directory)
+            .unwrap();
         sends.insert(config.config_path.clone(), flt_send);
         let mut upstream_sends = Vec::new();
         populate_forwards(&mut upstream_sends,

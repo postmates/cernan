@@ -1,5 +1,5 @@
 use metric;
-use mpsc;
+use hopper;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -7,12 +7,12 @@ use super::send;
 use source::Source;
 
 pub struct FlushTimer {
-    chans: Vec<mpsc::Sender<metric::Event>>,
+    chans: Vec<hopper::Sender<metric::Event>>,
     interval: u64,
 }
 
 impl FlushTimer {
-    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>, interval: u64) -> FlushTimer {
+    pub fn new(chans: Vec<hopper::Sender<metric::Event>>, interval: u64) -> FlushTimer {
         FlushTimer {
             chans: chans,
             interval: interval,

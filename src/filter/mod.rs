@@ -1,5 +1,5 @@
 use metric;
-use mpsc;
+use hopper;
 use time;
 use source;
 
@@ -27,8 +27,8 @@ fn event_in_fe(fe: FilterError) -> metric::Event {
 pub trait Filter {
     fn process<'a>(&mut self, event: metric::Event) -> Result<Vec<metric::Event>, FilterError>;
     fn run(&mut self,
-           mut recv: mpsc::Receiver<metric::Event>,
-           mut chans: Vec<mpsc::Sender<metric::Event>>) {
+           mut recv: hopper::Receiver<metric::Event>,
+           mut chans: Vec<hopper::Sender<metric::Event>>) {
         let mut attempts = 0;
         loop {
             time::delay(attempts);
