@@ -2,7 +2,7 @@ use bincode::SizeLimit;
 use bincode::serde::deserialize_from;
 use flate2::read::ZlibDecoder;
 use metric;
-use mpsc;
+use hopper;
 use std::io::prelude::*;
 use std::io::{Take, BufReader};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
@@ -14,7 +14,7 @@ use time;
 use super::{send, Source};
 
 pub struct FederationReceiver {
-    chans: Vec<mpsc::Sender<metric::Event>>,
+    chans: Vec<hopper::Sender<metric::Event>>,
     ip: String,
     port: u16,
     tags: metric::TagMap,
@@ -30,7 +30,7 @@ pub struct FederationReceiverConfig {
 }
 
 impl FederationReceiver {
-    pub fn new(chans: Vec<mpsc::Sender<metric::Event>>,
+    pub fn new(chans: Vec<hopper::Sender<metric::Event>>,
                config: FederationReceiverConfig)
                -> FederationReceiver {
         FederationReceiver {
@@ -42,7 +42,7 @@ impl FederationReceiver {
     }
 }
 
-fn handle_tcp(chans: Vec<mpsc::Sender<metric::Event>>,
+fn handle_tcp(chans: Vec<hopper::Sender<metric::Event>>,
               tags: metric::TagMap,
               listner: TcpListener)
               -> thread::JoinHandle<()> {
@@ -62,7 +62,7 @@ fn handle_tcp(chans: Vec<mpsc::Sender<metric::Event>>,
     })
 }
 
-fn handle_stream(mut chans: Vec<mpsc::Sender<metric::Event>>,
+fn handle_stream(mut chans: Vec<hopper::Sender<metric::Event>>,
                  tags: metric::TagMap,
                  stream: TcpStream) {
     thread::spawn(move || {

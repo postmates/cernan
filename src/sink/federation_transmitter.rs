@@ -1,7 +1,7 @@
 use bincode::SizeLimit;
 use bincode::serde::serialize_into;
 use metric;
-use mpsc;
+use hopper;
 use sink::{Sink, Valve};
 use std::io::Write;
 use std::net::{TcpStream, ToSocketAddrs};
@@ -54,7 +54,7 @@ impl Sink for FederationTransmitter {
         Valve::Open
     }
 
-    fn run(&mut self, mut recv: mpsc::Receiver<metric::Event>) {
+    fn run(&mut self, mut recv: hopper::Receiver<metric::Event>) {
         let mut attempts = 0;
         loop {
             time::delay(attempts);

@@ -1,5 +1,5 @@
 use metric::{Metric, LogLine, Event};
-use mpsc;
+use hopper;
 use time;
 
 mod console;
@@ -24,7 +24,7 @@ pub trait Sink {
     fn flush(&mut self) -> ();
     fn deliver(&mut self, point: Metric) -> Valve<Metric>;
     fn deliver_line(&mut self, line: LogLine) -> Valve<LogLine>;
-    fn run(&mut self, mut recv: mpsc::Receiver<Event>) {
+    fn run(&mut self, mut recv: hopper::Receiver<Event>) {
         let mut attempts = 0;
         loop {
             time::delay(attempts);
