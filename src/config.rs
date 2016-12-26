@@ -17,13 +17,15 @@ use toml::Value;
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 use super::filter::ProgrammableFilterConfig;
-use super::sink::{ConsoleConfig, FirehoseConfig, NativeConfig, NullConfig, WavefrontConfig};
+use super::sink::{ConsoleConfig, FirehoseConfig, InfluxDBConfig, NativeConfig, NullConfig,
+                  WavefrontConfig};
 use super::source::{FileServerConfig, GraphiteConfig, NativeServerConfig, StatsdConfig};
 
 #[derive(Debug)]
 pub struct Args {
     pub console: Option<ConsoleConfig>,
     pub data_directory: PathBuf,
+    pub influxdb: Option<InfluxDBConfig>,
     pub files: Vec<FileServerConfig>,
     pub filters: HashMap<String, ProgrammableFilterConfig>,
     pub firehosen: Vec<FirehoseConfig>,
@@ -132,6 +134,7 @@ pub fn parse_args() -> Args {
                 console: console,
                 null: null,
                 wavefront: wavefront,
+                influxdb: None,
                 firehosen: Vec::default(),
                 files: Default::default(),
                 filters: Default::default(),
@@ -205,6 +208,33 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .map(|i| i as i64)
                 .unwrap(),
             config_path: "sinks.wavefront".to_string(),
+            tags: tags.clone(),
+        })
+    } else {
+        None
+    };
+
+    let influxdb = if value.lookup("influxdb").or(value.lookup("sinks.influxdb")).is_some() {
+        Some(InfluxDBConfig {
+            port: value.lookup("influxdb.port")
+                .or(value.lookup("sinks.influxdb.port"))
+                .unwrap_or(&Value::Integer(2878))
+                .as_integer()
+                .map(|i| i as u16)
+                .unwrap(),
+            host: value.lookup("influxdb.host")
+                .or(value.lookup("sinks.influxdb.host"))
+                .unwrap_or(&Value::String("127.0.0.1".to_string()))
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap(),
+            bin_width: value.lookup("influxdb.bin_width")
+                .or(value.lookup("sinks.influxdb.bin_width"))
+                .unwrap_or(&Value::Integer(1))
+                .as_integer()
+                .map(|i| i as i64)
+                .unwrap(),
+            config_path: "sinks.influxdb".to_string(),
             tags: tags.clone(),
         })
     } else {
@@ -576,6 +606,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         console: console,
         null: null,
         wavefront: wavefront,
+        influxdb: influxdb,
         firehosen: firehosen,
         files: files,
         filters: filters,
@@ -959,6 +990,45 @@ bin_width = 9
         assert_eq!(wavefront.host, String::from("example.com"));
         assert_eq!(wavefront.port, 3131);
         assert_eq!(wavefront.bin_width, 9);
+    }
+
+    #[test]
+    fn config_file_influxdb() {
+        let config = r#"
+[influxdb]
+port = 3131
+host = "example.com"
+bin_width = 9
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.influxdb.is_some());
+        let influxdb = args.influxdb.unwrap();
+        assert_eq!(influxdb.host, String::from("example.com"));
+        assert_eq!(influxdb.port, 3131);
+        assert_eq!(influxdb.bin_width, 9);
+    }
+
+    #[test]
+    fn config_file_influxdb_sinks_style() {
+        let config = r#"
+[sinks]
+  [sinks.influxdb]
+  port = 3131
+  host = "example.com"
+  bin_width = 9
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.influxdb.is_some());
+        let influxdb = args.influxdb.unwrap();
+        assert_eq!(influxdb.host, String::from("example.com"));
+        assert_eq!(influxdb.port, 3131);
+        assert_eq!(influxdb.bin_width, 9);
     }
 
     #[test]

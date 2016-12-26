@@ -8,12 +8,14 @@ mod firehose;
 mod null;
 mod wavefront;
 mod native;
+mod influxdb;
 
 pub use self::console::{Console, ConsoleConfig};
 pub use self::firehose::{Firehose, FirehoseConfig};
 pub use self::null::{Null, NullConfig};
 pub use self::native::{Native, NativeConfig};
 pub use self::wavefront::{Wavefront, WavefrontConfig};
+pub use self::influxdb::{InfluxDB, InfluxDBConfig};
 
 pub enum Valve {
     Open,
