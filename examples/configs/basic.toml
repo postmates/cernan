@@ -12,6 +12,11 @@ source = "cernan"
   port = 8125
   forwards = ["sinks.wavefront"]
 
+  [sources.native_server]
+  ip = "127.0.0.1"
+  port = 1972
+  forwards = ["sinks.wavefront"]
+
   # [sources.graphite.primary]
   # enabled = true
   # port = 2004

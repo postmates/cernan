@@ -12,14 +12,14 @@ pub struct Metric {
     pub time: i64,
     pub created_time: i64,
     pub name: String,
-    pub tags: TagMap,
+    pub tags: sync::Arc<TagMap>,
     value: MetricValue,
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub enum Event {
-    Telemetry(Metric),
-    Log(LogLine),
+    Telemetry(sync::Arc<Option<Metric>>),
+    Log(sync::Arc<Option<LogLine>>),
     TimerFlush,
 }
 

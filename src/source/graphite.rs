@@ -1,19 +1,20 @@
 use metric;
-use hopper;
-use std::io::prelude::*;
 use std::io::BufReader;
-use std::net::{Ipv6Addr, SocketAddrV6, SocketAddrV4, Ipv4Addr};
+use std::io::prelude::*;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::net::{TcpListener, TcpStream};
 use std::str;
+use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
-use std::sync::Arc;
+use super::Source;
 
 use time;
-use super::{send, Source};
+use util;
+use util::send;
 
 pub struct Graphite {
-    chans: Vec<hopper::Sender<metric::Event>>,
+    chans: util::Channel,
     port: u16,
     tags: Arc<metric::TagMap>,
 }
@@ -40,7 +41,7 @@ impl Default for GraphiteConfig {
 }
 
 impl Graphite {
-    pub fn new(chans: Vec<hopper::Sender<metric::Event>>, config: GraphiteConfig) -> Graphite {
+    pub fn new(chans: util::Channel, config: GraphiteConfig) -> Graphite {
         Graphite {
             chans: chans,
             port: config.port,
@@ -49,7 +50,7 @@ impl Graphite {
     }
 }
 
-fn handle_tcp(chans: Vec<hopper::Sender<metric::Event>>,
+fn handle_tcp(chans: util::Channel,
               tags: Arc<metric::TagMap>,
               listner: TcpListener)
               -> thread::JoinHandle<()> {
@@ -70,9 +71,7 @@ fn handle_tcp(chans: Vec<hopper::Sender<metric::Event>>,
 }
 
 
-fn handle_stream(mut chans: Vec<hopper::Sender<metric::Event>>,
-                 tags: Arc<metric::TagMap>,
-                 stream: TcpStream) {
+fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: TcpStream) {
     thread::spawn(move || {
         let line_reader = BufReader::new(stream);
         for line in line_reader.lines() {
@@ -87,10 +86,14 @@ fn handle_stream(mut chans: Vec<hopper::Sender<metric::Event>>,
                                     let metric = metric::Metric::new("cernan.graphite.packet", 1.0)
                                         .counter()
                                         .overlay_tags_from_map(&tags);
-                                    send("graphite", &mut chans, metric::Event::Telemetry(metric));
+                                    send("graphite",
+                                         &mut chans,
+                                         metric::Event::Telemetry(Arc::new(Some(metric))));
                                     for mut m in metrics {
                                         m = m.overlay_tags_from_map(&tags);
-                                        send("graphite", &mut chans, metric::Event::Telemetry(m));
+                                        send("graphite",
+                                             &mut chans,
+                                             metric::Event::Telemetry(Arc::new(Some(m))));
                                     }
                                     trace!("payload handle effective, elapsed (ns): {}",
                                            time::elapsed_ns(pyld_hndl_time));
@@ -100,7 +103,9 @@ fn handle_stream(mut chans: Vec<hopper::Sender<metric::Event>>,
                                                                      1.0)
                                         .counter()
                                         .overlay_tags_from_map(&tags);
-                                    send("graphite", &mut chans, metric::Event::Telemetry(metric));
+                                    send("graphite",
+                                         &mut chans,
+                                         metric::Event::Telemetry(Arc::new(Some(metric))));
                                     error!("bad packet: {:?}", val);
                                     trace!("payload handle failure, elapsed (ns): {}",
                                            time::elapsed_ns(pyld_hndl_time));

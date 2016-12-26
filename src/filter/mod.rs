@@ -1,7 +1,7 @@
-use metric;
 use hopper;
+use metric;
 use time;
-use source;
+use util;
 
 mod programmable_filter;
 
@@ -13,8 +13,8 @@ pub enum FilterError {
 }
 
 fn name_in_fe(fe: &FilterError) -> &'static str {
-    match fe {
-        &FilterError::NoSuchFunction(n, _) => n,
+    match *fe {
+        FilterError::NoSuchFunction(n, _) => n,
     }
 }
 
@@ -25,10 +25,8 @@ fn event_in_fe(fe: FilterError) -> metric::Event {
 }
 
 pub trait Filter {
-    fn process<'a>(&mut self, event: metric::Event) -> Result<Vec<metric::Event>, FilterError>;
-    fn run(&mut self,
-           mut recv: hopper::Receiver<metric::Event>,
-           mut chans: Vec<hopper::Sender<metric::Event>>) {
+    fn process(&mut self, event: metric::Event) -> Result<Vec<metric::Event>, FilterError>;
+    fn run(&mut self, mut recv: hopper::Receiver<metric::Event>, mut chans: util::Channel) {
         let mut attempts = 0;
         loop {
             time::delay(attempts);
@@ -39,13 +37,13 @@ pub trait Filter {
                     match self.process(event) {
                         Ok(events) => {
                             for ev in events {
-                                source::send("filter", &mut chans, ev)
+                                util::send("filter", &mut chans, ev)
                             }
                         }
                         Err(fe) => {
                             error!("Failed to run filter with error: {:?}", name_in_fe(&fe));
                             let event = event_in_fe(fe);
-                            source::send("filter.error_path", &mut chans, event);
+                            util::send("filter.error_path", &mut chans, event);
                         }
                     }
                 }

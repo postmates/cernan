@@ -1,5 +1,6 @@
+use metric::{LogLine, Metric};
 use sink::{Sink, Valve};
-use metric::{Metric, LogLine};
+use std::sync;
 
 pub struct Null {
 }
@@ -22,14 +23,16 @@ impl NullConfig {
 }
 
 impl Sink for Null {
-    fn deliver(&mut self, _: Metric) -> Valve<Metric> {
-        // discard point
+    fn valve_state(&self) -> Valve {
         Valve::Open
     }
 
-    fn deliver_line(&mut self, _: LogLine) -> Valve<LogLine> {
+    fn deliver(&mut self, _: sync::Arc<Option<Metric>>) -> () {
         // discard point
-        Valve::Open
+    }
+
+    fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
+        // discard point
     }
 
     fn flush(&mut self) {

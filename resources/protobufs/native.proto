@@ -1,0 +1,99 @@
+// Copyright 2016, Postmates Inc. 
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+//
+// Welcome!
+//
+// This file defines the protocol that cernan speaks natively. We hope that it's
+// a relatively straightforward protocol to implement. Cernan's native transport
+// is TCP. We require that all on-wire payloads have the following form:
+//
+//     [--------------------------------|~~~~~~~~~~ . . . ~~~~~~~~~~~~]
+//     ^                                ^
+//     u32, payload length in bytes     protobuf payload, of prefix len 
+//
+// The protobuf payload conforms to the following definition. 
+syntax = "proto2";
+
+package com.postmates.cernan;
+option java_package = "com.postmates.cernan";
+
+// 'Payload' - the top-level structure in each on-wire payload
+//
+// Payload is a container for repeated Telemetry and LogLines. There's not much
+// more to it than that.
+message Payload {
+  repeated Telemetry points = 2;
+  repeated LogLine lines = 3;
+}
+
+// 'LogLine' - a bit of unstructure text
+//
+// One of cernan's gigs is picking up logs from disk and transforming them
+// in-flight, shipping them off. This structure allows you to ship lines
+// directly via the native protocol without having to round-trip through disk
+// first.
+message LogLine {
+  optional string path = 1; // unique 'location' of the log line
+  optional string value = 2; // the line itself 
+  map<string, string> metadata = 3; // associated key/value metadata 
+  optional int64 timestamp_ms = 4; // milliseconds since the Unix epoch
+}
+
+// 'Telemetry' - a numeric measure of a thing
+//
+// Cernan's slightly more complicated gig is its 'telemetry'
+// subsystem. Telemetry is defined as a name and time associated collection of
+// measurements. In the structure we refer to these measurements as
+// 'samples'. The Telemetry structure makes is possible to associate multiple
+// samples in a single millisecond time window. Cernan will build a quantile
+// structure over these seamples but you may further choose aggregation
+// interpretations by setting AggregationMethod.
+message Telemetry {
+  optional string name = 1; // the unique name of the telemetry 
+  repeated double samples = 2 [packed=true]; // telemetry samples present in timestamp_ms
+  optional AggregationMethod method = 3 [ default = SUMMARIZE ]; // see below 
+  map<string, string> metadata = 4; // associated key/value metadata 
+  optional int64 timestamp_ms = 5; // milliseconds since the Unix epoch
+}
+
+// 'AggregationMethod' - an interpretation signal
+//
+// Cernan maintains quantile summaries for all Telemetry samples. Not all sinks
+// are capable of interpreting summaries natively. Cernan allows the client to
+// set preferred aggregations over the summaries for reporting to 'flat'
+// sinks. Sinks are allows to ignore AggregationMethod at their
+// convenience. Additionally, aggregation time windows may be configured
+// per-sink and are not controllable through the protocol.
+enum AggregationMethod {
+  // SUM keeps a sum of samples in a time window. This is often interpreted as a
+  // per-window counter.
+  SUM = 1; 
+  // SET_OR_RESET preserves the last sample set into the Telemetry per time
+  // window. 
+  SET_OR_RESET = 2;  
+  // SUMMARIZE produces a quantile summary of the input samples per time
+  // window. This is the default behaviour.
+  SUMMARIZE = 3;
+  // ACCUMULATING_SUM is similar in operation to SUM excepting that the
+  // summation will be preserved across time windows.
+  ACCUMULATING_SUM = 4; 
+}
+

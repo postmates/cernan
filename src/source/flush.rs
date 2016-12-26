@@ -1,18 +1,17 @@
 use metric;
-use hopper;
+use source::Source;
 use std::thread::sleep;
 use std::time::Duration;
-
-use super::send;
-use source::Source;
+use util;
+use util::send;
 
 pub struct FlushTimer {
-    chans: Vec<hopper::Sender<metric::Event>>,
+    chans: util::Channel,
     interval: u64,
 }
 
 impl FlushTimer {
-    pub fn new(chans: Vec<hopper::Sender<metric::Event>>, interval: u64) -> FlushTimer {
+    pub fn new(chans: util::Channel, interval: u64) -> FlushTimer {
         FlushTimer {
             chans: chans,
             interval: interval,
