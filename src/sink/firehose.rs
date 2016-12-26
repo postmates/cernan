@@ -1,17 +1,18 @@
-use sink::{Sink, Valve};
-use metric::{Metric, LogLine};
-use chrono::naive::datetime::NaiveDateTime;
 use chrono::datetime::DateTime;
+use chrono::naive::datetime::NaiveDateTime;
 use chrono::offset::utc::UTC;
-use time;
-use uuid::Uuid;
-
-use serde_json;
-use serde_json::Map;
+use metric::{LogLine, Metric};
 
 use rusoto::{DefaultCredentialsProvider, Region};
 use rusoto::firehose::{KinesisFirehoseClient, PutRecordBatchInput, Record};
 use rusoto::firehose::PutRecordBatchError::*;
+
+use serde_json;
+use serde_json::Map;
+use sink::{Sink, Valve};
+use std::sync;
+use time;
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct FirehoseConfig {
@@ -121,16 +122,18 @@ impl Sink for Firehose {
         self.buffer.clear();
     }
 
-    fn deliver(&mut self, _: Metric) -> Valve<Metric> {
+    fn deliver(&mut self, _: sync::Arc<Option<Metric>>) -> () {
         // nothing, intentionally
-        Valve::Open
     }
 
-    fn deliver_line(&mut self, line: LogLine) -> Valve<LogLine> {
+    fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
+        // nothing, intentionally
+    }
+
+    fn valve_state(&self) -> Valve {
         if self.buffer.len() > 10_000 {
-            Valve::Closed(line)
+            Valve::Closed
         } else {
-            self.buffer.push(line);
             Valve::Open
         }
     }

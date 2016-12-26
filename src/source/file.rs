@@ -1,26 +1,25 @@
 use fnv::FnvHasher;
 use glob::glob;
 use metric;
-use hopper;
+use source::Source;
 use std::collections::HashMap;
+use std::fs;
 use std::hash::BuildHasherDefault;
+use std::io;
 use std::io::prelude::*;
+use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::str;
 use std::time::Duration;
-use std::io;
-use std::fs;
-use time;
 use std::time::Instant;
-use std::os::unix::fs::MetadataExt;
-
-use super::send;
-use source::Source;
+use time;
+use util;
+use util::send;
 
 type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 
 pub struct FileServer {
-    chans: Vec<hopper::Sender<metric::Event>>,
+    chans: util::Channel,
     path: PathBuf,
     tags: metric::TagMap,
 }
@@ -34,7 +33,7 @@ pub struct FileServerConfig {
 }
 
 impl FileServer {
-    pub fn new(chans: Vec<hopper::Sender<metric::Event>>, config: FileServerConfig) -> FileServer {
+    pub fn new(chans: util::Channel, config: FileServerConfig) -> FileServer {
         FileServer {
             chans: chans,
             path: config.path,
@@ -169,7 +168,7 @@ impl Source for FileServer {
                     }
                     if !lines.is_empty() {
                         for l in lines {
-                            send("file", &mut self.chans, metric::Event::Log(l));
+                            send("file", &mut self.chans, metric::Event::new_log(l));
                         }
                         lines = Vec::new();
                     }

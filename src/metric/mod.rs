@@ -1,6 +1,7 @@
-use time;
+use quantiles::ckms::CKMS;
 use std::str::FromStr;
-use quantiles::CKMS;
+use std::sync;
+use time;
 
 mod tagmap;
 
@@ -9,8 +10,8 @@ pub use self::tagmap::cmp;
 include!(concat!(env!("OUT_DIR"), "/metric_types.rs"));
 
 use std::cmp::{Ordering, PartialOrd};
-use std::ops::AddAssign;
 use std::fmt;
+use std::ops::AddAssign;
 
 pub type TagMap = self::tagmap::TagMap<String, String>;
 
@@ -24,6 +25,11 @@ impl LogLine {
             time: time::now(),
             tags: Default::default(),
         }
+    }
+
+    pub fn time(mut self, time: i64) -> LogLine {
+        self.time = time;
+        self
     }
 
     pub fn overlay_tag<S>(mut self, key: S, val: S) -> LogLine
@@ -59,6 +65,13 @@ impl MetricValue {
         }
     }
 
+    fn into_vec(self) -> Vec<f64> {
+        match self.kind {
+            MetricValueKind::Single => vec![self.single.unwrap()],
+            MetricValueKind::Many => self.many.unwrap().into_vec(),
+        }
+    }
+
     fn insert(&mut self, value: f64) -> () {
         match self.kind {
             MetricValueKind::Single => {
@@ -88,7 +101,7 @@ impl MetricValue {
             MetricValueKind::Many => {
                 match self.many.as_mut() {
                     None => {}
-                    Some(ckms) => *ckms += value, 
+                    Some(ckms) => *ckms += value,
                 };
             }
         }
@@ -96,9 +109,7 @@ impl MetricValue {
 
     fn last(&self) -> Option<f64> {
         match self.kind {
-            MetricValueKind::Single => {
-                self.single
-            }
+            MetricValueKind::Single => self.single,
             MetricValueKind::Many => {
                 match self.many {
                     Some(ref ckms) => ckms.last(),
@@ -110,9 +121,7 @@ impl MetricValue {
 
     fn sum(&self) -> Option<f64> {
         match self.kind {
-            MetricValueKind::Single => {
-                self.single
-            }
+            MetricValueKind::Single => self.single,
             MetricValueKind::Many => {
                 match self.many {
                     Some(ref ckms) => ckms.sum(),
@@ -124,9 +133,7 @@ impl MetricValue {
 
     fn count(&self) -> usize {
         match self.kind {
-            MetricValueKind::Single => {
-                1
-            }
+            MetricValueKind::Single => 1,
             MetricValueKind::Many => {
                 match self.many {
                     Some(ref ckms) => ckms.count(),
@@ -138,9 +145,7 @@ impl MetricValue {
 
     fn query(&self, query: f64) -> Option<(usize, f64)> {
         match self.kind {
-            MetricValueKind::Single => {
-                Some((1 as usize, self.single.unwrap()))
-            }
+            MetricValueKind::Single => Some((1 as usize, self.single.unwrap())),
             MetricValueKind::Many => {
                 match self.many {
                     Some(ref ckms) => ckms.query(query),
@@ -202,6 +207,31 @@ impl PartialOrd for Metric {
     }
 }
 
+impl Default for Metric {
+    fn default() -> Metric {
+        Metric {
+            kind: MetricKind::Raw,
+            name: String::from(""),
+            tags: sync::Arc::new(TagMap::default()),
+            created_time: time::now(),
+            time: time::now(),
+            value: MetricValue::new(0.0),
+        }
+    }
+}
+
+impl Event {
+    #[inline]
+    pub fn new_telemetry(metric: Metric) -> Event {
+        Event::Telemetry(sync::Arc::new(Some(metric)))
+    }
+
+    #[inline]
+    pub fn new_log(log: LogLine) -> Event {
+        Event::Log(sync::Arc::new(Some(log)))
+    }
+}
+
 impl Metric {
     /// Make a builder for metrics
     ///
@@ -227,7 +257,7 @@ impl Metric {
         Metric {
             kind: MetricKind::Raw,
             name: name.into(),
-            tags: TagMap::default(),
+            tags: sync::Arc::new(TagMap::default()),
             created_time: time::now(),
             time: time::now(),
             value: val,
@@ -258,7 +288,7 @@ impl Metric {
     pub fn overlay_tag<S>(mut self, key: S, val: S) -> Metric
         where S: Into<String>
     {
-        self.tags.insert(key.into(), val.into());
+        sync::Arc::make_mut(&mut self.tags).insert(key.into(), val.into());
         self
     }
 
@@ -290,7 +320,7 @@ impl Metric {
     /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Metric {
         for &(ref k, ref v) in map.iter() {
-            self.tags.insert(k.clone(), v.clone());
+            sync::Arc::make_mut(&mut self.tags).insert(k.clone(), v.clone());
         }
         self
     }
@@ -323,7 +353,7 @@ impl Metric {
     /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
     /// ```
     pub fn merge_tags_from_map(mut self, map: &TagMap) -> Metric {
-        self.tags.merge(map);
+        sync::Arc::make_mut(&mut self.tags).merge(map);
         self
     }
 
@@ -350,6 +380,13 @@ impl Metric {
         self
     }
 
+    pub fn set_name<S>(mut self, name: S) -> Metric
+        where S: Into<String>
+    {
+        self.name = name.into();
+        self
+    }
+
     pub fn insert_value(mut self, value: f64) -> Metric {
         self.value.insert(value);
         self
@@ -361,6 +398,10 @@ impl Metric {
             MetricKind::DeltaGauge | MetricKind::Counter => self.value.sum(),
             MetricKind::Timer | MetricKind::Histogram => self.value.query(1.0).map(|x| x.1),
         }
+    }
+
+    pub fn into_vec(self) -> Vec<f64> {
+        self.value.clone().into_vec()
     }
 
     pub fn within(&self, span: i64, other: &Metric) -> Ordering {
@@ -507,10 +548,10 @@ impl Metric {
     ///
     /// - `<str:metric_name>:<f64:value>|<str:type>`
     /// - `<str:metric_name>:<f64:value>|c|@<f64:sample_rate>`
-    ///
+    /// p
     /// Multiple metrics can be sent in a single UDP packet
     /// separated by newlines.
-    pub fn parse_statsd(source: &str) -> Option<Vec<Metric>> {
+    pub fn parse_statsd(source: &str, metric: sync::Arc<Option<Metric>>) -> Option<Vec<Metric>> {
         let mut res = Vec::new();
         let mut iter = source.lines();
         loop {
@@ -535,7 +576,11 @@ impl Metric {
                                         Ok(f) => f,
                                         Err(_) => return None,
                                     };
-                                    let mut metric = Metric::new(name, val);
+                                    let mut metric =
+                                        sync::Arc::make_mut(&mut metric.clone()).take().unwrap();
+                                    metric = metric.set_name(name);
+                                    metric = metric.set_value(val);
+                                    metric = metric.time(time::now());
                                     metric = match &src[offset..(offset + 1)] {
                                         "+" | "-" => metric.delta_gauge(),
                                         _ => metric,
@@ -625,11 +670,12 @@ mod tests {
     extern crate rand;
     extern crate quickcheck;
 
-    use metric::{Metric, MetricKind, Event};
-    use self::quickcheck::{Arbitrary, Gen, TestResult, QuickCheck};
-    use chrono::{UTC, TimeZone};
+    use chrono::{TimeZone, UTC};
+    use metric::{Event, Metric, MetricKind};
+    use self::quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use self::rand::{Rand, Rng};
     use std::cmp::Ordering;
+    use std::sync::Arc;
 
     #[test]
     fn partial_ord_distinct() {
@@ -686,7 +732,7 @@ mod tests {
             let i: usize = rng.gen();
             match i % 3 {
                 0 => Event::TimerFlush,
-                _ => Event::Telemetry(rng.gen()),
+                _ => Event::Telemetry(Arc::new(Some(rng.gen()))),
             }
         }
     }
@@ -821,7 +867,8 @@ mod tests {
 
     #[test]
     fn test_parse_negative_timer() {
-        let prs = Metric::parse_statsd("fst:-1.1|ms\n");
+        let metric = Arc::new(Some(Metric::default()));
+        let prs = Metric::parse_statsd("fst:-1.1|ms\n", metric);
 
         assert!(prs.is_some());
         let prs_pyld = prs.unwrap();
@@ -844,7 +891,8 @@ mod tests {
     fn test_parse_metric_via_api() {
         let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@0.1\nsxth:\
                     -6.6|g\nsvth:+7.77|g\n";
-        let prs = Metric::parse_statsd(pyld);
+        let metric = Arc::new(Some(Metric::default()));
+        let prs = Metric::parse_statsd(pyld, metric);
 
         assert!(prs.is_some());
         let prs_pyld = prs.unwrap();
@@ -884,7 +932,8 @@ mod tests {
 
     #[test]
     fn test_metric_equal_in_name() {
-        let res = Metric::parse_statsd("A=:1|ms\n").unwrap();
+        let metric = Arc::new(Some(Metric::default()));
+        let res = Metric::parse_statsd("A=:1|ms\n", metric).unwrap();
 
         assert_eq!("A=", res[0].name);
         assert_eq!(Some(1.0), res[0].query(1.0));
@@ -893,7 +942,8 @@ mod tests {
 
     #[test]
     fn test_metric_slash_in_name() {
-        let res = Metric::parse_statsd("A/:1|ms\n").unwrap();
+        let metric = Arc::new(Some(Metric::default()));
+        let res = Metric::parse_statsd("A/:1|ms\n", metric).unwrap();
 
         assert_eq!("A/", res[0].name);
         assert_eq!(Some(1.0), res[0].query(1.0));
@@ -902,7 +952,8 @@ mod tests {
 
     #[test]
     fn test_metric_sample_gauge() {
-        let res = Metric::parse_statsd("foo:1|g@0.22\nbar:101|g@2\n").unwrap();
+        let metric = Arc::new(Some(Metric::default()));
+        let res = Metric::parse_statsd("foo:1|g@0.22\nbar:101|g@2\n", metric).unwrap();
         //                              0         A     F
         assert_eq!("foo", res[0].name);
         assert_eq!(Some(1.0), res[0].query(1.0));
@@ -915,17 +966,20 @@ mod tests {
 
     #[test]
     fn test_metric_parse_invalid_no_name() {
-        assert_eq!(None, Metric::parse_statsd(""));
+        let metric = Arc::new(Some(Metric::default()));
+        assert_eq!(None, Metric::parse_statsd("", metric));
     }
 
     #[test]
     fn test_metric_parse_invalid_no_value() {
-        assert_eq!(None, Metric::parse_statsd("foo:"));
+        let metric = Arc::new(Some(Metric::default()));
+        assert_eq!(None, Metric::parse_statsd("foo:", metric));
     }
 
     #[test]
     fn test_metric_multiple() {
-        let res = Metric::parse_statsd("a.b:12.1|g\nb_c:13.2|c\n").unwrap();
+        let metric = Arc::new(Some(Metric::default()));
+        let res = Metric::parse_statsd("a.b:12.1|g\nb_c:13.2|c\n", metric).unwrap();
         assert_eq!(2, res.len());
 
         assert_eq!("a.b", res[0].name);
@@ -937,7 +991,8 @@ mod tests {
 
     #[test]
     fn test_metric_optional_final_newline() {
-        let res = Metric::parse_statsd("a.b:12.1|g\nb_c:13.2|c").unwrap();
+        let metric = Arc::new(Some(Metric::default()));
+        let res = Metric::parse_statsd("a.b:12.1|g\nb_c:13.2|c", metric).unwrap();
         assert_eq!(2, res.len());
 
         assert_eq!("a.b", res[0].name);
@@ -950,8 +1005,9 @@ mod tests {
     #[test]
     fn test_metric_invalid() {
         let invalid = vec!["", "metric", "metric|11:", "metric|12", "metric:13|", ":|@", ":1.0|c"];
+        let metric = Arc::new(Some(Metric::default()));
         for input in invalid.iter() {
-            let result = Metric::parse_statsd(*input);
+            let result = Metric::parse_statsd(*input, metric.clone());
             assert!(result.is_none());
         }
     }

@@ -1,6 +1,6 @@
 [package]
 name = "cernan"
-version = "0.4.12"
+version = "0.5.0-dev"
 authors = ["Brian L. Troutwine <blt@postmates.com>"]
 build = "build.rs"
 
@@ -16,18 +16,19 @@ fern = "0.3.5"
 flate2 = "0.2"
 fnv = "1.0.5"
 glob = "0.2.11"
-lua = "*"
-libc = "0.2"
+hopper = "0.1.0"
 lazy_static = "0.2.1"
+libc = "0.2"
 log = "0.3.6"
-quantiles = "0.2.0"
+lua = "*"
+quantiles = "0.3"
 rand = "0.3"
 rusoto = {version = "0.19.1", features = ["firehose"]}
+protobuf = "1.0"
 serde = "0.8"
 serde_json = "0.8"
 toml = "0.2.0"
 uuid = {version = "0.2", features = ["v4"]}
-hopper = "0.1.0"
 
 [dev-dependencies]
 tempdir = "0.3"

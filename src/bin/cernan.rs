@@ -5,18 +5,18 @@ extern crate fern;
 extern crate log;
 extern crate hopper;
 
+use cernan::filter::{Filter, ProgrammableFilterConfig};
+use cernan::metric;
+use cernan::sink::{FirehoseConfig, Sink};
+use cernan::source::Source;
+use cernan::util;
+use chrono::UTC;
+use std::collections::HashMap;
+use std::process;
 use std::str;
 use std::thread;
-use std::process;
-use std::collections::HashMap;
-use chrono::UTC;
 
-use cernan::source::Source;
-use cernan::filter::{Filter, ProgrammableFilterConfig};
-use cernan::sink::{Sink, FirehoseConfig};
-use cernan::metric;
-
-fn populate_forwards(sends: &mut Vec<hopper::Sender<metric::Event>>,
+fn populate_forwards(sends: &mut util::Channel,
                      forwards: &[String],
                      config_path: &str,
                      available_sends: &HashMap<String, hopper::Sender<metric::Event>>) {
@@ -69,7 +69,7 @@ fn main() {
 
     info!("cernan - {}", args.version);
     let mut joins = Vec::new();
-    let mut sends = HashMap::new();
+    let mut sends: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
 
     // SINKS
     //
@@ -101,16 +101,15 @@ fn main() {
             cernan::sink::Wavefront::new(config).run(wf_recv);
         }));
     }
-    if let Some(config) = args.fed_transmitter {
+    if let Some(config) = args.native_sink_config {
         let (cernan_send, cernan_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
         flush_sends.push(cernan_send.clone());
         sends.insert(config.config_path.clone(), cernan_send);
         joins.push(thread::spawn(move || {
-            cernan::sink::FederationTransmitter::new(config).run(cernan_recv);
+            cernan::sink::Native::new(config).run(cernan_recv);
         }));
     }
-
     for config in &args.firehosen {
         let f: FirehoseConfig = config.clone();
         let (firehose_send, firehose_recv) =
@@ -141,17 +140,16 @@ fn main() {
 
     // SOURCES
     //
-    if let Some(config) = args.fed_receiver_config {
-        let mut receiver_server_send = Vec::new();
-        populate_forwards(&mut receiver_server_send,
+    if let Some(config) = args.native_server_config {
+        let mut native_server_send = Vec::new();
+        populate_forwards(&mut native_server_send,
                           &config.forwards,
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
-            cernan::source::FederationReceiver::new(receiver_server_send, config).run();
+            cernan::source::NativeServer::new(native_server_send, config).run();
         }))
     }
-
     for config in args.statsds.values() {
         let c = (*config).clone();
         let mut statsd_sends = Vec::new();

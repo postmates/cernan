@@ -1,7 +1,7 @@
+use chrono::UTC;
+use std::{thread, time};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use chrono::UTC;
-use std::{time, thread};
 use std::time::Instant;
 
 lazy_static! {

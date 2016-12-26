@@ -45,14 +45,14 @@ impl<K, V> TagMap<K, V>
     }
 
     pub fn get(&self, key: &K) -> Option<&V> {
-        match self.inner.binary_search_by_key(&key, |&(ref k, _)| &k) {
+        match self.inner.binary_search_by_key(&key, |&(ref k, _)| k) {
             Ok(idx) => Some(&self.inner[idx].1),
             Err(_) => None,
         }
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        match self.inner.binary_search_by_key(&key, |&(ref k, _)| &k) {
+        match self.inner.binary_search_by_key(&key, |&(ref k, _)| k) {
             Ok(idx) => Some(self.inner.remove(idx).1),
             Err(_) => None,
         }
@@ -66,8 +66,8 @@ impl<K, V> TagMap<K, V>
         where K: Clone,
               V: Clone
     {
-        for &(ref key, ref val) in other.inner.iter() {
-            match self.inner.binary_search_by(|probe| probe.0.cmp(&key)) {
+        for &(ref key, ref val) in &other.inner {
+            match self.inner.binary_search_by(|probe| probe.0.cmp(key)) {
                 Ok(_) => {}
                 Err(idx) => {
                     self.inner.insert(idx, (key.clone(), val.clone()));

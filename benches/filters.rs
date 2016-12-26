@@ -5,10 +5,10 @@ mod benches {
         extern crate test;
         extern crate cernan;
 
-        use self::test::Bencher;
 
-        use self::cernan::filter::{Filter, ProgrammableFilterConfig, ProgrammableFilter};
+        use self::cernan::filter::{Filter, ProgrammableFilter, ProgrammableFilterConfig};
         use self::cernan::metric;
+        use self::test::Bencher;
         use std::path::PathBuf;
 
         #[bench]
@@ -29,7 +29,7 @@ mod benches {
 
             b.iter(|| {
                 let metric = metric::Metric::new(orig, 12.0);
-                let event = metric::Event::Telemetry(metric);
+                let event = metric::Event::new_telemetry(metric);
                 let res = cs.process(event);
                 assert!(res.is_ok());
             });

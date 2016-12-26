@@ -184,13 +184,13 @@ port = 8125 # UDP port to bind for statsd traffic. [default: 8125]
 [sources.graphite.primary]
 port = 2003 # TCP port to bind for graphite traffic. [default: 2003]
 
-[sources.federation_receiver]
-port = 1972 # TCP port to bind for Federation traffic. [default: 1972]
+[sources.native]
+port = 1972 # TCP port to bind for native cernan traffic. [default: 1972]
 ```
 
-The statsd and graphite interfaces are optional, though they are enabled by
-default. To disable set `enabled = false`. For example, this configuration
-disables the statsd listeners but keeps graphite going:
+All sources are optional and may be present in configuration but in a disabled
+state. For example, this configuration disables the statsd listeners but keeps
+graphite going:
 
 ```
 [sources.statsd.primary]
@@ -209,8 +209,14 @@ It is possible to run multiple sources that cover the same protocol so long as
 they are offset on different ports. Each source must be named uniquely. In the
 above we have three sources--only one of which is enabled--named
 `sources.statsd.primary`, `sources.statsd.secondary` and
-`sources.graphite.primary`. There may only be one `federation_receiver`
-source. All others _must_ have a unique name.
+`sources.graphite.primary`. All _must_ have a unique name. The native server is
+distinct. It is a singleton.
+
+The native protocol is cernan's preferred method of ingestion. The file
+`resources/protobufs/native_protocol.proto` defines the encoding. Cernan
+requires that each encoded payload be sent over TCP. The payload must be length
+prefixed, the length being an unsigned, network-ordered 32 bit integer. Please
+see the the above encoding definition for more details.
 
 In addition to network ports, cernan is able to ingest log files. This is
 configured in a different manner than the above as there may be many different
@@ -242,9 +248,6 @@ Will follow all the files that match `/var/log/**/*.log` as well as
 `/tmp/temporary.log`. Cernan will pick up new files that match the given
 patterns, though it make take up to a minute for cernan to start ingesting them.
 
-The `federation_receiver` interface is opt-in. It is discussed in the
-section [Federation](#federation).
-
 ## Forwards
 
 A forward is a routing distination from one source to potentially many
@@ -261,28 +264,26 @@ through the `forwards` parameter on each source. Consider the following:
   [sources.statsd.secondary] 
   enabled = true
   port = 8126
-  forwards = ["sinks.federation_transmitter"]
+  forwards = ["sinks.null"]
 
   [sources.graphite.primary] 
   enabled = true
   port = 2004
-  forwards = ["sinks.federation_transmitter", "sinks.console"]
+  forwards = ["sinks.null", "sinks.console"]
 
 [sinks]
   [sinks.console] 
   bin_width = 1
 
-  [sinks.federation_transmitter] 
-  host = "127.0.0.1"
-  port = 1972
+  [sinks.null] 
+  bin_width = 1
 ```
 
 This sets up a cernan to have two statsd sources, running on ports 8125 and
 8126, named 'primary' and 'secondary'. Additionally, a sole graphite source is
 enabled. The primary statsd source is will forward all of its metrics to the
-console sink while the secondary statsd source will forward to the federation
-transmitter sink. The graphite source will forward its metrics to all available
-sinks.
+console sink while the secondary statsd source will forward to the null
+sink. The graphite source will forward its metrics to all available sinks.
 
 ## Changing how frequently metrics are output
 
@@ -473,27 +474,12 @@ Consumption'.
 
 There are no configurable options for the null sink.
 
-### federation_transmitter
-
-The `federation_transmitter` sink accepts cernan-internal information according
-to the program laid out in [Federation](#federation).
-
-You may configure which IP and port the `federation_transmitter` will bind
-to. In the following, the transmitter is enabled and configured to ship to a
-`federation_receiver` on localhost.
-
-```
-[federation_transmitter]
-port = 1972
-host = "127.0.0.1"
-```
-
 ### firehose 
 
 The `firehose` sink accepts logging information and emits it
 into
 [Amazon Kinesis Firehose](https://aws.amazon.com/kinesis/firehose/). Kinesis
-Firehose can be configured to emit into multiple targets. 
+Firehose can be configured to emit into multiple targets.
 
 You may configure multiple firehoses. In the following, two firehoses are
 configured: 
@@ -512,13 +498,20 @@ region = "us-east-1"
 By default, region is equivalent to `us-west-2`. In the above `stream_one`
 should exist in `us-west-2` and `stream_two` in `us-east-1`. 
 
-## Federation
+### native 
 
-Sometimes it is desirable to forward some or all of the points inbound to
-another cernan instance. The Federation subsystem is for you. The 'receiver'
-cernan instance will listen on a TCP port, ingest points and then emit them
-through its own sinks. The 'transmitter' host will emit to its configured
-'reciever'.
+The `native` sink accepts both telemetry and logging information and is intended
+to be used for one cernan to pass information onto another. In earlier versions
+of cernan this was referred to as 'federation' but over an undefined
+protocol. The `native` sink uses cernan's native protocol, defined above.
+
+You may have only one native sink. 
+
+```
+[sinks.native]
+host = "foo.example.com"
+port = 1972
+```
 
 ## Prior Art
 

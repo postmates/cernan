@@ -3,41 +3,40 @@
 //! Used to parse the argv/config file into a struct that
 //! the server can consume and use as configuration data.
 
-use clap::{Arg, App};
-use std::fs::File;
-use toml;
-use toml::Value;
-use std::io::Read;
-use std::str::FromStr;
+use clap::{App, Arg};
 use metric::TagMap;
-use std::path::{Path, PathBuf};
 use rusoto::Region;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
+use toml;
+use toml::Value;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
-use super::source::{FederationReceiverConfig, GraphiteConfig, StatsdConfig, FileServerConfig};
-use super::sink::{WavefrontConfig, ConsoleConfig, FederationTransmitterConfig, NullConfig,
-                  FirehoseConfig};
 use super::filter::ProgrammableFilterConfig;
+use super::sink::{ConsoleConfig, FirehoseConfig, NativeConfig, NullConfig, WavefrontConfig};
+use super::source::{FileServerConfig, GraphiteConfig, NativeServerConfig, StatsdConfig};
 
 #[derive(Debug)]
 pub struct Args {
-    pub data_directory: PathBuf,
-    pub scripts_directory: PathBuf,
-    pub statsds: HashMap<String, StatsdConfig>,
-    pub graphites: HashMap<String, GraphiteConfig>,
-    pub fed_receiver_config: Option<FederationReceiverConfig>,
-    pub flush_interval: u64,
     pub console: Option<ConsoleConfig>,
-    pub null: Option<NullConfig>,
-    pub wavefront: Option<WavefrontConfig>,
-    pub fed_transmitter: Option<FederationTransmitterConfig>,
-    pub firehosen: Vec<FirehoseConfig>,
+    pub data_directory: PathBuf,
     pub files: Vec<FileServerConfig>,
     pub filters: HashMap<String, ProgrammableFilterConfig>,
+    pub firehosen: Vec<FirehoseConfig>,
+    pub flush_interval: u64,
+    pub graphites: HashMap<String, GraphiteConfig>,
+    pub native_sink_config: Option<NativeConfig>,
+    pub native_server_config: Option<NativeServerConfig>,
+    pub null: Option<NullConfig>,
+    pub scripts_directory: PathBuf,
+    pub statsds: HashMap<String, StatsdConfig>,
     pub verbose: u64,
     pub version: String,
+    pub wavefront: Option<WavefrontConfig>,
 }
 
 pub fn parse_args() -> Args {
@@ -126,14 +125,14 @@ pub fn parse_args() -> Args {
                 scripts_directory: Path::new("/tmp/cernan-scripts").to_path_buf(),
                 statsds: statsds,
                 graphites: graphites,
+                native_server_config: None,
+                native_sink_config: None,
                 flush_interval: u64::from_str(args.value_of("flush-interval").unwrap())
                     .expect("flush-interval must be an integer"),
-                fed_receiver_config: None,
                 console: console,
                 null: null,
                 wavefront: wavefront,
                 firehosen: Vec::default(),
-                fed_transmitter: None,
                 files: Default::default(),
                 filters: Default::default(),
                 verbose: verb,
@@ -212,23 +211,19 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         None
     };
 
-    let fedtrn = if value.lookup("federation_transmitter")
-        .or(value.lookup("sinks.federation_transmitter"))
-        .is_some() {
-        Some(FederationTransmitterConfig {
-            port: value.lookup("federation_transmitter.port")
-                .or(value.lookup("sinks.federation_transmitter.port"))
+    let native_sink_config = if value.lookup("sinks.native").is_some() {
+        Some(NativeConfig {
+            port: value.lookup("sinks.native.port")
                 .unwrap_or(&Value::Integer(1972))
                 .as_integer()
                 .map(|i| i as u16)
                 .unwrap(),
-            host: value.lookup("federation_transmitter.host")
-                .or(value.lookup("sinks.federation_transmitter.host"))
+            host: value.lookup("sinks.native.host")
                 .unwrap_or(&Value::String("127.0.0.1".to_string()))
                 .as_str()
                 .map(|s| s.to_string())
                 .unwrap(),
-            config_path: "sinks.federation_transmitter".to_string(),
+            config_path: "sinks.native".to_string(),
         })
     } else {
         None
@@ -531,21 +526,17 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
     };
 
-    let federation_receiver_config = if value.lookup("federation_receiver")
-        .or(value.lookup("sources.federation_receiver"))
+    let native_server_config = if value.lookup("sources.native")
         .is_some() {
-        let port = match value.lookup("federation_receiver.port")
-            .or(value.lookup("sources.federation_receiver.port")) {
-            Some(p) => p.as_integer().expect("fed_receiver.port must be integer") as u16,
+        let port = match value.lookup("sources.native.port") {
+            Some(p) => p.as_integer().expect("fed_server.port must be integer") as u16,
             None => 1972,
         };
-        let ip = match value.lookup("federation_receiver.ip")
-            .or(value.lookup("sources.federation_receiver.ip")) {
+        let ip = match value.lookup("sources.native.ip") {
             Some(p) => p.as_str().unwrap(),
             None => "0.0.0.0",
         };
-        let fwds = match value.lookup("graphite.forwards")
-            .or(value.lookup("sources.graphite.forwards")) {
+        let fwds = match value.lookup("sources.native.forwards") {
             Some(fwds) => {
                 fwds.as_slice()
                     .expect("forwards must be an array")
@@ -556,12 +547,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             }
             None => Vec::new(),
         };
-        Some(FederationReceiverConfig {
+        Some(NativeServerConfig {
             ip: ip.to_owned(),
             port: port,
             tags: tags.clone(),
             forwards: fwds,
-            config_path: "sources.federation_receiver".to_string(),
+            config_path: "sources.native".to_string(),
         })
     } else {
         None
@@ -576,7 +567,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         scripts_directory: scripts_dir,
         statsds: statsds,
         graphites: graphites,
-        fed_receiver_config: federation_receiver_config,
+        native_sink_config: native_sink_config,
+        native_server_config: native_server_config,
         flush_interval: value.lookup("flush-interval")
             .unwrap_or(&Value::Integer(60))
             .as_integer()
@@ -585,7 +577,6 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         null: null,
         wavefront: wavefront,
         firehosen: firehosen,
-        fed_transmitter: fedtrn,
         files: files,
         filters: filters,
         verbose: verbosity,
@@ -595,11 +586,11 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use metric::TagMap;
-    use std::path::{PathBuf, Path};
-    use rusoto::Region;
     use filter::ProgrammableFilterConfig;
+    use metric::TagMap;
+    use rusoto::Region;
+    use std::path::{Path, PathBuf};
+    use super::*;
 
     #[test]
     fn config_file_data_directory() {
@@ -653,53 +644,19 @@ scripts-directory = "/foo/bar"
         assert_eq!(args.statsds.get("sources.statsd").unwrap().port, 8125);
         assert!(!args.graphites.is_empty());
         assert_eq!(args.graphites.get("sources.graphite").unwrap().port, 2003);
-        assert!(args.fed_receiver_config.is_none());
         assert_eq!(args.flush_interval, 60);
         assert!(args.console.is_none());
         assert!(args.null.is_none());
         assert_eq!(true, args.firehosen.is_empty());
         assert!(args.wavefront.is_none());
-        assert!(args.fed_transmitter.is_none());
         assert_eq!(args.verbose, 4);
-    }
-
-    #[test]
-    fn config_fed_receiver() {
-        let config = r#"
-[federation_receiver]
-port = 1987
-"#
-            .to_string();
-
-        let args = parse_config_file(config, 4);
-
-        assert!(args.fed_receiver_config.is_some());
-        let fed_receiver_config = args.fed_receiver_config.unwrap();
-        assert_eq!(fed_receiver_config.port, 1987);
-        assert_eq!(fed_receiver_config.ip, String::from("0.0.0.0"));
-    }
-
-    #[test]
-    fn config_fed_receiver_ip() {
-        let config = r#"
-[federation_receiver]
-ip = "127.0.0.1"
-"#
-            .to_string();
-
-        let args = parse_config_file(config, 4);
-
-        assert!(args.fed_receiver_config.is_some());
-        let fed_receiver_config = args.fed_receiver_config.unwrap();
-        assert_eq!(fed_receiver_config.port, 1972);
-        assert_eq!(fed_receiver_config.ip, String::from("127.0.0.1"));
     }
 
     #[test]
     fn config_fed_receiver_sources_style() {
         let config = r#"
 [sources]
-  [sources.federation_receiver]
+  [sources.native]
   ip = "127.0.0.1"
   port = 1972
 "#
@@ -707,49 +664,17 @@ ip = "127.0.0.1"
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.fed_receiver_config.is_some());
-        let fed_receiver_config = args.fed_receiver_config.unwrap();
-        assert_eq!(fed_receiver_config.port, 1972);
-        assert_eq!(fed_receiver_config.ip, String::from("127.0.0.1"));
+        assert!(args.native_server_config.is_some());
+        let native_server_config = args.native_server_config.unwrap();
+        assert_eq!(native_server_config.port, 1972);
+        assert_eq!(native_server_config.ip, String::from("127.0.0.1"));
     }
 
     #[test]
-    fn config_fed_transmitter() {
-        let config = r#"
-[federation_transmitter]
-port = 1987
-"#
-            .to_string();
-
-        let args = parse_config_file(config, 4);
-
-        assert!(args.fed_transmitter.is_some());
-        let fed_transmitter = args.fed_transmitter.unwrap();
-        assert_eq!(fed_transmitter.host, String::from("127.0.0.1"));
-        assert_eq!(fed_transmitter.port, 1987);
-    }
-
-    #[test]
-    fn config_fed_transmitter_distinct_host() {
-        let config = r#"
-[federation_transmitter]
-host = "foo.example.com"
-"#
-            .to_string();
-
-        let args = parse_config_file(config, 4);
-
-        assert!(args.fed_transmitter.is_some());
-        let fed_transmitter = args.fed_transmitter.unwrap();
-        assert_eq!(fed_transmitter.host, String::from("foo.example.com"));
-        assert_eq!(fed_transmitter.port, 1972);
-    }
-
-    #[test]
-    fn config_fed_transmitter_distinct_host_sinks_style() {
+    fn config_native_sink_config_distinct_host_sinks_style() {
         let config = r#"
 [sinks]
-  [sinks.federation_transmitter]
+  [sinks.native]
   host = "foo.example.com"
   port = 1972
 "#
@@ -757,10 +682,10 @@ host = "foo.example.com"
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.fed_transmitter.is_some());
-        let fed_transmitter = args.fed_transmitter.unwrap();
-        assert_eq!(fed_transmitter.host, String::from("foo.example.com"));
-        assert_eq!(fed_transmitter.port, 1972);
+        assert!(args.native_sink_config.is_some());
+        let native_sink_config = args.native_sink_config.unwrap();
+        assert_eq!(native_sink_config.host, String::from("foo.example.com"));
+        assert_eq!(native_sink_config.port, 1972);
     }
 
     #[test]
