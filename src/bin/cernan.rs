@@ -101,6 +101,15 @@ fn main() {
             cernan::sink::Wavefront::new(config).run(wf_recv);
         }));
     }
+    if let Some(config) = args.influxdb {
+        let (flx_send, flx_recv) = hopper::channel(&config.config_path, &args.data_directory)
+            .unwrap();
+        flush_sends.push(flx_send.clone());
+        sends.insert(config.config_path.clone(), flx_send);
+        joins.push(thread::spawn(move || {
+            cernan::sink::InfluxDB::new(config).run(flx_recv);
+        }));
+    }
     if let Some(config) = args.native_sink_config {
         let (cernan_send, cernan_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();

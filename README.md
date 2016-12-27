@@ -465,6 +465,19 @@ bin_width=<INT>    The width in seconds for aggregating bins. [default: 1].
 You may find an example configuration file in `examples/configs/basic.toml` The
 TOML specification is [here](https://github.com/toml-lang/toml).
 
+### influxdb
+
+The InfluxDB sink has options for defining where the InfluxDB ingestion runs:
+
+```
+port=<INT>         The port influxdb is running on. [default: 8089].
+host=<STRING>      The host influxdb is running on. [default: 127.0.0.1].
+bin_width=<INT>    The width in seconds for aggregating bins. [default: 1].
+```
+
+You may find an example configuration file in `examples/configs/basic.toml` The
+TOML specification is [here](https://github.com/toml-lang/toml).
+
 ### null
 
 The null sink accepts points and immediately discards them. This is useful for
