@@ -1,5 +1,4 @@
 use quantiles::ckms::CKMS;
-use std::str::FromStr;
 use std::sync;
 use time;
 
@@ -543,36 +542,6 @@ impl Metric {
     pub fn count(&self) -> usize {
         self.value.count()
     }
-
-    pub fn parse_graphite(source: &str) -> Option<Vec<Metric>> {
-        let mut res = Vec::new();
-        let mut iter = source.split_whitespace();
-        while let Some(name) = iter.next() {
-            match iter.next() {
-                Some(val) => {
-                    match iter.next() {
-                        Some(time) => {
-                            let parsed_val = match f64::from_str(val) {
-                                Ok(f) => f,
-                                Err(_) => return None,
-                            };
-                            let parsed_time = match i64::from_str(time) {
-                                Ok(t) => t,
-                                Err(_) => return None,
-                            };
-                            res.push(Metric::new(name, parsed_val).time(parsed_time));
-                        }
-                        None => return None,
-                    }
-                }
-                None => return None,
-            }
-        }
-        if res.is_empty() {
-            return None;
-        }
-        Some(res)
-    }
 }
 
 #[cfg(test)]
@@ -580,7 +549,6 @@ mod tests {
     extern crate rand;
     extern crate quickcheck;
 
-    use chrono::{TimeZone, UTC};
     use metric::{Event, Metric, MetricKind};
     use self::quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use self::rand::{Rand, Rng};
@@ -725,45 +693,6 @@ mod tests {
             .tests(100)
             .max_tests(1000)
             .quickcheck(inner as fn(f64, f64, MetricKind) -> TestResult);
-    }
-
-    #[test]
-    fn test_parse_graphite() {
-        let pyld = "fst 1 101\nsnd -2.0 202\nthr 3 303\nfth@fth 4 404\nfv%fv 5 505\ns-th 6 606\n";
-        let prs = Metric::parse_graphite(pyld);
-
-        assert!(prs.is_some());
-        let prs_pyld = prs.unwrap();
-
-        assert_eq!(prs_pyld[0].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[0].name, "fst");
-        assert_eq!(prs_pyld[0].value(), Some(1.0));
-        assert_eq!(prs_pyld[0].time, UTC.timestamp(101, 0).timestamp());
-
-        assert_eq!(prs_pyld[1].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[1].name, "snd");
-        assert_eq!(prs_pyld[1].value(), Some(-2.0));
-        assert_eq!(prs_pyld[1].time, UTC.timestamp(202, 0).timestamp());
-
-        assert_eq!(prs_pyld[2].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[2].name, "thr");
-        assert_eq!(prs_pyld[2].value(), Some(3.0));
-        assert_eq!(prs_pyld[2].time, UTC.timestamp(303, 0).timestamp());
-
-        assert_eq!(prs_pyld[3].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[3].name, "fth@fth");
-        assert_eq!(prs_pyld[3].value(), Some(4.0));
-        assert_eq!(prs_pyld[3].time, UTC.timestamp(404, 0).timestamp());
-
-        assert_eq!(prs_pyld[4].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[4].name, "fv%fv");
-        assert_eq!(prs_pyld[4].value(), Some(5.0));
-        assert_eq!(prs_pyld[4].time, UTC.timestamp(505, 0).timestamp());
-
-        assert_eq!(prs_pyld[5].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[5].name, "s-th");
-        assert_eq!(prs_pyld[5].value(), Some(6.0));
-        assert_eq!(prs_pyld[5].time, UTC.timestamp(606, 0).timestamp());
     }
 
     #[test]

@@ -1,4 +1,5 @@
 use metric;
+use protocols::graphite::parse_graphite;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
@@ -6,10 +7,7 @@ use std::net::{TcpListener, TcpStream};
 use std::str;
 use std::sync::Arc;
 use std::thread;
-use std::time::Instant;
 use super::Source;
-
-use time;
 use util;
 use util::send;
 
@@ -73,48 +71,35 @@ fn handle_tcp(chans: util::Channel,
 
 fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: TcpStream) {
     thread::spawn(move || {
-        let line_reader = BufReader::new(stream);
-        for line in line_reader.lines() {
-            match line {
-                Ok(line) => {
-                    let buf = line.into_bytes();
-                    str::from_utf8(&buf)
-                        .map(|val| {
-                            let pyld_hndl_time = Instant::now();
-                            match metric::Metric::parse_graphite(val) {
-                                Some(metrics) => {
-                                    let metric = metric::Metric::new("cernan.graphite.packet", 1.0)
-                                        .counter()
-                                        .overlay_tags_from_map(&tags);
-                                    send("graphite",
-                                         &mut chans,
-                                         metric::Event::Telemetry(Arc::new(Some(metric))));
-                                    for mut m in metrics {
-                                        m = m.overlay_tags_from_map(&tags);
-                                        send("graphite",
-                                             &mut chans,
-                                             metric::Event::Telemetry(Arc::new(Some(m))));
-                                    }
-                                    trace!("payload handle effective, elapsed (ns): {}",
-                                           time::elapsed_ns(pyld_hndl_time));
-                                }
-                                None => {
-                                    let metric = metric::Metric::new("cernan.graphite.bad_packet",
-                                                                     1.0)
-                                        .counter()
-                                        .overlay_tags_from_map(&tags);
-                                    send("graphite",
-                                         &mut chans,
-                                         metric::Event::Telemetry(Arc::new(Some(metric))));
-                                    error!("bad packet: {:?}", val);
-                                    trace!("payload handle failure, elapsed (ns): {}",
-                                           time::elapsed_ns(pyld_hndl_time));
-                                }
-                            }
-                        })
-                        .ok();
+        let mut line = String::new();
+        let mut res = Vec::new();
+        let mut line_reader = BufReader::new(stream);
+        let basic_metric = Arc::new(Some(metric::Metric::default().overlay_tags_from_map(&tags)));
+        while let Some(len) = line_reader.read_line(&mut line).ok() {
+            if len > 0 {
+                if parse_graphite(&line, &mut res, basic_metric.clone()) {
+                    let metric = metric::Metric::new("cernan.graphite.packet", 1.0)
+                        .counter()
+                        .overlay_tags_from_map(&tags);
+                    send("graphite",
+                         &mut chans,
+                         metric::Event::Telemetry(Arc::new(Some(metric))));
+                    for m in res.drain(..) {
+                        send("graphite",
+                             &mut chans,
+                             metric::Event::Telemetry(Arc::new(Some(m))));
+                    }
+                } else {
+                    let metric = metric::Metric::new("cernan.graphite.bad_packet", 1.0)
+                        .counter()
+                        .overlay_tags_from_map(&tags);
+                    send("graphite",
+                         &mut chans,
+                         metric::Event::Telemetry(Arc::new(Some(metric))));
+                    error!("bad packet: {:?}", line);
                 }
-                Err(_) => break,
+            } else {
+                break;
             }
         }
     });
