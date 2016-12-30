@@ -67,6 +67,8 @@ impl Sink for Console {
                 }
             }
         }
+
+        println!("  delta-gauges:");
         for (key, value) in self.aggrs.delta_gauges() {
             for m in value {
                 if let Some(f) = m.value() {

@@ -49,8 +49,8 @@ impl LogLine {
 impl AddAssign for MetricValue {
     fn add_assign(&mut self, rhs: MetricValue) {
         match rhs.kind {
-            MetricValueKind::Single => self.insert(rhs.single.unwrap()),
-            MetricValueKind::Many => self.merge(rhs.many.unwrap()),
+            MetricValueKind::Single => self.insert(rhs.single.expect("EMPTY SINGLE ADD_ASSIGN")),
+            MetricValueKind::Many => self.merge(rhs.many.expect("EMPTY MANY ADD_ASSIGN")), 
         }
     }
 }
@@ -75,7 +75,7 @@ impl MetricValue {
         match self.kind {
             MetricValueKind::Single => {
                 let mut ckms = CKMS::new(0.001);
-                ckms.insert(self.single.unwrap());
+                ckms.insert(self.single.expect("NOT SINGLE IN METRICVALUE INSERT"));
                 ckms.insert(value);
                 self.many = Some(ckms);
                 self.single = None;
@@ -93,9 +93,10 @@ impl MetricValue {
     fn merge(&mut self, mut value: CKMS<f64>) -> () {
         match self.kind {
             MetricValueKind::Single => {
-                value.insert(self.single.unwrap());
+                value.insert(self.single.expect("NOT SINGLE IN METRICVALUE MERGE"));
                 self.many = Some(value);
                 self.single = None;
+                self.kind = MetricValueKind::Many;
             }
             MetricValueKind::Many => {
                 match self.many.as_mut() {
@@ -144,7 +145,9 @@ impl MetricValue {
 
     fn query(&self, query: f64) -> Option<(usize, f64)> {
         match self.kind {
-            MetricValueKind::Single => Some((1 as usize, self.single.unwrap())),
+            MetricValueKind::Single => {
+                Some((1 as usize, self.single.expect("NOT SINGLE IN METRICVALUE QUERY")))
+            }
             MetricValueKind::Many => {
                 match self.many {
                     Some(ref ckms) => ckms.query(query),

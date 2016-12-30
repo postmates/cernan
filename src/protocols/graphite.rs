@@ -35,7 +35,8 @@ pub fn parse_graphite(source: &str,
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, UTC};
-    use metric::MetricKind;
+    use metric::{Metric, MetricKind};
+    use std::sync;
     use super::*;
 
     #[test]
