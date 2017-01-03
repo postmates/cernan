@@ -40,7 +40,7 @@ service--to determine if the telemetry you intend is issued--run cernan like
 
 and full trace output will be reported to the tty.
 
-## Run a cernan in a container
+## Run Cernan in a container
 
 Static builds of Cernan has been published to quay.io/postmates/cernan 
 (private for now).  To run these, login to quay and run:
