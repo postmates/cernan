@@ -11,5 +11,5 @@ fi
 
 VERSION="${1}"
 
-sudo docker login quay.io/postmates
-sudo docker push quay.io/postmates/cernan:${VERSION}
+docker login quay.io/postmates
+docker push quay.io/postmates/cernan:${VERSION}
