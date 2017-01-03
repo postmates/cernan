@@ -10,6 +10,7 @@ doc = false
 
 [dependencies]
 bincode = "0.6.0"
+byteorder = "1.0"
 chrono = "0.2"
 clap = "2.10.0"
 fern = "0.3.5"

@@ -1,17 +1,17 @@
 use metric;
+use protocols::statsd::parse_statsd;
 use source::Source;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6, UdpSocket};
 use std::str;
-use std::sync::Arc;
+use std::sync;
 use std::thread;
-
 use util;
 use util::send;
 
 pub struct Statsd {
     chans: util::Channel,
     port: u16,
-    tags: Arc<metric::TagMap>,
+    tags: sync::Arc<metric::TagMap>,
 }
 
 #[derive(Debug,Clone)]
@@ -40,40 +40,40 @@ impl Statsd {
         Statsd {
             chans: chans,
             port: config.port,
-            tags: Arc::new(config.tags),
+            tags: sync::Arc::new(config.tags),
         }
     }
 }
 
-fn handle_udp(mut chans: util::Channel, tags: Arc<metric::TagMap>, socket: UdpSocket) {
+fn handle_udp(mut chans: util::Channel, tags: sync::Arc<metric::TagMap>, socket: UdpSocket) {
     let mut buf = [0; 8192];
-    let basic_metric = Arc::new(Some(metric::Metric::default().overlay_tags_from_map(&tags)));
+    let mut metrics = Vec::new();
+    let basic_metric = sync::Arc::new(Some(metric::Metric::default().overlay_tags_from_map(&tags)));
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
             Ok(r) => r,
             Err(_) => panic!("Could not read UDP socket."),
         };
-        str::from_utf8(&buf[..len])
-            .map(|val| {
-                match metric::Metric::parse_statsd(val, basic_metric.clone()) {
-                    Some(metrics) => {
-                        for m in metrics {
-                            send("statsd", &mut chans, metric::Event::new_telemetry(m));
-                        }
-                        let mut metric = metric::Metric::new("cernan.statsd.packet", 1.0).counter();
-                        metric = metric.overlay_tags_from_map(&tags);
-                        send("statsd", &mut chans, metric::Event::new_telemetry(metric));
+        match str::from_utf8(&buf[..len]) {
+            Ok(val) => {
+                if parse_statsd(val, &mut metrics, basic_metric.clone()) {
+                    for m in metrics.drain(..) {
+                        send("statsd", &mut chans, metric::Event::new_telemetry(m));
                     }
-                    None => {
-                        let mut metric = metric::Metric::new("cernan.statsd.bad_packet", 1.0)
-                            .counter();
-                        metric = metric.overlay_tags_from_map(&tags);
-                        send("statsd", &mut chans, metric::Event::new_telemetry(metric));
-                        error!("BAD PACKET: {:?}", val);
-                    }
+                    let mut metric = metric::Metric::new("cernan.statsd.packet", 1.0).counter();
+                    metric = metric.overlay_tags_from_map(&tags);
+                    send("statsd", &mut chans, metric::Event::new_telemetry(metric));
+                } else {
+                    let mut metric = metric::Metric::new("cernan.statsd.bad_packet", 1.0).counter();
+                    metric = metric.overlay_tags_from_map(&tags);
+                    send("statsd", &mut chans, metric::Event::new_telemetry(metric));
+                    error!("BAD PACKET: {:?}", val);
                 }
-            })
-            .ok();
+            }
+            Err(e) => {
+                error!("Payload not valid UTF-8: {:?}", e);
+            }
+        }
     }
 }
 

@@ -1,5 +1,4 @@
 use quantiles::ckms::CKMS;
-use std::str::FromStr;
 use std::sync;
 use time;
 
@@ -50,8 +49,8 @@ impl LogLine {
 impl AddAssign for MetricValue {
     fn add_assign(&mut self, rhs: MetricValue) {
         match rhs.kind {
-            MetricValueKind::Single => self.insert(rhs.single.unwrap()),
-            MetricValueKind::Many => self.merge(rhs.many.unwrap()),
+            MetricValueKind::Single => self.insert(rhs.single.expect("EMPTY SINGLE ADD_ASSIGN")),
+            MetricValueKind::Many => self.merge(rhs.many.expect("EMPTY MANY ADD_ASSIGN")), 
         }
     }
 }
@@ -76,7 +75,7 @@ impl MetricValue {
         match self.kind {
             MetricValueKind::Single => {
                 let mut ckms = CKMS::new(0.001);
-                ckms.insert(self.single.unwrap());
+                ckms.insert(self.single.expect("NOT SINGLE IN METRICVALUE INSERT"));
                 ckms.insert(value);
                 self.many = Some(ckms);
                 self.single = None;
@@ -94,9 +93,10 @@ impl MetricValue {
     fn merge(&mut self, mut value: CKMS<f64>) -> () {
         match self.kind {
             MetricValueKind::Single => {
-                value.insert(self.single.unwrap());
+                value.insert(self.single.expect("NOT SINGLE IN METRICVALUE MERGE"));
                 self.many = Some(value);
                 self.single = None;
+                self.kind = MetricValueKind::Many;
             }
             MetricValueKind::Many => {
                 match self.many.as_mut() {
@@ -145,7 +145,9 @@ impl MetricValue {
 
     fn query(&self, query: f64) -> Option<(usize, f64)> {
         match self.kind {
-            MetricValueKind::Single => Some((1 as usize, self.single.unwrap())),
+            MetricValueKind::Single => {
+                Some((1 as usize, self.single.expect("NOT SINGLE IN METRICVALUE QUERY")))
+            }
             MetricValueKind::Many => {
                 match self.many {
                     Some(ref ckms) => ckms.query(query),
@@ -543,126 +545,6 @@ impl Metric {
     pub fn count(&self) -> usize {
         self.value.count()
     }
-
-    /// Valid message formats are:
-    ///
-    /// - `<str:metric_name>:<f64:value>|<str:type>`
-    /// - `<str:metric_name>:<f64:value>|c|@<f64:sample_rate>`
-    /// p
-    /// Multiple metrics can be sent in a single UDP packet
-    /// separated by newlines.
-    pub fn parse_statsd(source: &str, metric: sync::Arc<Option<Metric>>) -> Option<Vec<Metric>> {
-        let mut res = Vec::new();
-        let mut iter = source.lines();
-        loop {
-            let mut offset = 0;
-            match iter.next() {
-                Some(src) => {
-                    let len = src.len();
-                    match (&src[offset..]).find(':') {
-                        Some(colon_idx) => {
-                            let name = &src[offset..(offset + colon_idx)];
-                            if name.is_empty() {
-                                return None;
-                            };
-                            offset += colon_idx + 1;
-                            if offset >= len {
-                                return None;
-                            };
-                            match (&src[offset..]).find('|') {
-                                Some(pipe_idx) => {
-                                    let val = match f64::from_str(&src[offset..(offset +
-                                                                                pipe_idx)]) {
-                                        Ok(f) => f,
-                                        Err(_) => return None,
-                                    };
-                                    let mut metric =
-                                        sync::Arc::make_mut(&mut metric.clone()).take().unwrap();
-                                    metric = metric.set_name(name);
-                                    metric = metric.set_value(val);
-                                    metric = metric.time(time::now());
-                                    metric = match &src[offset..(offset + 1)] {
-                                        "+" | "-" => metric.delta_gauge(),
-                                        _ => metric,
-                                    };
-                                    offset += pipe_idx + 1;
-                                    if offset >= len {
-                                        return None;
-                                    };
-                                    metric = match (&src[offset..]).find('@') {
-                                        Some(sample_idx) => {
-                                            match &src[offset..(offset + sample_idx)] {
-                                                "g" => metric.gauge(),
-                                                "ms" => metric.timer(),
-                                                "h" => metric.histogram(),
-                                                "c" => {
-                                                    let sample =
-                                                        match f64::from_str(&src[(offset +
-                                                                                  sample_idx +
-                                                                                  1)..]) {
-                                                            Ok(f) => f,
-                                                            Err(_) => return None,
-                                                        };
-                                                    metric = metric.counter();
-                                                    metric.set_value(val * (1.0 / sample))
-                                                }
-                                                _ => return None,
-                                            }
-                                        }
-                                        None => {
-                                            match &src[offset..] {
-                                                "g" | "g\n" => metric.gauge(),
-                                                "ms" | "ms\n" => metric.timer(),
-                                                "h" | "h\n" => metric.histogram(),
-                                                "c" | "c\n" => metric.counter(),
-                                                _ => return None,
-                                            }
-                                        }
-                                    };
-
-                                    res.push(metric);
-                                }
-                                None => return None,
-                            }
-                        }
-                        None => return None,
-                    }
-                }
-                None => break,
-            }
-        }
-        if res.is_empty() { None } else { Some(res) }
-    }
-
-    pub fn parse_graphite(source: &str) -> Option<Vec<Metric>> {
-        let mut res = Vec::new();
-        let mut iter = source.split_whitespace();
-        while let Some(name) = iter.next() {
-            match iter.next() {
-                Some(val) => {
-                    match iter.next() {
-                        Some(time) => {
-                            let parsed_val = match f64::from_str(val) {
-                                Ok(f) => f,
-                                Err(_) => return None,
-                            };
-                            let parsed_time = match i64::from_str(time) {
-                                Ok(t) => t,
-                                Err(_) => return None,
-                            };
-                            res.push(Metric::new(name, parsed_val).time(parsed_time));
-                        }
-                        None => return None,
-                    }
-                }
-                None => return None,
-            }
-        }
-        if res.is_empty() {
-            return None;
-        }
-        Some(res)
-    }
 }
 
 #[cfg(test)]
@@ -670,7 +552,6 @@ mod tests {
     extern crate rand;
     extern crate quickcheck;
 
-    use chrono::{TimeZone, UTC};
     use metric::{Event, Metric, MetricKind};
     use self::quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use self::rand::{Rand, Rng};
@@ -818,45 +699,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_graphite() {
-        let pyld = "fst 1 101\nsnd -2.0 202\nthr 3 303\nfth@fth 4 404\nfv%fv 5 505\ns-th 6 606\n";
-        let prs = Metric::parse_graphite(pyld);
-
-        assert!(prs.is_some());
-        let prs_pyld = prs.unwrap();
-
-        assert_eq!(prs_pyld[0].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[0].name, "fst");
-        assert_eq!(prs_pyld[0].value(), Some(1.0));
-        assert_eq!(prs_pyld[0].time, UTC.timestamp(101, 0).timestamp());
-
-        assert_eq!(prs_pyld[1].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[1].name, "snd");
-        assert_eq!(prs_pyld[1].value(), Some(-2.0));
-        assert_eq!(prs_pyld[1].time, UTC.timestamp(202, 0).timestamp());
-
-        assert_eq!(prs_pyld[2].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[2].name, "thr");
-        assert_eq!(prs_pyld[2].value(), Some(3.0));
-        assert_eq!(prs_pyld[2].time, UTC.timestamp(303, 0).timestamp());
-
-        assert_eq!(prs_pyld[3].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[3].name, "fth@fth");
-        assert_eq!(prs_pyld[3].value(), Some(4.0));
-        assert_eq!(prs_pyld[3].time, UTC.timestamp(404, 0).timestamp());
-
-        assert_eq!(prs_pyld[4].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[4].name, "fv%fv");
-        assert_eq!(prs_pyld[4].value(), Some(5.0));
-        assert_eq!(prs_pyld[4].time, UTC.timestamp(505, 0).timestamp());
-
-        assert_eq!(prs_pyld[5].kind, MetricKind::Raw);
-        assert_eq!(prs_pyld[5].name, "s-th");
-        assert_eq!(prs_pyld[5].value(), Some(6.0));
-        assert_eq!(prs_pyld[5].time, UTC.timestamp(606, 0).timestamp());
-    }
-
-    #[test]
     fn test_negative_timer() {
         let m = Metric::new("timer", -1.0).timer();
 
@@ -866,149 +708,11 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_negative_timer() {
-        let metric = Arc::new(Some(Metric::default()));
-        let prs = Metric::parse_statsd("fst:-1.1|ms\n", metric);
-
-        assert!(prs.is_some());
-        let prs_pyld = prs.unwrap();
-
-        assert_eq!(prs_pyld[0].kind, MetricKind::Timer);
-        assert_eq!(prs_pyld[0].name, "fst");
-        assert_eq!(prs_pyld[0].query(1.0), Some(-1.1));
-    }
-
-    #[test]
     fn test_postive_delta_gauge() {
         let m = Metric::new("dgauge", 1.0).delta_gauge();
 
         assert_eq!(m.kind, MetricKind::DeltaGauge);
         assert_eq!(m.value(), Some(1.0));
         assert_eq!(m.name, "dgauge");
-    }
-
-    #[test]
-    fn test_parse_metric_via_api() {
-        let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c@0.1\nsxth:\
-                    -6.6|g\nsvth:+7.77|g\n";
-        let metric = Arc::new(Some(Metric::default()));
-        let prs = Metric::parse_statsd(pyld, metric);
-
-        assert!(prs.is_some());
-        let prs_pyld = prs.unwrap();
-
-        assert_eq!(prs_pyld[0].kind, MetricKind::Gauge);
-        assert_eq!(prs_pyld[0].name, "zrth");
-        assert_eq!(prs_pyld[0].value(), Some(0.0));
-
-        assert_eq!(prs_pyld[1].kind, MetricKind::Timer);
-        assert_eq!(prs_pyld[1].name, "fst");
-        assert_eq!(prs_pyld[1].query(1.0), Some(-1.1));
-
-        assert_eq!(prs_pyld[2].kind, MetricKind::DeltaGauge);
-        assert_eq!(prs_pyld[2].name, "snd");
-        assert_eq!(prs_pyld[2].value(), Some(2.2));
-
-        assert_eq!(prs_pyld[3].kind, MetricKind::Histogram);
-        assert_eq!(prs_pyld[3].name, "thd");
-        assert_eq!(prs_pyld[3].query(1.0), Some(3.3));
-
-        assert_eq!(prs_pyld[4].kind, MetricKind::Counter);
-        assert_eq!(prs_pyld[4].name, "fth");
-        assert_eq!(prs_pyld[4].value(), Some(4.0));
-
-        assert_eq!(prs_pyld[5].kind, MetricKind::Counter);
-        assert_eq!(prs_pyld[5].name, "fvth");
-        assert_eq!(prs_pyld[5].value(), Some(55.0));
-
-        assert_eq!(prs_pyld[6].kind, MetricKind::DeltaGauge);
-        assert_eq!(prs_pyld[6].name, "sxth");
-        assert_eq!(prs_pyld[6].value(), Some(-6.6));
-
-        assert_eq!(prs_pyld[7].kind, MetricKind::DeltaGauge);
-        assert_eq!(prs_pyld[7].name, "svth");
-        assert_eq!(prs_pyld[7].value(), Some(7.77));
-    }
-
-    #[test]
-    fn test_metric_equal_in_name() {
-        let metric = Arc::new(Some(Metric::default()));
-        let res = Metric::parse_statsd("A=:1|ms\n", metric).unwrap();
-
-        assert_eq!("A=", res[0].name);
-        assert_eq!(Some(1.0), res[0].query(1.0));
-        assert_eq!(MetricKind::Timer, res[0].kind);
-    }
-
-    #[test]
-    fn test_metric_slash_in_name() {
-        let metric = Arc::new(Some(Metric::default()));
-        let res = Metric::parse_statsd("A/:1|ms\n", metric).unwrap();
-
-        assert_eq!("A/", res[0].name);
-        assert_eq!(Some(1.0), res[0].query(1.0));
-        assert_eq!(MetricKind::Timer, res[0].kind);
-    }
-
-    #[test]
-    fn test_metric_sample_gauge() {
-        let metric = Arc::new(Some(Metric::default()));
-        let res = Metric::parse_statsd("foo:1|g@0.22\nbar:101|g@2\n", metric).unwrap();
-        //                              0         A     F
-        assert_eq!("foo", res[0].name);
-        assert_eq!(Some(1.0), res[0].query(1.0));
-        assert_eq!(MetricKind::Gauge, res[0].kind);
-
-        assert_eq!("bar", res[1].name);
-        assert_eq!(Some(101.0), res[1].query(1.0));
-        assert_eq!(MetricKind::Gauge, res[1].kind);
-    }
-
-    #[test]
-    fn test_metric_parse_invalid_no_name() {
-        let metric = Arc::new(Some(Metric::default()));
-        assert_eq!(None, Metric::parse_statsd("", metric));
-    }
-
-    #[test]
-    fn test_metric_parse_invalid_no_value() {
-        let metric = Arc::new(Some(Metric::default()));
-        assert_eq!(None, Metric::parse_statsd("foo:", metric));
-    }
-
-    #[test]
-    fn test_metric_multiple() {
-        let metric = Arc::new(Some(Metric::default()));
-        let res = Metric::parse_statsd("a.b:12.1|g\nb_c:13.2|c\n", metric).unwrap();
-        assert_eq!(2, res.len());
-
-        assert_eq!("a.b", res[0].name);
-        assert_eq!(Some(12.1), res[0].value());
-
-        assert_eq!("b_c", res[1].name);
-        assert_eq!(Some(13.2), res[1].value());
-    }
-
-    #[test]
-    fn test_metric_optional_final_newline() {
-        let metric = Arc::new(Some(Metric::default()));
-        let res = Metric::parse_statsd("a.b:12.1|g\nb_c:13.2|c", metric).unwrap();
-        assert_eq!(2, res.len());
-
-        assert_eq!("a.b", res[0].name);
-        assert_eq!(Some(12.1), res[0].value());
-
-        assert_eq!("b_c", res[1].name);
-        assert_eq!(Some(13.2), res[1].value());
-    }
-
-    #[test]
-    fn test_metric_invalid() {
-        let invalid = vec!["", "metric", "metric|11:", "metric|12", "metric:13|", ":|@", ":1.0|c"];
-        let metric = Arc::new(Some(Metric::default()));
-        for input in invalid.iter() {
-            let result = Metric::parse_statsd(*input, metric.clone());
-            assert!(result.is_none());
-        }
     }
 }

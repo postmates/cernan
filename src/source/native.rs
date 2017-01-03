@@ -1,13 +1,15 @@
+use byteorder::{BigEndian, ReadBytesExt};
 use hopper;
 use metric;
+use protobuf::parse_from_bytes;
+use protocols::native::{AggregationMethod, Payload};
 use std::io;
+use std::io::Read;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::str;
 use std::thread;
 use super::Source;
 use util;
-use protobuf::core::parse_length_delimited_from_reader; 
-use protocols::native::{Payload,AggregationMethod};
 
 pub struct NativeServer {
     chans: util::Channel,
@@ -62,7 +64,15 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
     thread::spawn(move || {
         let mut reader = io::BufReader::new(stream);
         loop {
-            match parse_length_delimited_from_reader::<Payload>(&mut reader) {
+            let payload_size_in_bytes = match reader.read_u32::<BigEndian>() {
+                Ok(i) => i,
+                Err(_) => return,
+            };
+            let mut buf = vec![0; payload_size_in_bytes as usize];
+            if reader.read_exact(&mut buf).is_err() {
+                return;
+            }
+            match parse_from_bytes::<Payload>(&buf) {
                 Ok(pyld) => {
                     for point in pyld.get_points() {
                         let name: &str = point.get_name();
@@ -71,13 +81,16 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         let meta = point.get_metadata();
                         // FIXME #166
                         let ts: i64 = (point.get_timestamp_ms() as f64 * 0.001) as i64;
-                        
+
+                        if smpls.is_empty() {
+                            continue;
+                        }
                         let mut metric = metric::Metric::new(name, smpls[0]);
                         for smpl in &smpls[1..] {
                             metric = metric.insert_value(*smpl);
                         }
                         metric = match aggr_type {
-                            AggregationMethod::SET_OR_RESET => metric, 
+                            AggregationMethod::SET_OR_RESET => metric,
                             AggregationMethod::SUM => metric.counter(),
                             AggregationMethod::SUMMARIZE => metric.histogram(),
                             AggregationMethod::ACCUMULATING_SUM => metric.delta_gauge(),
@@ -95,7 +108,7 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         let meta = line.get_metadata();
                         // FIXME #166
                         let ts: i64 = (line.get_timestamp_ms() as f64 * 0.001) as i64;
-                        
+
                         let mut logline = metric::LogLine::new(path, value);
                         logline = logline.time(ts);
                         logline = logline.overlay_tags_from_map(&tags);
@@ -103,12 +116,12 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                             logline = logline.overlay_tag(mt.get_key(), mt.get_value());
                         }
                         util::send("native", &mut chans, metric::Event::new_log(logline));
-                            
+
                     }
-                },
+                }
                 Err(err) => {
                     trace!("Unable to read payload: {:?}", err);
-                    return; 
+                    return;
                 }
             }
         }
@@ -126,9 +139,9 @@ impl Source for NativeServer {
             .expect("Unable to bind to TCP socket");
         let chans = self.chans.clone();
         let tags = self.tags.clone();
+        info!("server started on {}:{}", self.ip, self.port);
         let jh = thread::spawn(move || handle_tcp(chans, tags, listener));
 
         jh.join().expect("Uh oh, child thread paniced!");
     }
 }
-

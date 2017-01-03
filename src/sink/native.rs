@@ -1,10 +1,13 @@
+use byteorder::{BigEndian, ByteOrder};
 use hopper;
 use metric;
 use protobuf::Message;
 use protobuf::repeated::RepeatedField;
+use protobuf::stream::CodedOutputStream;
 use protocols::native::{AggregationMethod, LogLine, LogLine_MetadataEntry, Payload, Telemetry,
                         Telemetry_MetadataEntry};
 use sink::{Sink, Valve};
+use std::io::BufWriter;
 use std::mem::replace;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync;
@@ -148,8 +151,14 @@ impl Sink for Native {
                 let ips: Vec<_> = srv.collect();
                 for ip in ips {
                     match TcpStream::connect(ip) {
-                        Ok(mut stream) => {
-                            let res = pyld.write_length_delimited_to_writer(&mut stream);
+                        Ok(stream) => {
+                            let mut bufwrite = BufWriter::new(stream);
+                            let mut stream = CodedOutputStream::new(&mut bufwrite);
+                            let mut sz_buf = [0; 4];
+                            let pyld_len = pyld.compute_size();
+                            BigEndian::write_u32(&mut sz_buf, pyld_len);
+                            stream.write_raw_bytes(&sz_buf).unwrap();
+                            let res = pyld.write_to_with_cached_sizes(&mut stream);
                             if res.is_ok() {
                                 self.buffer.clear();
                                 return;
