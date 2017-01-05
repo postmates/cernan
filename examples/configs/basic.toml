@@ -10,12 +10,12 @@ source = "cernan"
   [sources.statsd.primary]
   enabled = true
   port = 8125
-  forwards = ["sinks.console", "sinks.wavefront", "sinks.influxdb"]
+  forwards = ["sinks.console", "sinks.null", "sinks.influxdb", "sinks.prometheus"]
 
   [sources.native_server]
   ip = "127.0.0.1"
   port = 1972
-  forwards = ["sinks.wavefront"]
+  forwards = ["sinks.console", "sinks.null", "sinks.influxdb", "sinks.prometheus"]
 
   [sources.graphite.primary]
   enabled = true
@@ -34,21 +34,26 @@ source = "cernan"
 [filters]
   [filters.collectd_scrub]
   script = "collectd_scrub.lua"
-  forwards = ["sinks.console", "sinks.null", "sinks.wavefront", "sinks.influxdb"]
+  forwards = ["sinks.console", "sinks.null", "sinks.influxdb", "sinks.prometheus"]
 
 [sinks]
-  # [sinks.console]
-  # bin_width = 1
+  [sinks.console]
+  bin_width = 1
 
   [sinks.null]
 
-  [sinks.wavefront]
-  port = 2878
-  host = "127.0.0.1"
-  bin_width = 1
+  # [sinks.wavefront]
+  # port = 2878
+  # host = "127.0.0.1"
+  # bin_width = 1
 
   [sinks.influxdb]
   port = 8089
+  host = "127.0.0.1"
+  bin_width = 1
+
+  [sinks.prometheus]
+  port = 8080
   host = "127.0.0.1"
   bin_width = 1
 

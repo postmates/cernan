@@ -3,7 +3,11 @@ use std::sync;
 use time;
 
 mod tagmap;
+mod logline;
+mod event;
 
+pub use self::event::Event;
+pub use self::logline::LogLine;
 pub use self::tagmap::cmp;
 
 include!(concat!(env!("OUT_DIR"), "/metric_types.rs"));
@@ -14,43 +18,11 @@ use std::ops::AddAssign;
 
 pub type TagMap = self::tagmap::TagMap<String, String>;
 
-impl LogLine {
-    pub fn new<S>(path: S, value: S) -> LogLine
-        where S: Into<String>
-    {
-        LogLine {
-            path: path.into(),
-            value: value.into(),
-            time: time::now(),
-            tags: Default::default(),
-        }
-    }
-
-    pub fn time(mut self, time: i64) -> LogLine {
-        self.time = time;
-        self
-    }
-
-    pub fn overlay_tag<S>(mut self, key: S, val: S) -> LogLine
-        where S: Into<String>
-    {
-        self.tags.insert(key.into(), val.into());
-        self
-    }
-
-    pub fn overlay_tags_from_map(mut self, map: &TagMap) -> LogLine {
-        for &(ref k, ref v) in map.iter() {
-            self.tags.insert(k.clone(), v.clone());
-        }
-        self
-    }
-}
-
 impl AddAssign for MetricValue {
     fn add_assign(&mut self, rhs: MetricValue) {
         match rhs.kind {
             MetricValueKind::Single => self.insert(rhs.single.expect("EMPTY SINGLE ADD_ASSIGN")),
-            MetricValueKind::Many => self.merge(rhs.many.expect("EMPTY MANY ADD_ASSIGN")), 
+            MetricValueKind::Many => self.merge(rhs.many.expect("EMPTY MANY ADD_ASSIGN")),
         }
     }
 }
@@ -219,18 +191,6 @@ impl Default for Metric {
             time: time::now(),
             value: MetricValue::new(0.0),
         }
-    }
-}
-
-impl Event {
-    #[inline]
-    pub fn new_telemetry(metric: Metric) -> Event {
-        Event::Telemetry(sync::Arc::new(Some(metric)))
-    }
-
-    #[inline]
-    pub fn new_log(log: LogLine) -> Event {
-        Event::Log(sync::Arc::new(Some(log)))
     }
 }
 
@@ -544,6 +504,10 @@ impl Metric {
 
     pub fn count(&self) -> usize {
         self.value.count()
+    }
+
+    pub fn sum(&self) -> f64 {
+        self.value.sum().unwrap()
     }
 }
 

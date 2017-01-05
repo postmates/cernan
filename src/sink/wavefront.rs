@@ -213,8 +213,6 @@ impl Sink for Wavefront {
 
 #[cfg(test)]
 mod test {
-    extern crate quickcheck;
-
     use chrono::{TimeZone, UTC};
     use metric::{Metric, TagMap};
     use sink::Sink;

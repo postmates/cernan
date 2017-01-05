@@ -1,3 +1,4 @@
-pub mod native;
-pub mod statsd;
 pub mod graphite;
+pub mod native;
+pub mod prometheus;
+pub mod statsd;

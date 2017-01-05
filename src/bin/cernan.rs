@@ -101,6 +101,15 @@ fn main() {
             cernan::sink::Wavefront::new(config).run(wf_recv);
         }));
     }
+    if let Some(config) = args.prometheus {
+        let (wf_send, wf_recv) = hopper::channel(&config.config_path, &args.data_directory)
+            .unwrap();
+        flush_sends.push(wf_send.clone());
+        sends.insert(config.config_path.clone(), wf_send);
+        joins.push(thread::spawn(move || {
+            cernan::sink::Prometheus::new(config).run(wf_recv);
+        }));
+    }
     if let Some(config) = args.influxdb {
         let (flx_send, flx_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();

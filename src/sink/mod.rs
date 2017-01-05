@@ -9,12 +9,14 @@ mod null;
 mod wavefront;
 mod native;
 mod influxdb;
+mod prometheus;
 
 pub use self::console::{Console, ConsoleConfig};
 pub use self::firehose::{Firehose, FirehoseConfig};
 pub use self::influxdb::{InfluxDB, InfluxDBConfig};
 pub use self::native::{Native, NativeConfig};
 pub use self::null::{Null, NullConfig};
+pub use self::prometheus::{Prometheus, PrometheusConfig};
 pub use self::wavefront::{Wavefront, WavefrontConfig};
 
 pub enum Valve {
