@@ -90,10 +90,12 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                             metric = metric.insert_value(*smpl);
                         }
                         metric = match aggr_type {
-                            AggregationMethod::SET_OR_RESET => metric,
-                            AggregationMethod::SUM => metric.counter(),
+                            AggregationMethod::SET => metric,
+                            AggregationMethod::SUM => match point.get_persisted() {
+                                false => metric.counter(),
+                                true => metric.delta_gauge(), 
+                            },
                             AggregationMethod::SUMMARIZE => metric.histogram(),
-                            AggregationMethod::ACCUMULATING_SUM => metric.delta_gauge(),
                         };
                         metric = metric.time(ts);
                         metric = metric.overlay_tags_from_map(&tags);
