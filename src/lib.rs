@@ -6,6 +6,7 @@ extern crate flate2;
 extern crate fnv;
 extern crate glob;
 extern crate hopper;
+extern crate hyper;
 extern crate libc;
 extern crate lua;
 extern crate quantiles;

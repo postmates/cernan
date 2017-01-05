@@ -18,7 +18,7 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 use super::filter::ProgrammableFilterConfig;
 use super::sink::{ConsoleConfig, FirehoseConfig, InfluxDBConfig, NativeConfig, NullConfig,
-                  WavefrontConfig};
+                  PrometheusConfig, WavefrontConfig};
 use super::source::{FileServerConfig, GraphiteConfig, NativeServerConfig, StatsdConfig};
 
 #[derive(Debug)]
@@ -26,6 +26,7 @@ pub struct Args {
     pub console: Option<ConsoleConfig>,
     pub data_directory: PathBuf,
     pub influxdb: Option<InfluxDBConfig>,
+    pub prometheus: Option<PrometheusConfig>,
     pub files: Vec<FileServerConfig>,
     pub filters: HashMap<String, ProgrammableFilterConfig>,
     pub firehosen: Vec<FirehoseConfig>,
@@ -135,6 +136,7 @@ pub fn parse_args() -> Args {
                 null: null,
                 wavefront: wavefront,
                 influxdb: None,
+                prometheus: None,
                 firehosen: Vec::default(),
                 files: Default::default(),
                 filters: Default::default(),
@@ -218,7 +220,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         Some(InfluxDBConfig {
             port: value.lookup("influxdb.port")
                 .or(value.lookup("sinks.influxdb.port"))
-                .unwrap_or(&Value::Integer(2878))
+                .unwrap_or(&Value::Integer(8089))
                 .as_integer()
                 .map(|i| i as u16)
                 .unwrap(),
@@ -236,6 +238,32 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .unwrap(),
             config_path: "sinks.influxdb".to_string(),
             tags: tags.clone(),
+        })
+    } else {
+        None
+    };
+
+    let prometheus = if value.lookup("prometheus").or(value.lookup("sinks.prometheus")).is_some() {
+        Some(PrometheusConfig {
+            port: value.lookup("prometheus.port")
+                .or(value.lookup("sinks.prometheus.port"))
+                .unwrap_or(&Value::Integer(8086))
+                .as_integer()
+                .map(|i| i as u16)
+                .unwrap(),
+            host: value.lookup("prometheus.host")
+                .or(value.lookup("sinks.prometheus.host"))
+                .unwrap_or(&Value::String("127.0.0.1".to_string()))
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap(),
+            bin_width: value.lookup("prometheus.bin_width")
+                .or(value.lookup("sinks.prometheus.bin_width"))
+                .unwrap_or(&Value::Integer(1))
+                .as_integer()
+                .map(|i| i as i64)
+                .unwrap(),
+            config_path: "sinks.prometheus".to_string(),
         })
     } else {
         None
@@ -607,6 +635,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         null: null,
         wavefront: wavefront,
         influxdb: influxdb,
+        prometheus: prometheus,
         firehosen: firehosen,
         files: files,
         filters: filters,
@@ -1029,6 +1058,45 @@ bin_width = 9
         assert_eq!(influxdb.host, String::from("example.com"));
         assert_eq!(influxdb.port, 3131);
         assert_eq!(influxdb.bin_width, 9);
+    }
+
+    #[test]
+    fn config_file_prometheus() {
+        let config = r#"
+[prometheus]
+port = 3131
+host = "example.com"
+bin_width = 9
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.prometheus.is_some());
+        let prometheus = args.prometheus.unwrap();
+        assert_eq!(prometheus.host, String::from("example.com"));
+        assert_eq!(prometheus.port, 3131);
+        assert_eq!(prometheus.bin_width, 9);
+    }
+
+    #[test]
+    fn config_file_prometheus_sinks_style() {
+        let config = r#"
+[sinks]
+  [sinks.prometheus]
+  port = 3131
+  host = "example.com"
+  bin_width = 9
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.prometheus.is_some());
+        let prometheus = args.prometheus.unwrap();
+        assert_eq!(prometheus.host, String::from("example.com"));
+        assert_eq!(prometheus.port, 3131);
+        assert_eq!(prometheus.bin_width, 9);
     }
 
     #[test]

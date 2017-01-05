@@ -110,7 +110,7 @@ impl Buckets {
             MetricKind::Timer => &mut self.timers,
             MetricKind::Histogram => &mut self.histograms,
         };
-        let hsh = bkt.entry(name).or_insert_with(|| vec![]);
+        let hsh = bkt.entry(name).or_insert_with(|| Default::default());
         let bin_width = self.bin_width;
         match hsh.binary_search_by(|probe| probe.within(bin_width, &value)) {
             Ok(idx) => hsh[idx] += value,
@@ -287,7 +287,11 @@ mod test {
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
-        assert_eq!(Some(&vec![m0, m1]), buckets.gauges().get("some.metric"));
+        let res = buckets.gauges().get("some.metric");
+        assert!(res.is_some());
+        let res = res.unwrap();
+        assert_eq!(Some(&m0), res.get(0));
+        assert_eq!(Some(&m1), res.get(1));
     }
 
     #[test]
@@ -353,7 +357,7 @@ mod test {
 
         let hists = buckets.histograms();
         assert!(hists.get(&name).is_some());
-        let ref hist: &Vec<Metric> = hists.get(&name).unwrap();
+        let ref hist = hists.get(&name).unwrap();
 
         assert_eq!(3, hist.len());
 
