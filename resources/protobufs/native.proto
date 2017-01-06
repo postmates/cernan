@@ -64,14 +64,15 @@ message LogLine {
 // measurements. In the structure we refer to these measurements as
 // 'samples'. The Telemetry structure makes is possible to associate multiple
 // samples in a single millisecond time window. Cernan will build a quantile
-// structure over these seamples but you may further choose aggregation
+// structure over these samples but you may further choose aggregation
 // interpretations by setting AggregationMethod.
 message Telemetry {
   optional string name = 1; // the unique name of the telemetry 
-  repeated double samples = 2 [packed=true]; // telemetry samples present in timestamp_ms
-  optional AggregationMethod method = 3 [ default = SUMMARIZE ]; // see below 
-  map<string, string> metadata = 4; // associated key/value metadata 
-  optional int64 timestamp_ms = 5; // milliseconds since the Unix epoch
+  repeated double samples = 2 [ packed = true ]; // telemetry samples present in timestamp_ms
+  optional bool persisted = 3 [ default = false ]; // persist metric across time windows 
+  optional AggregationMethod method = 4 [ default = SUMMARIZE ]; // see below 
+  map<string, string> metadata = 5; // associated key/value metadata 
+  optional int64 timestamp_ms = 6; // milliseconds since the Unix epoch
 }
 
 // 'AggregationMethod' - an interpretation signal
@@ -83,17 +84,14 @@ message Telemetry {
 // convenience. Additionally, aggregation time windows may be configured
 // per-sink and are not controllable through the protocol.
 enum AggregationMethod {
-  // SUM keeps a sum of samples in a time window. This is often interpreted as a
+  // SUM keeps a sum of samples. This is often interpreted as a
   // per-window counter.
   SUM = 1; 
-  // SET_OR_RESET preserves the last sample set into the Telemetry per time
+  // SET preserves the last sample set into the Telemetry per time
   // window. 
-  SET_OR_RESET = 2;  
+  SET = 2;  
   // SUMMARIZE produces a quantile summary of the input samples per time
   // window. This is the default behaviour.
   SUMMARIZE = 3;
-  // ACCUMULATING_SUM is similar in operation to SUM excepting that the
-  // summation will be preserved across time windows.
-  ACCUMULATING_SUM = 4; 
 }
 

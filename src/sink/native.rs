@@ -93,11 +93,16 @@ impl Sink for Native {
                     let method = match m.kind {
                         metric::MetricKind::Counter => AggregationMethod::SUM,
                         metric::MetricKind::Raw |
-                        metric::MetricKind::Gauge => AggregationMethod::SET_OR_RESET,
-                        metric::MetricKind::DeltaGauge => AggregationMethod::ACCUMULATING_SUM,
+                        metric::MetricKind::Gauge => AggregationMethod::SET, 
+                        metric::MetricKind::DeltaGauge => AggregationMethod::SUM,
                         metric::MetricKind::Histogram |
                         metric::MetricKind::Timer => AggregationMethod::SUMMARIZE,
                     };
+                    let persist = match m.kind {
+                        metric::MetricKind::DeltaGauge => true,
+                        _ => false, 
+                    };
+                    telem.set_persisted(persist);
                     telem.set_method(method);
                     let mut meta = Vec::new();
                     // TODO
