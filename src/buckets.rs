@@ -146,6 +146,53 @@ mod test {
     }
 
     #[test]
+    fn fitness_for_statsd_gauge() {
+        // This test is intended to demonstrate that buckets can act as an
+        // etsy/statsd compatible aggregation backend. In particular, we need to
+        // demonstrate that:
+        //
+        //  * it is possible to switch a SET|SUM from persist to ephemeral
+        //  * a SET|SUM with persist will survive across resets
+        //  * an ephemeral SET|SUM will have its value inherited by a persist SET|SUM
+        //  * an ephemeral SET|SUM will not inherit the value of a persist SET|SUM
+        let bin_width = 1;
+        let m0 = Telemetry::new("lO", 1.0).timestamp(0).aggr_set().ephemeral();
+        let m1 = Telemetry::new("lO", 2.0).timestamp(1).aggr_sum().persist();
+        let m2 = Telemetry::new("lO", 0.0).timestamp(1).aggr_set().ephemeral();
+
+        let mut bkt = Buckets::new(bin_width);
+        bkt.add(m0);
+        bkt.add(m1);
+
+        //  * it is possible to switch a SET|SUM from persist to ephemeral
+        //  * an ephemeral SET|SUM will have its value inherited by a persist SET|SUM
+        let aggrs = bkt.aggrs.clone();
+        let res = aggrs.get("lO").unwrap();
+        assert_eq!(0, res[0].timestamp);
+        assert_eq!(Some(1.0), res[0].value());
+        assert_eq!(1, res[1].timestamp);
+        assert_eq!(Some(3.0), res[1].value());
+
+        //  * a SET|SUM with persist will survive across resets
+        bkt.reset();
+        println!("{:?}", bkt.aggrs);
+        assert!(!bkt.is_empty());
+
+        //  * an ephemeral SET|SUM will not inherit the value of a persist SET|SUM
+        let aggrs = bkt.aggrs.clone();
+        let res = aggrs.get("lO").unwrap();
+        bkt.add(m2.timestamp(res[0].timestamp));
+        let aggrs = bkt.aggrs.clone();
+        let res = aggrs.get("lO").unwrap();
+        assert_eq!(Some(0.0), res[0].value());
+
+        bkt.reset();
+
+        println!("{:?}", bkt.aggrs);
+        assert!(bkt.is_empty());
+    }
+
+    #[test]
     fn raw_test_variable() {
         let bin_width = 66;
         let m0 = Telemetry::new("lO", 0.807).timestamp(18).aggr_set();

@@ -14,7 +14,7 @@ impl AddAssign for Telemetry {
         // When we add two telemetries together what we gotta do is make sure
         // that if one side or the other is persisted then the resulting
         // Telemetry is persisted.
-        self.persist = self.persist || rhs.persist;
+        self.persist = rhs.persist;
         self.value += rhs.value;
         self.aggr_method = rhs.aggr_method;
     }
