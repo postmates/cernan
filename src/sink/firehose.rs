@@ -1,7 +1,7 @@
 use chrono::datetime::DateTime;
 use chrono::naive::datetime::NaiveDateTime;
 use chrono::offset::utc::UTC;
-use metric::{LogLine, Metric};
+use metric::{LogLine, Telemetry};
 
 use rusoto::{DefaultCredentialsProvider, Region};
 use rusoto::firehose::{KinesisFirehoseClient, PutRecordBatchInput, Record};
@@ -122,7 +122,7 @@ impl Sink for Firehose {
         self.buffer.clear();
     }
 
-    fn deliver(&mut self, _: sync::Arc<Option<Metric>>) -> () {
+    fn deliver(&mut self, _: sync::Arc<Option<Telemetry>>) -> () {
         // nothing, intentionally
     }
 

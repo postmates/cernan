@@ -11,7 +11,7 @@ use std::mem;
 use std::sync;
 use std::sync::Mutex;
 
-pub type AggrMap = Vec<metric::Metric>;
+pub type AggrMap = Vec<metric::Telemetry>;
 
 #[allow(dead_code)]
 pub struct Prometheus {
@@ -38,9 +38,11 @@ fn write_binary(aggrs: AggrMap, mut res: Response) {
     let mut params = Vec::with_capacity(2);
     params.push((Attr::Ext("proto".to_string()),
                  Value::Ext("io.prometheus.client.MetricFamily".to_string())));
-    params.push((Attr::Ext("encoding".to_string()), Value::Ext("delimited".to_string())));
+    params.push((Attr::Ext("encoding".to_string()),
+    Value::Ext("delimited".to_string())));
     res.headers_mut().set(ContentType(Mime(TopLevel::Application,
-                                           SubLevel::Ext("application/vnd.google.protobuf"
+    
+    SubLevel::Ext("application/vnd.google.protobuf"
                                                .to_string()),
                                            params)));
     let mut res = res.start().unwrap();
@@ -55,12 +57,13 @@ fn write_binary(aggrs: AggrMap, mut res: Response) {
             label_pairs.push(lp);
         }
         metric.set_label(RepeatedField::from_vec(label_pairs));
-        metric.set_timestamp_ms(m.time * 1000); // FIXME #166
+        metric.set_timestamp_ms(m.timestamp * 1000); // FIXME #166
         let mut summary = Summary::new();
         summary.set_sample_count(m.count() as u64);
         summary.set_sample_sum(m.sum());
         let mut quantiles = Vec::with_capacity(9);
-        for q in [0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999].into_iter() {
+    for q in [0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99,
+    0.999].into_iter() {
             let mut quantile = Quantile::new();
             quantile.set_quantile(*q);
             quantile.set_value(m.query(*q).unwrap());
@@ -79,34 +82,38 @@ fn write_binary(aggrs: AggrMap, mut res: Response) {
 #[inline]
 fn write_text(aggrs: AggrMap, mut res: Response) {
     let mut params = Vec::with_capacity(1);
-    params.push((Attr::Ext("version".to_string()), Value::Ext("0.0.4".to_string())));
-    res.headers_mut().set(ContentType(Mime(TopLevel::Text, SubLevel::Plain, params)));
+    params.push((Attr::Ext("version".to_string()),
+    Value::Ext("0.0.4".to_string())));
+    res.headers_mut().set(ContentType(Mime(TopLevel::Text, SubLevel::Plain,
+    params)));
     let mut buf = String::with_capacity(1024);
     let mut res = res.start().unwrap();
     for m in aggrs.into_iter() {
-        for q in [0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999].into_iter() {
+    for q in [0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99,
+    0.999].into_iter() {
             buf.push_str(&m.name);
             buf.push_str("{quantile=\"");
             buf.push_str(&q.to_string());
             buf.push_str("\"} ");
             buf.push_str(&m.query(*q).unwrap().to_string());
             buf.push_str(" ");
-            buf.push_str(&m.time.to_string());
+            buf.push_str(&m.timestamp.to_string());
             buf.push_str("\n");
         }
         buf.push_str(&m.name);
         buf.push_str("_sum ");
         buf.push_str(&m.sum().to_string());
         buf.push_str(" ");
-        buf.push_str(&m.time.to_string());
+        buf.push_str(&m.timestamp.to_string());
         buf.push_str("\n");
         buf.push_str(&m.name);
         buf.push_str("_count ");
         buf.push_str(&m.count().to_string());
         buf.push_str(" ");
-        buf.push_str(&m.time.to_string());
+        buf.push_str(&m.timestamp.to_string());
         buf.push_str("\n");
-        res.write(buf.as_bytes()).expect("FAILED TO WRITE BUFFER INTO HTTP STREAMING RESPONSE");
+    res.write(buf.as_bytes()).expect("FAILED TO WRITE BUFFER INTO HTTP
+    STREAMING RESPONSE");
         buf.clear();
     }
     res.end().expect("FAILED TO CLOSE HTTP STREAMING RESPONSE");
@@ -145,7 +152,7 @@ impl Prometheus {
 }
 
 #[inline]
-fn sanitize(metric: metric::Metric) -> metric::Metric {
+fn sanitize(metric: metric::Telemetry) -> metric::Telemetry {
     // According to https://prometheus.io/docs/instrumenting/writing_exporters/
     // "Only [a-zA-Z0-9:_] are valid in metric names, any other characters
     // should be sanitized to an underscore."
@@ -155,9 +162,9 @@ fn sanitize(metric: metric::Metric) -> metric::Metric {
     // a full sweep and convert every other invalid character.
     let name = metric.name.replace(".", "_");
     // In addition, we want to make sure nothing goofy happens to our metrics
-    // and so set the kind to Histogram. The prometheus sink _does not_ respect
+    // and so set the kind to Summarize. The prometheus sink _does not_ respect
     // source metadata and stores everything as quantiles.
-    metric.set_name(name).histogram()
+    metric.set_name(name).aggr_summarize()
 }
 
 impl Sink for Prometheus {
@@ -166,7 +173,7 @@ impl Sink for Prometheus {
         // pull via HTTP / Protobuf. See PrometheusSrv.
     }
 
-    fn deliver(&mut self, mut point: sync::Arc<Option<metric::Metric>>) -> () {
+    fn deliver(&mut self, mut point: sync::Arc<Option<metric::Telemetry>>) -> () {
         let mut aggrs = self.aggrs.lock().unwrap();
         let metric = sanitize(sync::Arc::make_mut(&mut point).take().unwrap());
         // Why not use Metric::within to do the comparison? The documentation

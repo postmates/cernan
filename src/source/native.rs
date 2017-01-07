@@ -85,19 +85,21 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         if smpls.is_empty() {
                             continue;
                         }
-                        let mut metric = metric::Metric::new(name, smpls[0]);
+                        let mut metric = metric::Telemetry::new(name, smpls[0]);
                         for smpl in &smpls[1..] {
                             metric = metric.insert_value(*smpl);
                         }
                         metric = match aggr_type {
-                            AggregationMethod::SET => metric,
-                            AggregationMethod::SUM => match point.get_persisted() {
-                                false => metric.counter(),
-                                true => metric.delta_gauge(), 
-                            },
-                            AggregationMethod::SUMMARIZE => metric.histogram(),
+                            AggregationMethod::SET => metric.aggr_set(),
+                            AggregationMethod::SUM => metric.aggr_sum(),
+                            AggregationMethod::SUMMARIZE => metric.aggr_summarize(), 
                         };
-                        metric = metric.time(ts);
+                        metric = if point.get_persisted() {
+                            metric.persist()
+                        } else {
+                            metric.ephemeral()
+                        };
+                        metric = metric.timestamp(ts);
                         metric = metric.overlay_tags_from_map(&tags);
                         for mt in meta {
                             metric = metric.overlay_tag(mt.get_key(), mt.get_value());

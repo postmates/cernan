@@ -4,23 +4,18 @@
 //! each set of metrics received by clients.
 
 use fnv::FnvHasher;
-use metric::{Metric, MetricKind};
+use metric::Telemetry;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use time;
 
 pub type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
-pub type AggrMap = HashMapFnv<String, Vec<Metric>>;
+pub type AggrMap = HashMapFnv<String, Vec<Telemetry>>;
 
 /// Buckets stores all metrics until they are flushed.
 pub struct Buckets {
-    counters: AggrMap,
-    delta_gauges: AggrMap,
-    gauges: AggrMap,
-    histograms: AggrMap,
-    raws: AggrMap,
-    timers: AggrMap,
-
+    aggrs: AggrMap,
+    count: u64,
     bin_width: i64,
 }
 
@@ -34,16 +29,12 @@ impl Default for Buckets {
     /// use cernan::buckets::Buckets;
     ///
     /// let bucket = Buckets::default();
-    /// assert_eq!(0, bucket.counters().len());
+    /// assert_eq!(0, bucket.aggrs().len());
     /// ```
     fn default() -> Buckets {
         Buckets {
-            counters: HashMapFnv::default(),
-            gauges: HashMapFnv::default(),
-            delta_gauges: HashMapFnv::default(),
-            raws: HashMapFnv::default(),
-            timers: HashMapFnv::default(),
-            histograms: HashMapFnv::default(),
+            aggrs: Default::default(),
+            count: 0,
             bin_width: 1,
         }
     }
@@ -56,6 +47,10 @@ impl Buckets {
         b
     }
 
+    pub fn aggrs(&self) -> &AggrMap {
+        &self.aggrs
+    }
+
     /// Resets appropriate aggregates
     ///
     /// # Examples
@@ -63,31 +58,36 @@ impl Buckets {
     /// ```
     /// extern crate cernan;
     ///
-    /// let metric = cernan::metric::Metric::new("foo", 1.0).counter();
+    /// let metric = cernan::metric::Telemetry::new("foo", 1.0).aggr_sum();
     /// let mut buckets = cernan::buckets::Buckets::default();
-    /// let rname = String::from("foo");
     ///
-    /// assert_eq!(true, buckets.counters().is_empty());
+    /// assert_eq!(true, buckets.aggrs().is_empty());
     ///
     /// buckets.add(metric);
-    /// assert_eq!(false, buckets.counters().is_empty());
-    /// buckets.reset();
-    /// assert_eq!(true, buckets.counters().is_empty());
+    /// assert_eq!(false, buckets.is_empty());
+    /// //buckets.reset();
+    /// //assert_eq!(true, buckets.is_empty());
     /// ```
     pub fn reset(&mut self) {
-        self.counters.clear();
-        self.raws.clear();
-        self.histograms.clear();
-        self.timers.clear();
-        self.gauges.clear();
-        for (_, v) in &mut self.delta_gauges {
+        self.count = 0;
+        for (_, v) in &mut self.aggrs {
+            if v.is_empty() {
+                continue;
+            }
             let len = v.len();
-            if len > 0 {
+            if v[len - 1].persist {
                 v.swap(0, len - 1);
                 v.truncate(1);
-                v[0].time = time::now();
+                v[0].timestamp = time::now();
+                self.count = self.count.saturating_add(1);
+            } else {
+                v.clear()
             }
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
     }
 
     /// Adds a metric to the bucket storage.
@@ -96,68 +96,34 @@ impl Buckets {
     /// ```
     /// extern crate cernan;
     ///
-    /// let metric = cernan::metric::Metric::new("foo", 1.0).counter();
+    /// let metric = cernan::metric::Telemetry::new("foo", 1.0).aggr_sum();
     /// let mut bucket = cernan::buckets::Buckets::default();
     /// bucket.add(metric);
     /// ```
-    pub fn add(&mut self, value: Metric) {
+    pub fn add(&mut self, value: Telemetry) {
         let name = value.name.to_owned();
-        let bkt = match value.kind {
-            MetricKind::Counter => &mut self.counters,
-            MetricKind::Gauge => &mut self.gauges,
-            MetricKind::DeltaGauge => &mut self.delta_gauges,
-            MetricKind::Raw => &mut self.raws,
-            MetricKind::Timer => &mut self.timers,
-            MetricKind::Histogram => &mut self.histograms,
-        };
-        let hsh = bkt.entry(name).or_insert_with(|| Default::default());
+        let hsh = self.aggrs.entry(name).or_insert_with(|| Default::default());
         let bin_width = self.bin_width;
         match hsh.binary_search_by(|probe| probe.within(bin_width, &value)) {
             Ok(idx) => hsh[idx] += value,
             Err(idx) => {
-                match value.kind {
-                    MetricKind::DeltaGauge => {
-                        if idx > 0 {
-                            let mut cur: Metric = hsh[idx - 1].clone().time(value.time);
-                            cur += value;
-                            hsh.insert(idx, cur)
-                        } else {
-                            hsh.insert(idx, value)
-                        }
-                    }
-                    _ => hsh.insert(idx, value),
+                self.count = self.count.saturating_add(1);
+                if value.persist && idx > 0 {
+                    let mut cur: Telemetry = hsh[idx - 1]
+                        .clone()
+                        .timestamp(value.timestamp)
+                        .persist();
+                    cur += value;
+                    hsh.insert(idx, cur)
+                } else {
+                    hsh.insert(idx, value)
                 }
             }
         }
     }
 
-    pub fn count(&self) -> u64 {
-        (self.counters.len() + self.gauges.len() + self.delta_gauges.len() +
-         self.raws.len() + self.timers.len() + self.histograms.len()) as u64
-    }
-
-    pub fn counters(&self) -> &AggrMap {
-        &self.counters
-    }
-
-    pub fn gauges(&self) -> &AggrMap {
-        &self.gauges
-    }
-
-    pub fn delta_gauges(&self) -> &AggrMap {
-        &self.delta_gauges
-    }
-
-    pub fn raws(&self) -> &AggrMap {
-        &self.raws
-    }
-
-    pub fn histograms(&self) -> &AggrMap {
-        &self.histograms
-    }
-
-    pub fn timers(&self) -> &AggrMap {
-        &self.timers
+    pub fn count(&self) -> usize {
+        self.count as usize
     }
 }
 
@@ -168,7 +134,8 @@ mod test {
     extern crate quickcheck;
 
     use chrono::{TimeZone, UTC};
-    use metric::{Metric, MetricKind};
+    use metric::Telemetry;
+    use quantiles::ckms::CKMS;
     use self::quickcheck::{QuickCheck, TestResult};
     use std::cmp::Ordering;
     use std::collections::{HashMap, HashSet};
@@ -181,41 +148,41 @@ mod test {
     #[test]
     fn raw_test_variable() {
         let bin_width = 66;
-        let m0 = Metric::new("lO", 0.807).time(18);
-        let m4 = Metric::new("lO", 0.361).time(75);
-        let m7 = Metric::new("lO", 0.291).time(42);
+        let m0 = Telemetry::new("lO", 0.807).timestamp(18).aggr_set();
+        let m4 = Telemetry::new("lO", 0.361).timestamp(75).aggr_set();
+        let m7 = Telemetry::new("lO", 0.291).timestamp(42).aggr_set();
 
         let mut bkt = Buckets::new(bin_width);
         bkt.add(m0);
         bkt.add(m4);
         bkt.add(m7);
 
-        let raws = bkt.raws().get("lO").unwrap();
+        let raws = bkt.aggrs().get("lO").unwrap();
         println!("RAWS: {:?}", raws);
         let ref res = raws[0];
-        assert_eq!(18, res.time);
+        assert_eq!(18, res.timestamp);
         assert_eq!(Some(0.291), res.value());
     }
 
     #[test]
     fn test_gauge_small_bin_width() {
         let bin_width = 1;
-        let m0 = Metric::new("lO", 3.211).time(645181811).gauge();
-        let m1 = Metric::new("lO", 4.322).time(645181812).gauge();
-        let m2 = Metric::new("lO", 5.433).time(645181813).gauge();
+        let m0 = Telemetry::new("lO", 3.211).timestamp(645181811).aggr_set();
+        let m1 = Telemetry::new("lO", 4.322).timestamp(645181812).aggr_set();
+        let m2 = Telemetry::new("lO", 5.433).timestamp(645181813).aggr_set();
 
         let mut bkt = Buckets::new(bin_width);
         bkt.add(m0);
         bkt.add(m1);
         bkt.add(m2);
 
-        let v = bkt.gauges().get("lO").unwrap();
+        let v = bkt.aggrs().get("lO").unwrap();
         assert_eq!(3, v.len());
     }
 
     #[test]
     fn variable_size_bins() {
-        fn inner(bin_width: u16, ms: Vec<Metric>) -> TestResult {
+        fn inner(bin_width: u16, ms: Vec<Telemetry>) -> TestResult {
             let bin_width: i64 = bin_width as i64;
             if bin_width == 0 {
                 return TestResult::discard();
@@ -226,33 +193,36 @@ mod test {
                 bucket.add(m);
             }
 
-            let mut mp: Vec<Metric> = Vec::new();
+            let mut mp: Vec<Telemetry> = Vec::new();
             let fill_ms = ms.clone();
             for m in fill_ms {
                 match mp.binary_search_by(|probe| probe.within(bin_width, &m)) {
                     Ok(idx) => mp[idx] += m,
-                    Err(idx) => mp.insert(idx, m),
+                    Err(idx) => {
+                        if m.persist && idx > 0 && mp[idx - 1].name == m.name {
+                            let mut cur = mp[idx - 1].clone().timestamp(m.timestamp).persist();
+                            cur += m;
+                            mp.insert(idx, cur)
+                        } else {
+                            mp.insert(idx, m)
+                        }
+                    }
                 }
             }
 
-            let checks = bucket.gauges()
-                .iter()
-                .chain(bucket.counters().iter())
-                .chain(bucket.raws().iter())
-                .chain(bucket.histograms().iter())
-                .chain(bucket.timers().iter());
-            for (name, vs) in checks {
+            for (name, vs) in bucket.aggrs() {
                 for v in vs {
-                    let ref kind = v.kind;
-                    let time = v.time;
+                    let ref kind = v.aggr_method;
+                    let time = v.timestamp;
                     let mut found_one = false;
                     for m in &mp {
-                        if (&m.name == name) && (&m.kind == kind) &&
-                           within(bin_width, m.time, time) {
+                        if (&m.name == name) && (&m.aggr_method == kind) &&
+                           within(bin_width, m.timestamp, time) {
                             assert_eq!(Ordering::Equal, m.within(bin_width, v));
                             found_one = true;
                             debug_assert!(v.value() == m.value(),
-                                          "{:?} != {:?} |::|::| MP: {:?} |::|::| MS: {:?}",
+                                          "{:?} != {:?} |::|::| MODEL: {:?} |::|::|
+    SUT: {:?}",
                                           v.value(),
                                           m.value(),
                                           mp,
@@ -260,7 +230,9 @@ mod test {
                         }
                     }
                     debug_assert!(found_one,
-                                  "DID NOT FIND ONE FOR {:?} |::|::| MP: {:?} |::|::| MS: {:?}",
+                                  "DID NOT FIND ONE FOR {:?} |::|::| MODEL: {:?}
+    |::|::| SUT: \
+                                   {:?}",
                                   v,
                                   mp,
                                   ms);
@@ -268,26 +240,21 @@ mod test {
             }
             TestResult::passed()
         }
-        QuickCheck::new().quickcheck(inner as fn(u16, Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(inner as fn(u16, Vec<Telemetry>) -> TestResult);
     }
 
     #[test]
-    fn test_add_increments_total_messages() {
-        let mut buckets = Buckets::default();
-        // duff value to ensure it changes.
-        let metric = Metric::new("some.metric", 1.0).counter();
-        buckets.add(metric);
-    }
-    #[test]
     fn test_add_gauge_metric_distinct_tags() {
         let mut buckets = Buckets::default();
-        let m0 = Metric::new("some.metric", 1.0).gauge().time(10).overlay_tag("foo", "bar");
-        let m1 = Metric::new("some.metric", 1.0).gauge().time(10).overlay_tag("foo", "bingo");
+        let m0 =
+            Telemetry::new("some.metric", 1.0).aggr_set().timestamp(10).overlay_tag("foo", "bar");
+        let m1 =
+            Telemetry::new("some.metric", 1.0).aggr_set().timestamp(10).overlay_tag("foo", "bingo");
 
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
-        let res = buckets.gauges().get("some.metric");
+        let res = buckets.aggrs().get("some.metric");
         assert!(res.is_some());
         let res = res.unwrap();
         assert_eq!(Some(&m0), res.get(0));
@@ -297,45 +264,44 @@ mod test {
     #[test]
     fn test_add_counter_metric() {
         let mut buckets = Buckets::default();
-        let metric = Metric::new("some.metric", 1.0).counter();
+        let metric = Telemetry::new("some.metric", 1.0).aggr_sum();
         buckets.add(metric.clone());
 
         let rmname = String::from("some.metric");
-        assert!(buckets.counters.contains_key(&rmname),
+        assert!(buckets.aggrs.contains_key(&rmname),
                 "Should contain the metric key");
         assert_eq!(Some(1.0),
-                   buckets.counters.get_mut(&rmname).unwrap()[0].value());
+                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
 
         // Increment counter
         buckets.add(metric);
         assert_eq!(Some(2.0),
-                   buckets.counters.get_mut(&rmname).unwrap()[0].value());
-        assert_eq!(1, buckets.counters().len());
-        assert_eq!(0, buckets.gauges().len());
+                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(1, buckets.count());
     }
 
     #[test]
     fn test_reset_add_counter_metric() {
         let mut buckets = Buckets::default();
-        let m0 = Metric::new("some.metric", 1.0).counter().time(101);
+        let m0 = Telemetry::new("some.metric", 1.0).aggr_sum().timestamp(101);
         let m1 = m0.clone();
 
         buckets.add(m0);
 
         let rmname = String::from("some.metric");
-        assert!(buckets.counters.contains_key(&rmname),
+        assert!(buckets.aggrs.contains_key(&rmname),
                 "Should contain the metric key");
         assert_eq!(Some(1.0),
-                   buckets.counters.get_mut(&rmname).unwrap()[0].value());
+                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
 
         // Increment counter
         buckets.add(m1);
         assert_eq!(Some(2.0),
-                   buckets.counters.get_mut(&rmname).unwrap()[0].value());
-        assert_eq!(1, buckets.counters().len());
+                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(1, buckets.count());
 
         buckets.reset();
-        assert_eq!(None, buckets.counters.get_mut(&rmname));
+        assert_eq!(true, buckets.is_empty());
     }
 
     #[test]
@@ -347,15 +313,15 @@ mod test {
         let dt_2 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 13, 0).timestamp();
 
         let name = String::from("some.metric");
-        let m0 = Metric::new("some.metric", 1.0).time(dt_0).histogram();
-        let m1 = Metric::new("some.metric", 2.0).time(dt_1).histogram();
-        let m2 = Metric::new("some.metric", 3.0).time(dt_2).histogram();
+        let m0 = Telemetry::new("some.metric", 1.0).timestamp(dt_0).aggr_summarize();
+        let m1 = Telemetry::new("some.metric", 2.0).timestamp(dt_1).aggr_summarize();
+        let m2 = Telemetry::new("some.metric", 3.0).timestamp(dt_2).aggr_summarize();
 
         buckets.add(m0.clone());
         buckets.add(m1.clone());
         buckets.add(m2.clone());
 
-        let hists = buckets.histograms();
+        let hists = buckets.aggrs();
         assert!(hists.get(&name).is_some());
         let ref hist = hists.get(&name).unwrap();
 
@@ -380,37 +346,34 @@ mod test {
     #[test]
     fn test_add_histogram_metric_reset() {
         let mut buckets = Buckets::default();
-        let name = String::from("some.metric");
-        let metric = Metric::new("some.metric", 1.0).histogram();
+        let metric = Telemetry::new("some.metric", 1.0).aggr_summarize();
         buckets.add(metric.clone());
 
         buckets.reset();
-        assert!(buckets.histograms.get_mut(&name).is_none());
+        assert!(buckets.is_empty());
     }
 
     #[test]
     fn test_add_timer_metric_reset() {
         let mut buckets = Buckets::default();
-        let name = String::from("some.metric");
-        let metric = Metric::new("some.metric", 1.0).timer();
+        let metric = Telemetry::new("some.metric", 1.0).aggr_summarize();
         buckets.add(metric.clone());
 
         buckets.reset();
-        assert!(buckets.timers.get_mut(&name).is_none());
+        assert!(buckets.is_empty());
     }
 
     #[test]
     fn test_add_gauge_metric() {
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Metric::new("some.metric", 11.5).gauge();
+        let metric = Telemetry::new("some.metric", 11.5).aggr_set();
         buckets.add(metric);
-        assert!(buckets.gauges.contains_key(&rmname),
+        assert!(buckets.aggrs.contains_key(&rmname),
                 "Should contain the metric key");
         assert_eq!(Some(11.5),
-                   buckets.gauges.get_mut(&rmname).unwrap()[0].value());
-        assert_eq!(1, buckets.gauges().len());
-        assert_eq!(0, buckets.counters().len());
+                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(1, buckets.count());
     }
 
     #[test]
@@ -421,60 +384,55 @@ mod test {
         // require this explicit reset, only the +/- on the metric value.
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Metric::new("some.metric", 100.0).gauge();
+        let metric = Telemetry::new("some.metric", 100.0).timestamp(0).aggr_set();
         buckets.add(metric);
-        let delta_metric = Metric::new("some.metric", -11.5).delta_gauge();
+        let delta_metric = Telemetry::new("some.metric", -11.5).timestamp(0).aggr_sum().persist();
         buckets.add(delta_metric);
-        assert!(buckets.gauges.contains_key(&rmname),
+        assert!(buckets.aggrs.contains_key(&rmname),
                 "Should contain the metric key");
-        assert_eq!(Some(100.0),
-                   buckets.gauges.get_mut(&rmname).unwrap()[0].value());
-        assert_eq!(Some(-11.5),
-                   buckets.delta_gauges.get_mut(&rmname).unwrap()[0].value());
-        assert_eq!(1, buckets.gauges().len());
-        assert_eq!(1, buckets.delta_gauges().len());
-        assert_eq!(0, buckets.counters().len());
+        assert_eq!(Some(88.5),
+                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(1, buckets.count());
+        buckets.reset();
+        assert_eq!(1, buckets.count());
     }
 
     #[test]
     fn test_reset_add_delta_gauge_metric() {
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Metric::new("some.metric", 100.0).gauge();
+        let metric = Telemetry::new("some.metric", 100.0).aggr_set();
         buckets.add(metric);
-        let delta_metric = Metric::new("some.metric", -11.5).delta_gauge();
+        let delta_metric = Telemetry::new("some.metric", -11.5).aggr_sum().persist();
         buckets.add(delta_metric);
-        let reset_metric = Metric::new("some.metric", 2007.3).gauge();
+        let reset_metric = Telemetry::new("some.metric", 2007.3).aggr_set();
         buckets.add(reset_metric);
-        assert!(buckets.gauges.contains_key(&rmname),
+        assert!(buckets.aggrs.contains_key(&rmname),
                 "Should contain the metric key");
         assert_eq!(Some(2007.3),
-                   buckets.gauges.get_mut(&rmname).unwrap()[0].value());
-        assert_eq!(1, buckets.gauges().len());
-        assert_eq!(0, buckets.counters().len());
+                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(1, buckets.count());
     }
 
     #[test]
     fn test_add_timer_metric() {
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Metric::new("some.metric", 11.5).timer();
+        let metric = Telemetry::new("some.metric", 11.5).aggr_sum();
         buckets.add(metric);
-        assert!(buckets.timers.contains_key(&rmname),
+        assert!(buckets.aggrs.contains_key(&rmname),
                 "Should contain the metric key");
 
         assert_eq!(Some(11.5),
-                   buckets.timers.get_mut(&rmname).expect("hwhap")[0].query(0.0));
+                   buckets.aggrs.get_mut(&rmname).expect("hwhap")[0].query(0.0));
 
-        let metric_two = Metric::new("some.metric", 99.5).timer();
+        let metric_two = Telemetry::new("some.metric", 99.5).aggr_sum();
         buckets.add(metric_two);
 
         let romname = String::from("other.metric");
-        let metric_three = Metric::new("other.metric", 811.5).timer();
+        let metric_three = Telemetry::new("other.metric", 811.5).aggr_sum();
         buckets.add(metric_three);
-        assert!(buckets.timers.contains_key(&romname),
-                "Should contain the metric key");
-        assert!(buckets.timers.contains_key(&romname),
+        assert!(buckets.aggrs.contains_key(&romname),
                 "Should contain the metric key");
     }
 
@@ -484,28 +442,28 @@ mod test {
         let dt_0 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 0, 0).timestamp();
         let dt_1 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 1, 0).timestamp();
 
-        buckets.add(Metric::new("some.metric", 1.0).time(dt_0));
-        buckets.add(Metric::new("some.metric", 2.0).time(dt_0));
-        buckets.add(Metric::new("some.metric", 3.0).time(dt_0));
-        buckets.add(Metric::new("some.metric", 4.0).time(dt_1));
+        buckets.add(Telemetry::new("some.metric", 1.0).timestamp(dt_0).aggr_set());
+        buckets.add(Telemetry::new("some.metric", 2.0).timestamp(dt_0).aggr_set());
+        buckets.add(Telemetry::new("some.metric", 3.0).timestamp(dt_0).aggr_set());
+        buckets.add(Telemetry::new("some.metric", 4.0).timestamp(dt_1).aggr_set());
 
         let mname = String::from("some.metric");
-        assert!(buckets.raws.contains_key(&mname),
+        assert!(buckets.aggrs.contains_key(&mname),
                 "Should contain the metric key");
 
-        let metrics = buckets.raws.get_mut(&mname).unwrap();
+        let metrics = buckets.aggrs.get_mut(&mname).unwrap();
         assert_eq!(2, metrics.len());
 
-        assert_eq!(dt_0, metrics[0].time);
+        assert_eq!(dt_0, metrics[0].timestamp);
         assert_eq!(Some(3.0), metrics[0].value());
 
-        assert_eq!(dt_1, metrics[1].time);
+        assert_eq!(dt_1, metrics[1].timestamp);
         assert_eq!(Some(4.0), metrics[1].value());
     }
 
     #[test]
-    fn unique_names_preserved_counters() {
-        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+    fn unique_names_preserved() {
+        fn qos_ret(ms: Vec<Telemetry>) -> TestResult {
             let mut bucket = Buckets::default();
 
             for m in ms.clone() {
@@ -513,16 +471,11 @@ mod test {
             }
 
             let cnts: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
-                match m.kind {
-                    MetricKind::Counter => {
-                        acc.insert(m.name.clone());
-                        acc
-                    }
-                    _ => acc,
-                }
+                acc.insert(m.name.clone());
+                acc
             });
             let b_cnts: HashSet<String> =
-                bucket.counters().iter().fold(HashSet::default(), |mut acc, (k, _)| {
+                bucket.aggrs().iter().fold(HashSet::default(), |mut acc, (k, _)| {
                     acc.insert(k.clone());
                     acc
                 });
@@ -530,345 +483,143 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
-    }
-
-    #[test]
-    fn unique_names_preserved_gauges() {
-        fn qos_ret(ms: Vec<Metric>) -> TestResult {
-            let mut bucket = Buckets::default();
-
-            for m in ms.clone() {
-                bucket.add(m);
-            }
-
-            let gauges: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
-                match m.kind {
-                    MetricKind::Gauge => {
-                        acc.insert(m.name.clone());
-                        acc
-                    }
-                    _ => acc,
-                }
-            });
-            let b_gauges: HashSet<String> =
-                bucket.gauges().iter().fold(HashSet::default(), |mut acc, (k, _)| {
-                    acc.insert(k.clone());
-                    acc
-                });
-            assert_eq!(gauges, b_gauges);
-
-            TestResult::passed()
-        }
-        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
-    }
-
-    #[test]
-    fn unique_names_preserved_delta_gauges() {
-        fn qos_ret(ms: Vec<Metric>) -> TestResult {
-            let mut bucket = Buckets::default();
-
-            for m in ms.clone() {
-                bucket.add(m);
-            }
-
-            let dgauges: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
-                match m.kind {
-                    MetricKind::DeltaGauge => {
-                        acc.insert(m.name.clone());
-                        acc
-                    }
-                    _ => acc,
-                }
-            });
-            let b_gauges: HashSet<String> =
-                bucket.delta_gauges().iter().fold(HashSet::default(), |mut acc, (k, _)| {
-                    acc.insert(k.clone());
-                    acc
-                });
-            assert_eq!(dgauges, b_gauges);
-
-            TestResult::passed()
-        }
-        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Telemetry>) -> TestResult);
     }
 
     #[test]
     fn correct_bin_count() {
-        fn inner(ms: Vec<Metric>) -> TestResult {
+        fn inner(ms: Vec<Telemetry>) -> TestResult {
             let mut bucket = Buckets::new(1);
 
             for m in ms.clone() {
                 bucket.add(m);
             }
 
-            let mut coll: HashMap<(MetricKind, String), HashSet<i64>> = HashMap::new();
+            let mut coll: HashMap<String, HashSet<i64>> = HashMap::new();
             for m in ms {
-                let kind = m.kind;
                 let name = m.name;
-                let time = m.time;
+                let time = m.timestamp;
 
-                let entry = coll.entry((kind, name)).or_insert(HashSet::new());
+                let entry = coll.entry(name).or_insert(HashSet::new());
                 (*entry).insert(time);
             }
 
-            let mut expected_counters = 0;
-            let mut expected_gauges = 0;
-            let mut expected_delta_gauges = 0;
-            let mut expected_raws = 0;
-            let mut expected_histograms = 0;
-            let mut expected_timers = 0;
+            let mut expected_count = 0;
 
-            for (&(ref kind, _), val) in coll.iter() {
-                match kind {
-                    &MetricKind::Gauge => expected_gauges += val.len(),
-                    &MetricKind::DeltaGauge => expected_delta_gauges += val.len(),
-                    &MetricKind::Counter => expected_counters += val.len(),
-                    &MetricKind::Timer => expected_timers += val.len(),
-                    &MetricKind::Histogram => expected_histograms += val.len(),
-                    &MetricKind::Raw => expected_raws += val.len(),
-                }
+            for (_, val) in coll.iter() {
+                expected_count += val.len()
             }
-            assert_eq!(expected_raws,
-                       bucket.raws().iter().fold(0, |acc, (_k, v)| acc + v.len()));
-            assert_eq!(expected_counters,
-                       bucket.counters().iter().fold(0, |acc, (_k, v)| acc + v.len()));
-            assert_eq!(expected_gauges,
-                       bucket.gauges().iter().fold(0, |acc, (_k, v)| acc + v.len()));
-            assert_eq!(expected_delta_gauges,
-                       bucket.delta_gauges().iter().fold(0, |acc, (_k, v)| acc + v.len()));
-            assert_eq!(expected_histograms,
-                       bucket.histograms().iter().fold(0, |acc, (_k, v)| acc + v.len()));
-            assert_eq!(expected_timers,
-                       bucket.timers().iter().fold(0, |acc, (_k, v)| acc + v.len()));
-
+            assert_eq!(expected_count, bucket.count());
             TestResult::passed()
         }
-        QuickCheck::new().quickcheck(inner as fn(Vec<Metric>) -> TestResult);
-    }
-
-    #[test]
-    fn unique_names_preserved_histograms() {
-        fn qos_ret(ms: Vec<Metric>) -> TestResult {
-            let mut bucket = Buckets::default();
-
-            for m in ms.clone() {
-                bucket.add(m);
-            }
-
-            let hist: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
-                match m.kind {
-                    MetricKind::Histogram => {
-                        acc.insert(m.name.clone());
-                        acc
-                    }
-                    _ => acc,
-                }
-            });
-            let b_hist: HashSet<String> =
-                bucket.histograms().iter().fold(HashSet::default(), |mut acc, (k, _)| {
-                    acc.insert(k.clone());
-                    acc
-                });
-            assert_eq!(hist, b_hist);
-
-            TestResult::passed()
-        }
-        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
-    }
-
-    #[test]
-    fn unique_names_preserved_timers() {
-        fn qos_ret(ms: Vec<Metric>) -> TestResult {
-            let mut bucket = Buckets::default();
-
-            for m in ms.clone() {
-                bucket.add(m);
-            }
-
-            let tm: HashSet<String> = ms.iter().fold(HashSet::default(), |mut acc, ref m| {
-                match m.kind {
-                    MetricKind::Timer => {
-                        acc.insert(m.name.clone());
-                        acc
-                    }
-                    _ => acc,
-                }
-            });
-            let b_tm: HashSet<String> =
-                bucket.timers().iter().fold(HashSet::default(), |mut acc, (k, _)| {
-                    acc.insert(k.clone());
-                    acc
-                });
-            assert_eq!(tm, b_tm);
-
-            TestResult::passed()
-        }
-        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(inner as fn(Vec<Telemetry>) -> TestResult);
     }
 
     #[test]
     fn test_reset_clears_space() {
-        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+        fn qos_ret(ms: Vec<Telemetry>) -> TestResult {
             let mut bucket = Buckets::default();
 
             for m in ms {
-                bucket.add(m);
+                bucket.add(m.ephemeral());
             }
             bucket.reset();
 
-            assert_eq!(0, bucket.counters.len());
-            assert_eq!(0, bucket.raws.len());
-            for (_, v) in bucket.gauges() {
-                assert_eq!(1, v.len());
-            }
-
+            assert_eq!(0, bucket.count());
             TestResult::passed()
         }
-        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Telemetry>) -> TestResult);
+    }
+
+    #[test]
+    fn test_reset_clears_not_all_space_if_persistent() {
+        fn qos_ret(ms: Vec<Telemetry>) -> TestResult {
+            if ms.is_empty() {
+                return TestResult::discard();
+            }
+            let mut bucket = Buckets::default();
+
+            for m in ms {
+                bucket.add(m.persist());
+            }
+            bucket.reset();
+
+            assert!(!bucket.is_empty());
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Telemetry>) -> TestResult);
     }
 
     #[test]
     fn test_gauge_insertion() {
         let mut buckets = Buckets::default();
 
-        let m0 = Metric::new("test.gauge_0", 1.0).gauge();
-        let m1 = Metric::new("test.gauge_1", 1.0).gauge();
+        let m0 = Telemetry::new("test.gauge_0", 1.0).aggr_set();
+        let m1 = Telemetry::new("test.gauge_1", 1.0).aggr_set();
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
         assert_eq!(m0,
-                   buckets.gauges.get_mut(&String::from("test.gauge_0")).unwrap()[0]);
+                   buckets.aggrs.get_mut(&String::from("test.gauge_0")).unwrap()[0]);
         assert_eq!(m1,
-                   buckets.gauges.get_mut(&String::from("test.gauge_1")).unwrap()[0]);
+                   buckets.aggrs.get_mut(&String::from("test.gauge_1")).unwrap()[0]);
     }
 
     #[test]
     fn test_counter_insertion() {
         let mut buckets = Buckets::default();
 
-        let m0 = Metric::new("test.counter_0", 1.0).counter();
-        let m1 = Metric::new("test.counter_1", 1.0).counter();
+        let m0 = Telemetry::new("test.counter_0", 1.0).aggr_sum();
+        let m1 = Telemetry::new("test.counter_1", 1.0).aggr_sum();
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
         assert_eq!(m0,
-                   buckets.counters.get_mut(&String::from("test.counter_0")).unwrap()[0]);
+                   buckets.aggrs.get_mut(&String::from("test.counter_0")).unwrap()[0]);
         assert_eq!(m1,
-                   buckets.counters.get_mut(&String::from("test.counter_1")).unwrap()[0]);
+                   buckets.aggrs.get_mut(&String::from("test.counter_1")).unwrap()[0]);
     }
 
     #[test]
-    fn test_counter_summations() {
-        fn qos_ret(ms: Vec<Metric>) -> TestResult {
+    fn test_all_insertions() {
+        fn qos_ret(ms: Vec<Telemetry>) -> TestResult {
             let mut bucket = Buckets::default();
 
             for m in ms.clone() {
-                bucket.add(m);
+                bucket.add(m)
             }
 
-            let mut cnts: HashMap<String, Vec<(i64, f64)>> = HashMap::default();
+            let mut cnts: HashMap<String, Vec<(i64, CKMS<f64>)>> = HashMap::default();
             for m in ms {
-                match m.kind {
-                    MetricKind::Counter => {
-                        let c = cnts.entry(m.name.clone()).or_insert(vec![]);
-                        match c.binary_search_by_key(&m.time, |&(a, _)| a) {
-                            Ok(idx) => c[idx].1 += m.value().unwrap_or(0.0),
-                            Err(idx) => c.insert(idx, (m.time, m.value().unwrap_or(0.0))),
+                let c = cnts.entry(m.name.clone()).or_insert(vec![]);
+                match c.binary_search_by_key(&m.timestamp, |&(a, _)| a) {
+                    Ok(idx) => c[idx].1 += m.ckms(),
+                    Err(idx) => {
+                        if m.persist && idx > 0 {
+                            let mut val = c[idx - 1].clone().1;
+                            val += m.ckms();
+                            c.insert(idx, (m.timestamp, val))
+                        } else {
+                            c.insert(idx, (m.timestamp, m.ckms()))
                         }
                     }
-                    _ => continue,
                 }
             }
 
-            assert_eq!(bucket.counters().len(), cnts.len());
-
-            for (k, v) in bucket.counters().iter() {
+            for (k, v) in bucket.aggrs().iter() {
                 let mut v = v.clone();
-                v.sort_by_key(|ref m| m.time);
+                v.sort_by_key(|ref m| m.timestamp);
 
                 let ref cnts_v = *cnts.get(k).unwrap();
                 assert_eq!(cnts_v.len(), v.len());
 
                 for (i, c_v) in cnts_v.iter().enumerate() {
-                    assert_eq!(c_v.0, v[i].time);
-                    assert_eq!(Some(c_v.1), v[i].value());
+                    assert_eq!((c_v.0, c_v.1.clone()), (v[i].timestamp, v[i].ckms()));
                 }
             }
 
             TestResult::passed()
         }
-        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Metric>) -> TestResult);
-    }
-
-    #[test]
-    fn test_gauge_behaviour() {
-        fn inner(ms: Vec<Metric>) -> TestResult {
-            let mut bucket = Buckets::default();
-
-            for m in ms.clone() {
-                bucket.add(m);
-            }
-
-            let mut g_cnts: HashMap<String, Vec<(i64, f64)>> = HashMap::default();
-            let mut dg_cnts: HashMap<String, Vec<(i64, f64)>> = HashMap::default();
-            for m in ms {
-                match m.kind {
-                    MetricKind::Gauge => {
-                        let c = g_cnts.entry(m.name.clone()).or_insert(vec![]);
-                        match c.binary_search_by_key(&m.time, |&(a, _)| a) {
-                            Ok(idx) => c[idx] = (m.time, m.value().unwrap()),
-                            Err(idx) => c.insert(idx, (m.time, m.value().unwrap())),
-                        }
-                    }
-                    MetricKind::DeltaGauge => {
-                        let c = dg_cnts.entry(m.name.clone()).or_insert(vec![]);
-                        match c.binary_search_by_key(&m.time, |&(a, _)| a) {
-                            Ok(idx) => c[idx].1 += m.value().unwrap(),
-                            Err(idx) => {
-                                if idx > 0 {
-                                    let mut val = c[idx - 1].1.clone();
-                                    val += m.value().unwrap();
-                                    c.insert(idx, (m.time, val))
-                                } else {
-                                    c.insert(idx, (m.time, m.value().unwrap()))
-                                }
-                            }
-                        }
-                    }
-                    _ => continue,
-                }
-            }
-
-            assert_eq!(bucket.gauges().len(), g_cnts.len());
-            for (k, v) in bucket.gauges().iter() {
-                let mut v = v.clone();
-                v.sort_by_key(|ref m| m.time);
-
-                let ref g_cnts_v = *g_cnts.get(k).unwrap();
-                assert_eq!(g_cnts_v.len(), v.len());
-
-                for (i, c_v) in g_cnts_v.iter().enumerate() {
-                    assert_eq!(c_v.0, v[i].time);
-                    assert_eq!(Some(c_v.1), v[i].value());
-                }
-            }
-            assert_eq!(bucket.delta_gauges().len(), dg_cnts.len());
-            for (k, v) in bucket.delta_gauges().iter() {
-                let mut v = v.clone();
-                v.sort_by_key(|ref m| m.time);
-
-                let ref dg_cnts_v = *dg_cnts.get(k).unwrap();
-                assert_eq!(dg_cnts_v.len(), v.len());
-
-                for (i, c_v) in dg_cnts_v.iter().enumerate() {
-                    assert_eq!(c_v.0, v[i].time);
-                    assert_eq!(Some(c_v.1), v[i].value());
-                }
-            }
-
-            TestResult::passed()
-        }
-        QuickCheck::new().quickcheck(inner as fn(Vec<Metric>) -> TestResult);
+        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Telemetry>) -> TestResult);
     }
 }

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync;
 
 struct Payload<'a> {
-    metrics: Vec<Box<metric::Metric>>, // TODO if we switch from Box to Arc we
+    metrics: Vec<Box<metric::Telemetry>>, // TODO if we switch from Box to Arc we
     // might be better off
     logs: Vec<Box<metric::LogLine>>,
     global_tags: &'a metric::TagMap,
@@ -25,7 +25,7 @@ fn idx(n: i64, top: usize) -> usize {
 }
 
 impl<'a> Payload<'a> {
-    fn from_metric(m: metric::Metric, tags: &'a metric::TagMap, path: &'a str) -> Payload<'a> {
+    fn from_metric(m: metric::Telemetry, tags: &'a metric::TagMap, path: &'a str) -> Payload<'a> {
         Payload {
             metrics: vec![Box::new(m)],
             logs: Vec::new(),
@@ -78,7 +78,8 @@ impl<'a> Payload<'a> {
         let val = state.to_number(3) as f64;
         match state.to_str(2) {
             Some(name) => {
-                let m = metric::Metric::new(name, val).overlay_tags_from_map((*pyld).global_tags);
+                let m = metric::Telemetry::new(name, val)
+                    .overlay_tags_from_map((*pyld).global_tags);
                 (*pyld).metrics.push(Box::new(m));
             }
             None => {
@@ -375,12 +376,12 @@ impl filter::Filter for ProgrammableFilter {
                 self.state.get_global("process_metric");
                 if !self.state.is_fn(-1) {
                     let fail =
-                        metric::Event::Telemetry(sync::Arc::new(Some(metric::Metric::new(format!("cernan.filture.\
+                        metric::Event::Telemetry(sync::Arc::new(Some(metric::Telemetry::new(format!("cernan.filture.\
                                                                               {}.process_metric.\
                                                                               failure",
                                                                              self.path),
                                                                      1.0)
-                            .counter())));
+                            .aggr_sum())));
                     return Err(filter::FilterError::NoSuchFunction("process_metric", fail));
                 }
 
@@ -405,11 +406,11 @@ impl filter::Filter for ProgrammableFilter {
                 self.state.get_global("tick");
                 if !self.state.is_fn(-1) {
                     let fail =
-                        metric::Event::new_telemetry(metric::Metric::new(format!("cernan.filter.\
+                        metric::Event::new_telemetry(metric::Telemetry::new(format!("cernan.filter.\
                                                                                   {}.tick.failure",
                                                                                  self.path),
                                                                          1.0)
-                            .counter());
+                            .aggr_sum());
                     return Err(filter::FilterError::NoSuchFunction("tick", fail));
                 }
 
@@ -432,12 +433,12 @@ impl filter::Filter for ProgrammableFilter {
                 self.state.get_global("process_log");
                 if !self.state.is_fn(-1) {
                     let fail =
-                        metric::Event::new_telemetry(metric::Metric::new(format!("cernan.filter.\
+                        metric::Event::new_telemetry(metric::Telemetry::new(format!("cernan.filter.\
                                                                                   {}.process_log.\
                                                                                   failure",
                                                                                  self.path),
                                                                          1.0)
-                            .counter());
+                            .aggr_sum());
                     return Err(filter::FilterError::NoSuchFunction("process_log", fail));
                 }
 

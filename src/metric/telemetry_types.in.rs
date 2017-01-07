@@ -1,32 +1,29 @@
 #[derive(PartialEq, Serialize, Deserialize, Clone)]
-pub struct Metric {
-    pub kind: MetricKind,
-    pub time: i64,
-    pub created_time: i64,
+pub struct Telemetry {
     pub name: String,
+    value: Value,
+    pub persist: bool,
+    pub aggr_method: AggregationMethod,
     pub tags: sync::Arc<TagMap>,
-    value: MetricValue,
+    pub timestamp: i64, // seconds, see #166
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
-pub enum MetricValueKind {
+pub enum ValueKind {
     Single,
     Many,
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
-pub struct MetricValue {
-    kind: MetricValueKind,
+pub struct Value {
+    kind: ValueKind,
     single: Option<f64>,
     many: Option<CKMS<f64>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Hash)]
-pub enum MetricKind {
-    Counter,
-    Gauge,
-    DeltaGauge,
-    Timer,
-    Histogram,
-    Raw,
+pub enum AggregationMethod {
+    Sum,
+    Set,
+    Summarize,
 }

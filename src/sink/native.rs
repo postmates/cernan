@@ -51,7 +51,7 @@ impl Sink for Native {
         Valve::Open
     }
 
-    fn deliver(&mut self, _: sync::Arc<Option<metric::Metric>>) -> () {
+    fn deliver(&mut self, _: sync::Arc<Option<metric::Telemetry>>) -> () {
         // discard point
     }
 
@@ -90,18 +90,12 @@ impl Sink for Native {
                     let mut m = sync::Arc::make_mut(&mut m).take().unwrap();
                     let mut telem = Telemetry::new();
                     telem.set_name(replace(&mut m.name, Default::default()));
-                    let method = match m.kind {
-                        metric::MetricKind::Counter => AggregationMethod::SUM,
-                        metric::MetricKind::Raw |
-                        metric::MetricKind::Gauge => AggregationMethod::SET, 
-                        metric::MetricKind::DeltaGauge => AggregationMethod::SUM,
-                        metric::MetricKind::Histogram |
-                        metric::MetricKind::Timer => AggregationMethod::SUMMARIZE,
+                    let method = match m.aggr_method {
+                        metric::AggregationMethod::Sum => AggregationMethod::SUM,
+                        metric::AggregationMethod::Set => AggregationMethod::SET,
+                        metric::AggregationMethod::Summarize => AggregationMethod::SUMMARIZE,
                     };
-                    let persist = match m.kind {
-                        metric::MetricKind::DeltaGauge => true,
-                        _ => false, 
-                    };
+                    let persist = m.persist;
                     telem.set_persisted(persist);
                     telem.set_method(method);
                     let mut meta = Vec::new();
@@ -116,7 +110,7 @@ impl Sink for Native {
                         meta.push(tm);
                     }
                     telem.set_metadata(RepeatedField::from_vec(meta));
-                    telem.set_timestamp_ms(m.time * 1000); // FIXME #166
+                    telem.set_timestamp_ms(m.timestamp * 1000); // FIXME #166
                     telem.set_samples(m.into_vec());
 
                     points.push(telem);
@@ -170,8 +164,9 @@ impl Sink for Native {
                             }
                         }
                         Err(e) => {
-                            info!("Unable to connect to proxy at {} using addr {} with error \
-                                       {}",
+                            info!("Unable to connect to proxy at {} using addr {}
+        with \
+                                   error {}",
                                   self.host,
                                   ip,
                                   e)
