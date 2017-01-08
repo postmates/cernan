@@ -78,12 +78,12 @@ impl InfluxDB {
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let mut tag_buf = String::with_capacity(1_024);
-        for (key, values) in self.aggrs.aggrs() {
+        for values in self.aggrs.into_iter() {
             for m in values {
                 match m.aggr_method {
                     AggregationMethod::Sum | AggregationMethod::Set => {
                         if let Some(val) = m.value() {
-                            self.stats.push_str(key);
+                            self.stats.push_str(&m.name);
                             self.stats.push_str(",");
                             fmt_tags(&m.tags, &mut tag_buf);
                             self.stats.push_str(&tag_buf);
@@ -104,7 +104,7 @@ impl InfluxDB {
                         let time = ms_to_ns(m.timestamp);
                         let count = m.count();
 
-                        self.stats.push_str(key);
+                        self.stats.push_str(&m.name);
                         self.stats.push_str(",");
                         fmt_tags(&m.tags, &mut tag_buf);
                         self.stats.push_str(&tag_buf);
