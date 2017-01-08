@@ -132,13 +132,13 @@ impl Buckets {
     /// bucket.add(metric);
     /// ```
     pub fn add(&mut self, value: Telemetry) {
-        let mut hsh = match self.keys.iter().position(|k| k == &value.name) {
-            Some(hsh_idx) => self.values.index_mut(hsh_idx),
-            None => {
-                self.keys.push(value.name.to_owned());
-                self.values.push(Default::default());
-                let idx = self.values.len();
-                self.values.index_mut(idx - 1)
+        let mut hsh = match self.keys
+            .binary_search_by(|probe| probe.partial_cmp(&value.name).unwrap()) {
+            Ok(hsh_idx) => self.values.index_mut(hsh_idx),
+            Err(hsh_idx) => {
+                self.keys.insert(hsh_idx, value.name.to_owned());
+                self.values.insert(hsh_idx, Vec::with_capacity(128));
+                self.values.index_mut(hsh_idx)
             }
         };
         let bin_width = self.bin_width;
