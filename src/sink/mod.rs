@@ -1,5 +1,5 @@
 use hopper;
-use metric::{Event, LogLine, Metric};
+use metric::{Event, LogLine, Telemetry};
 use std::sync;
 use time;
 
@@ -28,7 +28,7 @@ pub enum Valve {
 pub trait Sink {
     fn flush(&mut self) -> ();
     fn valve_state(&self) -> Valve;
-    fn deliver(&mut self, point: sync::Arc<Option<Metric>>) -> ();
+    fn deliver(&mut self, point: sync::Arc<Option<Telemetry>>) -> ();
     fn deliver_line(&mut self, line: sync::Arc<Option<LogLine>>) -> ();
     fn run(&mut self, mut recv: hopper::Receiver<Event>) {
         let mut attempts = 0;

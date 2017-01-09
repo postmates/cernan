@@ -74,12 +74,13 @@ fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: Tc
         let mut line = String::new();
         let mut res = Vec::new();
         let mut line_reader = BufReader::new(stream);
-        let basic_metric = Arc::new(Some(metric::Metric::default().overlay_tags_from_map(&tags)));
+        let basic_metric = Arc::new(Some(metric::Telemetry::default()
+            .overlay_tags_from_map(&tags)));
         while let Some(len) = line_reader.read_line(&mut line).ok() {
             if len > 0 {
                 if parse_graphite(&line, &mut res, basic_metric.clone()) {
-                    let metric = metric::Metric::new("cernan.graphite.packet", 1.0)
-                        .counter()
+                    let metric = metric::Telemetry::new("cernan.graphite.packet", 1.0)
+                        .aggr_sum()
                         .overlay_tags_from_map(&tags);
                     send("graphite",
                          &mut chans,
@@ -90,8 +91,8 @@ fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: Tc
                              metric::Event::Telemetry(Arc::new(Some(m))));
                     }
                 } else {
-                    let metric = metric::Metric::new("cernan.graphite.bad_packet", 1.0)
-                        .counter()
+                    let metric = metric::Telemetry::new("cernan.graphite.bad_packet", 1.0)
+                        .aggr_sum()
                         .overlay_tags_from_map(&tags);
                     send("graphite",
                          &mut chans,

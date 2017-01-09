@@ -21,7 +21,7 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let metric = metric::Metric::new("identity", 12.0)
+            let metric = metric::Telemetry::new("identity", 12.0)
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
             let event = metric::Event::new_telemetry(metric);
@@ -79,10 +79,11 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_metric = metric::Metric::new("identity", 12.0)
+            let orig_metric = metric::Telemetry::new("identity", 12.0)
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
-            let expected_metric = metric::Metric::new("identity", 12.0).overlay_tag("foo", "bar");
+            let expected_metric = metric::Telemetry::new("identity", 12.0)
+                .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
 
@@ -107,7 +108,7 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_metric = metric::Metric::new("identity", 12.0)
+            let orig_metric = metric::Telemetry::new("identity", 12.0)
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
 
@@ -134,7 +135,7 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_metric = metric::Metric::new("identity", 12.0)
+            let orig_metric = metric::Telemetry::new("identity", 12.0)
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
 
@@ -189,10 +190,10 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let expected_metric = metric::Metric::new("identity", 12.0)
+            let expected_metric = metric::Telemetry::new("identity", 12.0)
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
-            let orig_metric = metric::Metric::new("identity", 12.0).overlay_tag("foo", "bar");
+            let orig_metric = metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
 
@@ -217,9 +218,9 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let metric0 = metric::Event::new_telemetry(metric::Metric::new("identity", 12.0));
-            let metric1 = metric::Event::new_telemetry(metric::Metric::new("identity", 13.0));
-            let metric2 = metric::Event::new_telemetry(metric::Metric::new("identity", 14.0));
+            let metric0 = metric::Event::new_telemetry(metric::Telemetry::new("identity", 12.0));
+            let metric1 = metric::Event::new_telemetry(metric::Telemetry::new("identity", 13.0));
+            let metric2 = metric::Event::new_telemetry(metric::Telemetry::new("identity", 14.0));
 
             let log0 = metric::Event::new_log(metric::LogLine::new("identity", "a log line"));
             let log1 = metric::Event::new_log(metric::LogLine::new("identity", "another"));
@@ -239,7 +240,8 @@ mod integration {
             assert_eq!(events.len(), 2);
             println!("EVENTS: {:?}", events);
             assert_eq!(events[1],
-                       metric::Event::new_telemetry((metric::Metric::new("count_per_tick", 5.0))));
+                       metric::Event::new_telemetry((metric::Telemetry::new("count_per_tick",
+                                                                            5.0))));
             assert_eq!(events[0],
                        metric::Event::new_log(metric::LogLine::new("filters.keep_count",
                                                                    "count_per_tick: 5")));
@@ -255,7 +257,8 @@ mod integration {
             assert_eq!(events.len(), 2);
             println!("EVENTS: {:?}", events);
             assert_eq!(events[1],
-                       metric::Event::new_telemetry((metric::Metric::new("count_per_tick", 2.0))));
+                       metric::Event::new_telemetry((metric::Telemetry::new("count_per_tick",
+                                                                            2.0))));
             assert_eq!(events[0],
                        metric::Event::new_log(metric::LogLine::new("filters.keep_count",
                                                                    "count_per_tick: 2")));
@@ -278,7 +281,7 @@ mod integration {
                         protocol_counter-TCPFastOpenActive";
             let expected = "collectd.protocols-TcpExt.protocol_counter-TCPFastOpenActive";
 
-            let metric = metric::Metric::new(orig, 12.0);
+            let metric = metric::Telemetry::new(orig, 12.0);
             let event = metric::Event::new_telemetry(metric);
 
             let res = cs.process(event);
@@ -316,7 +319,7 @@ mod integration {
             let orig = "totally_fine.interface-lo.if_errors.tx 0 1478751126";
             let expected = "totally_fine.interface-lo.if_errors.tx 0 1478751126";
 
-            let metric = metric::Metric::new(orig, 12.0);
+            let metric = metric::Telemetry::new(orig, 12.0);
             let event = metric::Event::new_telemetry(metric);
 
             let res = cs.process(event);

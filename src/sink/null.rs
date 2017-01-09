@@ -1,4 +1,4 @@
-use metric::{LogLine, Metric};
+use metric::{LogLine, Telemetry};
 use sink::{Sink, Valve};
 use std::sync;
 
@@ -27,7 +27,7 @@ impl Sink for Null {
         Valve::Open
     }
 
-    fn deliver(&mut self, _: sync::Arc<Option<Metric>>) -> () {
+    fn deliver(&mut self, _: sync::Arc<Option<Telemetry>>) -> () {
         // discard point
     }
 
