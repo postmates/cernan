@@ -3,18 +3,16 @@
 //! Each bucket contains a set of hashmaps containing
 //! each set of metrics received by clients.
 
-use fnv::FnvHasher;
 use metric::Telemetry;
-use std::collections::HashMap;
-use std::hash::BuildHasherDefault;
+use std::iter::Iterator;
+use std::ops::{Index, IndexMut};
 use time;
 
-pub type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
-pub type AggrMap = HashMapFnv<String, Vec<Telemetry>>;
-
 /// Buckets stores all metrics until they are flushed.
+#[derive(Clone)]
 pub struct Buckets {
-    aggrs: AggrMap,
+    keys: Vec<String>,
+    values: Vec<Vec<Telemetry>>,
     count: u64,
     bin_width: i64,
 }
@@ -29,14 +27,45 @@ impl Default for Buckets {
     /// use cernan::buckets::Buckets;
     ///
     /// let bucket = Buckets::default();
-    /// assert_eq!(0, bucket.aggrs().len());
+    /// assert_eq!(0, bucket.len());
     /// ```
     fn default() -> Buckets {
         Buckets {
-            aggrs: Default::default(),
+            keys: Default::default(),
+            values: Default::default(),
             count: 0,
             bin_width: 1,
         }
+    }
+}
+
+pub struct BucketsIterator<'a> {
+    buckets: &'a Buckets,
+    index: usize,
+}
+
+impl<'a> IntoIterator for &'a Buckets {
+    type Item = &'a [Telemetry];
+    type IntoIter = BucketsIterator<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        BucketsIterator {
+            buckets: self,
+            index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for BucketsIterator<'a> {
+    type Item = &'a [Telemetry];
+    fn next(&mut self) -> Option<&'a [Telemetry]> {
+        let result = if self.index < self.buckets.keys.len() {
+            let v = &self.buckets.values[self.index][..];
+            Some(v)
+        } else {
+            None
+        };
+        self.index += 1;
+        result
     }
 }
 
@@ -45,10 +74,6 @@ impl Buckets {
         let mut b = Buckets::default();
         b.bin_width = bin_width;
         b
-    }
-
-    pub fn aggrs(&self) -> &AggrMap {
-        &self.aggrs
     }
 
     /// Resets appropriate aggregates
@@ -61,7 +86,7 @@ impl Buckets {
     /// let metric = cernan::metric::Telemetry::new("foo", 1.0).aggr_sum();
     /// let mut buckets = cernan::buckets::Buckets::default();
     ///
-    /// assert_eq!(true, buckets.aggrs().is_empty());
+    /// assert_eq!(true, buckets.is_empty());
     ///
     /// buckets.add(metric);
     /// assert_eq!(false, buckets.is_empty());
@@ -70,7 +95,7 @@ impl Buckets {
     /// ```
     pub fn reset(&mut self) {
         self.count = 0;
-        for (_, v) in &mut self.aggrs {
+        for v in &mut self.values {
             if v.is_empty() {
                 continue;
             }
@@ -101,9 +126,17 @@ impl Buckets {
     /// bucket.add(metric);
     /// ```
     pub fn add(&mut self, value: Telemetry) {
-        let name = value.name.to_owned();
-        let hsh = self.aggrs.entry(name).or_insert_with(|| Default::default());
+        let mut hsh = match self.keys
+            .binary_search_by(|probe| probe.partial_cmp(&value.name).unwrap()) {
+            Ok(hsh_idx) => self.values.index_mut(hsh_idx),
+            Err(hsh_idx) => {
+                self.keys.insert(hsh_idx, value.name.to_owned());
+                self.values.insert(hsh_idx, Vec::with_capacity(128));
+                self.values.index_mut(hsh_idx)
+            }
+        };
         let bin_width = self.bin_width;
+
         match hsh.binary_search_by(|probe| probe.within(bin_width, &value)) {
             Ok(idx) => hsh[idx] += value,
             Err(idx) => {
@@ -122,8 +155,19 @@ impl Buckets {
         }
     }
 
+    pub fn get(&self, key: &str) -> Option<&[Telemetry]> {
+        match self.keys.iter().position(|k| k == key) {
+            Some(idx) => Some(self.values.index(idx)),
+            None => None,
+        }
+    }
+
     pub fn count(&self) -> usize {
         self.count as usize
+    }
+
+    pub fn len(&self) -> usize {
+        self.keys.len()
     }
 }
 
@@ -166,7 +210,7 @@ mod test {
 
         //  * it is possible to switch a SET|SUM from persist to ephemeral
         //  * an ephemeral SET|SUM will have its value inherited by a persist SET|SUM
-        let aggrs = bkt.aggrs.clone();
+        let aggrs = bkt.clone();
         let res = aggrs.get("lO").unwrap();
         assert_eq!(0, res[0].timestamp);
         assert_eq!(Some(1.0), res[0].value());
@@ -175,20 +219,18 @@ mod test {
 
         //  * a SET|SUM with persist will survive across resets
         bkt.reset();
-        println!("{:?}", bkt.aggrs);
         assert!(!bkt.is_empty());
 
         //  * an ephemeral SET|SUM will not inherit the value of a persist SET|SUM
-        let aggrs = bkt.aggrs.clone();
+        let aggrs = bkt.clone();
         let res = aggrs.get("lO").unwrap();
         bkt.add(m2.timestamp(res[0].timestamp));
-        let aggrs = bkt.aggrs.clone();
+        let aggrs = bkt.clone();
         let res = aggrs.get("lO").unwrap();
         assert_eq!(Some(0.0), res[0].value());
 
         bkt.reset();
 
-        println!("{:?}", bkt.aggrs);
         assert!(bkt.is_empty());
     }
 
@@ -204,7 +246,7 @@ mod test {
         bkt.add(m4);
         bkt.add(m7);
 
-        let raws = bkt.aggrs().get("lO").unwrap();
+        let raws = bkt.get("lO").unwrap();
         println!("RAWS: {:?}", raws);
         let ref res = raws[0];
         assert_eq!(18, res.timestamp);
@@ -223,7 +265,7 @@ mod test {
         bkt.add(m1);
         bkt.add(m2);
 
-        let v = bkt.aggrs().get("lO").unwrap();
+        let v = bkt.get("lO").unwrap();
         assert_eq!(3, v.len());
     }
 
@@ -257,13 +299,13 @@ mod test {
                 }
             }
 
-            for (name, vs) in bucket.aggrs() {
+            for vs in bucket.into_iter() {
                 for v in vs {
                     let ref kind = v.aggr_method;
                     let time = v.timestamp;
                     let mut found_one = false;
                     for m in &mp {
-                        if (&m.name == name) && (&m.aggr_method == kind) &&
+                        if (m.name == v.name) && (&m.aggr_method == kind) &&
                            within(bin_width, m.timestamp, time) {
                             assert_eq!(Ordering::Equal, m.within(bin_width, v));
                             found_one = true;
@@ -301,7 +343,7 @@ mod test {
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
-        let res = buckets.aggrs().get("some.metric");
+        let res = buckets.get("some.metric");
         assert!(res.is_some());
         let res = res.unwrap();
         assert_eq!(Some(&m0), res.get(0));
@@ -315,15 +357,11 @@ mod test {
         buckets.add(metric.clone());
 
         let rmname = String::from("some.metric");
-        assert!(buckets.aggrs.contains_key(&rmname),
-                "Should contain the metric key");
-        assert_eq!(Some(1.0),
-                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(Some(1.0), buckets.get(&rmname).unwrap()[0].value());
 
         // Increment counter
         buckets.add(metric);
-        assert_eq!(Some(2.0),
-                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(Some(2.0), buckets.get(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.count());
     }
 
@@ -336,15 +374,11 @@ mod test {
         buckets.add(m0);
 
         let rmname = String::from("some.metric");
-        assert!(buckets.aggrs.contains_key(&rmname),
-                "Should contain the metric key");
-        assert_eq!(Some(1.0),
-                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(Some(1.0), buckets.get(&rmname).unwrap()[0].value());
 
         // Increment counter
         buckets.add(m1);
-        assert_eq!(Some(2.0),
-                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(Some(2.0), buckets.get(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.count());
 
         buckets.reset();
@@ -368,7 +402,7 @@ mod test {
         buckets.add(m1.clone());
         buckets.add(m2.clone());
 
-        let hists = buckets.aggrs();
+        let hists = buckets;
         assert!(hists.get(&name).is_some());
         let ref hist = hists.get(&name).unwrap();
 
@@ -416,10 +450,7 @@ mod test {
         let rmname = String::from("some.metric");
         let metric = Telemetry::new("some.metric", 11.5).aggr_set();
         buckets.add(metric);
-        assert!(buckets.aggrs.contains_key(&rmname),
-                "Should contain the metric key");
-        assert_eq!(Some(11.5),
-                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(Some(11.5), buckets.get(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.count());
     }
 
@@ -435,10 +466,7 @@ mod test {
         buckets.add(metric);
         let delta_metric = Telemetry::new("some.metric", -11.5).timestamp(0).aggr_sum().persist();
         buckets.add(delta_metric);
-        assert!(buckets.aggrs.contains_key(&rmname),
-                "Should contain the metric key");
-        assert_eq!(Some(88.5),
-                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(Some(88.5), buckets.get(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.count());
         buckets.reset();
         assert_eq!(1, buckets.count());
@@ -454,10 +482,7 @@ mod test {
         buckets.add(delta_metric);
         let reset_metric = Telemetry::new("some.metric", 2007.3).aggr_set();
         buckets.add(reset_metric);
-        assert!(buckets.aggrs.contains_key(&rmname),
-                "Should contain the metric key");
-        assert_eq!(Some(2007.3),
-                   buckets.aggrs.get_mut(&rmname).unwrap()[0].value());
+        assert_eq!(Some(2007.3), buckets.get(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.count());
     }
 
@@ -467,11 +492,8 @@ mod test {
         let rmname = String::from("some.metric");
         let metric = Telemetry::new("some.metric", 11.5).aggr_sum();
         buckets.add(metric);
-        assert!(buckets.aggrs.contains_key(&rmname),
-                "Should contain the metric key");
-
         assert_eq!(Some(11.5),
-                   buckets.aggrs.get_mut(&rmname).expect("hwhap")[0].query(0.0));
+                   buckets.get(&rmname).expect("hwhap")[0].query(0.0));
 
         let metric_two = Telemetry::new("some.metric", 99.5).aggr_sum();
         buckets.add(metric_two);
@@ -479,8 +501,8 @@ mod test {
         let romname = String::from("other.metric");
         let metric_three = Telemetry::new("other.metric", 811.5).aggr_sum();
         buckets.add(metric_three);
-        assert!(buckets.aggrs.contains_key(&romname),
-                "Should contain the metric key");
+        assert_eq!(Some(811.5),
+                   buckets.get(&romname).expect("hwhap")[0].query(0.0));
     }
 
     #[test]
@@ -495,10 +517,7 @@ mod test {
         buckets.add(Telemetry::new("some.metric", 4.0).timestamp(dt_1).aggr_set());
 
         let mname = String::from("some.metric");
-        assert!(buckets.aggrs.contains_key(&mname),
-                "Should contain the metric key");
-
-        let metrics = buckets.aggrs.get_mut(&mname).unwrap();
+        let metrics = buckets.get(&mname).unwrap();
         assert_eq!(2, metrics.len());
 
         assert_eq!(dt_0, metrics[0].timestamp);
@@ -521,9 +540,9 @@ mod test {
                 acc.insert(m.name.clone());
                 acc
             });
-            let b_cnts: HashSet<String> =
-                bucket.aggrs().iter().fold(HashSet::default(), |mut acc, (k, _)| {
-                    acc.insert(k.clone());
+            let b_cnts: HashSet<String> = bucket.into_iter()
+                .fold(HashSet::default(), |mut acc, v| {
+                    acc.insert(v[0].name.clone());
                     acc
                 });
             assert_eq!(cnts, b_cnts);
@@ -606,10 +625,8 @@ mod test {
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
-        assert_eq!(m0,
-                   buckets.aggrs.get_mut(&String::from("test.gauge_0")).unwrap()[0]);
-        assert_eq!(m1,
-                   buckets.aggrs.get_mut(&String::from("test.gauge_1")).unwrap()[0]);
+        assert_eq!(m0, buckets.get(&String::from("test.gauge_0")).unwrap()[0]);
+        assert_eq!(m1, buckets.get(&String::from("test.gauge_1")).unwrap()[0]);
     }
 
     #[test]
@@ -621,10 +638,8 @@ mod test {
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
-        assert_eq!(m0,
-                   buckets.aggrs.get_mut(&String::from("test.counter_0")).unwrap()[0]);
-        assert_eq!(m1,
-                   buckets.aggrs.get_mut(&String::from("test.counter_1")).unwrap()[0]);
+        assert_eq!(m0, buckets.get(&String::from("test.counter_0")).unwrap()[0]);
+        assert_eq!(m1, buckets.get(&String::from("test.counter_1")).unwrap()[0]);
     }
 
     #[test]
@@ -653,11 +668,11 @@ mod test {
                 }
             }
 
-            for (k, v) in bucket.aggrs().iter() {
-                let mut v = v.clone();
+            for vals in bucket.into_iter() {
+                let mut v: Vec<Telemetry> = vals.to_vec();
                 v.sort_by_key(|ref m| m.timestamp);
 
-                let ref cnts_v = *cnts.get(k).unwrap();
+                let ref cnts_v = *cnts.get(&v[0].name).unwrap();
                 assert_eq!(cnts_v.len(), v.len());
 
                 for (i, c_v) in cnts_v.iter().enumerate() {

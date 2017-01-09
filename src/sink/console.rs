@@ -49,14 +49,14 @@ impl Sink for Console {
         let mut sets = String::new();
         let mut summaries = String::new();
 
-        for (key, values) in self.aggrs.aggrs() {
+        for values in self.aggrs.into_iter() {
             for value in values {
                 match value.aggr_method {
                     AggregationMethod::Sum => {
                         let mut tgt = &mut sums;
                         if let Some(f) = value.value() {
                             tgt.push_str("    ");
-                            tgt.push_str(&key);
+                            tgt.push_str(&value.name);
                             tgt.push_str("(");
                             tgt.push_str(&value.timestamp.to_string());
                             tgt.push_str("): ");
@@ -68,7 +68,7 @@ impl Sink for Console {
                         let mut tgt = &mut sets;
                         if let Some(f) = value.value() {
                             tgt.push_str("    ");
-                            tgt.push_str(&key);
+                            tgt.push_str(&value.name);
                             tgt.push_str("(");
                             tgt.push_str(&value.timestamp.to_string());
                             tgt.push_str("): ");
@@ -88,7 +88,7 @@ impl Sink for Console {
                             let quant: f64 = tup.1;
                             if let Some(f) = value.query(quant) {
                                 tgt.push_str("    ");
-                                tgt.push_str(&key);
+                                tgt.push_str(&value.name);
                                 tgt.push_str(": ");
                                 tgt.push_str(stat);
                                 tgt.push_str(" ");
