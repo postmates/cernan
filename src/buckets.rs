@@ -4,15 +4,9 @@
 //! each set of metrics received by clients.
 
 use metric::Telemetry;
-use seahash::SeaHasher;
-use std::collections::HashMap;
-use std::hash::BuildHasherDefault;
 use std::iter::Iterator;
 use std::ops::{Index, IndexMut};
 use time;
-
-pub type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<SeaHasher>>;
-pub type AggrMap = HashMapFnv<String, Vec<Telemetry>>;
 
 /// Buckets stores all metrics until they are flushed.
 #[derive(Clone)]
