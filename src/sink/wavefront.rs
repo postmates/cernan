@@ -196,7 +196,7 @@ impl Sink for Wavefront {
     }
 
     fn valve_state(&self) -> Valve {
-        if self.aggrs.count() > 10_000 {
+        if self.aggrs.len() > 10_000 {
             Valve::Closed
         } else {
             Valve::Open
