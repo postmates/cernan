@@ -3,20 +3,20 @@ extern crate byteorder;
 extern crate chrono;
 extern crate clap;
 extern crate flate2;
-extern crate fnv;
 extern crate glob;
 extern crate hopper;
 extern crate hyper;
 extern crate libc;
 extern crate lua;
+extern crate protobuf;
 extern crate quantiles;
 extern crate rand;
 extern crate rusoto;
+extern crate seahash;
 extern crate serde;
 extern crate serde_json;
 extern crate toml;
 extern crate uuid;
-extern crate protobuf;
 
 #[macro_use]
 extern crate log;

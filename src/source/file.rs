@@ -1,6 +1,6 @@
-use fnv::FnvHasher;
 use glob::glob;
 use metric;
+use seahash::SeaHasher;
 use source::Source;
 use std::collections::HashMap;
 use std::fs;
@@ -16,7 +16,7 @@ use time;
 use util;
 use util::send;
 
-type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
+type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<SeaHasher>>;
 
 pub struct FileServer {
     chans: util::Channel,
