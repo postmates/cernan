@@ -240,8 +240,7 @@ mod integration {
             assert_eq!(events.len(), 2);
             println!("EVENTS: {:?}", events);
             assert_eq!(events[1],
-                       metric::Event::new_telemetry((metric::Telemetry::new("count_per_tick",
-                                                                            5.0))));
+                       metric::Event::new_telemetry(metric::Telemetry::new("count_per_tick", 5.0)));
             assert_eq!(events[0],
                        metric::Event::new_log(metric::LogLine::new("filters.keep_count",
                                                                    "count_per_tick: 5")));
@@ -257,8 +256,7 @@ mod integration {
             assert_eq!(events.len(), 2);
             println!("EVENTS: {:?}", events);
             assert_eq!(events[1],
-                       metric::Event::new_telemetry((metric::Telemetry::new("count_per_tick",
-                                                                            2.0))));
+                       metric::Event::new_telemetry(metric::Telemetry::new("count_per_tick", 2.0)));
             assert_eq!(events[0],
                        metric::Event::new_log(metric::LogLine::new("filters.keep_count",
                                                                    "count_per_tick: 2")));

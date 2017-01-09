@@ -23,8 +23,8 @@ impl AddAssign for Telemetry {
 impl fmt::Debug for Telemetry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,
-               "Telemetry {{ aggr_method: {:#?}, name: {}, timestamp: {}, persist: {}, tags: {:?}, value: {:?} \
-                }}",
+               "Telemetry {{ aggr_method: {:#?}, name: {}, timestamp: {}, persist: {}, tags: \
+                {:?}, value: {:?} }}",
                self.aggr_method,
                self.name,
                self.timestamp,
@@ -314,10 +314,8 @@ impl Telemetry {
                 let mut ckms = CKMS::new(0.001);
                 ckms.insert(self.value.single.unwrap());
                 ckms
-            },
-            ValueKind::Many => {
-                self.value.many.clone().unwrap()
             }
+            ValueKind::Many => self.value.many.clone().unwrap(),
         }
     }
 }
@@ -495,11 +493,7 @@ mod tests {
                 AggregationMethod::Sum => mb.aggr_sum(),
                 AggregationMethod::Summarize => mb.aggr_summarize(),
             };
-            if persist {
-                mb.persist()
-            } else {
-                mb
-            }
+            if persist { mb.persist() } else { mb }
         }
     }
 

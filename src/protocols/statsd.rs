@@ -48,13 +48,14 @@ pub fn parse_statsd(source: &str,
                         metric = match (&src[offset..]).find('@') {
                             Some(sample_idx) => {
                                 match &src[offset..(offset + sample_idx)] {
-                                    "g" => if metric.persist {
-                                        metric.aggr_sum()
-                                    } else {
-                                        metric.aggr_set()
-                                    },
-                                    "ms" => metric.aggr_summarize().ephemeral(),
-                                    "h" => metric.aggr_summarize().ephemeral(),
+                                    "g" => {
+                                        if metric.persist {
+                                            metric.aggr_sum()
+                                        } else {
+                                            metric.aggr_set()
+                                        }
+                                    }
+                                    "ms" | "h" => metric.aggr_summarize().ephemeral(),
                                     "c" => {
                                         let sample = match f64::from_str(&src[(offset + sample_idx +
                                                                                1)..]) {
@@ -69,13 +70,16 @@ pub fn parse_statsd(source: &str,
                             }
                             None => {
                                 match &src[offset..] {
-                                    "g" | "g\n" => if metric.persist {
-                                        metric.aggr_sum()
-                                    } else {
-                                        metric.aggr_set()
-                                    },
-                                    "ms" | "ms\n" => metric.aggr_summarize().ephemeral(),
-                                    "h" | "h\n" => metric.aggr_summarize().ephemeral(),
+                                    "g" | "g\n" => {
+                                        if metric.persist {
+                                            metric.aggr_sum()
+                                        } else {
+                                            metric.aggr_set()
+                                        }
+                                    }
+                                    "ms" | "ms\n" | "h" | "h\n" => {
+                                        metric.aggr_summarize().ephemeral()
+                                    }
                                     "c" | "c\n" => metric.aggr_sum().ephemeral(),
                                     _ => return false,
                                 }
@@ -95,7 +99,7 @@ pub fn parse_statsd(source: &str,
 
 #[cfg(test)]
 mod tests {
-    use metric::{Telemetry, AggregationMethod};
+    use metric::{AggregationMethod, Telemetry};
     use std::sync;
     use super::*;
 

@@ -1,5 +1,5 @@
 use buckets::Buckets;
-use metric::{LogLine, TagMap, Telemetry, AggregationMethod};
+use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
 use std::cmp;
 use std::io::Write as IoWrite;
@@ -265,12 +265,11 @@ mod test {
             .overlay_tags_from_map(&tags))));
         wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 1.0)
             .timestamp(dt_0)
-                                .aggr_set()
-            .overlay_tags_from_map(&tags)
-                )));
+            .aggr_set()
+            .overlay_tags_from_map(&tags))));
         wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 2.0)
             .timestamp(dt_1)
-.aggr_set()
+            .aggr_set()
             .overlay_tags_from_map(&tags))));
         wavefront.format_stats(dt_2);
         let lines: Vec<&str> = wavefront.stats.lines().collect();
