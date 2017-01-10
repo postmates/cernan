@@ -21,6 +21,7 @@ pub struct StatsdConfig {
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
     pub config_path: String,
+    pub delete_gauges: bool,
 }
 
 impl Default for StatsdConfig {
@@ -31,6 +32,7 @@ impl Default for StatsdConfig {
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
             config_path: "sources.statsd".to_string(),
+            delete_gauges: false,
         }
     }
 }
