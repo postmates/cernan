@@ -488,6 +488,13 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                             sconfig.port =
                                 p.as_integer().expect("statsd-port must be integer") as u16;
                         }
+                        if let Some(p) = tbl.lookup("delete-gauges") {
+                            sconfig.delete_gauges =
+                                p.as_bool()
+                                    .expect("statsd delete-gauges \
+                                             must be \
+                                             boolean") as bool;
+                        }
                         if let Some(fwds) = tbl.lookup("forwards") {
                             sconfig.forwards = fwds.as_slice()
                                 .expect("forwards must be an array")
@@ -798,6 +805,7 @@ port = 1024
   [sources.statsd.primary]
   enabled = true
   port = 1024
+  delete-gauges = true
   forwards = ["sinks.console", "sinks.null"]
 "#
             .to_string();
@@ -807,6 +815,7 @@ port = 1024
         assert_eq!(args.statsds.len(), 1);
 
         let config0 = args.statsds.get("sources.statsd.primary").unwrap();
+        assert_eq!(config0.delete_gauges, true);
         assert_eq!(config0.port, 1024);
         assert_eq!(config0.forwards,
                    vec!["sinks.console".to_string(), "sinks.null".to_string()]);
@@ -819,6 +828,7 @@ port = 1024
   [sources.statsd.lower]
   enabled = true
   port = 1024
+  delete-gauges = true
   forwards = ["sinks.console", "sinks.null"]
 
   [sources.statsd.higher]
@@ -834,11 +844,13 @@ port = 1024
 
         let config0 = args.statsds.get("sources.statsd.lower").unwrap();
         assert_eq!(config0.port, 1024);
+        assert_eq!(config0.delete_gauges, true);
         assert_eq!(config0.forwards,
                    vec!["sinks.console".to_string(), "sinks.null".to_string()]);
 
         let config1 = args.statsds.get("sources.statsd.higher").unwrap();
         assert_eq!(config1.port, 4048);
+        assert_eq!(config1.delete_gauges, false);
         assert_eq!(config1.forwards, vec!["sinks.wavefront".to_string()]);
     }
 
