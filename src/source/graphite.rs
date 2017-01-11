@@ -90,6 +90,7 @@ fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: Tc
                              &mut chans,
                              metric::Event::Telemetry(Arc::new(Some(m))));
                     }
+                    line.clear();
                 } else {
                     let metric = metric::Telemetry::new("cernan.graphite.bad_packet", 1.0)
                         .aggr_sum()
@@ -98,6 +99,7 @@ fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: Tc
                          &mut chans,
                          metric::Event::Telemetry(Arc::new(Some(metric))));
                     error!("bad packet: {:?}", line);
+                    line.clear();
                 }
             } else {
                 break;

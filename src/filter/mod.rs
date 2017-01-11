@@ -25,18 +25,22 @@ fn event_in_fe(fe: FilterError) -> metric::Event {
 }
 
 pub trait Filter {
-    fn process(&mut self, event: metric::Event) -> Result<Vec<metric::Event>, FilterError>;
+    fn process(&mut self,
+               event: metric::Event,
+               res: &mut Vec<metric::Event>)
+               -> Result<(), FilterError>;
     fn run(&mut self, mut recv: hopper::Receiver<metric::Event>, mut chans: util::Channel) {
         let mut attempts = 0;
+        let mut events = Vec::with_capacity(64);
         loop {
             time::delay(attempts);
             match recv.next() {
                 None => attempts += 1,
                 Some(event) => {
                     attempts = 0;
-                    match self.process(event) {
-                        Ok(events) => {
-                            for ev in events {
+                    match self.process(event, &mut events) {
+                        Ok(()) => {
+                            for ev in events.drain(..) {
                                 util::send("filter", &mut chans, ev)
                             }
                         }

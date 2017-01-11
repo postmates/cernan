@@ -146,13 +146,13 @@ fn main() {
         let (flt_send, flt_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
         sends.insert(config.config_path.clone(), flt_send);
-        let mut upstream_sends = Vec::new();
-        populate_forwards(&mut upstream_sends,
+        let mut downstream_sends = Vec::new();
+        populate_forwards(&mut downstream_sends,
                           &config.forwards,
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
-            cernan::filter::ProgrammableFilter::new(c).run(flt_recv, upstream_sends);
+            cernan::filter::ProgrammableFilter::new(c).run(flt_recv, downstream_sends);
         }));
     }
 
