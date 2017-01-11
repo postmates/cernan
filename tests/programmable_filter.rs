@@ -26,9 +26,9 @@ mod integration {
                 .overlay_tag("bizz", "bazz");
             let event = metric::Event::new_telemetry(metric);
 
-            let res = cs.process(event.clone());
+            let mut events = Vec::new();
+            let res = cs.process(event.clone(), &mut events);
             assert!(res.is_ok());
-            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
             assert_eq!(events[0], event);
@@ -58,9 +58,9 @@ mod integration {
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
-            let res = cs.process(orig_event.clone());
+            let mut events = Vec::new();
+            let res = cs.process(orig_event.clone(), &mut events);
             assert!(res.is_ok());
-            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
             assert_eq!(events[0], expected_event);
@@ -87,9 +87,9 @@ mod integration {
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
 
-            let res = cs.process(orig_event.clone());
+            let mut events = Vec::new();
+            let res = cs.process(orig_event.clone(), &mut events);
             assert!(res.is_ok());
-            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
             assert_eq!(events[0], expected_event);
@@ -114,9 +114,9 @@ mod integration {
 
             let orig_event = metric::Event::new_telemetry(orig_metric);
 
-            let res = cs.process(orig_event.clone());
+            let mut events = Vec::new();
+            let res = cs.process(orig_event.clone(), &mut events);
             assert!(res.is_ok());
-            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
             assert_eq!(events[0], orig_event);
@@ -141,8 +141,10 @@ mod integration {
 
             let orig_event = metric::Event::new_telemetry(orig_metric);
 
-            let res = cs.process(orig_event);
+            let mut events = Vec::new();
+            let res = cs.process(orig_event, &mut events);
             assert!(res.is_err());
+            assert!(events.is_empty());
         }
 
         #[test]
@@ -169,9 +171,9 @@ mod integration {
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
-            let res = cs.process(orig_event);
+            let mut events = Vec::new();
+            let res = cs.process(orig_event, &mut events);
             assert!(res.is_ok());
-            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
             assert_eq!(events[0], expected_event);
@@ -197,9 +199,9 @@ mod integration {
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
 
-            let res = cs.process(orig_event);
+            let mut events = Vec::new();
+            let res = cs.process(orig_event, &mut events);
             assert!(res.is_ok());
-            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
             assert_eq!(events[0], expected_event);
@@ -229,12 +231,13 @@ mod integration {
 
             let flush = metric::Event::TimerFlush;
 
+            let mut events = Vec::new();
             for ev in &[metric0, metric1, metric2, log0, log1] {
-                let _ = cs.process(ev.clone());
+                let _ = cs.process(ev.clone(), &mut events);
             }
-            let res = cs.process(flush.clone());
+            events.clear();
+            let res = cs.process(flush.clone(), &mut events);
             assert!(res.is_ok());
-            let events = res.ok().unwrap();
 
             assert!(!events.is_empty());
             assert_eq!(events.len(), 2);
@@ -245,12 +248,13 @@ mod integration {
                        metric::Event::new_log(metric::LogLine::new("filters.keep_count",
                                                                    "count_per_tick: 5")));
 
+            events.clear();
             for ev in &[log2, log3] {
-                let _ = cs.process(ev.clone());
+                let _ = cs.process(ev.clone(), &mut events);
             }
-            let res = cs.process(flush);
+            events.clear();
+            let res = cs.process(flush, &mut events);
             assert!(res.is_ok());
-            let events = res.ok().unwrap();
 
             assert!(!events.is_empty());
             assert_eq!(events.len(), 2);
@@ -282,9 +286,9 @@ mod integration {
             let metric = metric::Telemetry::new(orig, 12.0);
             let event = metric::Event::new_telemetry(metric);
 
-            let res = cs.process(event);
+            let mut events = Vec::new();
+            let res = cs.process(event, &mut events);
             assert!(res.is_ok());
-            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
 
@@ -320,9 +324,9 @@ mod integration {
             let metric = metric::Telemetry::new(orig, 12.0);
             let event = metric::Event::new_telemetry(metric);
 
-            let res = cs.process(event);
+            let mut events = Vec::new();
+            let res = cs.process(event, &mut events);
             assert!(res.is_ok());
-            let events = res.ok().unwrap();
             assert!(!events.is_empty());
             assert_eq!(events.len(), 1);
 

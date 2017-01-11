@@ -370,7 +370,7 @@ impl ProgrammableFilter {
 }
 
 impl filter::Filter for ProgrammableFilter {
-    fn process(&mut self, event: metric::Event) -> Result<Vec<metric::Event>, filter::FilterError> {
+    fn process(&mut self, event: metric::Event, res: &mut Vec<metric::Event>) -> Result<(), filter::FilterError> {
         match event {
             metric::Event::Telemetry(mut m) => {
                 self.state.get_global("process_metric");
@@ -396,11 +396,13 @@ impl filter::Filter for ProgrammableFilter {
 
                 self.state.call(1, 0);
 
-                Ok(pyld.logs
-                    .into_iter()
-                    .map(|m| metric::Event::new_log(*m))
-                    .chain(pyld.metrics.into_iter().map(|m| metric::Event::new_telemetry(*m)))
-                    .collect())
+                for lg in pyld.logs {
+                    res.push(metric::Event::new_log(*lg));
+                }
+                for mt in pyld.metrics {
+                    res.push(metric::Event::new_telemetry(*mt));
+                }
+                Ok(())
             }
             metric::Event::TimerFlush => {
                 self.state.get_global("tick");
@@ -423,11 +425,13 @@ impl filter::Filter for ProgrammableFilter {
 
                 self.state.call(1, 0);
 
-                Ok(pyld.logs
-                    .into_iter()
-                    .map(|m| metric::Event::new_log(*m))
-                    .chain(pyld.metrics.into_iter().map(|m| metric::Event::new_telemetry(*m)))
-                    .collect())
+                for lg in pyld.logs {
+                    res.push(metric::Event::new_log(*lg));
+                }
+                for mt in pyld.metrics {
+                    res.push(metric::Event::new_telemetry(*mt));
+                }
+                Ok(())
             }
             metric::Event::Log(mut l) => {
                 self.state.get_global("process_log");
@@ -453,11 +457,13 @@ impl filter::Filter for ProgrammableFilter {
 
                 self.state.call(1, 0);
 
-                Ok(pyld.logs
-                    .into_iter()
-                    .map(|m| metric::Event::new_log(*m))
-                    .chain(pyld.metrics.into_iter().map(|m| metric::Event::new_telemetry(*m)))
-                    .collect())
+                for lg in pyld.logs {
+                    res.push(metric::Event::new_log(*lg));
+                }
+                for mt in pyld.metrics {
+                    res.push(metric::Event::new_telemetry(*mt));
+                }
+                Ok(())
             }
         }
     }
