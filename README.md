@@ -31,13 +31,13 @@ have [Rust](https://www.rust-lang.org/en-US/). This should be as simple as:
 
 Once Rust is installed, from the root of this project run:
 
-    > cargo run -- --console
+    > cargo run -- --config examples/configs/quickstart.toml
 
 and you're good to go. Cernan will report to stdout what ports it is now
 listening on. If you would like to debug your service--to determine if the
 telemetry you intend is issued--run cernan like:
 
-    > cargo run -- --console -vvvv
+    > cargo run -- -vvvv --config examples/configs/quickstart.toml
 
 and full trace output will be reported to stdout.
 
