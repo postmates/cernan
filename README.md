@@ -1,6 +1,6 @@
 # cernan - telemetry aggregation and shipping, last up the ladder
 
-[![Build Status](https://travis-ci.com/postmates/cernan.svg?token=YZ973qi8DocmxHi3Nn48&branch=master)](https://travis-ci.com/postmates/cernan)
+[![Build Status](https://travis-ci.org/postmates/cernan.svg?branch=master)](https://travis-ci.org/postmates/cernan) [![Codecov](https://img.shields.io/codecov/c/github/postmates/cernan.svg)](https://codecov.io/gh/postmates/cernan) 
 
 ![Eugene Cernan, Apollo 17 EVA](Gene-Cernan-1-578x485.jpg)
 
