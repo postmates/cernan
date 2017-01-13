@@ -1,0 +1,15 @@
+scripts-directory = "examples/scripts/"
+flush-interval = 10
+
+[sources]
+  [sources.statsd.primary]
+  port = 8125
+  forwards = ["filters.frau_im_mond"]
+
+[filters]
+  [filters.frau_im_mond]
+  script = "frau_im_mond.lua"
+  forwards = ["sinks.console"]
+
+[sinks]
+  [sinks.console]
