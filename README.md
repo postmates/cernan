@@ -5,7 +5,7 @@
 ![Eugene Cernan, Apollo 17 EVA](Gene-Cernan-1-578x485.jpg)
 
 Cernan is a telemetry and logging aggregation server. It exposes multiple
-interfaces for ingestion and can emit to mutiple aggregation sources while doing
+interfaces for ingestion and can emit to multiple aggregation sources while doing
 in-flight manipulation of data. Cernan has minimal CPU and memory requirements
 and is intended to service bursty telemetry _without_ load shedding. Cernan aims
 to be _reliable_ and _convenient_ to use, both for application engineers and
