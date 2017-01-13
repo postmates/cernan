@@ -1,0 +1,9 @@
+flush-interval = 10
+
+[sources]
+  [sources.statsd.primary]
+  port = 8125
+  forwards = ["sinks.console"]
+
+[sinks]
+  [sinks.console]
