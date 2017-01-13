@@ -1,6 +1,6 @@
 [package]
 name = "cernan"
-version = "0.5.0-dev"
+version = "0.5.0"
 authors = ["Brian L. Troutwine <blt@postmates.com>"]
 build = "build.rs"
 
