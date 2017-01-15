@@ -57,7 +57,7 @@ impl<'a> Payload<'a> {
     unsafe extern "C" fn lua_metric_name(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
-        let idx = idx(state.to_integer(2) as i64, (*pyld).metrics.len());
+        let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         state.push_string(&(*pyld).metrics[idx].name);
         1
     }
@@ -66,7 +66,7 @@ impl<'a> Payload<'a> {
     unsafe extern "C" fn lua_set_metric_name(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
-        let idx = idx(state.to_integer(2) as i64, (*pyld).metrics.len());
+        let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         (*pyld).metrics[idx].name = state.check_string(3).into();
         0
     }
@@ -75,7 +75,7 @@ impl<'a> Payload<'a> {
     unsafe extern "C" fn lua_push_metric(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
-        let val = state.to_number(3) as f64;
+        let val = state.to_number(3);
         match state.to_str(2) {
             Some(name) => {
                 let m = metric::Telemetry::new(name, val)
@@ -110,7 +110,7 @@ impl<'a> Payload<'a> {
     unsafe extern "C" fn lua_metric_value(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
-        let idx = idx(state.to_integer(2) as i64, (*pyld).metrics.len());
+        let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match (*pyld).metrics[idx].value() {
             Some(v) => {
                 state.push_number(v);
@@ -126,7 +126,7 @@ impl<'a> Payload<'a> {
     unsafe extern "C" fn lua_log_tag_value(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
-        let idx = idx(state.to_integer(2) as i64, (*pyld).logs.len());
+        let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => {
                 match (*pyld).logs[idx].tags.get(&key) {
@@ -150,7 +150,7 @@ impl<'a> Payload<'a> {
     unsafe extern "C" fn lua_metric_tag_value(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
-        let idx = idx(state.to_integer(2) as i64, (*pyld).metrics.len());
+        let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => {
                 match (*pyld).metrics[idx].tags.get(&key) {
@@ -174,7 +174,7 @@ impl<'a> Payload<'a> {
     unsafe extern "C" fn lua_metric_set_tag(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
-        let idx = idx(state.to_integer(2) as i64, (*pyld).metrics.len());
+        let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => {
                 match state.to_str(4).map(|v| v.to_owned()) {
@@ -206,7 +206,7 @@ impl<'a> Payload<'a> {
     unsafe extern "C" fn lua_log_set_tag(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
-        let idx = idx(state.to_integer(2) as i64, (*pyld).logs.len());
+        let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => {
                 match state.to_str(4).map(|v| v.to_owned()) {
@@ -238,7 +238,7 @@ impl<'a> Payload<'a> {
     unsafe extern "C" fn lua_metric_remove_tag(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
-        let idx = idx(state.to_integer(2) as i64, (*pyld).metrics.len());
+        let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => {
                 match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags).remove(&key) {
@@ -262,7 +262,7 @@ impl<'a> Payload<'a> {
     unsafe extern "C" fn lua_log_remove_tag(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
-        let idx = idx(state.to_integer(2) as i64, (*pyld).logs.len());
+        let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => {
                 match (*pyld).logs[idx].tags.remove(&key) {
@@ -287,7 +287,7 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let prcnt = state.to_number(2);
-        let idx = idx(state.to_integer(2) as i64, (*pyld).metrics.len());
+        let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match (*pyld).metrics[idx].query(prcnt) {
             Some(v) => {
                 state.push_number(v);
@@ -370,7 +370,10 @@ impl ProgrammableFilter {
 }
 
 impl filter::Filter for ProgrammableFilter {
-    fn process(&mut self, event: metric::Event, res: &mut Vec<metric::Event>) -> Result<(), filter::FilterError> {
+    fn process(&mut self,
+               event: metric::Event,
+               res: &mut Vec<metric::Event>)
+               -> Result<(), filter::FilterError> {
         match event {
             metric::Event::Telemetry(mut m) => {
                 self.state.get_global("process_metric");

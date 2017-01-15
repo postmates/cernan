@@ -1,3 +1,8 @@
+//! A 'sink' is a final destination for telemetry and log lines. That is, a
+//! 'sink' is that which is at the end of a `source -> filter -> filter ->
+//! ... -> sink` chain. The sink has no obligations with regard to the telemetry
+//! and log lines it receives, other than to receive them. Individual sinks make
+//! different choices.
 use hopper;
 use metric::{Event, LogLine, Telemetry};
 use std::sync;

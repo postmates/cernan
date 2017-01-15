@@ -12,7 +12,7 @@ source = "cernan"
   port = 8125
   forwards = ["sinks.console", "sinks.null", "sinks.influxdb", "sinks.prometheus"]
 
-  [sources.native_server]
+  [sources.native]
   ip = "127.0.0.1"
   port = 1972
   forwards = ["sinks.console", "sinks.null", "sinks.influxdb", "sinks.prometheus"]

@@ -1,26 +1,55 @@
+//! TODO 
 use buckets::Buckets;
 use chrono;
 use metric::{AggregationMethod, LogLine, Telemetry};
 use sink::{Sink, Valve};
 use std::sync;
 
+/// The 'console' sink exists for development convenience. The sink will
+/// aggregate according to [buckets](../buckets/struct.Buckets.html) method and
+/// print each `flush-interval` to stdout.
 pub struct Console {
     aggrs: Buckets,
 }
 
 impl Console {
+    /// Create a new Console
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::sink::{Console, ConsoleConfig};
+    /// let config = ConsoleConfig { config_path: "sinks.console".to_string(), bin_width: 2 };
+    /// let c = Console::new(config);
+    /// ```
     pub fn new(config: ConsoleConfig) -> Console {
         Console { aggrs: Buckets::new(config.bin_width) }
     }
 }
 
+/// The configuration struct for Console. There's not a whole lot to configure
+/// here, independent of other sinks, but Console does do aggregations and that
+/// requires knowing what the user wants for `bin_width`. 
 #[derive(Debug)]
 pub struct ConsoleConfig {
+    /// The sink's unique name in the routing topology. 
     pub config_path: String,
+    /// Sets the bin width for Console's underlying
+    /// [bucket](../buckets/struct.Bucket.html).
     pub bin_width: i64,
 }
 
 impl ConsoleConfig {
+    /// Convenience method to create a ConsoleConfig with `bin_width` equal to
+    /// 1.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::sink::ConsoleConfig;
+    /// let config = ConsoleConfig::new("sinks.console".to_string());
+    /// assert_eq!(1, config.bin_width);
+    /// ```
     pub fn new(config_path: String) -> ConsoleConfig {
         ConsoleConfig {
             config_path: config_path,

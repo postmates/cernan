@@ -420,9 +420,7 @@ impl Value {
 
     fn query(&self, query: f64) -> Option<(usize, f64)> {
         match self.kind {
-            ValueKind::Single => {
-                Some((1 as usize, self.single.expect("NOT SINGLE IN METRICVALUE QUERY")))
-            }
+            ValueKind::Single => Some((1, self.single.expect("NOT SINGLE IN METRICVALUE QUERY"))),
             ValueKind::Many => {
                 match self.many {
                     Some(ref ckms) => ckms.query(query),
