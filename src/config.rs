@@ -181,7 +181,6 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .or(value.lookup("sinks.console.bin_width"))
                 .unwrap_or(&Value::Integer(1))
                 .as_integer()
-                .map(|i| i as i64)
                 .unwrap(),
             config_path: "sinks.console".to_string(),
         })
@@ -207,7 +206,6 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .or(value.lookup("sinks.wavefront.bin_width"))
                 .unwrap_or(&Value::Integer(1))
                 .as_integer()
-                .map(|i| i as i64)
                 .unwrap(),
             config_path: "sinks.wavefront".to_string(),
             tags: tags.clone(),
@@ -234,7 +232,6 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .or(value.lookup("sinks.influxdb.bin_width"))
                 .unwrap_or(&Value::Integer(1))
                 .as_integer()
-                .map(|i| i as i64)
                 .unwrap(),
             config_path: "sinks.influxdb".to_string(),
             tags: tags.clone(),
@@ -261,7 +258,6 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .or(value.lookup("sinks.prometheus.bin_width"))
                 .unwrap_or(&Value::Integer(1))
                 .as_integer()
-                .map(|i| i as i64)
                 .unwrap(),
             config_path: "sinks.prometheus".to_string(),
         })
