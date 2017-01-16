@@ -97,7 +97,11 @@ pub fn parse_args() -> Args {
                 None
             };
             let null = if args.is_present("null") {
-                Some(NullConfig::new("sinks.null".to_string()))
+                let flush_interval = args.value_of("null-flush-interval")
+                        .unwrap_or(&(default_flush_interval.to_string()))
+                        .parse::<u64>()
+                        .unwrap();
+                Some(NullConfig::new("sinks.null".to_string(), flush_interval))
             } else {
                 None
             };
@@ -178,16 +182,25 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         None => TagMap::default(),
     };
 
-    let null = if value.lookup("null").or(value.lookup("sinks.null")).is_some() {
-        Some(NullConfig { config_path: "sinks.null".to_string() })
-    } else {
-        None
-    };
-
     let default_flush_interval = value.lookup("default_flush_interval")
                     .unwrap_or(&Value::Integer(60))
                     .as_integer()
                     .unwrap();
+
+    let null = if value.lookup("null").or(value.lookup("sinks.null")).is_some() {
+        Some(NullConfig { 
+            config_path: "sinks.null".to_string(),
+            flush_interval: value.lookup("null.flush_interval")
+                .or(value.lookup("sinks.null.flush_interval"))
+                .unwrap_or(&Value::Integer(default_flush_interval))
+                .as_integer()
+                .map(|i| i as u64)
+                .unwrap(),
+        })
+    } else {
+        None
+    };
+
 
     let console = if value.lookup("console").or(value.lookup("sinks.console")).is_some() {
         Some(ConsoleConfig {
