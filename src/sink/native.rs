@@ -24,6 +24,7 @@ pub struct NativeConfig {
     pub port: u16,
     pub host: String,
     pub config_path: String,
+    pub flush_interval: u64,
 }
 
 impl Native {

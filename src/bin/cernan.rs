@@ -203,7 +203,7 @@ fn main() {
     // BACKGROUND
     //
 
-    let flush_interval = args.flush_interval;
+    let flush_interval = args.default_flush_interval;
     joins.push(thread::spawn(move || {
         cernan::source::FlushTimer::new(flush_sends, flush_interval).run();
     }));
