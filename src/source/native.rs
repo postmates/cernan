@@ -1,8 +1,8 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use hopper;
 use metric;
-use protobuf::parse_from_bytes;
 use protocols::native::{AggregationMethod, Payload};
+use protobuf;
 use std::io;
 use std::io::Read;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
@@ -63,16 +63,17 @@ fn handle_tcp(chans: util::Channel,
 fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStream) {
     thread::spawn(move || {
         let mut reader = io::BufReader::new(stream);
+        let mut buf = Vec::with_capacity(4000);
         loop {
             let payload_size_in_bytes = match reader.read_u32::<BigEndian>() {
-                Ok(i) => i,
+                Ok(i) => i as usize,
                 Err(_) => return,
             };
-            let mut buf = vec![0; payload_size_in_bytes as usize];
+            buf.resize(payload_size_in_bytes, 0);
             if reader.read_exact(&mut buf).is_err() {
                 return;
             }
-            match parse_from_bytes::<Payload>(&buf) {
+            match protobuf::parse_from_bytes::<Payload>(&buf) {
                 Ok(pyld) => {
                     for point in pyld.get_points() {
                         let name: &str = point.get_name();
