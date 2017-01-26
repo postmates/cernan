@@ -7,7 +7,9 @@ use time;
 ///
 /// - `<str:metric_name>:<f64:value>|<str:type>`
 /// - `<str:metric_name>:<f64:value>|c|@<f64:sample_rate>`
+/// - `<str:metric_name>:<f64:value>|c@<f64:sample_rate>`
 /// - `<str:metric_name>:<f64:value>|g|@<f64:sample_rate>`
+/// - `<str:metric_name>:<f64:value>|g@<f64:sample_rate>`
 /// p
 /// Multiple metrics can be sent in a single UDP packet
 /// separated by newlines.
@@ -49,7 +51,7 @@ pub fn parse_statsd(source: &str,
                         metric = match (&src[offset..]).find('@') {
                             Some(sample_idx) => {
                                 match &src[offset..(offset + sample_idx)] {
-                                    "g|" => {
+                                    "g|" | "g" => {
                                         metric.persist = true;
                                         if signed {
                                             metric.aggr_sum()
@@ -57,7 +59,7 @@ pub fn parse_statsd(source: &str,
                                             metric.aggr_set()
                                         }
                                     }
-                                    "c|" => {
+                                    "c|" | "c" => {
                                         let sample = match f64::from_str(&src[(offset + sample_idx +
                                                                                1)..]) {
                                             Ok(f) => f,
@@ -106,7 +108,7 @@ mod tests {
     fn test_counter() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let mut res = Vec::new();
-        assert!(parse_statsd("a.b:3.1|c\na-b:4|c|@0.1\n", &mut res, metric));
+        assert!(parse_statsd("a.b:3.1|c\na-b:4|c|@0.1\na-b:5.2|c@0.2\n", &mut res, metric));
         assert_eq!(res[0].aggr_method, AggregationMethod::Sum);
         assert_eq!(res[0].name, "a.b");
         assert_eq!(res[0].persist, false);
@@ -115,6 +117,10 @@ mod tests {
         assert_eq!(res[1].name, "a-b");
         assert_eq!(res[1].persist, false);
         assert_eq!(Some(40.0), res[1].value());
+        assert_eq!(res[2].aggr_method, AggregationMethod::Sum);
+        assert_eq!(res[2].name, "a-b");
+        assert_eq!(res[2].persist, false);
+        assert_eq!(Some(26.0), res[2].value());
     }
 
     #[test]
@@ -157,7 +163,7 @@ mod tests {
     fn test_metric_sample_gauge() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let mut res = Vec::new();
-        assert!(parse_statsd("foo:1|g|@0.22\nbar:101|g|@2\n", &mut res, metric));
+        assert!(parse_statsd("foo:1|g|@+0.22\nbar:101|g|@2\nbaz:2|g@0.2\nqux:4|g@0.1", &mut res, metric));
         //                              0         A     F
         assert_eq!(res[0].aggr_method, AggregationMethod::Set);
         assert_eq!(res[0].name, "foo");
@@ -168,6 +174,16 @@ mod tests {
         assert_eq!(res[1].name, "bar");
         assert_eq!(res[1].persist, true);
         assert_eq!(Some(101.0), res[1].query(1.0));
+
+        assert_eq!(res[2].aggr_method, AggregationMethod::Set);
+        assert_eq!(res[2].name, "baz");
+        assert_eq!(res[2].persist, true);
+        assert_eq!(Some(2.0), res[2].query(1.0));
+
+        assert_eq!(res[3].aggr_method, AggregationMethod::Set);
+        assert_eq!(res[3].name, "qux");
+        assert_eq!(res[3].persist, true);
+        assert_eq!(Some(4.0), res[3].query(1.0));
     }
 
     #[test]
