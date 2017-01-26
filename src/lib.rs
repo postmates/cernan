@@ -16,7 +16,7 @@
 //! If you'd like to learn more, please do have a look in
 //! our [wiki](https://github.com/postmates/cernan/wiki/).
 #![deny(trivial_numeric_casts,
-        // missing_docs,
+// missing_docs,
         unstable_features,
         unused_import_braces,
 )]

@@ -1,8 +1,8 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use hopper;
 use metric;
-use protocols::native::{AggregationMethod, Payload};
 use protobuf;
+use protocols::native::{AggregationMethod, Payload};
 use std::io;
 use std::io::Read;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};

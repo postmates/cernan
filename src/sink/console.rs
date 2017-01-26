@@ -1,4 +1,5 @@
-//! TODO 
+//! TODO
+ 
 use buckets::Buckets;
 use chrono;
 use metric::{AggregationMethod, LogLine, Telemetry};
@@ -19,7 +20,8 @@ impl Console {
     ///
     /// ```
     /// use cernan::sink::{Console, ConsoleConfig};
-    /// let config = ConsoleConfig { config_path: "sinks.console".to_string(), bin_width: 2 };
+    /// let config = ConsoleConfig { config_path: "sinks.console".to_string(),
+    /// bin_width: 2 };
     /// let c = Console::new(config);
     /// ```
     pub fn new(config: ConsoleConfig) -> Console {
@@ -29,10 +31,10 @@ impl Console {
 
 /// The configuration struct for Console. There's not a whole lot to configure
 /// here, independent of other sinks, but Console does do aggregations and that
-/// requires knowing what the user wants for `bin_width`. 
+/// requires knowing what the user wants for `bin_width`.
 #[derive(Debug)]
 pub struct ConsoleConfig {
-    /// The sink's unique name in the routing topology. 
+    /// The sink's unique name in the routing topology.
     pub config_path: String,
     /// Sets the bin width for Console's underlying
     /// [bucket](../buckets/struct.Bucket.html).

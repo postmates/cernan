@@ -163,7 +163,9 @@ mod tests {
     fn test_metric_sample_gauge() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let mut res = Vec::new();
-        assert!(parse_statsd("foo:1|g|@+0.22\nbar:101|g|@2\nbaz:2|g@0.2\nqux:4|g@0.1", &mut res, metric));
+        assert!(parse_statsd("foo:1|g|@+0.22\nbar:101|g|@2\nbaz:2|g@0.2\nqux:4|g@0.1",
+                             &mut res,
+                             metric));
         //                              0         A     F
         assert_eq!(res[0].aggr_method, AggregationMethod::Set);
         assert_eq!(res[0].name, "foo");
