@@ -73,11 +73,14 @@ fn main() {
 
     // SINKS
     //
-    let mut flush_sends = Vec::new();
     if let Some(config) = args.console {
         let (console_send, console_recv) =
             hopper::channel(&config.config_path, &args.data_directory).unwrap();
-        flush_sends.push(console_send.clone());
+        let flush_channel = console_send.clone();
+        let flush_interval = config.flush_interval;
+        joins.push(thread::spawn(move || {
+            cernan::source::FlushTimer::new(flush_channel, flush_interval).run();
+        }));
         sends.insert(config.config_path.clone(), console_send);
         joins.push(thread::spawn(move || {
             cernan::sink::Console::new(config).run(console_recv);
@@ -86,7 +89,11 @@ fn main() {
     if let Some(config) = args.null {
         let (null_send, null_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
-        flush_sends.push(null_send.clone());
+        let flush_channel = null_send.clone();
+        let flush_interval = config.flush_interval;
+        joins.push(thread::spawn(move || {
+            cernan::source::FlushTimer::new(flush_channel, flush_interval).run();
+        }));
         sends.insert(config.config_path.clone(), null_send);
         joins.push(thread::spawn(move || {
             cernan::sink::Null::new(config).run(null_recv);
@@ -95,25 +102,37 @@ fn main() {
     if let Some(config) = args.wavefront {
         let (wf_send, wf_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
-        flush_sends.push(wf_send.clone());
+        let flush_channel = wf_send.clone();
+        let flush_interval = config.flush_interval;
+        joins.push(thread::spawn(move || {
+            cernan::source::FlushTimer::new(flush_channel, flush_interval).run();
+        }));
         sends.insert(config.config_path.clone(), wf_send);
         joins.push(thread::spawn(move || {
             cernan::sink::Wavefront::new(config).run(wf_recv);
         }));
     }
     if let Some(config) = args.prometheus {
-        let (wf_send, wf_recv) = hopper::channel(&config.config_path, &args.data_directory)
+        let (prometheus_send, prometheus_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
-        flush_sends.push(wf_send.clone());
-        sends.insert(config.config_path.clone(), wf_send);
+        let flush_channel = prometheus_send.clone();
+        let flush_interval = config.flush_interval;
         joins.push(thread::spawn(move || {
-            cernan::sink::Prometheus::new(config).run(wf_recv);
+            cernan::source::FlushTimer::new(flush_channel, flush_interval).run();
+        }));
+        sends.insert(config.config_path.clone(), prometheus_send);
+        joins.push(thread::spawn(move || {
+            cernan::sink::Prometheus::new(config).run(prometheus_recv);
         }));
     }
     if let Some(config) = args.influxdb {
         let (flx_send, flx_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
-        flush_sends.push(flx_send.clone());
+        let flush_channel = flx_send.clone();
+        let flush_interval = config.flush_interval;
+        joins.push(thread::spawn(move || {
+            cernan::source::FlushTimer::new(flush_channel, flush_interval).run();
+        }));
         sends.insert(config.config_path.clone(), flx_send);
         joins.push(thread::spawn(move || {
             cernan::sink::InfluxDB::new(config).run(flx_recv);
@@ -122,7 +141,11 @@ fn main() {
     if let Some(config) = args.native_sink_config {
         let (cernan_send, cernan_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
-        flush_sends.push(cernan_send.clone());
+        let flush_channel = cernan_send.clone();
+        let flush_interval = config.flush_interval;
+        joins.push(thread::spawn(move || {
+            cernan::source::FlushTimer::new(flush_channel, flush_interval).run();
+        }));
         sends.insert(config.config_path.clone(), cernan_send);
         joins.push(thread::spawn(move || {
             cernan::sink::Native::new(config).run(cernan_recv);
@@ -132,7 +155,11 @@ fn main() {
         let f: FirehoseConfig = config.clone();
         let (firehose_send, firehose_recv) =
             hopper::channel(&config.config_path, &args.data_directory).unwrap();
-        flush_sends.push(firehose_send.clone());
+        let flush_channel = firehose_send.clone();
+        let flush_interval = config.flush_interval;
+        joins.push(thread::spawn(move || {
+            cernan::source::FlushTimer::new(flush_channel, flush_interval).run();
+        }));
         sends.insert(config.config_path.clone(), firehose_send);
         joins.push(thread::spawn(move || {
             cernan::sink::Firehose::new(f).run(firehose_recv);
@@ -202,11 +229,6 @@ fn main() {
 
     // BACKGROUND
     //
-
-    let flush_interval = args.flush_interval;
-    joins.push(thread::spawn(move || {
-        cernan::source::FlushTimer::new(flush_sends, flush_interval).run();
-    }));
 
     joins.push(thread::spawn(move || {
         cernan::time::update_time();

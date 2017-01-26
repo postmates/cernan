@@ -14,11 +14,12 @@ impl Null {
 #[derive(Debug)]
 pub struct NullConfig {
     pub config_path: String,
+    pub flush_interval: u64,
 }
 
 impl NullConfig {
-    pub fn new(config_path: String) -> NullConfig {
-        NullConfig { config_path: config_path }
+    pub fn new(config_path: String, flush_interval: u64) -> NullConfig {
+        NullConfig { config_path: config_path, flush_interval: flush_interval }
     }
 }
 

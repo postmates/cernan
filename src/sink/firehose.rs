@@ -20,6 +20,7 @@ pub struct FirehoseConfig {
     pub batch_size: usize,
     pub region: Region,
     pub config_path: String,
+    pub flush_interval: u64,
 }
 
 pub struct Firehose {

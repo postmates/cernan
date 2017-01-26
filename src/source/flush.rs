@@ -1,19 +1,19 @@
+use hopper;
 use metric;
 use source::Source;
 use std::thread::sleep;
 use std::time::Duration;
-use util;
-use util::send;
 
+pub type Channel = hopper::Sender<metric::Event>;
 pub struct FlushTimer {
-    chans: util::Channel,
+    chan: Channel,
     interval: u64,
 }
 
 impl FlushTimer {
-    pub fn new(chans: util::Channel, interval: u64) -> FlushTimer {
+    pub fn new(chan: Channel, interval: u64) -> FlushTimer {
         FlushTimer {
-            chans: chans,
+            chan: chan,
             interval: interval,
         }
     }
@@ -25,7 +25,7 @@ impl Source for FlushTimer {
         debug!("flush-interval: {:?}", duration);
         loop {
             sleep(duration);
-            send("flush", &mut self.chans, metric::Event::TimerFlush);
+            self.chan.send(metric::Event::TimerFlush);
         }
     }
 }
