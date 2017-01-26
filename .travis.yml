@@ -1,8 +1,24 @@
 language: rust
+before_script: (cargo install rustfmt || true)
 rust:
   - stable
   - beta
   - nightly
+
+script:
+  - cargo build
+  - cargo test
+  - cargo fmt -- --write-mode=diff
+
+cache:
+  apt: true
+  directories:
+    - $HOME/.cargo
+    - target/debug/build
+
+before_cache:
+    # Travis can't cache files that are not readable by "others"
+    - chmod -R a+r $HOME/.cargo
 
 matrix:
   allow_failures:
