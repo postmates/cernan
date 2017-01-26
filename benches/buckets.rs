@@ -5,12 +5,12 @@ extern crate cernan;
 extern crate chrono;
 extern crate rand;
 
+use self::test::Bencher;
 use cernan::buckets;
 use cernan::metric::Telemetry;
 
 use chrono::{TimeZone, UTC};
 use rand::Rng;
-use self::test::Bencher;
 
 #[bench]
 fn bench_single_timer(b: &mut Bencher) {

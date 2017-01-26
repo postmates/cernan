@@ -161,7 +161,7 @@ impl<'a> Payload<'a> {
                         state.push_nil();
                     }
                 }
-            } 
+            }
             None => {
                 error!("[log_tag_value] no key provided");
                 state.push_nil();
@@ -378,13 +378,12 @@ impl filter::Filter for ProgrammableFilter {
             metric::Event::Telemetry(mut m) => {
                 self.state.get_global("process_metric");
                 if !self.state.is_fn(-1) {
-                    let fail =
-                        metric::Event::Telemetry(sync::Arc::new(Some(metric::Telemetry::new(format!("cernan.filture.\
-                                                                              {}.process_metric.\
-                                                                              failure",
-                                                                             self.path),
-                                                                     1.0)
-                            .aggr_sum())));
+                    let filter_telem = metric::Telemetry::new(format!("cernan.filter.{}.\
+                                                                       process_metric.failure",
+                                                                      self.path),
+                                                              1.0)
+                        .aggr_sum();
+                    let fail = metric::Event::Telemetry(sync::Arc::new(Some(filter_telem)));
                     return Err(filter::FilterError::NoSuchFunction("process_metric", fail));
                 }
 
@@ -413,8 +412,8 @@ impl filter::Filter for ProgrammableFilter {
                     let fail =
                         metric::Event::new_telemetry(metric::Telemetry::new(format!("cernan.filter.\
                                                                                   {}.tick.failure",
-                                                                                 self.path),
-                                                                         1.0)
+                                                                                    self.path),
+                                                                            1.0)
                             .aggr_sum());
                     return Err(filter::FilterError::NoSuchFunction("tick", fail));
                 }
@@ -443,8 +442,8 @@ impl filter::Filter for ProgrammableFilter {
                         metric::Event::new_telemetry(metric::Telemetry::new(format!("cernan.filter.\
                                                                                   {}.process_log.\
                                                                                   failure",
-                                                                                 self.path),
-                                                                         1.0)
+                                                                                    self.path),
+                                                                            1.0)
                             .aggr_sum());
                     return Err(filter::FilterError::NoSuchFunction("process_log", fail));
                 }

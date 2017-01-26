@@ -177,13 +177,13 @@ impl Buckets {
 mod test {
     extern crate quickcheck;
 
+    use self::quickcheck::{QuickCheck, TestResult};
+    use super::*;
     use chrono::{TimeZone, UTC};
     use metric::Telemetry;
     use quantiles::ckms::CKMS;
-    use self::quickcheck::{QuickCheck, TestResult};
     use std::cmp::Ordering;
     use std::collections::{HashMap, HashSet};
-    use super::*;
 
     fn within(width: i64, lhs: i64, rhs: i64) -> bool {
         (lhs / width) == (rhs / width)

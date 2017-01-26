@@ -42,7 +42,7 @@ pub fn parse_statsd(source: &str,
                         metric = metric.timestamp(time::now());
                         let signed = match &src[offset..(offset + 1)] {
                             "+" | "-" => true,
-                            _ => false, 
+                            _ => false,
                         };
                         offset += pipe_idx + 1;
                         if offset >= len {
@@ -61,7 +61,7 @@ pub fn parse_statsd(source: &str,
                                     }
                                     "c|" | "c" => {
                                         let sample = match f64::from_str(&src[(offset + sample_idx +
-                                                                               1)..]) {
+                                                                           1)..]) {
                                             Ok(f) => f,
                                             Err(_) => return false,
                                         };
@@ -100,9 +100,9 @@ pub fn parse_statsd(source: &str,
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use metric::{AggregationMethod, Telemetry};
     use std::sync;
-    use super::*;
 
     #[test]
     fn test_counter() {

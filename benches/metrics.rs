@@ -3,10 +3,10 @@
 extern crate test;
 extern crate cernan;
 
+use self::test::Bencher;
 use cernan::metric::{TagMap, Telemetry};
 use cernan::protocols::graphite::parse_graphite;
 use cernan::protocols::statsd::parse_statsd;
-use self::test::Bencher;
 use std::sync;
 
 #[bench]

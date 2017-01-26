@@ -1,5 +1,5 @@
 language: rust
-before_script: (cargo install rustfmt || true)
+cache: cargo
 rust:
   - stable
   - beta
@@ -10,22 +10,16 @@ script:
   - cargo test
   - cargo fmt -- --write-mode=diff
 
-cache:
-  apt: true
-  directories:
-    - $HOME/.cargo
-    - target/debug/build
-
-before_cache:
-    # Travis can't cache files that are not readable by "others"
-    - chmod -R a+r $HOME/.cargo
-
 matrix:
   allow_failures:
   - rust: nightly
 
 before_install:
   - sudo apt-get update
+
+install:
+  - (cargo install rustfmt || true)
+  - PATH=$PATH:/home/travis/.cargo/bin
 
 addons:
   apt:

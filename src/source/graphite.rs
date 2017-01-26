@@ -1,3 +1,4 @@
+use super::Source;
 use metric;
 use protocols::graphite::parse_graphite;
 use std::io::BufReader;
@@ -7,7 +8,6 @@ use std::net::{TcpListener, TcpStream};
 use std::str;
 use std::sync::Arc;
 use std::thread;
-use super::Source;
 use util;
 use util::send;
 
@@ -52,18 +52,14 @@ fn handle_tcp(chans: util::Channel,
               tags: Arc<metric::TagMap>,
               listner: TcpListener)
               -> thread::JoinHandle<()> {
-    thread::spawn(move || {
-        for stream in listner.incoming() {
-            if let Ok(stream) = stream {
-                debug!("new peer at {:?} | local addr for peer {:?}",
-                       stream.peer_addr(),
-                       stream.local_addr());
-                let tags = tags.clone();
-                let chans = chans.clone();
-                thread::spawn(move || {
-                    handle_stream(chans, tags, stream);
-                });
-            }
+    thread::spawn(move || for stream in listner.incoming() {
+        if let Ok(stream) = stream {
+            debug!("new peer at {:?} | local addr for peer {:?}",
+                   stream.peer_addr(),
+                   stream.local_addr());
+            let tags = tags.clone();
+            let chans = chans.clone();
+            thread::spawn(move || { handle_stream(chans, tags, stream); });
         }
     })
 }

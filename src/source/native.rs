@@ -1,3 +1,4 @@
+use super::Source;
 use byteorder::{BigEndian, ReadBytesExt};
 use hopper;
 use metric;
@@ -8,7 +9,6 @@ use std::io::Read;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::str;
 use std::thread;
-use super::Source;
 use util;
 
 pub struct NativeServer {
@@ -44,18 +44,14 @@ fn handle_tcp(chans: util::Channel,
               tags: metric::TagMap,
               listner: TcpListener)
               -> thread::JoinHandle<()> {
-    thread::spawn(move || {
-        for stream in listner.incoming() {
-            if let Ok(stream) = stream {
-                debug!("new peer at {:?} | local addr for peer {:?}",
-                       stream.peer_addr(),
-                       stream.local_addr());
-                let tags = tags.clone();
-                let chans = chans.clone();
-                thread::spawn(move || {
-                    handle_stream(chans, tags, stream);
-                });
-            }
+    thread::spawn(move || for stream in listner.incoming() {
+        if let Ok(stream) = stream {
+            debug!("new peer at {:?} | local addr for peer {:?}",
+                   stream.peer_addr(),
+                   stream.local_addr());
+            let tags = tags.clone();
+            let chans = chans.clone();
+            thread::spawn(move || { handle_stream(chans, tags, stream); });
         }
     })
 }
@@ -93,7 +89,7 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         metric = match aggr_type {
                             AggregationMethod::SET => metric.aggr_set(),
                             AggregationMethod::SUM => metric.aggr_sum(),
-                            AggregationMethod::SUMMARIZE => metric.aggr_summarize(), 
+                            AggregationMethod::SUMMARIZE => metric.aggr_summarize(),
                         };
                         metric = if point.get_persisted() {
                             metric.persist()
