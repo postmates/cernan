@@ -1,5 +1,5 @@
 //! TODO
- 
+
 use buckets::Buckets;
 use chrono;
 use metric::{AggregationMethod, LogLine, Telemetry};
@@ -94,7 +94,7 @@ impl Sink for Console {
                             tgt.push_str(&f.to_string());
                             tgt.push_str("\n");
                         }
-                    } 
+                    }
                     AggregationMethod::Set => {
                         let mut tgt = &mut sets;
                         if let Some(f) = value.value() {

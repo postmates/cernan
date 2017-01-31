@@ -37,10 +37,10 @@ pub fn parse_graphite(source: &str,
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use chrono::{TimeZone, UTC};
     use metric::{AggregationMethod, Telemetry};
     use std::sync;
-    use super::*;
 
     #[test]
     fn test_parse_graphite() {

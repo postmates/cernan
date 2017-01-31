@@ -2,8 +2,7 @@ use metric::{LogLine, Telemetry};
 use sink::{Sink, Valve};
 use std::sync;
 
-pub struct Null {
-}
+pub struct Null {}
 
 impl Null {
     pub fn new(_config: NullConfig) -> Null {

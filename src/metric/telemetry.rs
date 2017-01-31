@@ -436,9 +436,9 @@ mod tests {
     extern crate rand;
     extern crate quickcheck;
 
-    use metric::{AggregationMethod, Event, Telemetry};
     use self::quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use self::rand::{Rand, Rng};
+    use metric::{AggregationMethod, Event, Telemetry};
     use std::cmp;
     use std::sync::Arc;
 
@@ -473,7 +473,7 @@ mod tests {
             match i {
                 0 => AggregationMethod::Sum,
                 1 => AggregationMethod::Set,
-                _ => AggregationMethod::Summarize, 
+                _ => AggregationMethod::Summarize,
             }
         }
     }

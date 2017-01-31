@@ -92,7 +92,7 @@ impl Wavefront {
 
                             tag_buf.clear();
                         }
-                    } 
+                    }
                     AggregationMethod::Summarize => {
                         fmt_tags(&value.tags, &mut tag_buf);
                         for tup in &[("min", 0.0),
@@ -206,11 +206,11 @@ impl Sink for Wavefront {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use chrono::{TimeZone, UTC};
     use metric::{TagMap, Telemetry};
     use sink::Sink;
     use std::sync::Arc;
-    use super::*;
 
     #[test]
     fn test_format_wavefront() {

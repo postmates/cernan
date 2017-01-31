@@ -224,11 +224,11 @@ impl Sink for InfluxDB {
 mod test {
     extern crate quickcheck;
 
+    use super::*;
     use chrono::{TimeZone, UTC};
     use metric::{TagMap, Telemetry};
     use sink::Sink;
     use std::sync::Arc;
-    use super::*;
 
     #[test]
     fn test_format_influxdb() {

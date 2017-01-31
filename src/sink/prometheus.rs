@@ -125,7 +125,7 @@ impl Handler for SenderHandler {
         // aren't asking for plaintext you're asking for protobuf.
         match req.headers.get() {
             Some(&ContentType(Mime(TopLevel::Text, SubLevel::Plain, _))) => write_text(aggrs, res),
-            _ => write_binary(aggrs, res), 
+            _ => write_binary(aggrs, res),
         }
     }
 }
@@ -179,7 +179,7 @@ impl Sink for Prometheus {
         // for-sure but very, very likely.
         match aggrs.binary_search_by(|probe| probe.partial_cmp(&metric).unwrap()) {
             Ok(idx) => aggrs[idx] += metric,
-            Err(idx) => aggrs.insert(idx, metric), 
+            Err(idx) => aggrs.insert(idx, metric),
         };
     }
 

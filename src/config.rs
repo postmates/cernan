@@ -481,15 +481,13 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                     if is_enabled {
                         let mut sconfig = StatsdConfig::default();
                         if let Some(p) = tbl.lookup("port") {
-                            sconfig.port =
-                                p.as_integer().expect("statsd-port must be integer") as u16;
+                            sconfig.port = p.as_integer().expect("statsd-port must be integer") as
+                                           u16;
                         }
                         if let Some(p) = tbl.lookup("delete-gauges") {
-                            sconfig.delete_gauges =
-                                p.as_bool()
-                                    .expect("statsd delete-gauges \
-                                             must be \
-                                             boolean") as bool;
+                            sconfig.delete_gauges = p.as_bool()
+                                .expect("statsd delete-gauges must be boolean") as
+                                                    bool;
                         }
                         if let Some(fwds) = tbl.lookup("forwards") {
                             sconfig.forwards = fwds.as_slice()
@@ -546,8 +544,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                     if is_enabled {
                         let mut gconfig = GraphiteConfig::default();
                         if let Some(p) = tbl.lookup("port") {
-                            gconfig.port =
-                                p.as_integer().expect("graphite-port must be integer") as u16;
+                            gconfig.port = p.as_integer().expect("graphite-port must be integer") as
+                                           u16;
                         }
                         if let Some(fwds) = tbl.lookup("forwards") {
                             gconfig.forwards = fwds.as_slice()
@@ -569,8 +567,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 if is_enabled {
                     let mut gconfig = GraphiteConfig::default();
                     if let Some(p) = value.lookup("graphite.port") {
-                        gconfig.port =
-                            p.as_integer().expect("graphite-port must be integer") as u16;
+                        gconfig.port = p.as_integer().expect("graphite-port must be integer") as
+                                       u16;
                     }
                     if let Some(fwds) = value.lookup("graphite.forwards") {
                         gconfig.forwards = fwds.as_slice()
@@ -649,11 +647,11 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use filter::ProgrammableFilterConfig;
     use metric::TagMap;
     use rusoto::Region;
     use std::path::{Path, PathBuf};
-    use super::*;
 
     #[test]
     fn config_file_data_directory() {

@@ -56,7 +56,7 @@ pub trait Sink {
                                     self.deliver_line(line);
                                 }
                             }
-                        }                            
+                        }
                         Valve::Closed => {
                             attempts += 1;
                             continue;
