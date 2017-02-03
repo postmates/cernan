@@ -59,8 +59,9 @@ impl Sink for Native {
         // discard point
     }
 
-    fn run(&mut self, mut recv: hopper::Receiver<metric::Event>) {
+    fn run(&mut self, recv: hopper::Receiver<metric::Event>) {
         let mut attempts = 0;
+        let mut recv = recv.into_iter();
         loop {
             time::delay(attempts);
             if self.buffer.len() > 10_000 {

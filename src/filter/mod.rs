@@ -29,9 +29,10 @@ pub trait Filter {
                event: metric::Event,
                res: &mut Vec<metric::Event>)
                -> Result<(), FilterError>;
-    fn run(&mut self, mut recv: hopper::Receiver<metric::Event>, mut chans: util::Channel) {
+    fn run(&mut self, recv: hopper::Receiver<metric::Event>, mut chans: util::Channel) {
         let mut attempts = 0;
         let mut events = Vec::with_capacity(64);
+        let mut recv = recv.into_iter();
         loop {
             time::delay(attempts);
             match recv.next() {

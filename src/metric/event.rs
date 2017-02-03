@@ -1,7 +1,12 @@
 use metric::{LogLine, Telemetry};
 use std::sync;
 
-include!(concat!(env!("OUT_DIR"), "/event_types.rs"));
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
+pub enum Event {
+    Telemetry(sync::Arc<Option<Telemetry>>),
+    Log(sync::Arc<Option<LogLine>>),
+    TimerFlush,
+}
 
 impl Event {
     #[inline]

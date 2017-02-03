@@ -1,7 +1,13 @@
 use metric::TagMap;
 use time;
 
-include!(concat!(env!("OUT_DIR"), "/logline_types.rs"));
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
+pub struct LogLine {
+    pub time: i64,
+    pub path: String,
+    pub value: String,
+    pub tags: TagMap,
+}
 
 impl LogLine {
     pub fn new<S>(path: S, value: S) -> LogLine

@@ -1,7 +1,10 @@
 use std::cmp;
 use std::slice::Iter;
 
-include!(concat!(env!("OUT_DIR"), "/tagmap_types.rs"));
+#[derive(Clone,Debug,PartialEq,Serialize,Deserialize)]
+pub struct TagMap<K, V> {
+    inner: Vec<(K, V)>,
+}
 
 pub struct TagMapIterator<'a, K, V>
     where V: 'a,
