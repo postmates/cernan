@@ -2,7 +2,6 @@
 name = "cernan"
 version = "0.5.1"
 authors = ["Brian L. Troutwine <blt@postmates.com>"]
-build = "build.rs"
 
 [[bin]]
 name = "cernan"
@@ -16,7 +15,7 @@ clap = "2.10.0"
 fern = "0.3.5"
 flate2 = "0.2"
 glob = "0.2.11"
-hopper = "0.1.2"
+hopper = "0.2"
 hyper = "0.10"
 lazy_static = "0.2.1"
 libc = "0.2"
@@ -25,19 +24,17 @@ lua = "*"
 protobuf = "1.0"
 quantiles = "0.3"
 rand = "0.3"
-rusoto = {version = "0.21.0", features = ["firehose"]}
+rusoto = {version = "0.22", features = ["firehose"]}
 seahash = "3.0"
-serde = "0.8"
-serde_json = "0.8"
+serde = "0.9"
+serde_derive = "0.9"
+serde_json = "0.9"
 toml = "0.2.0"
-uuid = {version = "0.3", features = ["v4"]}
+uuid = {version = "0.4", features = ["v4"]}
 
 [dev-dependencies]
 tempdir = "0.3"
 quickcheck = "0.4"
-
-[build-dependencies]
-serde_codegen = "0.8"
 
 [profile.dev]
 codegen-units = 4

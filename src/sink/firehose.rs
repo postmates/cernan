@@ -4,11 +4,13 @@ use chrono::offset::utc::UTC;
 use metric::{LogLine, Telemetry};
 
 use rusoto::{DefaultCredentialsProvider, Region};
+use rusoto::default_tls_client;
 use rusoto::firehose::{KinesisFirehoseClient, PutRecordBatchInput, Record};
 use rusoto::firehose::PutRecordBatchError::*;
 
 use serde_json;
 use serde_json::Map;
+use serde_json::value::Value;
 use sink::{Sink, Valve};
 use std::sync;
 use time;
@@ -43,7 +45,8 @@ impl Firehose {
 impl Sink for Firehose {
     fn flush(&mut self) {
         let provider = DefaultCredentialsProvider::new().unwrap();
-        let client = KinesisFirehoseClient::new(provider, self.region);
+        let dispatcher = default_tls_client().unwrap();
+        let client = KinesisFirehoseClient::new(dispatcher, provider, self.region);
 
         if self.buffer.is_empty() {
             return;
@@ -55,13 +58,14 @@ impl Sink for Firehose {
                 records: chunk.iter()
                     .map(|m| {
                         let mut pyld = Map::new();
-                        pyld.insert(String::from("Path"), (*m.path).to_string());
-                        pyld.insert(String::from("Payload"), m.value.clone());
-                        pyld.insert(String::from("timestamp"), format_time(m.time));
+                        pyld.insert(String::from("Path"), Value::String((*m.path).to_string()));
+                        pyld.insert(String::from("Payload"), Value::String(m.value.clone()));
+                        pyld.insert(String::from("timestamp"),
+                                    Value::String(format_time(m.time)));
                         pyld.insert(String::from("Uuid"),
-                                    Uuid::new_v4().hyphenated().to_string());
+                                    Value::String(Uuid::new_v4().hyphenated().to_string()));
                         for &(ref k, ref v) in m.tags.iter() {
-                            pyld.insert(k.clone(), v.clone());
+                            pyld.insert(k.clone(), Value::String(v.clone()));
                         }
                         Record { data: serde_json::ser::to_vec(&pyld).unwrap() }
                     })
