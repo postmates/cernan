@@ -30,7 +30,6 @@ pub struct Args {
     pub files: Vec<FileServerConfig>,
     pub filters: HashMap<String, ProgrammableFilterConfig>,
     pub firehosen: Vec<FirehoseConfig>,
-    pub flush_interval: u64,
     pub graphites: HashMap<String, GraphiteConfig>,
     pub native_sink_config: Option<NativeConfig>,
     pub native_server_config: Option<NativeServerConfig>,
@@ -144,8 +143,6 @@ pub fn parse_args() -> Args {
                 graphites: graphites,
                 native_server_config: None,
                 native_sink_config: None,
-                flush_interval: u64::from_str(args.value_of("flush-interval").unwrap())
-                    .expect("flush-interval must be an integer"),
                 console: console,
                 null: null,
                 wavefront: wavefront,
@@ -687,10 +684,6 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         graphites: graphites,
         native_sink_config: native_sink_config,
         native_server_config: native_server_config,
-        flush_interval: value.lookup("flush-interval")
-            .unwrap_or(&Value::Integer(60))
-            .as_integer()
-            .expect("flush-interval must be integer") as u64,
         console: console,
         null: null,
         wavefront: wavefront,
@@ -764,7 +757,6 @@ scripts-directory = "/foo/bar"
         assert_eq!(args.statsds.get("sources.statsd").unwrap().port, 8125);
         assert!(!args.graphites.is_empty());
         assert_eq!(args.graphites.get("sources.graphite").unwrap().port, 2003);
-        assert_eq!(args.flush_interval, 60);
         assert!(args.console.is_none());
         assert!(args.null.is_none());
         assert_eq!(true, args.firehosen.is_empty());
@@ -1477,7 +1469,6 @@ mission = "from_gad"
         let graphite_config = args.graphites.get("sources.graphite").unwrap();
         assert_eq!(graphite_config.port, 1034);
         assert_eq!(graphite_config.tags, tags);
-        assert_eq!(args.flush_interval, 128);
         assert!(args.console.is_some());
         assert!(args.null.is_some());
         assert!(args.firehosen.is_empty());
