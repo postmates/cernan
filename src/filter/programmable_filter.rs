@@ -318,6 +318,7 @@ pub struct ProgrammableFilter {
     state: lua::State,
     path: String,
     global_tags: metric::TagMap,
+    last_flush_idx: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -365,6 +366,7 @@ impl ProgrammableFilter {
             state: state,
             path: config.config_path,
             global_tags: config.tags,
+            last_flush_idx: 0,
         }
     }
 }
@@ -406,7 +408,8 @@ impl filter::Filter for ProgrammableFilter {
                 }
                 Ok(())
             }
-            metric::Event::TimerFlush => {
+            metric::Event::TimerFlush(flush_idx) if self.last_flush_idx >= flush_idx => Ok(()),
+            metric::Event::TimerFlush(flush_idx) => {
                 self.state.get_global("tick");
                 if !self.state.is_fn(-1) {
                     let fail =
@@ -433,6 +436,8 @@ impl filter::Filter for ProgrammableFilter {
                 for mt in pyld.metrics {
                     res.push(metric::Event::new_telemetry(*mt));
                 }
+                res.push(event);
+                self.last_flush_idx = flush_idx;
                 Ok(())
             }
             metric::Event::Log(mut l) => {

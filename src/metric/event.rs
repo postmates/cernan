@@ -5,7 +5,7 @@ use std::sync;
 pub enum Event {
     Telemetry(sync::Arc<Option<Telemetry>>),
     Log(sync::Arc<Option<LogLine>>),
-    TimerFlush,
+    TimerFlush(u32),
 }
 
 impl Event {
