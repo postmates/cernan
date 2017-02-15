@@ -251,15 +251,12 @@ mod integration {
                                                                    "count_per_tick: 5")));
 
             events.clear();
-            println!("EVENTS1: {:?}", events);
             for ev in &[log2, log3] {
                 let _ = cs.process(ev.clone(), &mut events);
             }
             events.clear();
-            println!("EVENTS2: {:?}", events);
             let res = cs.process(flush2, &mut events);
             assert!(res.is_ok());
-            println!("EVENTS3: {:?}", events);
 
             assert!(!events.is_empty());
             assert_eq!(events.len(), 3);
