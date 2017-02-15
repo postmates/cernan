@@ -527,7 +527,7 @@ mod tests {
         fn rand<R: Rng>(rng: &mut R) -> Event {
             let i: usize = rng.gen();
             match i % 3 {
-                0 => Event::TimerFlush,
+                0 => Event::TimerFlush(rng.gen()),
                 _ => Event::Telemetry(Arc::new(Some(rng.gen()))),
             }
         }
