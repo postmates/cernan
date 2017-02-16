@@ -32,9 +32,9 @@ addons:
       - binutils-dev
 
 after_success: |
-  wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
-  tar xzf master.tar.gz &&
-  cd kcov-master &&
+  wget https://github.com/SimonKagstrom/kcov/archive/v33.tar.gz && 
+  tar xzf v33.tar.gz &&
+  cd kcov-33 &&
   mkdir build &&
   cd build &&
   cmake .. &&
