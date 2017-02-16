@@ -167,10 +167,9 @@ impl Source for FileServer {
                         }
                     }
                     if !lines.is_empty() {
-                        for l in lines {
+                        for l in lines.drain(..) {
                             send("file", &mut self.chans, metric::Event::new_log(l));
                         }
-                        lines = Vec::new();
                     }
                 }
                 if start.elapsed() >= glob_delay {
