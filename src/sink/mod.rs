@@ -53,7 +53,7 @@ pub trait Sink {
                                     self.flush();
                                     last_flush_idx = idx;
                                 }
-                                Event::TimerFlush(_) => {} 
+                                Event::TimerFlush(_) => {}
                                 Event::Telemetry(metric) => {
                                     self.deliver(metric);
                                 }

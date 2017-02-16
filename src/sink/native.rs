@@ -78,7 +78,7 @@ impl Sink for Native {
                             self.flush();
                             last_flush_idx = idx;
                         }
-                        metric::Event::TimerFlush(_) => {} 
+                        metric::Event::TimerFlush(_) => {}
                         _ => self.buffer.push(event),
                     }
                 }
