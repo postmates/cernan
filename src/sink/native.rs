@@ -4,9 +4,9 @@ use metric;
 use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protobuf::stream::CodedOutputStream;
-use protocols::native::{AggregationMethod, LogLine, LogLine_MetadataEntry, Payload, Telemetry,
-                        Telemetry_MetadataEntry};
+use protocols::native::{AggregationMethod, LogLine, Payload, Telemetry};
 use sink::{Sink, Valve};
+use std::collections::HashMap;
 use std::io::BufWriter;
 use std::mem::replace;
 use std::net::{TcpStream, ToSocketAddrs};
@@ -99,18 +99,15 @@ impl Sink for Native {
                     let persist = m.persist;
                     telem.set_persisted(persist);
                     telem.set_method(method);
-                    let mut meta = Vec::new();
+                    let mut meta = HashMap::new();
                     // TODO
                     //
                     // Learn how to consume bits of the metric without having to
                     // clone like crazy
                     for (k, v) in m.tags.into_iter() {
-                        let mut tm = Telemetry_MetadataEntry::new();
-                        tm.set_key(k.clone());
-                        tm.set_value(v.clone());
-                        meta.push(tm);
+                        meta.insert(k.clone(), v.clone());
                     }
-                    telem.set_metadata(RepeatedField::from_vec(meta));
+                    telem.set_metadata(meta);
                     telem.set_timestamp_ms(m.timestamp * 1000); // FIXME #166
                     telem.set_samples(m.into_vec());
 
@@ -121,18 +118,15 @@ impl Sink for Native {
                     let mut ll = LogLine::new();
                     ll.set_path(l.path);
                     ll.set_value(l.value);
-                    let mut meta = Vec::new();
+                    let mut meta = HashMap::new();
                     // TODO
                     //
                     // Learn how to consume bits of the metric without having to
                     // clone like crazy
                     for (k, v) in l.tags.into_iter() {
-                        let mut tm = LogLine_MetadataEntry::new();
-                        tm.set_key(k.clone());
-                        tm.set_value(v.clone());
-                        meta.push(tm);
+                        meta.insert(k.clone(), v.clone());
                     }
-                    ll.set_metadata(RepeatedField::from_vec(meta));
+                    ll.set_metadata(meta);
                     ll.set_timestamp_ms(l.time * 1000); // FIXME #166
 
                     lines.push(ll);
