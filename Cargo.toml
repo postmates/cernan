@@ -1,6 +1,6 @@
 [package]
 name = "cernan"
-version = "0.5.1"
+version = "0.5.2"
 authors = ["Brian L. Troutwine <blt@postmates.com>"]
 
 [[bin]]
