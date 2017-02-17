@@ -70,12 +70,12 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                 return;
             }
             match protobuf::parse_from_bytes::<Payload>(&buf) {
-                Ok(pyld) => {
-                    for point in pyld.get_points() {
-                        let name: &str = point.get_name();
-                        let smpls: &[f64] = point.get_samples();
+                Ok(mut pyld) => {
+                    for mut point in pyld.take_points().into_iter() {
+                        let name: String = point.take_name();
+                        let smpls: Vec<f64> = point.take_samples();
                         let aggr_type: AggregationMethod = point.get_method();
-                        let meta = point.get_metadata();
+                        let mut meta = point.take_metadata();
                         // FIXME #166
                         let ts: i64 = (point.get_timestamp_ms() as f64 * 0.001) as i64;
 
@@ -98,23 +98,23 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         };
                         metric = metric.timestamp(ts);
                         metric = metric.overlay_tags_from_map(&tags);
-                        for mt in meta {
-                            metric = metric.overlay_tag(mt.get_key(), mt.get_value());
+                        for (key, value) in meta.drain() {
+                            metric = metric.overlay_tag(key, value);
                         }
                         util::send("native", &mut chans, metric::Event::new_telemetry(metric));
                     }
-                    for line in pyld.get_lines() {
-                        let path: &str = line.get_path();
-                        let value: &str = line.get_value();
-                        let meta = line.get_metadata();
+                    for mut line in pyld.take_lines().into_iter() {
+                        let path: String = line.take_path();
+                        let value: String = line.take_value();
+                        let mut meta = line.take_metadata();
                         // FIXME #166
                         let ts: i64 = (line.get_timestamp_ms() as f64 * 0.001) as i64;
 
                         let mut logline = metric::LogLine::new(path, value);
                         logline = logline.time(ts);
                         logline = logline.overlay_tags_from_map(&tags);
-                        for mt in meta {
-                            logline = logline.overlay_tag(mt.get_key(), mt.get_value());
+                        for (key, value) in meta.drain() {
+                            logline = logline.overlay_tag(key, value);
                         }
                         util::send("native", &mut chans, metric::Event::new_log(logline));
 

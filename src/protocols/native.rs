@@ -21,14 +21,14 @@
 use protobuf::Message as Message_imported_for_functions;
 use protobuf::ProtobufEnum as ProtobufEnum_imported_for_functions;
 
-#[derive(Clone,Default)]
+#[derive(PartialEq,Clone,Default)]
 pub struct Payload {
     // message fields
     points: ::protobuf::RepeatedField<Telemetry>,
     lines: ::protobuf::RepeatedField<LogLine>,
     // special fields
     unknown_fields: ::protobuf::UnknownFields,
-    cached_size: ::std::cell::Cell<u32>,
+    cached_size: ::protobuf::CachedSize,
 }
 
 // see codegen.rs for the explanation why impl Sync explicitly
@@ -45,14 +45,7 @@ impl Payload {
             ptr: 0 as *const Payload,
         };
         unsafe {
-            instance.get(|| {
-                Payload {
-                    points: ::protobuf::RepeatedField::new(),
-                    lines: ::protobuf::RepeatedField::new(),
-                    unknown_fields: ::protobuf::UnknownFields::new(),
-                    cached_size: ::std::cell::Cell::new(0),
-                }
-            })
+            instance.get(Payload::new)
         }
     }
 
@@ -81,6 +74,14 @@ impl Payload {
         &self.points
     }
 
+    fn get_points_for_reflect(&self) -> &::protobuf::RepeatedField<Telemetry> {
+        &self.points
+    }
+
+    fn mut_points_for_reflect(&mut self) -> &mut ::protobuf::RepeatedField<Telemetry> {
+        &mut self.points
+    }
+
     // repeated .com.postmates.cernan.LogLine lines = 3;
 
     pub fn clear_lines(&mut self) {
@@ -105,6 +106,14 @@ impl Payload {
     pub fn get_lines(&self) -> &[LogLine] {
         &self.lines
     }
+
+    fn get_lines_for_reflect(&self) -> &::protobuf::RepeatedField<LogLine> {
+        &self.lines
+    }
+
+    fn mut_lines_for_reflect(&mut self) -> &mut ::protobuf::RepeatedField<LogLine> {
+        &mut self.lines
+    }
 }
 
 impl ::protobuf::Message for Payload {
@@ -113,17 +122,17 @@ impl ::protobuf::Message for Payload {
     }
 
     fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {
-        while !try!(is.eof()) {
-            let (field_number, wire_type) = try!(is.read_tag_unpack());
+        while !is.eof()? {
+            let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
                 2 => {
-                    try!(::protobuf::rt::read_repeated_message_into(wire_type, is, &mut self.points));
+                    ::protobuf::rt::read_repeated_message_into(wire_type, is, &mut self.points)?;
                 },
                 3 => {
-                    try!(::protobuf::rt::read_repeated_message_into(wire_type, is, &mut self.lines));
+                    ::protobuf::rt::read_repeated_message_into(wire_type, is, &mut self.lines)?;
                 },
                 _ => {
-                    try!(::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields()));
+                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
             };
         }
@@ -149,16 +158,16 @@ impl ::protobuf::Message for Payload {
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {
         for v in &self.points {
-            try!(os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited));
-            try!(os.write_raw_varint32(v.get_cached_size()));
-            try!(v.write_to_with_cached_sizes(os));
+            os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+            os.write_raw_varint32(v.get_cached_size())?;
+            v.write_to_with_cached_sizes(os)?;
         };
         for v in &self.lines {
-            try!(os.write_tag(3, ::protobuf::wire_format::WireTypeLengthDelimited));
-            try!(os.write_raw_varint32(v.get_cached_size()));
-            try!(v.write_to_with_cached_sizes(os));
+            os.write_tag(3, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+            os.write_raw_varint32(v.get_cached_size())?;
+            v.write_to_with_cached_sizes(os)?;
         };
-        try!(os.write_unknown_fields(self.get_unknown_fields()));
+        os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
     }
 
@@ -174,12 +183,14 @@ impl ::protobuf::Message for Payload {
         &mut self.unknown_fields
     }
 
-    fn type_id(&self) -> ::std::any::TypeId {
-        ::std::any::TypeId::of::<Payload>()
-    }
-
     fn as_any(&self) -> &::std::any::Any {
         self as &::std::any::Any
+    }
+    fn as_any_mut(&mut self) -> &mut ::std::any::Any {
+        self as &mut ::std::any::Any
+    }
+    fn into_any(self: Box<Self>) -> ::std::boxed::Box<::std::any::Any> {
+        self
     }
 
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
@@ -200,13 +211,15 @@ impl ::protobuf::MessageStatic for Payload {
         unsafe {
             descriptor.get(|| {
                 let mut fields = ::std::vec::Vec::new();
-                fields.push(::protobuf::reflect::accessor::make_repeated_message_accessor(
+                fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<Telemetry>>(
                     "points",
-                    Payload::get_points,
+                    Payload::get_points_for_reflect,
+                    Payload::mut_points_for_reflect,
                 ));
-                fields.push(::protobuf::reflect::accessor::make_repeated_message_accessor(
+                fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<LogLine>>(
                     "lines",
-                    Payload::get_lines,
+                    Payload::get_lines_for_reflect,
+                    Payload::mut_lines_for_reflect,
                 ));
                 ::protobuf::reflect::MessageDescriptor::new::<Payload>(
                     "Payload",
@@ -226,30 +239,28 @@ impl ::protobuf::Clear for Payload {
     }
 }
 
-impl ::std::cmp::PartialEq for Payload {
-    fn eq(&self, other: &Payload) -> bool {
-        self.points == other.points &&
-        self.lines == other.lines &&
-        self.unknown_fields == other.unknown_fields
-    }
-}
-
 impl ::std::fmt::Debug for Payload {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         ::protobuf::text_format::fmt(self, f)
     }
 }
 
-#[derive(Clone,Default)]
+impl ::protobuf::reflect::ProtobufValue for Payload {
+    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
+        ::protobuf::reflect::ProtobufValueRef::Message(self)
+    }
+}
+
+#[derive(PartialEq,Clone,Default)]
 pub struct LogLine {
     // message fields
     path: ::protobuf::SingularField<::std::string::String>,
     value: ::protobuf::SingularField<::std::string::String>,
-    metadata: ::protobuf::RepeatedField<LogLine_MetadataEntry>,
+    metadata: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
     timestamp_ms: ::std::option::Option<i64>,
     // special fields
     unknown_fields: ::protobuf::UnknownFields,
-    cached_size: ::std::cell::Cell<u32>,
+    cached_size: ::protobuf::CachedSize,
 }
 
 // see codegen.rs for the explanation why impl Sync explicitly
@@ -266,16 +277,7 @@ impl LogLine {
             ptr: 0 as *const LogLine,
         };
         unsafe {
-            instance.get(|| {
-                LogLine {
-                    path: ::protobuf::SingularField::none(),
-                    value: ::protobuf::SingularField::none(),
-                    metadata: ::protobuf::RepeatedField::new(),
-                    timestamp_ms: ::std::option::Option::None,
-                    unknown_fields: ::protobuf::UnknownFields::new(),
-                    cached_size: ::std::cell::Cell::new(0),
-                }
-            })
+            instance.get(LogLine::new)
         }
     }
 
@@ -315,6 +317,14 @@ impl LogLine {
         }
     }
 
+    fn get_path_for_reflect(&self) -> &::protobuf::SingularField<::std::string::String> {
+        &self.path
+    }
+
+    fn mut_path_for_reflect(&mut self) -> &mut ::protobuf::SingularField<::std::string::String> {
+        &mut self.path
+    }
+
     // optional string value = 2;
 
     pub fn clear_value(&mut self) {
@@ -351,6 +361,14 @@ impl LogLine {
         }
     }
 
+    fn get_value_for_reflect(&self) -> &::protobuf::SingularField<::std::string::String> {
+        &self.value
+    }
+
+    fn mut_value_for_reflect(&mut self) -> &mut ::protobuf::SingularField<::std::string::String> {
+        &mut self.value
+    }
+
     // repeated .com.postmates.cernan.LogLine.MetadataEntry metadata = 3;
 
     pub fn clear_metadata(&mut self) {
@@ -358,22 +376,30 @@ impl LogLine {
     }
 
     // Param is passed by value, moved
-    pub fn set_metadata(&mut self, v: ::protobuf::RepeatedField<LogLine_MetadataEntry>) {
+    pub fn set_metadata(&mut self, v: ::std::collections::HashMap<::std::string::String, ::std::string::String>) {
         self.metadata = v;
     }
 
     // Mutable pointer to the field.
-    pub fn mut_metadata(&mut self) -> &mut ::protobuf::RepeatedField<LogLine_MetadataEntry> {
+    pub fn mut_metadata(&mut self) -> &mut ::std::collections::HashMap<::std::string::String, ::std::string::String> {
         &mut self.metadata
     }
 
     // Take field
-    pub fn take_metadata(&mut self) -> ::protobuf::RepeatedField<LogLine_MetadataEntry> {
-        ::std::mem::replace(&mut self.metadata, ::protobuf::RepeatedField::new())
+    pub fn take_metadata(&mut self) -> ::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        ::std::mem::replace(&mut self.metadata, ::std::collections::HashMap::new())
     }
 
-    pub fn get_metadata(&self) -> &[LogLine_MetadataEntry] {
+    pub fn get_metadata(&self) -> &::std::collections::HashMap<::std::string::String, ::std::string::String> {
         &self.metadata
+    }
+
+    fn get_metadata_for_reflect(&self) -> &::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        &self.metadata
+    }
+
+    fn mut_metadata_for_reflect(&mut self) -> &mut ::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        &mut self.metadata
     }
 
     // optional int64 timestamp_ms = 4;
@@ -394,6 +420,14 @@ impl LogLine {
     pub fn get_timestamp_ms(&self) -> i64 {
         self.timestamp_ms.unwrap_or(0)
     }
+
+    fn get_timestamp_ms_for_reflect(&self) -> &::std::option::Option<i64> {
+        &self.timestamp_ms
+    }
+
+    fn mut_timestamp_ms_for_reflect(&mut self) -> &mut ::std::option::Option<i64> {
+        &mut self.timestamp_ms
+    }
 }
 
 impl ::protobuf::Message for LogLine {
@@ -402,27 +436,27 @@ impl ::protobuf::Message for LogLine {
     }
 
     fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {
-        while !try!(is.eof()) {
-            let (field_number, wire_type) = try!(is.read_tag_unpack());
+        while !is.eof()? {
+            let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
                 1 => {
-                    try!(::protobuf::rt::read_singular_string_into(wire_type, is, &mut self.path));
+                    ::protobuf::rt::read_singular_string_into(wire_type, is, &mut self.path)?;
                 },
                 2 => {
-                    try!(::protobuf::rt::read_singular_string_into(wire_type, is, &mut self.value));
+                    ::protobuf::rt::read_singular_string_into(wire_type, is, &mut self.value)?;
                 },
                 3 => {
-                    try!(::protobuf::rt::read_repeated_message_into(wire_type, is, &mut self.metadata));
+                    ::protobuf::rt::read_map_into::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(wire_type, is, &mut self.metadata)?;
                 },
                 4 => {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     };
-                    let tmp = try!(is.read_int64());
+                    let tmp = is.read_int64()?;
                     self.timestamp_ms = ::std::option::Option::Some(tmp);
                 },
                 _ => {
-                    try!(::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields()));
+                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
             };
         }
@@ -433,18 +467,15 @@ impl ::protobuf::Message for LogLine {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
-        for value in &self.path {
-            my_size += ::protobuf::rt::string_size(1, &value);
+        if let Some(v) = self.path.as_ref() {
+            my_size += ::protobuf::rt::string_size(1, &v);
         };
-        for value in &self.value {
-            my_size += ::protobuf::rt::string_size(2, &value);
+        if let Some(v) = self.value.as_ref() {
+            my_size += ::protobuf::rt::string_size(2, &v);
         };
-        for value in &self.metadata {
-            let len = value.compute_size();
-            my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-        };
-        for value in &self.timestamp_ms {
-            my_size += ::protobuf::rt::value_size(4, *value, ::protobuf::wire_format::WireTypeVarint);
+        my_size += ::protobuf::rt::compute_map_size::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(3, &self.metadata);
+        if let Some(v) = self.timestamp_ms {
+            my_size += ::protobuf::rt::value_size(4, v, ::protobuf::wire_format::WireTypeVarint);
         };
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
@@ -453,20 +484,16 @@ impl ::protobuf::Message for LogLine {
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {
         if let Some(v) = self.path.as_ref() {
-            try!(os.write_string(1, &v));
+            os.write_string(1, &v)?;
         };
         if let Some(v) = self.value.as_ref() {
-            try!(os.write_string(2, &v));
+            os.write_string(2, &v)?;
         };
-        for v in &self.metadata {
-            try!(os.write_tag(3, ::protobuf::wire_format::WireTypeLengthDelimited));
-            try!(os.write_raw_varint32(v.get_cached_size()));
-            try!(v.write_to_with_cached_sizes(os));
-        };
+        ::protobuf::rt::write_map_with_cached_sizes::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(3, &self.metadata, os)?;
         if let Some(v) = self.timestamp_ms {
-            try!(os.write_int64(4, v));
+            os.write_int64(4, v)?;
         };
-        try!(os.write_unknown_fields(self.get_unknown_fields()));
+        os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
     }
 
@@ -482,12 +509,14 @@ impl ::protobuf::Message for LogLine {
         &mut self.unknown_fields
     }
 
-    fn type_id(&self) -> ::std::any::TypeId {
-        ::std::any::TypeId::of::<LogLine>()
-    }
-
     fn as_any(&self) -> &::std::any::Any {
         self as &::std::any::Any
+    }
+    fn as_any_mut(&mut self) -> &mut ::std::any::Any {
+        self as &mut ::std::any::Any
+    }
+    fn into_any(self: Box<Self>) -> ::std::boxed::Box<::std::any::Any> {
+        self
     }
 
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
@@ -508,24 +537,25 @@ impl ::protobuf::MessageStatic for LogLine {
         unsafe {
             descriptor.get(|| {
                 let mut fields = ::std::vec::Vec::new();
-                fields.push(::protobuf::reflect::accessor::make_singular_string_accessor(
+                fields.push(::protobuf::reflect::accessor::make_singular_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
                     "path",
-                    LogLine::has_path,
-                    LogLine::get_path,
+                    LogLine::get_path_for_reflect,
+                    LogLine::mut_path_for_reflect,
                 ));
-                fields.push(::protobuf::reflect::accessor::make_singular_string_accessor(
+                fields.push(::protobuf::reflect::accessor::make_singular_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
                     "value",
-                    LogLine::has_value,
-                    LogLine::get_value,
+                    LogLine::get_value_for_reflect,
+                    LogLine::mut_value_for_reflect,
                 ));
-                fields.push(::protobuf::reflect::accessor::make_repeated_message_accessor(
+                fields.push(::protobuf::reflect::accessor::make_map_accessor::<_, ::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(
                     "metadata",
-                    LogLine::get_metadata,
+                    LogLine::get_metadata_for_reflect,
+                    LogLine::mut_metadata_for_reflect,
                 ));
-                fields.push(::protobuf::reflect::accessor::make_singular_i64_accessor(
+                fields.push(::protobuf::reflect::accessor::make_option_accessor::<_, ::protobuf::types::ProtobufTypeInt64>(
                     "timestamp_ms",
-                    LogLine::has_timestamp_ms,
-                    LogLine::get_timestamp_ms,
+                    LogLine::get_timestamp_ms_for_reflect,
+                    LogLine::mut_timestamp_ms_for_reflect,
                 ));
                 ::protobuf::reflect::MessageDescriptor::new::<LogLine>(
                     "LogLine",
@@ -547,271 +577,30 @@ impl ::protobuf::Clear for LogLine {
     }
 }
 
-impl ::std::cmp::PartialEq for LogLine {
-    fn eq(&self, other: &LogLine) -> bool {
-        self.path == other.path &&
-        self.value == other.value &&
-        self.metadata == other.metadata &&
-        self.timestamp_ms == other.timestamp_ms &&
-        self.unknown_fields == other.unknown_fields
-    }
-}
-
 impl ::std::fmt::Debug for LogLine {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         ::protobuf::text_format::fmt(self, f)
     }
 }
 
-#[derive(Clone,Default)]
-pub struct LogLine_MetadataEntry {
-    // message fields
-    key: ::protobuf::SingularField<::std::string::String>,
-    value: ::protobuf::SingularField<::std::string::String>,
-    // special fields
-    unknown_fields: ::protobuf::UnknownFields,
-    cached_size: ::std::cell::Cell<u32>,
-}
-
-// see codegen.rs for the explanation why impl Sync explicitly
-unsafe impl ::std::marker::Sync for LogLine_MetadataEntry {}
-
-impl LogLine_MetadataEntry {
-    pub fn new() -> LogLine_MetadataEntry {
-        ::std::default::Default::default()
-    }
-
-    pub fn default_instance() -> &'static LogLine_MetadataEntry {
-        static mut instance: ::protobuf::lazy::Lazy<LogLine_MetadataEntry> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const LogLine_MetadataEntry,
-        };
-        unsafe {
-            instance.get(|| {
-                LogLine_MetadataEntry {
-                    key: ::protobuf::SingularField::none(),
-                    value: ::protobuf::SingularField::none(),
-                    unknown_fields: ::protobuf::UnknownFields::new(),
-                    cached_size: ::std::cell::Cell::new(0),
-                }
-            })
-        }
-    }
-
-    // optional string key = 1;
-
-    pub fn clear_key(&mut self) {
-        self.key.clear();
-    }
-
-    pub fn has_key(&self) -> bool {
-        self.key.is_some()
-    }
-
-    // Param is passed by value, moved
-    pub fn set_key(&mut self, v: ::std::string::String) {
-        self.key = ::protobuf::SingularField::some(v);
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_key(&mut self) -> &mut ::std::string::String {
-        if self.key.is_none() {
-            self.key.set_default();
-        };
-        self.key.as_mut().unwrap()
-    }
-
-    // Take field
-    pub fn take_key(&mut self) -> ::std::string::String {
-        self.key.take().unwrap_or_else(|| ::std::string::String::new())
-    }
-
-    pub fn get_key(&self) -> &str {
-        match self.key.as_ref() {
-            Some(v) => &v,
-            None => "",
-        }
-    }
-
-    // optional string value = 2;
-
-    pub fn clear_value(&mut self) {
-        self.value.clear();
-    }
-
-    pub fn has_value(&self) -> bool {
-        self.value.is_some()
-    }
-
-    // Param is passed by value, moved
-    pub fn set_value(&mut self, v: ::std::string::String) {
-        self.value = ::protobuf::SingularField::some(v);
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_value(&mut self) -> &mut ::std::string::String {
-        if self.value.is_none() {
-            self.value.set_default();
-        };
-        self.value.as_mut().unwrap()
-    }
-
-    // Take field
-    pub fn take_value(&mut self) -> ::std::string::String {
-        self.value.take().unwrap_or_else(|| ::std::string::String::new())
-    }
-
-    pub fn get_value(&self) -> &str {
-        match self.value.as_ref() {
-            Some(v) => &v,
-            None => "",
-        }
+impl ::protobuf::reflect::ProtobufValue for LogLine {
+    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
+        ::protobuf::reflect::ProtobufValueRef::Message(self)
     }
 }
 
-impl ::protobuf::Message for LogLine_MetadataEntry {
-    fn is_initialized(&self) -> bool {
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {
-        while !try!(is.eof()) {
-            let (field_number, wire_type) = try!(is.read_tag_unpack());
-            match field_number {
-                1 => {
-                    try!(::protobuf::rt::read_singular_string_into(wire_type, is, &mut self.key));
-                },
-                2 => {
-                    try!(::protobuf::rt::read_singular_string_into(wire_type, is, &mut self.value));
-                },
-                _ => {
-                    try!(::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields()));
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u32 {
-        let mut my_size = 0;
-        for value in &self.key {
-            my_size += ::protobuf::rt::string_size(1, &value);
-        };
-        for value in &self.value {
-            my_size += ::protobuf::rt::string_size(2, &value);
-        };
-        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
-        self.cached_size.set(my_size);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {
-        if let Some(v) = self.key.as_ref() {
-            try!(os.write_string(1, &v));
-        };
-        if let Some(v) = self.value.as_ref() {
-            try!(os.write_string(2, &v));
-        };
-        try!(os.write_unknown_fields(self.get_unknown_fields()));
-        ::std::result::Result::Ok(())
-    }
-
-    fn get_cached_size(&self) -> u32 {
-        self.cached_size.get()
-    }
-
-    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
-        &self.unknown_fields
-    }
-
-    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
-        &mut self.unknown_fields
-    }
-
-    fn type_id(&self) -> ::std::any::TypeId {
-        ::std::any::TypeId::of::<LogLine_MetadataEntry>()
-    }
-
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
-    }
-
-    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
-        ::protobuf::MessageStatic::descriptor_static(None::<Self>)
-    }
-}
-
-impl ::protobuf::MessageStatic for LogLine_MetadataEntry {
-    fn new() -> LogLine_MetadataEntry {
-        LogLine_MetadataEntry::new()
-    }
-
-    fn descriptor_static(_: ::std::option::Option<LogLine_MetadataEntry>) -> &'static ::protobuf::reflect::MessageDescriptor {
-        static mut descriptor: ::protobuf::lazy::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const ::protobuf::reflect::MessageDescriptor,
-        };
-        unsafe {
-            descriptor.get(|| {
-                let mut fields = ::std::vec::Vec::new();
-                fields.push(::protobuf::reflect::accessor::make_singular_string_accessor(
-                    "key",
-                    LogLine_MetadataEntry::has_key,
-                    LogLine_MetadataEntry::get_key,
-                ));
-                fields.push(::protobuf::reflect::accessor::make_singular_string_accessor(
-                    "value",
-                    LogLine_MetadataEntry::has_value,
-                    LogLine_MetadataEntry::get_value,
-                ));
-                ::protobuf::reflect::MessageDescriptor::new::<LogLine_MetadataEntry>(
-                    "LogLine_MetadataEntry",
-                    fields,
-                    file_descriptor_proto()
-                )
-            })
-        }
-    }
-}
-
-impl ::protobuf::Clear for LogLine_MetadataEntry {
-    fn clear(&mut self) {
-        self.clear_key();
-        self.clear_value();
-        self.unknown_fields.clear();
-    }
-}
-
-impl ::std::cmp::PartialEq for LogLine_MetadataEntry {
-    fn eq(&self, other: &LogLine_MetadataEntry) -> bool {
-        self.key == other.key &&
-        self.value == other.value &&
-        self.unknown_fields == other.unknown_fields
-    }
-}
-
-impl ::std::fmt::Debug for LogLine_MetadataEntry {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
-    }
-}
-
-#[derive(Clone,Default)]
+#[derive(PartialEq,Clone,Default)]
 pub struct Telemetry {
     // message fields
     name: ::protobuf::SingularField<::std::string::String>,
     samples: ::std::vec::Vec<f64>,
     persisted: ::std::option::Option<bool>,
     method: ::std::option::Option<AggregationMethod>,
-    metadata: ::protobuf::RepeatedField<Telemetry_MetadataEntry>,
+    metadata: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
     timestamp_ms: ::std::option::Option<i64>,
     // special fields
     unknown_fields: ::protobuf::UnknownFields,
-    cached_size: ::std::cell::Cell<u32>,
+    cached_size: ::protobuf::CachedSize,
 }
 
 // see codegen.rs for the explanation why impl Sync explicitly
@@ -828,18 +617,7 @@ impl Telemetry {
             ptr: 0 as *const Telemetry,
         };
         unsafe {
-            instance.get(|| {
-                Telemetry {
-                    name: ::protobuf::SingularField::none(),
-                    samples: ::std::vec::Vec::new(),
-                    persisted: ::std::option::Option::None,
-                    method: ::std::option::Option::None,
-                    metadata: ::protobuf::RepeatedField::new(),
-                    timestamp_ms: ::std::option::Option::None,
-                    unknown_fields: ::protobuf::UnknownFields::new(),
-                    cached_size: ::std::cell::Cell::new(0),
-                }
-            })
+            instance.get(Telemetry::new)
         }
     }
 
@@ -879,6 +657,14 @@ impl Telemetry {
         }
     }
 
+    fn get_name_for_reflect(&self) -> &::protobuf::SingularField<::std::string::String> {
+        &self.name
+    }
+
+    fn mut_name_for_reflect(&mut self) -> &mut ::protobuf::SingularField<::std::string::String> {
+        &mut self.name
+    }
+
     // repeated double samples = 2;
 
     pub fn clear_samples(&mut self) {
@@ -904,6 +690,14 @@ impl Telemetry {
         &self.samples
     }
 
+    fn get_samples_for_reflect(&self) -> &::std::vec::Vec<f64> {
+        &self.samples
+    }
+
+    fn mut_samples_for_reflect(&mut self) -> &mut ::std::vec::Vec<f64> {
+        &mut self.samples
+    }
+
     // optional bool persisted = 3;
 
     pub fn clear_persisted(&mut self) {
@@ -921,6 +715,14 @@ impl Telemetry {
 
     pub fn get_persisted(&self) -> bool {
         self.persisted.unwrap_or(false)
+    }
+
+    fn get_persisted_for_reflect(&self) -> &::std::option::Option<bool> {
+        &self.persisted
+    }
+
+    fn mut_persisted_for_reflect(&mut self) -> &mut ::std::option::Option<bool> {
+        &mut self.persisted
     }
 
     // optional .com.postmates.cernan.AggregationMethod method = 4;
@@ -942,6 +744,14 @@ impl Telemetry {
         self.method.unwrap_or(AggregationMethod::SUMMARIZE)
     }
 
+    fn get_method_for_reflect(&self) -> &::std::option::Option<AggregationMethod> {
+        &self.method
+    }
+
+    fn mut_method_for_reflect(&mut self) -> &mut ::std::option::Option<AggregationMethod> {
+        &mut self.method
+    }
+
     // repeated .com.postmates.cernan.Telemetry.MetadataEntry metadata = 5;
 
     pub fn clear_metadata(&mut self) {
@@ -949,22 +759,30 @@ impl Telemetry {
     }
 
     // Param is passed by value, moved
-    pub fn set_metadata(&mut self, v: ::protobuf::RepeatedField<Telemetry_MetadataEntry>) {
+    pub fn set_metadata(&mut self, v: ::std::collections::HashMap<::std::string::String, ::std::string::String>) {
         self.metadata = v;
     }
 
     // Mutable pointer to the field.
-    pub fn mut_metadata(&mut self) -> &mut ::protobuf::RepeatedField<Telemetry_MetadataEntry> {
+    pub fn mut_metadata(&mut self) -> &mut ::std::collections::HashMap<::std::string::String, ::std::string::String> {
         &mut self.metadata
     }
 
     // Take field
-    pub fn take_metadata(&mut self) -> ::protobuf::RepeatedField<Telemetry_MetadataEntry> {
-        ::std::mem::replace(&mut self.metadata, ::protobuf::RepeatedField::new())
+    pub fn take_metadata(&mut self) -> ::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        ::std::mem::replace(&mut self.metadata, ::std::collections::HashMap::new())
     }
 
-    pub fn get_metadata(&self) -> &[Telemetry_MetadataEntry] {
+    pub fn get_metadata(&self) -> &::std::collections::HashMap<::std::string::String, ::std::string::String> {
         &self.metadata
+    }
+
+    fn get_metadata_for_reflect(&self) -> &::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        &self.metadata
+    }
+
+    fn mut_metadata_for_reflect(&mut self) -> &mut ::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        &mut self.metadata
     }
 
     // optional int64 timestamp_ms = 6;
@@ -985,6 +803,14 @@ impl Telemetry {
     pub fn get_timestamp_ms(&self) -> i64 {
         self.timestamp_ms.unwrap_or(0)
     }
+
+    fn get_timestamp_ms_for_reflect(&self) -> &::std::option::Option<i64> {
+        &self.timestamp_ms
+    }
+
+    fn mut_timestamp_ms_for_reflect(&mut self) -> &mut ::std::option::Option<i64> {
+        &mut self.timestamp_ms
+    }
 }
 
 impl ::protobuf::Message for Telemetry {
@@ -993,41 +819,41 @@ impl ::protobuf::Message for Telemetry {
     }
 
     fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {
-        while !try!(is.eof()) {
-            let (field_number, wire_type) = try!(is.read_tag_unpack());
+        while !is.eof()? {
+            let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
                 1 => {
-                    try!(::protobuf::rt::read_singular_string_into(wire_type, is, &mut self.name));
+                    ::protobuf::rt::read_singular_string_into(wire_type, is, &mut self.name)?;
                 },
                 2 => {
-                    try!(::protobuf::rt::read_repeated_double_into(wire_type, is, &mut self.samples));
+                    ::protobuf::rt::read_repeated_double_into(wire_type, is, &mut self.samples)?;
                 },
                 3 => {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     };
-                    let tmp = try!(is.read_bool());
+                    let tmp = is.read_bool()?;
                     self.persisted = ::std::option::Option::Some(tmp);
                 },
                 4 => {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     };
-                    let tmp = try!(is.read_enum());
+                    let tmp = is.read_enum()?;
                     self.method = ::std::option::Option::Some(tmp);
                 },
                 5 => {
-                    try!(::protobuf::rt::read_repeated_message_into(wire_type, is, &mut self.metadata));
+                    ::protobuf::rt::read_map_into::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(wire_type, is, &mut self.metadata)?;
                 },
                 6 => {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     };
-                    let tmp = try!(is.read_int64());
+                    let tmp = is.read_int64()?;
                     self.timestamp_ms = ::std::option::Option::Some(tmp);
                 },
                 _ => {
-                    try!(::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields()));
+                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
             };
         }
@@ -1038,24 +864,21 @@ impl ::protobuf::Message for Telemetry {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
-        for value in &self.name {
-            my_size += ::protobuf::rt::string_size(1, &value);
+        if let Some(v) = self.name.as_ref() {
+            my_size += ::protobuf::rt::string_size(1, &v);
         };
         if !self.samples.is_empty() {
             my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(self.samples.len() as u32) + (self.samples.len() * 8) as u32;
         };
-        if self.persisted.is_some() {
+        if let Some(v) = self.persisted {
             my_size += 2;
         };
-        for value in &self.method {
-            my_size += ::protobuf::rt::enum_size(4, *value);
+        if let Some(v) = self.method {
+            my_size += ::protobuf::rt::enum_size(4, v);
         };
-        for value in &self.metadata {
-            let len = value.compute_size();
-            my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-        };
-        for value in &self.timestamp_ms {
-            my_size += ::protobuf::rt::value_size(6, *value, ::protobuf::wire_format::WireTypeVarint);
+        my_size += ::protobuf::rt::compute_map_size::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(5, &self.metadata);
+        if let Some(v) = self.timestamp_ms {
+            my_size += ::protobuf::rt::value_size(6, v, ::protobuf::wire_format::WireTypeVarint);
         };
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
@@ -1064,31 +887,27 @@ impl ::protobuf::Message for Telemetry {
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {
         if let Some(v) = self.name.as_ref() {
-            try!(os.write_string(1, &v));
+            os.write_string(1, &v)?;
         };
         if !self.samples.is_empty() {
-            try!(os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited));
+            os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited)?;
             // TODO: Data size is computed again, it should be cached
-            try!(os.write_raw_varint32((self.samples.len() * 8) as u32));
+            os.write_raw_varint32((self.samples.len() * 8) as u32)?;
             for v in &self.samples {
-                try!(os.write_double_no_tag(*v));
+                os.write_double_no_tag(*v)?;
             };
         };
         if let Some(v) = self.persisted {
-            try!(os.write_bool(3, v));
+            os.write_bool(3, v)?;
         };
         if let Some(v) = self.method {
-            try!(os.write_enum(4, v.value()));
+            os.write_enum(4, v.value())?;
         };
-        for v in &self.metadata {
-            try!(os.write_tag(5, ::protobuf::wire_format::WireTypeLengthDelimited));
-            try!(os.write_raw_varint32(v.get_cached_size()));
-            try!(v.write_to_with_cached_sizes(os));
-        };
+        ::protobuf::rt::write_map_with_cached_sizes::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(5, &self.metadata, os)?;
         if let Some(v) = self.timestamp_ms {
-            try!(os.write_int64(6, v));
+            os.write_int64(6, v)?;
         };
-        try!(os.write_unknown_fields(self.get_unknown_fields()));
+        os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
     }
 
@@ -1104,12 +923,14 @@ impl ::protobuf::Message for Telemetry {
         &mut self.unknown_fields
     }
 
-    fn type_id(&self) -> ::std::any::TypeId {
-        ::std::any::TypeId::of::<Telemetry>()
-    }
-
     fn as_any(&self) -> &::std::any::Any {
         self as &::std::any::Any
+    }
+    fn as_any_mut(&mut self) -> &mut ::std::any::Any {
+        self as &mut ::std::any::Any
+    }
+    fn into_any(self: Box<Self>) -> ::std::boxed::Box<::std::any::Any> {
+        self
     }
 
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
@@ -1130,33 +951,35 @@ impl ::protobuf::MessageStatic for Telemetry {
         unsafe {
             descriptor.get(|| {
                 let mut fields = ::std::vec::Vec::new();
-                fields.push(::protobuf::reflect::accessor::make_singular_string_accessor(
+                fields.push(::protobuf::reflect::accessor::make_singular_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
                     "name",
-                    Telemetry::has_name,
-                    Telemetry::get_name,
+                    Telemetry::get_name_for_reflect,
+                    Telemetry::mut_name_for_reflect,
                 ));
-                fields.push(::protobuf::reflect::accessor::make_repeated_f64_accessor(
+                fields.push(::protobuf::reflect::accessor::make_vec_accessor::<_, ::protobuf::types::ProtobufTypeDouble>(
                     "samples",
-                    Telemetry::get_samples,
+                    Telemetry::get_samples_for_reflect,
+                    Telemetry::mut_samples_for_reflect,
                 ));
-                fields.push(::protobuf::reflect::accessor::make_singular_bool_accessor(
+                fields.push(::protobuf::reflect::accessor::make_option_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
                     "persisted",
-                    Telemetry::has_persisted,
-                    Telemetry::get_persisted,
+                    Telemetry::get_persisted_for_reflect,
+                    Telemetry::mut_persisted_for_reflect,
                 ));
-                fields.push(::protobuf::reflect::accessor::make_singular_enum_accessor(
+                fields.push(::protobuf::reflect::accessor::make_option_accessor::<_, ::protobuf::types::ProtobufTypeEnum<AggregationMethod>>(
                     "method",
-                    Telemetry::has_method,
-                    Telemetry::get_method,
+                    Telemetry::get_method_for_reflect,
+                    Telemetry::mut_method_for_reflect,
                 ));
-                fields.push(::protobuf::reflect::accessor::make_repeated_message_accessor(
+                fields.push(::protobuf::reflect::accessor::make_map_accessor::<_, ::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(
                     "metadata",
-                    Telemetry::get_metadata,
+                    Telemetry::get_metadata_for_reflect,
+                    Telemetry::mut_metadata_for_reflect,
                 ));
-                fields.push(::protobuf::reflect::accessor::make_singular_i64_accessor(
+                fields.push(::protobuf::reflect::accessor::make_option_accessor::<_, ::protobuf::types::ProtobufTypeInt64>(
                     "timestamp_ms",
-                    Telemetry::has_timestamp_ms,
-                    Telemetry::get_timestamp_ms,
+                    Telemetry::get_timestamp_ms_for_reflect,
+                    Telemetry::mut_timestamp_ms_for_reflect,
                 ));
                 ::protobuf::reflect::MessageDescriptor::new::<Telemetry>(
                     "Telemetry",
@@ -1180,258 +1003,15 @@ impl ::protobuf::Clear for Telemetry {
     }
 }
 
-impl ::std::cmp::PartialEq for Telemetry {
-    fn eq(&self, other: &Telemetry) -> bool {
-        self.name == other.name &&
-        self.samples == other.samples &&
-        self.persisted == other.persisted &&
-        self.method == other.method &&
-        self.metadata == other.metadata &&
-        self.timestamp_ms == other.timestamp_ms &&
-        self.unknown_fields == other.unknown_fields
-    }
-}
-
 impl ::std::fmt::Debug for Telemetry {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         ::protobuf::text_format::fmt(self, f)
     }
 }
 
-#[derive(Clone,Default)]
-pub struct Telemetry_MetadataEntry {
-    // message fields
-    key: ::protobuf::SingularField<::std::string::String>,
-    value: ::protobuf::SingularField<::std::string::String>,
-    // special fields
-    unknown_fields: ::protobuf::UnknownFields,
-    cached_size: ::std::cell::Cell<u32>,
-}
-
-// see codegen.rs for the explanation why impl Sync explicitly
-unsafe impl ::std::marker::Sync for Telemetry_MetadataEntry {}
-
-impl Telemetry_MetadataEntry {
-    pub fn new() -> Telemetry_MetadataEntry {
-        ::std::default::Default::default()
-    }
-
-    pub fn default_instance() -> &'static Telemetry_MetadataEntry {
-        static mut instance: ::protobuf::lazy::Lazy<Telemetry_MetadataEntry> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const Telemetry_MetadataEntry,
-        };
-        unsafe {
-            instance.get(|| {
-                Telemetry_MetadataEntry {
-                    key: ::protobuf::SingularField::none(),
-                    value: ::protobuf::SingularField::none(),
-                    unknown_fields: ::protobuf::UnknownFields::new(),
-                    cached_size: ::std::cell::Cell::new(0),
-                }
-            })
-        }
-    }
-
-    // optional string key = 1;
-
-    pub fn clear_key(&mut self) {
-        self.key.clear();
-    }
-
-    pub fn has_key(&self) -> bool {
-        self.key.is_some()
-    }
-
-    // Param is passed by value, moved
-    pub fn set_key(&mut self, v: ::std::string::String) {
-        self.key = ::protobuf::SingularField::some(v);
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_key(&mut self) -> &mut ::std::string::String {
-        if self.key.is_none() {
-            self.key.set_default();
-        };
-        self.key.as_mut().unwrap()
-    }
-
-    // Take field
-    pub fn take_key(&mut self) -> ::std::string::String {
-        self.key.take().unwrap_or_else(|| ::std::string::String::new())
-    }
-
-    pub fn get_key(&self) -> &str {
-        match self.key.as_ref() {
-            Some(v) => &v,
-            None => "",
-        }
-    }
-
-    // optional string value = 2;
-
-    pub fn clear_value(&mut self) {
-        self.value.clear();
-    }
-
-    pub fn has_value(&self) -> bool {
-        self.value.is_some()
-    }
-
-    // Param is passed by value, moved
-    pub fn set_value(&mut self, v: ::std::string::String) {
-        self.value = ::protobuf::SingularField::some(v);
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_value(&mut self) -> &mut ::std::string::String {
-        if self.value.is_none() {
-            self.value.set_default();
-        };
-        self.value.as_mut().unwrap()
-    }
-
-    // Take field
-    pub fn take_value(&mut self) -> ::std::string::String {
-        self.value.take().unwrap_or_else(|| ::std::string::String::new())
-    }
-
-    pub fn get_value(&self) -> &str {
-        match self.value.as_ref() {
-            Some(v) => &v,
-            None => "",
-        }
-    }
-}
-
-impl ::protobuf::Message for Telemetry_MetadataEntry {
-    fn is_initialized(&self) -> bool {
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {
-        while !try!(is.eof()) {
-            let (field_number, wire_type) = try!(is.read_tag_unpack());
-            match field_number {
-                1 => {
-                    try!(::protobuf::rt::read_singular_string_into(wire_type, is, &mut self.key));
-                },
-                2 => {
-                    try!(::protobuf::rt::read_singular_string_into(wire_type, is, &mut self.value));
-                },
-                _ => {
-                    try!(::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields()));
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u32 {
-        let mut my_size = 0;
-        for value in &self.key {
-            my_size += ::protobuf::rt::string_size(1, &value);
-        };
-        for value in &self.value {
-            my_size += ::protobuf::rt::string_size(2, &value);
-        };
-        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
-        self.cached_size.set(my_size);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {
-        if let Some(v) = self.key.as_ref() {
-            try!(os.write_string(1, &v));
-        };
-        if let Some(v) = self.value.as_ref() {
-            try!(os.write_string(2, &v));
-        };
-        try!(os.write_unknown_fields(self.get_unknown_fields()));
-        ::std::result::Result::Ok(())
-    }
-
-    fn get_cached_size(&self) -> u32 {
-        self.cached_size.get()
-    }
-
-    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
-        &self.unknown_fields
-    }
-
-    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
-        &mut self.unknown_fields
-    }
-
-    fn type_id(&self) -> ::std::any::TypeId {
-        ::std::any::TypeId::of::<Telemetry_MetadataEntry>()
-    }
-
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
-    }
-
-    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
-        ::protobuf::MessageStatic::descriptor_static(None::<Self>)
-    }
-}
-
-impl ::protobuf::MessageStatic for Telemetry_MetadataEntry {
-    fn new() -> Telemetry_MetadataEntry {
-        Telemetry_MetadataEntry::new()
-    }
-
-    fn descriptor_static(_: ::std::option::Option<Telemetry_MetadataEntry>) -> &'static ::protobuf::reflect::MessageDescriptor {
-        static mut descriptor: ::protobuf::lazy::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const ::protobuf::reflect::MessageDescriptor,
-        };
-        unsafe {
-            descriptor.get(|| {
-                let mut fields = ::std::vec::Vec::new();
-                fields.push(::protobuf::reflect::accessor::make_singular_string_accessor(
-                    "key",
-                    Telemetry_MetadataEntry::has_key,
-                    Telemetry_MetadataEntry::get_key,
-                ));
-                fields.push(::protobuf::reflect::accessor::make_singular_string_accessor(
-                    "value",
-                    Telemetry_MetadataEntry::has_value,
-                    Telemetry_MetadataEntry::get_value,
-                ));
-                ::protobuf::reflect::MessageDescriptor::new::<Telemetry_MetadataEntry>(
-                    "Telemetry_MetadataEntry",
-                    fields,
-                    file_descriptor_proto()
-                )
-            })
-        }
-    }
-}
-
-impl ::protobuf::Clear for Telemetry_MetadataEntry {
-    fn clear(&mut self) {
-        self.clear_key();
-        self.clear_value();
-        self.unknown_fields.clear();
-    }
-}
-
-impl ::std::cmp::PartialEq for Telemetry_MetadataEntry {
-    fn eq(&self, other: &Telemetry_MetadataEntry) -> bool {
-        self.key == other.key &&
-        self.value == other.value &&
-        self.unknown_fields == other.unknown_fields
-    }
-}
-
-impl ::std::fmt::Debug for Telemetry_MetadataEntry {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
+impl ::protobuf::reflect::ProtobufValue for Telemetry {
+    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
+        ::protobuf::reflect::ProtobufValueRef::Message(self)
     }
 }
 
@@ -1479,6 +1059,12 @@ impl ::protobuf::ProtobufEnum for AggregationMethod {
 }
 
 impl ::std::marker::Copy for AggregationMethod {
+}
+
+impl ::protobuf::reflect::ProtobufValue for AggregationMethod {
+    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
+        ::protobuf::reflect::ProtobufValueRef::Enum(self.descriptor())
+    }
 }
 
 static file_descriptor_proto_data: &'static [u8] = &[
