@@ -1,0 +1,21 @@
+data-directory = "data/"
+scripts-directory = "examples/scripts/"
+
+flush-interval = 5
+
+[tags]
+source = "cernan"
+
+[sources]
+  [sources.files]
+  [sources.files.tmp_upstart_logs]
+  path = "/tmp/log/upstart/*.log"
+  forwards = ["sinks.null"]
+
+  [sources.files.tmp_logs]
+  path = "/tmp/log/*.log"
+  forwards = ["sinks.null"]
+
+[sinks]
+  [sinks.null]
+
