@@ -76,6 +76,9 @@ impl Sink for Firehose {
                 time::delay(attempts);
                 match client.put_record_batch(&prbi) {
                     Ok(prbo) => {
+                        debug!("Wrote {} records to delivery stream {}",
+                               prbi.records.len(),
+                               prbi.delivery_stream_name);
                         let failed_put_count = prbo.failed_put_count;
                         if failed_put_count > 0 {
                             error!("Failed to write {} put records", failed_put_count);
