@@ -8,14 +8,12 @@ source = "cernan"
 
 [sources]
   [sources.files]
-  [sources.files.tmp_upstart_logs]
-  path = "/tmp/log/upstart/*.log"
-  forwards = ["sinks.null"]
-
   [sources.files.tmp_logs]
   path = "/tmp/log/*.log"
-  forwards = ["sinks.null"]
+  forwards = ["sinks.firehose.stream_two"]
 
 [sinks]
-  [sinks.null]
-
+  [sinks.firehose.stream_two]
+  delivery_stream = "stream_two"
+  batch_size = 800
+  region = "us-east-1"
