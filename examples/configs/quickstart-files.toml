@@ -1,0 +1,19 @@
+data-directory = "data/"
+scripts-directory = "examples/scripts/"
+
+flush-interval = 5
+
+[tags]
+source = "cernan"
+
+[sources]
+  [sources.files]
+  [sources.files.tmp_logs]
+  path = "/tmp/log/*.log"
+  forwards = ["sinks.firehose.stream_two"]
+
+[sinks]
+  [sinks.firehose.stream_two]
+  delivery_stream = "stream_two"
+  batch_size = 800
+  region = "us-east-1"

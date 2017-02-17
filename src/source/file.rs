@@ -137,7 +137,9 @@ impl Source for FileServer {
                 }
             }
             let start = Instant::now();
+            let mut attempts = 0;
             loop {
+                time::delay(attempts);
                 for file in fp_map.values_mut() {
                     loop {
                         let mut lines_read = 0;
@@ -167,10 +169,12 @@ impl Source for FileServer {
                         }
                     }
                     if !lines.is_empty() {
-                        for l in lines {
+                        for l in lines.drain(..) {
                             send("file", &mut self.chans, metric::Event::new_log(l));
                         }
-                        lines = Vec::new();
+                        attempts = 0;
+                    } else {
+                        attempts += 1;
                     }
                 }
                 if start.elapsed() >= glob_delay {

@@ -13,7 +13,6 @@ use serde_json::Map;
 use serde_json::value::Value;
 use sink::{Sink, Valve};
 use std::sync;
-use time;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -71,11 +70,12 @@ impl Sink for Firehose {
                     })
                     .collect(),
             };
-            let mut attempts = 0;
             loop {
-                time::delay(attempts);
                 match client.put_record_batch(&prbi) {
                     Ok(prbo) => {
+                        debug!("Wrote {} records to delivery stream {}",
+                               prbi.records.len(),
+                               prbi.delivery_stream_name);
                         let failed_put_count = prbo.failed_put_count;
                         if failed_put_count > 0 {
                             error!("Failed to write {} put records", failed_put_count);
@@ -120,7 +120,7 @@ impl Sink for Firehose {
                         }
                     }
                 }
-                attempts += 1;
+
             }
         }
         self.buffer.clear();
@@ -130,8 +130,9 @@ impl Sink for Firehose {
         // nothing, intentionally
     }
 
-    fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
-        // nothing, intentionally
+    fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
+        let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
+        self.buffer.append(&mut vec![line]);
     }
 
     fn valve_state(&self) -> Valve {
