@@ -1,7 +1,13 @@
 [package]
+authors = ["Brian L. Troutwine <blt@postmates.com>",
+           "Tom Santero <tom.santero@postmates.com>"]
+description = "A telemetry and logging aggregation server."
+keywords = ["statsd", "graphite", "telemetry", "logging", "aggregation", "metrics"]
+license = "MIT"
 name = "cernan"
+readme = "README.md"
+repository = "https://github.com/postmates/cernan"
 version = "0.5.2"
-authors = ["Brian L. Troutwine <blt@postmates.com>"]
 
 [[bin]]
 name = "cernan"
