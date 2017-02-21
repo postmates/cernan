@@ -77,10 +77,10 @@ fn main() {
     let mut joins = Vec::new();
     let mut sends: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     let mut flush_reachability: HashMap<String, bool> = HashMap::new();
+    let mut flush_channels: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
 
     // SINKS
     //
-    let mut flush_channels: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     if let Some(config) = args.console {
         let (console_send, console_recv) =
             hopper::channel(&config.config_path, &args.data_directory).unwrap();
@@ -88,8 +88,8 @@ fn main() {
         sends.insert(config.config_path.clone(), console_send);
         flush_reachability.insert(config.config_path.clone(), false);
         joins.push(thread::spawn(move || {
-            cernan::sink::Console::new(config).run(console_recv);
-        }));
+                cernan::sink::Console::new(config).run(console_recv);
+            }));
     }
     if let Some(config) = args.null {
         let (null_send, null_recv) = hopper::channel(&config.config_path, &args.data_directory)
@@ -142,6 +142,7 @@ fn main() {
         flush_reachability.insert(config.config_path.clone(), false);
         joins.push(thread::spawn(move || { cernan::sink::Firehose::new(f).run(firehose_recv); }));
     }
+
 
     // FILTERS
     //
@@ -236,3 +237,59 @@ fn main() {
         jh.join().expect("Uh oh, child thread paniced!");
     }
 }
+
+/*
+TODO: refactor the code so that we can check the pure functions
+#[cfg(test)]
+mod test {
+
+    #[test]
+    fn flush_propagation() {
+        let config = r#"
+[sources]
+  [sources.statsd.primary]
+  enabled = true
+  port = 8125
+  forwards = ["filters.counter_filter"]
+
+  [sources.graphite.primary]
+  enabled = true
+  port = 2004
+  forwards = ["filters.counter_filter, sinks.native"]
+
+  [sources.native]
+  ip = "127.0.0.1"
+  port = 1972
+  forwards = ["filters.metric_name_transform"]
+
+[filters]
+  [filters.counter_filter]
+  script = "counter_filter.lua"
+  forwards = ["sinks.wavefront", "sinks.influxdb"]
+
+  [filters.metric_name_transform]
+  script = "metric_name_transform.lua"
+  forwards = ["sinks.native"]
+
+[sinks]
+  [sinks.native]
+  host = "foo.example.com"
+  port = 1972
+  flush_interval = 120
+
+  [sinks.wavefront]
+  port = 3131
+  host = "example.com"
+  bin_width = 9
+  flush_interval = 15
+
+  [sinks.influxdb]
+  port = 8089
+  host = "127.0.0.1"
+  bin_width = 1
+"#
+            .to_string();
+
+    }
+}
+*/

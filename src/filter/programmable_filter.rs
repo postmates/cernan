@@ -318,7 +318,7 @@ pub struct ProgrammableFilter {
     state: lua::State,
     path: String,
     global_tags: metric::TagMap,
-    last_flush_idx: u32,
+    last_flush_idx: u64,
 }
 
 #[derive(Debug, Clone)]

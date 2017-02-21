@@ -11,6 +11,7 @@ use std::sync;
 /// print each `flush-interval` to stdout.
 pub struct Console {
     aggrs: Buckets,
+    flush_interval: u64,
 }
 
 impl Console {
@@ -25,7 +26,10 @@ impl Console {
     /// let c = Console::new(config);
     /// ```
     pub fn new(config: ConsoleConfig) -> Console {
-        Console { aggrs: Buckets::new(config.bin_width) }
+        Console {
+            aggrs: Buckets::new(config.bin_width),
+            flush_interval: config.flush_interval,
+        }
     }
 }
 
@@ -73,6 +77,10 @@ impl Sink for Console {
 
     fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
         // drop the line, intentionally
+    }
+
+    fn get_flush_interval(&self) -> u64 {
+        self.flush_interval
     }
 
     fn flush(&mut self) {

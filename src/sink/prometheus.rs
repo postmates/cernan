@@ -19,6 +19,7 @@ pub struct Prometheus {
     // `http_srv` is never used but we must keep it in this struct to avoid the
     // listening server being dropped
     http_srv: Listening,
+    flush_interval: u64,
 }
 
 #[derive(Debug)]
@@ -143,6 +144,7 @@ impl Prometheus {
         Prometheus {
             aggrs: aggrs,
             http_srv: listener,
+            flush_interval: config.flush_interval,
         }
     }
 }
@@ -164,6 +166,10 @@ fn sanitize(metric: metric::Telemetry) -> metric::Telemetry {
 }
 
 impl Sink for Prometheus {
+    fn get_flush_interval(&self) -> u64 {
+        self.flush_interval
+    }
+
     fn flush(&mut self) {
         // There is no flush for the Prometheus sink. Prometheus prefers to
         // pull via HTTP / Protobuf. See PrometheusSrv.

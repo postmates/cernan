@@ -17,6 +17,7 @@ pub struct Native {
     port: u16,
     host: String,
     buffer: Vec<metric::Event>,
+    flush_interval: u64,
 }
 
 #[derive(Debug)]
@@ -33,6 +34,7 @@ impl Native {
             port: config.port,
             host: config.host,
             buffer: Vec::new(),
+            flush_interval: config.flush_interval,
         }
     }
 }
@@ -43,6 +45,7 @@ impl Default for Native {
             port: 1972,
             host: String::from("127.0.0.1"),
             buffer: Vec::new(),
+            flush_interval: 60,
         }
     }
 }
@@ -75,16 +78,23 @@ impl Sink for Native {
                 Some(event) => {
                     attempts = 0;
                     match event {
-                        metric::Event::TimerFlush(idx) if idx > last_flush_idx => {
-                            self.flush();
-                            last_flush_idx = idx;
+                        metric::Event::TimerFlush(idx) => {
+                            if idx > last_flush_idx {
+                                if idx % self.get_flush_interval() == 0 {
+                                    self.flush();
+                                }
+                                last_flush_idx = idx;
+                            }
                         }
-                        metric::Event::TimerFlush(_) => {}
                         _ => self.buffer.push(event),
                     }
                 }
             }
         }
+    }
+
+    fn get_flush_interval(&self) -> u64 {
+        self.flush_interval
     }
 
     fn flush(&mut self) {

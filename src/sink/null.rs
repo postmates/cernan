@@ -38,6 +38,11 @@ impl Sink for Null {
         // discard point
     }
 
+    fn get_flush_interval(&self) -> u64 {
+        1
+    }
+
+
     fn flush(&mut self) {
         // do nothing
     }

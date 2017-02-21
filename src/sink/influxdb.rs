@@ -13,6 +13,7 @@ pub struct InfluxDB {
     aggrs: Buckets,
     delivery_attempts: u32,
     stats: String,
+    flush_interval: u64,
 }
 
 #[derive(Debug)]
@@ -68,6 +69,7 @@ impl InfluxDB {
             aggrs: Buckets::new(config.bin_width),
             delivery_attempts: 0,
             stats: String::with_capacity(8_192),
+            flush_interval: config.flush_interval,
         }
     }
 
@@ -160,6 +162,10 @@ impl InfluxDB {
 }
 
 impl Sink for InfluxDB {
+    fn get_flush_interval(&self) -> u64 {
+        self.flush_interval
+    }
+
     fn flush(&mut self) {
         loop {
             if self.delivery_attempts > 0 {

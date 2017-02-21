@@ -29,6 +29,7 @@ pub struct Firehose {
     delivery_stream_name: String,
     region: Region,
     batch_size: usize,
+    flush_interval: u64,
 }
 
 impl Firehose {
@@ -38,11 +39,16 @@ impl Firehose {
             delivery_stream_name: config.delivery_stream,
             region: config.region,
             batch_size: config.batch_size,
+            flush_interval: config.flush_interval,
         }
     }
 }
 
 impl Sink for Firehose {
+    fn get_flush_interval(&self) -> u64 {
+        self.flush_interval
+    }
+
     fn flush(&mut self) {
         let provider = DefaultCredentialsProvider::new().unwrap();
         let dispatcher = default_tls_client().unwrap();
