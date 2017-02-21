@@ -2,7 +2,7 @@
 authors = ["Brian L. Troutwine <blt@postmates.com>",
            "Tom Santero <tom.santero@postmates.com>"]
 description = "A telemetry and logging aggregation server."
-keywords = ["statsd", "graphite", "telemetry", "logging", "aggregation", "metrics"]
+keywords = ["statsd", "graphite", "telemetry", "logging", "metrics"]
 license = "MIT"
 name = "cernan"
 readme = "README.md"
@@ -25,7 +25,7 @@ hyper = "0.10"
 lazy_static = "0.2.1"
 libc = "0.2"
 log = "0.3.6"
-lua = "*"
+lua = "0.0.10"
 protobuf = "1.2"
 quantiles = "0.3"
 rand = "0.3"
