@@ -18,7 +18,10 @@ pub struct NullConfig {
 
 impl NullConfig {
     pub fn new(config_path: String, flush_interval: u64) -> NullConfig {
-        NullConfig { config_path: config_path, flush_interval: flush_interval }
+        NullConfig {
+            config_path: config_path,
+            flush_interval: flush_interval,
+        }
     }
 }
 
