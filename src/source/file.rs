@@ -70,7 +70,7 @@ impl FileWatcher {
     }
 
     pub fn read_line(&mut self, mut buffer: &mut String) -> io::Result<usize> {
-        let max_attempts = 5;
+        let max_attempts = 6;
         loop {
             let mut attempts = 0;
             // read lines
@@ -78,7 +78,7 @@ impl FileWatcher {
                 match self.reader.read_line(&mut buffer) {
                     Ok(sz) => {
                         if sz == 0 {
-                            time::delay(1);
+                            time::delay(attempts);
                             attempts += 1;
                             if attempts > max_attempts {
                                 break;
@@ -139,7 +139,12 @@ impl Source for FileServer {
             let start = Instant::now();
             let mut attempts = 0;
             loop {
-                time::delay(attempts);
+                if fp_map.is_empty() {
+                    time::delay(9);
+                    break;
+                } else {
+                    time::delay(attempts);
+                }
                 for file in fp_map.values_mut() {
                     loop {
                         let mut lines_read = 0;
@@ -164,6 +169,7 @@ impl Source for FileServer {
                                     io::ErrorKind::TimedOut => {}
                                     _ => trace!("read-line error: {}", e),
                                 }
+                                attempts += 1;
                                 break;
                             }
                         }
@@ -172,9 +178,6 @@ impl Source for FileServer {
                         for l in lines.drain(..) {
                             send("file", &mut self.chans, metric::Event::new_log(l));
                         }
-                        attempts = 0;
-                    } else {
-                        attempts += 1;
                     }
                 }
                 if start.elapsed() >= glob_delay {
