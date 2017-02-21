@@ -11,6 +11,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use timer;
 use toml;
 use toml::Value;
 
@@ -78,6 +79,7 @@ pub fn parse_args() -> Args {
         }
         // We read from CLI arguments
         None => {
+            let global_flush_interval = 60;
             let wavefront = if args.is_present("wavefront") {
                 let percentiles = vec![("min".to_string(), 0.0),
                                        ("max".to_string(), 1.0),
@@ -99,17 +101,18 @@ pub fn parse_args() -> Args {
                     config_path: "sinks.wavefront".to_string(),
                     percentiles: percentiles,
                     tags: Default::default(),
+                    flush_interval: global_flush_interval,
                 })
             } else {
                 None
             };
             let null = if args.is_present("null") {
-                Some(NullConfig::new("sinks.null".to_string()))
+                Some(NullConfig::new("sinks.null".to_string(), global_flush_interval))
             } else {
                 None
             };
             let console = if args.is_present("console") {
-                Some(ConsoleConfig::new("sinks.console".to_string()))
+                Some(ConsoleConfig::new("sinks.console".to_string(), global_flush_interval))
             } else {
                 None
             };
@@ -180,8 +183,21 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         None => TagMap::default(),
     };
 
+    let global_flush_interval = value.lookup("global_flush_interval")
+        .unwrap_or(&Value::Integer(60))
+        .as_integer()
+        .unwrap();
+
     let null = if value.lookup("null").or(value.lookup("sinks.null")).is_some() {
-        Some(NullConfig { config_path: "sinks.null".to_string() })
+        Some(NullConfig {
+            config_path: "sinks.null".to_string(),
+            flush_interval: value.lookup("null.flush_interval")
+                .or(value.lookup("sinks.null.flush_interval"))
+                .unwrap_or(&Value::Integer(global_flush_interval))
+                .as_integer()
+                .map(|i| i as u64)
+                .unwrap(),
+        })
     } else {
         None
     };
@@ -194,6 +210,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .as_integer()
                 .expect("could not parse sinks.console.bin_width"),
             config_path: "sinks.console".to_string(),
+            flush_interval: value.lookup("console.flush_interval")
+                .or(value.lookup("sinks.console.flush_interval"))
+                .unwrap_or(&Value::Integer(global_flush_interval))
+                .as_integer()
+                .map(|i| i as u64)
+                .unwrap(),
         })
     } else {
         None
@@ -259,6 +281,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             config_path: "sinks.wavefront".to_string(),
             percentiles: percentiles,
             tags: tags.clone(),
+            flush_interval: value.lookup("wavefront.flush_interval")
+                .or(value.lookup("sinks.wavefront.flush_interval"))
+                .unwrap_or(&Value::Integer(global_flush_interval))
+                .as_integer()
+                .map(|i| i as u64)
+                .unwrap(),
         })
     } else {
         None
@@ -285,6 +313,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .expect("could not parse sinks.influxdb.bin_width"),
             config_path: "sinks.influxdb".to_string(),
             tags: tags.clone(),
+            flush_interval: value.lookup("influxdb.flush_interval")
+                .or(value.lookup("sinks.influxdb.flush_interval"))
+                .unwrap_or(&Value::Integer(global_flush_interval))
+                .as_integer()
+                .map(|i| i as u64)
+                .unwrap(),
         })
     } else {
         None
@@ -310,6 +344,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .as_integer()
                 .expect("could not parse sinks.prometheus.bin_width"),
             config_path: "sinks.prometheus".to_string(),
+            flush_interval: value.lookup("prometheus.flush_interval")
+                .or(value.lookup("sinks.prometheus.flush_interval"))
+                .unwrap_or(&Value::Integer(global_flush_interval))
+                .as_integer()
+                .map(|i| i as u64)
+                .unwrap(),
         })
     } else {
         None
@@ -328,6 +368,11 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .map(|s| s.to_string())
                 .expect("could not parse sinks.native.host"),
             config_path: "sinks.native".to_string(),
+            flush_interval: value.lookup("sinks.native.flush_interval")
+                .unwrap_or(&Value::Integer(global_flush_interval))
+                .as_integer()
+                .map(|i| i as u64)
+                .unwrap(),
         })
     } else {
         None
@@ -460,11 +505,17 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                                     "us-west-2" | _ => Region::UsWest2,
                                 });
                             let delivery_stream = ds.unwrap().to_string();
+                            let flush_interval = val.lookup("flush_interval")
+                                .unwrap_or(&Value::Integer(global_flush_interval))
+                                .as_integer()
+                                .map(|i| i as u64)
+                                .unwrap();
                             firehosen.push(FirehoseConfig {
                                 delivery_stream: delivery_stream.clone(),
                                 batch_size: bs,
                                 region: r.unwrap(),
                                 config_path: format!("sinks.firehose.{}", delivery_stream),
+                                flush_interval: flush_interval,
                             })
                         }
                         None => continue,
@@ -499,11 +550,17 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                                     "us-west-1" => Region::UsWest1,
                                     "us-west-2" | _ => Region::UsWest2,
                                 });
+                            let flush_interval = tbl.lookup("flush_interval")
+                                .unwrap_or(&Value::Integer(global_flush_interval))
+                                .as_integer()
+                                .map(|i| i as u64)
+                                .unwrap();
                             firehosen.push(FirehoseConfig {
                                 delivery_stream: ds.unwrap().to_string(),
                                 batch_size: bs,
                                 region: r.unwrap(),
                                 config_path: format!("sinks.firehose.{}", key),
+                                flush_interval: flush_interval,
                             })
                         }
                         None => continue,
@@ -684,6 +741,10 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         graphites: graphites,
         native_sink_config: native_sink_config,
         native_server_config: native_server_config,
+        global_flush_interval: value.lookup("global-flush-interval")
+            .unwrap_or(&Value::Integer(60))
+            .as_integer()
+            .expect("global-flush-interval must be integer") as u64,
         console: console,
         null: null,
         wavefront: wavefront,
@@ -757,6 +818,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(args.statsds.get("sources.statsd").unwrap().port, 8125);
         assert!(!args.graphites.is_empty());
         assert_eq!(args.graphites.get("sources.graphite").unwrap().port, 2003);
+        assert_eq!(args.global_flush_interval, 60);
         assert!(args.console.is_none());
         assert!(args.null.is_none());
         assert_eq!(true, args.firehosen.is_empty());
@@ -789,6 +851,7 @@ scripts-directory = "/foo/bar"
   [sinks.native]
   host = "foo.example.com"
   port = 1972
+  flush_interval = 120
 "#
             .to_string();
 
@@ -798,6 +861,7 @@ scripts-directory = "/foo/bar"
         let native_sink_config = args.native_sink_config.unwrap();
         assert_eq!(native_sink_config.host, String::from("foo.example.com"));
         assert_eq!(native_sink_config.port, 1972);
+        assert_eq!(native_sink_config.flush_interval, 120);
     }
 
     #[test]
@@ -1070,6 +1134,7 @@ bin_width = 9
   port = 3131
   host = "example.com"
   bin_width = 9
+  flush_interval = 15
 "#
             .to_string();
 
@@ -1080,6 +1145,7 @@ bin_width = 9
         assert_eq!(wavefront.host, String::from("example.com"));
         assert_eq!(wavefront.port, 3131);
         assert_eq!(wavefront.bin_width, 9);
+        assert_eq!(wavefront.flush_interval, 15);
     }
 
     #[test]
@@ -1136,6 +1202,7 @@ bin_width = 9
   port = 3131
   host = "example.com"
   bin_width = 9
+  flush_interval = 70
 "#
             .to_string();
 
@@ -1146,6 +1213,7 @@ bin_width = 9
         assert_eq!(influxdb.host, String::from("example.com"));
         assert_eq!(influxdb.port, 3131);
         assert_eq!(influxdb.bin_width, 9);
+        assert_eq!(influxdb.flush_interval, 70);
     }
 
     #[test]
@@ -1175,6 +1243,7 @@ bin_width = 9
   port = 3131
   host = "example.com"
   bin_width = 9
+  flush_interval = 10
 "#
             .to_string();
 
@@ -1185,6 +1254,7 @@ bin_width = 9
         assert_eq!(prometheus.host, String::from("example.com"));
         assert_eq!(prometheus.port, 3131);
         assert_eq!(prometheus.bin_width, 9);
+        assert_eq!(prometheus.flush_interval, 10);
     }
 
     #[test]
@@ -1226,7 +1296,9 @@ bin_width = 9
         let args = parse_config_file(config, 4);
 
         assert!(args.console.is_some());
-        assert_eq!(args.console.unwrap().bin_width, 9);
+        let console = args.console.unwrap();
+        assert_eq!(console.bin_width, 9);
+        assert_eq!(console.flush_interval, 60); // default
     }
 
     #[test]
@@ -1312,6 +1384,7 @@ region = "us-east-1"
   [sinks.firehose.stream_one]
   delivery_stream = "stream_one"
   batch_size = 20
+  flush_interval = 15
 
   [sinks.firehose.stream_two]
   delivery_stream = "stream_two"
@@ -1327,10 +1400,12 @@ region = "us-east-1"
         assert_eq!(args.firehosen[0].delivery_stream, "stream_one");
         assert_eq!(args.firehosen[0].batch_size, 20);
         assert_eq!(args.firehosen[0].region, Region::UsWest2);
+        assert_eq!(args.firehosen[0].flush_interval, 15);
 
         assert_eq!(args.firehosen[1].delivery_stream, "stream_two");
         assert_eq!(args.firehosen[1].batch_size, 800);
         assert_eq!(args.firehosen[1].region, Region::UsEast1);
+        assert_eq!(args.firehosen[1].flush_interval, 60); // default
     }
 
     #[test]
@@ -1434,7 +1509,7 @@ mission = "from_gad"
 statsd-port = 1024
 graphite-port = 1034
 
-flush-interval = 128
+global-flush-interval = 128
 
 [wavefront]
 port = 3131
@@ -1469,6 +1544,7 @@ mission = "from_gad"
         let graphite_config = args.graphites.get("sources.graphite").unwrap();
         assert_eq!(graphite_config.port, 1034);
         assert_eq!(graphite_config.tags, tags);
+        assert_eq!(args.global_flush_interval, 128);
         assert!(args.console.is_some());
         assert!(args.null.is_some());
         assert!(args.firehosen.is_empty());
