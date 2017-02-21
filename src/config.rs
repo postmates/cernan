@@ -107,7 +107,7 @@ pub fn parse_args() -> Args {
                 None
             };
             let null = if args.is_present("null") {
-                Some(NullConfig::new("sinks.null".to_string(), global_flush_interval))
+                Some(NullConfig::new("sinks.null".to_string()))
             } else {
                 None
             };
@@ -190,15 +190,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         .unwrap();
 
     let null = if value.lookup("null").or(value.lookup("sinks.null")).is_some() {
-        Some(NullConfig {
-            config_path: "sinks.null".to_string(),
-            flush_interval: value.lookup("null.flush_interval")
-                .or(value.lookup("sinks.null.flush_interval"))
-                .unwrap_or(&Value::Integer(global_flush_interval))
-                .as_integer()
-                .map(|i| i as u64)
-                .unwrap(),
-        })
+        Some(NullConfig { config_path: "sinks.null".to_string() })
     } else {
         None
     };
