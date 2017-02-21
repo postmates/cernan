@@ -20,7 +20,6 @@
         unstable_features,
         unused_import_braces,
 )]
-extern crate bincode;
 extern crate byteorder;
 extern crate chrono;
 extern crate clap;
