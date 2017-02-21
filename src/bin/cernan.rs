@@ -35,6 +35,12 @@ fn populate_forwards(sends: &mut util::Channel,
     }
 }
 
+fn propagate_flushes(flush_reachability: &mut HashMap<String, bool>, forwards: &[String]) {
+    for fwd in forwards {
+        flush_reachability.insert(fwd.clone(), true);
+    }
+}
+
 fn main() {
     let args = cernan::config::parse_args();
 
@@ -70,15 +76,17 @@ fn main() {
     info!("cernan - {}", args.version);
     let mut joins = Vec::new();
     let mut sends: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
+    let mut flush_reachability: HashMap<String, bool> = HashMap::new();
 
     // SINKS
     //
-    let mut flush_sends = Vec::new();
+    let mut flush_channels: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     if let Some(config) = args.console {
         let (console_send, console_recv) =
             hopper::channel(&config.config_path, &args.data_directory).unwrap();
-        flush_sends.push(console_send.clone());
+        flush_channels.insert(config.config_path.clone(), console_send.clone());
         sends.insert(config.config_path.clone(), console_send);
+        flush_reachability.insert(config.config_path.clone(), false);
         joins.push(thread::spawn(move || {
             cernan::sink::Console::new(config).run(console_recv);
         }));
@@ -86,22 +94,25 @@ fn main() {
     if let Some(config) = args.null {
         let (null_send, null_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
-        flush_sends.push(null_send.clone());
+        flush_channels.insert(config.config_path.clone(), null_send.clone());
         sends.insert(config.config_path.clone(), null_send);
+        flush_reachability.insert(config.config_path.clone(), false);
         joins.push(thread::spawn(move || { cernan::sink::Null::new(config).run(null_recv); }));
     }
     if let Some(config) = args.wavefront {
         let (wf_send, wf_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
-        flush_sends.push(wf_send.clone());
+        flush_channels.insert(config.config_path.clone(), wf_send.clone());
         sends.insert(config.config_path.clone(), wf_send);
+        flush_reachability.insert(config.config_path.clone(), false);
         joins.push(thread::spawn(move || { cernan::sink::Wavefront::new(config).run(wf_recv); }));
     }
     if let Some(config) = args.prometheus {
         let (prometheus_send, prometheus_recv) =
             hopper::channel(&config.config_path, &args.data_directory).unwrap();
-        flush_sends.push(prometheus_send.clone());
+        flush_channels.insert(config.config_path.clone(), prometheus_send.clone());
         sends.insert(config.config_path.clone(), prometheus_send);
+        flush_reachability.insert(config.config_path.clone(), false);
         joins.push(thread::spawn(move || {
             cernan::sink::Prometheus::new(config).run(prometheus_recv);
         }));
@@ -109,23 +120,26 @@ fn main() {
     if let Some(config) = args.influxdb {
         let (flx_send, flx_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
-        flush_sends.push(flx_send.clone());
+        flush_channels.insert(config.config_path.clone(), flx_send.clone());
         sends.insert(config.config_path.clone(), flx_send);
+        flush_reachability.insert(config.config_path.clone(), false);
         joins.push(thread::spawn(move || { cernan::sink::InfluxDB::new(config).run(flx_recv); }));
     }
     if let Some(config) = args.native_sink_config {
         let (cernan_send, cernan_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
-        flush_sends.push(cernan_send.clone());
+        flush_channels.insert(config.config_path.clone(), cernan_send.clone());
         sends.insert(config.config_path.clone(), cernan_send);
+        flush_reachability.insert(config.config_path.clone(), false);
         joins.push(thread::spawn(move || { cernan::sink::Native::new(config).run(cernan_recv); }));
     }
     for config in &args.firehosen {
         let f: FirehoseConfig = config.clone();
         let (firehose_send, firehose_recv) =
             hopper::channel(&config.config_path, &args.data_directory).unwrap();
-        flush_sends.push(firehose_send.clone());
+        flush_channels.insert(config.config_path.clone(), firehose_send.clone());
         sends.insert(config.config_path.clone(), firehose_send);
+        flush_reachability.insert(config.config_path.clone(), false);
         joins.push(thread::spawn(move || { cernan::sink::Firehose::new(f).run(firehose_recv); }));
     }
 
@@ -136,14 +150,31 @@ fn main() {
         let (flt_send, flt_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();
         sends.insert(config.config_path.clone(), flt_send);
+        flush_reachability.insert(config.config_path.clone(), true);
         let mut downstream_sends = Vec::new();
         populate_forwards(&mut downstream_sends,
                           &config.forwards,
                           &config.config_path,
                           &sends);
+        propagate_flushes(&mut flush_reachability, &config.forwards);
         joins.push(thread::spawn(move || {
             cernan::filter::ProgrammableFilter::new(c).run(flt_recv, downstream_sends);
         }));
+    }
+
+    let mut flush_sends: util::Channel = Vec::new();
+    for (config_path, reachable) in &flush_reachability {
+        if !reachable {
+            match flush_channels.get(config_path) {
+                Some(channel) => flush_sends.push(channel.clone()),
+                None => {
+                    error!("Can't find sink channel to propagate flush: {} => {}",
+                           config_path,
+                           reachable);
+                    process::exit(0);
+                }
+            }
+        }
     }
 
     // SOURCES
