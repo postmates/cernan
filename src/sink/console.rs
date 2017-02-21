@@ -21,7 +21,7 @@ impl Console {
     /// ```
     /// use cernan::sink::{Console, ConsoleConfig};
     /// let config = ConsoleConfig { config_path: "sinks.console".to_string(),
-    /// bin_width: 2 };
+    /// bin_width: 2, flush_interval: 60 };
     /// let c = Console::new(config);
     /// ```
     pub fn new(config: ConsoleConfig) -> Console {
@@ -39,6 +39,7 @@ pub struct ConsoleConfig {
     /// Sets the bin width for Console's underlying
     /// [bucket](../buckets/struct.Bucket.html).
     pub bin_width: i64,
+    pub flush_interval: u64,
 }
 
 impl ConsoleConfig {
@@ -49,13 +50,14 @@ impl ConsoleConfig {
     ///
     /// ```
     /// use cernan::sink::ConsoleConfig;
-    /// let config = ConsoleConfig::new("sinks.console".to_string());
+    /// let config = ConsoleConfig::new("sinks.console".to_string(), 60);
     /// assert_eq!(1, config.bin_width);
     /// ```
-    pub fn new(config_path: String) -> ConsoleConfig {
+    pub fn new(config_path: String, flush_interval: u64) -> ConsoleConfig {
         ConsoleConfig {
             config_path: config_path,
             bin_width: 1,
+            flush_interval: flush_interval,
         }
     }
 }

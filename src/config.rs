@@ -11,7 +11,6 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use timer;
 use toml;
 use toml::Value;
 

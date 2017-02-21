@@ -27,6 +27,7 @@ pub struct PrometheusConfig {
     pub host: String,
     pub port: u16,
     pub config_path: String,
+    pub flush_interval: u64,
 }
 
 struct SenderHandler {

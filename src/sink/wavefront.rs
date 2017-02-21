@@ -26,6 +26,7 @@ pub struct WavefrontConfig {
     pub config_path: String,
     pub percentiles: Vec<(String, f64)>,
     pub tags: TagMap,
+    pub flush_interval: u64,
 }
 
 #[inline]
@@ -227,6 +228,7 @@ mod test {
             config_path: "sinks.wavefront".to_string(),
             tags: tags.clone(),
             percentiles: percentiles,
+            flush_interval: 60,
         };
         let mut wavefront = Wavefront::new(config);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
