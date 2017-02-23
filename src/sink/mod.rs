@@ -79,4 +79,7 @@ pub trait Sink {
 pub trait Sink1: Sink {
     // fn run();
     fn get_config(&self) -> &SinkConfig;
+    fn run1(&mut self, _forwards: Vec<hopper::Sender<Event>>, recv: hopper::Receiver<Event>) {
+        self.run(recv)
+    }
 }

@@ -120,6 +120,8 @@ fn main() {
                           &config.get_config_path(),
                           &send_channels);
         forward_channels.insert(config.get_config_path().clone(), forwards);
+        let ref recv = recv_channels.get(config.get_config_path()).unwrap();
+        // joins.push(thread::spawn(move || { sink.run1(forwards, recv); }));
     }
 
     if let Some(config) = args.wavefront {
