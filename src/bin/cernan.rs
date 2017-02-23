@@ -7,7 +7,8 @@ extern crate hopper;
 
 use cernan::filter::{Filter, ProgrammableFilterConfig};
 use cernan::metric;
-use cernan::sink::{FirehoseConfig, Sink};
+use cernan::sink;
+use cernan::sink::{FirehoseConfig, Sink, Sink1, SinkConfig};
 use cernan::source::Source;
 use cernan::util;
 use chrono::UTC;
@@ -74,22 +75,51 @@ fn main() {
     // SINKS
     //
     let mut flush_sends = Vec::new();
+
+    // if let Some(config) = args.console {
+    //     let (console_send, console_recv) =
+    //         hopper::channel(&config.config_path, &args.data_directory).unwrap();
+    //     flush_sends.push(console_send.clone());
+    //     sends.insert(config.config_path.clone(), console_send);
+    //     joins.push(thread::spawn(move || {
+    //         cernan::sink::Console::new(config).run(console_recv);
+    //     }));
+    // }
+    // if let Some(config) = args.null {
+    // let (null_send, null_recv) = hopper::channel(&config.config_path,
+    // &args.data_directory)
+    //         .unwrap();
+    //     flush_sends.push(null_send.clone());
+    //     sends.insert(config.config_path.clone(), null_send);
+    // joins.push(thread::spawn(move || {
+    // cernan::sink::Null::new(config).run(null_recv); }));
+    // }
+
+    let mut send_channels: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
+    let mut recv_channels: HashMap<String, hopper::Receiver<metric::Event>> = HashMap::new();
+    let mut all_sinks: Vec<Box<Sink1>> = Vec::new();
     if let Some(config) = args.console {
-        let (console_send, console_recv) =
-            hopper::channel(&config.config_path, &args.data_directory).unwrap();
-        flush_sends.push(console_send.clone());
-        sends.insert(config.config_path.clone(), console_send);
-        joins.push(thread::spawn(move || {
-            cernan::sink::Console::new(config).run(console_recv);
-        }));
-    }
+        all_sinks.push(Box::new(cernan::sink::Console::new(config)));
+    };
     if let Some(config) = args.null {
-        let (null_send, null_recv) = hopper::channel(&config.config_path, &args.data_directory)
-            .unwrap();
-        flush_sends.push(null_send.clone());
-        sends.insert(config.config_path.clone(), null_send);
-        joins.push(thread::spawn(move || { cernan::sink::Null::new(config).run(null_recv); }));
+        all_sinks.push(Box::new(sink::Null::new(config)));
+    };
+    for sink in &mut all_sinks {
+        let (send, recv) = hopper::channel(sink.get_config_path(), &args.data_directory).unwrap();
+        send_channels.insert(sink.get_config_path().clone(), send);
+        recv_channels.insert(sink.get_config_path().clone(), recv);
     }
+
+    let mut forward_channels: HashMap<String, Vec<hopper::Sender<metric::Event>>> = HashMap::new();
+    for sink in &mut all_sinks {
+        let mut forwards = Vec::new();
+        populate_forwards(&mut forwards,
+                          &sink.get_forwards(),
+                          &sink.get_config_path(),
+                          &send_channels);
+        forward_channels.insert(sink.get_config_path().clone(), forwards);
+    }
+
     if let Some(config) = args.wavefront {
         let (wf_send, wf_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();

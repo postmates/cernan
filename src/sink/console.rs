@@ -3,7 +3,7 @@
 use buckets::Buckets;
 use chrono;
 use metric::{AggregationMethod, LogLine, Telemetry};
-use sink::{Sink, Valve};
+use sink::{Sink, Sink1, SinkConfig, Valve};
 use std::sync;
 
 /// The 'console' sink exists for development convenience. The sink will
@@ -11,6 +11,7 @@ use std::sync;
 /// print each `flush-interval` to stdout.
 pub struct Console {
     aggrs: Buckets,
+    config: ConsoleConfig,
 }
 
 impl Console {
@@ -25,7 +26,10 @@ impl Console {
     /// let c = Console::new(config);
     /// ```
     pub fn new(config: ConsoleConfig) -> Console {
-        Console { aggrs: Buckets::new(config.bin_width) }
+        Console {
+            aggrs: Buckets::new(config.bin_width),
+            config: config,
+        }
     }
 }
 
@@ -59,6 +63,8 @@ impl ConsoleConfig {
         }
     }
 }
+
+impl SinkConfig for ConsoleConfig {}
 
 impl Sink for Console {
     fn valve_state(&self) -> Valve {
@@ -139,5 +145,14 @@ impl Sink for Console {
         print!("{}", summaries);
 
         self.aggrs.reset();
+    }
+}
+
+impl Sink1 for Console {
+    fn get_config_path(&self) -> &String {
+        &self.config.config_path
+    }
+    fn get_forwards(&self) -> Vec<String> {
+        Vec::new()
     }
 }
