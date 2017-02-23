@@ -105,19 +105,21 @@ fn main() {
         all_sinks.push(Box::new(sink::Null::new(config)));
     };
     for sink in &mut all_sinks {
-        let (send, recv) = hopper::channel(sink.get_config_path(), &args.data_directory).unwrap();
-        send_channels.insert(sink.get_config_path().clone(), send);
-        recv_channels.insert(sink.get_config_path().clone(), recv);
+        let config = sink.get_config();
+        let (send, recv) = hopper::channel(config.get_config_path(), &args.data_directory).unwrap();
+        send_channels.insert(config.get_config_path().clone(), send);
+        recv_channels.insert(config.get_config_path().clone(), recv);
     }
 
     let mut forward_channels: HashMap<String, Vec<hopper::Sender<metric::Event>>> = HashMap::new();
     for sink in &mut all_sinks {
+        let config = sink.get_config();
         let mut forwards = Vec::new();
         populate_forwards(&mut forwards,
-                          &sink.get_forwards(),
-                          &sink.get_config_path(),
+                          &config.get_forwards(),
+                          &config.get_config_path(),
                           &send_channels);
-        forward_channels.insert(sink.get_config_path().clone(), forwards);
+        forward_channels.insert(config.get_config_path().clone(), forwards);
     }
 
     if let Some(config) = args.wavefront {

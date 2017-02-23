@@ -1,14 +1,14 @@
 use metric::{LogLine, Telemetry};
-use sink::{Sink, Sink1, Valve};
+use sink::{Sink, Sink1, SinkConfig, Valve};
 use std::sync;
 
 pub struct Null {
-    pub config_path: String,
+    pub config: NullConfig,
 }
 
 impl Null {
     pub fn new(config: NullConfig) -> Null {
-        Null { config_path: config.config_path }
+        Null { config: config }
     }
 }
 
@@ -20,6 +20,12 @@ pub struct NullConfig {
 impl NullConfig {
     pub fn new(config_path: String) -> NullConfig {
         NullConfig { config_path: config_path }
+    }
+}
+
+impl SinkConfig for NullConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
     }
 }
 
@@ -42,10 +48,7 @@ impl Sink for Null {
 }
 
 impl Sink1 for Null {
-    fn get_config_path(&self) -> &String {
-        &self.config_path
-    }
-    fn get_forwards(&self) -> Vec<String> {
-        Vec::new()
+    fn get_config(&self) -> &SinkConfig {
+        &self.config
     }
 }

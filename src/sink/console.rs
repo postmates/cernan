@@ -64,7 +64,11 @@ impl ConsoleConfig {
     }
 }
 
-impl SinkConfig for ConsoleConfig {}
+impl SinkConfig for ConsoleConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
+    }
+}
 
 impl Sink for Console {
     fn valve_state(&self) -> Valve {
@@ -149,10 +153,7 @@ impl Sink for Console {
 }
 
 impl Sink1 for Console {
-    fn get_config_path(&self) -> &String {
-        &self.config.config_path
-    }
-    fn get_forwards(&self) -> Vec<String> {
-        Vec::new()
+    fn get_config(&self) -> &SinkConfig {
+        &self.config
     }
 }

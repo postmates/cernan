@@ -32,8 +32,9 @@ pub enum Valve {
 
 pub trait SinkConfig {
     fn get_forwards(&self) -> Vec<String> {
-        vec![]
+        Vec::new()
     }
+    fn get_config_path(&self) -> &String;
 }
 
 /// A 'sink' is a sink for metrics.
@@ -77,9 +78,5 @@ pub trait Sink {
 
 pub trait Sink1: Sink {
     // fn run();
-    fn get_config_path(&self) -> &String;
-    fn get_forwards(&self) -> Vec<String>;
+    fn get_config(&self) -> &SinkConfig;
 }
-//     joins.push(thread::spawn(move || {
-//         cernan::sink::Console::new(config).run(console_recv);
-//     }));
