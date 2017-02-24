@@ -154,7 +154,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         .unwrap_or(&Value::String("/tmp/cernan-scripts".to_string()))
         .as_str()
         .map(|s| Path::new(s).to_path_buf())
-        .unwrap();
+        .expect("could not parse scripts-directory");
 
     let tags: TagMap = match value.lookup("tags") {
         Some(tbl) => {
@@ -181,7 +181,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .or(value.lookup("sinks.console.bin_width"))
                 .unwrap_or(&Value::Integer(1))
                 .as_integer()
-                .unwrap(),
+                .expect("could not parse sinks.console.bin_width"),
             config_path: "sinks.console".to_string(),
         })
     } else {
@@ -195,18 +195,18 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .unwrap_or(&Value::Integer(2878))
                 .as_integer()
                 .map(|i| i as u16)
-                .unwrap(),
+                .expect("could not parse sinks.wavefront.port"),
             host: value.lookup("wavefront.host")
                 .or(value.lookup("sinks.wavefront.host"))
                 .unwrap_or(&Value::String("127.0.0.1".to_string()))
                 .as_str()
                 .map(|s| s.to_string())
-                .unwrap(),
+                .expect("could not parse sinks.wavefront.host"),
             bin_width: value.lookup("wavefront.bin_width")
                 .or(value.lookup("sinks.wavefront.bin_width"))
                 .unwrap_or(&Value::Integer(1))
                 .as_integer()
-                .unwrap(),
+                .expect("could not parse sinks.wavefront.bin_width"),
             config_path: "sinks.wavefront".to_string(),
             tags: tags.clone(),
         })
@@ -221,18 +221,18 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .unwrap_or(&Value::Integer(8089))
                 .as_integer()
                 .map(|i| i as u16)
-                .unwrap(),
+                .expect("could not parse sinks.influxdb.port"),
             host: value.lookup("influxdb.host")
                 .or(value.lookup("sinks.influxdb.host"))
                 .unwrap_or(&Value::String("127.0.0.1".to_string()))
                 .as_str()
                 .map(|s| s.to_string())
-                .unwrap(),
+                .expect("could not parse sinks.influxdb.host"),
             bin_width: value.lookup("influxdb.bin_width")
                 .or(value.lookup("sinks.influxdb.bin_width"))
                 .unwrap_or(&Value::Integer(1))
                 .as_integer()
-                .unwrap(),
+                .expect("could not parse sinks.influxdb.bin_width"),
             config_path: "sinks.influxdb".to_string(),
             tags: tags.clone(),
         })
@@ -247,18 +247,18 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .unwrap_or(&Value::Integer(8086))
                 .as_integer()
                 .map(|i| i as u16)
-                .unwrap(),
+                .expect("could not parse sinks.prometheus.port"),
             host: value.lookup("prometheus.host")
                 .or(value.lookup("sinks.prometheus.host"))
                 .unwrap_or(&Value::String("127.0.0.1".to_string()))
                 .as_str()
                 .map(|s| s.to_string())
-                .unwrap(),
+                .expect("could not parse sinks.prometheus.host"),
             bin_width: value.lookup("prometheus.bin_width")
                 .or(value.lookup("sinks.prometheus.bin_width"))
                 .unwrap_or(&Value::Integer(1))
                 .as_integer()
-                .unwrap(),
+                .expect("could not parse sinks.prometheus.bin_width"),
             config_path: "sinks.prometheus".to_string(),
         })
     } else {
@@ -271,12 +271,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .unwrap_or(&Value::Integer(1972))
                 .as_integer()
                 .map(|i| i as u16)
-                .unwrap(),
+                .expect("could not parse sinks.native.port"),
             host: value.lookup("sinks.native.host")
                 .unwrap_or(&Value::String("127.0.0.1".to_string()))
                 .as_str()
                 .map(|s| s.to_string())
-                .unwrap(),
+                .expect("could not parse sinks.native.host"),
             config_path: "sinks.native".to_string(),
         })
     } else {
@@ -622,7 +622,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             .unwrap_or(&Value::String("/tmp/cernan-data".to_string()))
             .as_str()
             .map(|s| Path::new(s).to_path_buf())
-            .unwrap(),
+            .expect("could not parse data-directory"),
         scripts_directory: scripts_dir,
         statsds: statsds,
         graphites: graphites,
