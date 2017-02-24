@@ -1,7 +1,7 @@
 use metric;
 use protocols::statsd::parse_statsd;
 use source::Source;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6, UdpSocket};
+use std::net::{ToSocketAddrs, UdpSocket};
 use std::str;
 use std::sync;
 use std::thread;
@@ -10,13 +10,14 @@ use util::send;
 
 pub struct Statsd {
     chans: util::Channel,
+    host: String,
     port: u16,
     tags: sync::Arc<metric::TagMap>,
 }
 
 #[derive(Debug,Clone)]
 pub struct StatsdConfig {
-    pub ip: String,
+    pub host: String,
     pub port: u16,
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
@@ -27,7 +28,7 @@ pub struct StatsdConfig {
 impl Default for StatsdConfig {
     fn default() -> StatsdConfig {
         StatsdConfig {
-            ip: String::from(""),
+            host: String::from("localhost"),
             port: 8125,
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
@@ -41,6 +42,7 @@ impl Statsd {
     pub fn new(chans: util::Channel, config: StatsdConfig) -> Statsd {
         Statsd {
             chans: chans,
+            host: config.host,
             port: config.port,
             tags: sync::Arc::new(config.tags),
         }
@@ -85,19 +87,24 @@ impl Source for Statsd {
     fn run(&mut self) {
         let mut joins = Vec::new();
 
-        let addr_v6 = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), self.port, 0, 0);
-        let socket_v6 = UdpSocket::bind(addr_v6).expect("Unable to bind to UDP V6 socket");
-        let chans_v6 = self.chans.clone();
-        let tags_v6 = self.tags.clone();
-        info!("server started on ::1 {}", self.port);
-        joins.push(thread::spawn(move || handle_udp(chans_v6, tags_v6, socket_v6)));
-
-        let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
-        let socket_v4 = UdpSocket::bind(addr_v4).expect("Unable to bind to UDP socket");
-        let chans_v4 = self.chans.clone();
-        let tags_v4 = self.tags.clone();
-        info!("server started on 127.0.0.1:{}", self.port);
-        joins.push(thread::spawn(move || handle_udp(chans_v4, tags_v4, socket_v4)));
+        let addrs = (self.host.as_str(), self.port).to_socket_addrs();
+        match addrs {
+            Ok(ips) => {
+                let ips: Vec<_> = ips.collect();
+                for addr in ips {
+                    let listener = UdpSocket::bind(addr).expect("Unable to bind to TCP socket");
+                    let chans = self.chans.clone();
+                    let tags = self.tags.clone();
+                    info!("server started on {:?} {}", addr, self.port);
+                    joins.push(thread::spawn(move || handle_udp(chans, tags, listener)));
+                }
+            }
+            Err(e) => {
+                info!("Unable to perform DNS lookup on host {} with error {}",
+                      self.host,
+                      e);
+            }
+        }
 
         for jh in joins {
             // TODO Having sub-threads panic will not cause a bubble-up if that
