@@ -3,8 +3,8 @@ use metric;
 use protocols::graphite::parse_graphite;
 use std::io::BufReader;
 use std::io::prelude::*;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::net::{TcpListener, TcpStream};
+use std::net::ToSocketAddrs;
 use std::str;
 use std::sync::Arc;
 use std::thread;
@@ -13,13 +13,14 @@ use util::send;
 
 pub struct Graphite {
     chans: util::Channel,
+    host: String,
     port: u16,
     tags: Arc<metric::TagMap>,
 }
 
 #[derive(Debug,Clone)]
 pub struct GraphiteConfig {
-    pub ip: String,
+    pub host: String,
     pub port: u16,
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
@@ -29,7 +30,7 @@ pub struct GraphiteConfig {
 impl Default for GraphiteConfig {
     fn default() -> GraphiteConfig {
         GraphiteConfig {
-            ip: String::from(""),
+            host: String::from("localhost"),
             port: 2003,
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
@@ -42,6 +43,7 @@ impl Graphite {
     pub fn new(chans: util::Channel, config: GraphiteConfig) -> Graphite {
         Graphite {
             chans: chans,
+            host: config.host,
             port: config.port,
             tags: Arc::new(config.tags),
         }
@@ -108,19 +110,24 @@ impl Source for Graphite {
     fn run(&mut self) {
         let mut joins = Vec::new();
 
-        let addr_v6 = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), self.port, 0, 0);
-        let listener_v6 = TcpListener::bind(addr_v6).expect("Unable to bind to TCP V6 socket");
-        let chans_v6 = self.chans.clone();
-        let tags_v6 = self.tags.clone();
-        info!("server started on ::1 {}", self.port);
-        joins.push(thread::spawn(move || handle_tcp(chans_v6, tags_v6, listener_v6)));
-
-        let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
-        let listener_v4 = TcpListener::bind(addr_v4).expect("Unable to bind to TCP V4 socket");
-        let chans_v4 = self.chans.clone();
-        let tags_v4 = self.tags.clone();
-        info!("server started on 127.0.0.1:{}", self.port);
-        joins.push(thread::spawn(move || handle_tcp(chans_v4, tags_v4, listener_v4)));
+        let addrs = (self.host.as_str(), self.port).to_socket_addrs();
+        match addrs {
+            Ok(ips) => {
+                let ips: Vec<_> = ips.collect();
+                for addr in ips {
+                    let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
+                    let chans = self.chans.clone();
+                    let tags = self.tags.clone();
+                    info!("server started on {:?} {}", addr, self.port);
+                    joins.push(thread::spawn(move || handle_tcp(chans, tags, listener)));
+                }
+            }
+            Err(e) => {
+                info!("Unable to perform DNS lookup on host {} with error {}",
+                      self.host,
+                      e);
+            }
+        }
 
         // TODO thread spawn trick, join on results
         for jh in joins {

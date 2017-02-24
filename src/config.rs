@@ -484,6 +484,9 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                             sconfig.port = p.as_integer().expect("statsd-port must be integer") as
                                            u16;
                         }
+                        if let Some(p) = tbl.lookup("host") {
+                            sconfig.host = p.as_str().unwrap().to_string();
+                        }
                         if let Some(p) = tbl.lookup("delete-gauges") {
                             sconfig.delete_gauges = p.as_bool()
                                 .expect("statsd delete-gauges must be boolean") as
@@ -546,6 +549,9 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                         if let Some(p) = tbl.lookup("port") {
                             gconfig.port = p.as_integer().expect("graphite-port must be integer") as
                                            u16;
+                        }
+                        if let Some(p) = tbl.lookup("host") {
+                            gconfig.host = p.as_str().unwrap().to_string();
                         }
                         if let Some(fwds) = tbl.lookup("forwards") {
                             gconfig.forwards = fwds.as_slice()
@@ -798,6 +804,7 @@ port = 1024
 [sources]
   [sources.statsd.primary]
   enabled = true
+  host = "localhost"
   port = 1024
   delete-gauges = true
   forwards = ["sinks.console", "sinks.null"]
@@ -810,6 +817,7 @@ port = 1024
 
         let config0 = args.statsds.get("sources.statsd.primary").unwrap();
         assert_eq!(config0.delete_gauges, true);
+        assert_eq!(config0.host, "localhost");
         assert_eq!(config0.port, 1024);
         assert_eq!(config0.forwards,
                    vec!["sinks.console".to_string(), "sinks.null".to_string()]);
@@ -899,6 +907,7 @@ port = 1024
 [sources]
   [sources.graphite.primary]
   enabled = true
+  host = "localhost"
   port = 2003
   forwards = ["filters.collectd_scrub"]
 "#
@@ -911,6 +920,7 @@ port = 1024
 
         let config0 = args.graphites.get("sources.graphite.primary").unwrap();
         assert_eq!(config0.port, 2003);
+        assert_eq!(config0.host, "localhost");
         assert_eq!(config0.forwards, vec!["filters.collectd_scrub".to_string()]);
     }
 
