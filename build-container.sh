@@ -16,7 +16,7 @@ docker run \
   -e 'SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt' \
   --rm \
   -it \
-  -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder:1.13 /bin/bash \
+  -v "$(pwd)":/home/rust/src quay.io/postmates/rust-musl-builder:1.15 /bin/bash \
   -c "sudo apt-get update && sudo apt-get install -y make wget libssl-dev libreadline-dev && cargo build --verbose --release --target=x86_64-unknown-linux-musl"
 
 docker build -t quay.io/postmates/cernan:${VERSION} .
