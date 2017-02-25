@@ -76,25 +76,6 @@ fn main() {
     //
     let mut flush_sends = Vec::new();
 
-    // if let Some(config) = args.console {
-    //     let (console_send, console_recv) =
-    //         hopper::channel(&config.config_path, &args.data_directory).unwrap();
-    //     flush_sends.push(console_send.clone());
-    //     sends.insert(config.config_path.clone(), console_send);
-    //     joins.push(thread::spawn(move || {
-    //         cernan::sink::Console::new(config).run(console_recv);
-    //     }));
-    // }
-    // if let Some(config) = args.null {
-    // let (null_send, null_recv) = hopper::channel(&config.config_path,
-    // &args.data_directory)
-    //         .unwrap();
-    //     flush_sends.push(null_send.clone());
-    //     sends.insert(config.config_path.clone(), null_send);
-    // joins.push(thread::spawn(move || {
-    // cernan::sink::Null::new(config).run(null_recv); }));
-    // }
-
     let mut send_channels: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     let mut recv_channels: HashMap<String, hopper::Receiver<metric::Event>> = HashMap::new();
     let mut all_sinks: Vec<Box<Sink1 + Send>> = Vec::new();
@@ -112,14 +93,15 @@ fn main() {
     }
 
     let mut forward_channels: HashMap<String, Vec<hopper::Sender<metric::Event>>> = HashMap::new();
-    while let Some(sink) = all_sinks.pop() {
+    while let Some(mut sink) = all_sinks.pop() {
         let mut forwards = Vec::new();
         populate_forwards(&mut forwards,
                           &sink.get_config().get_forwards(),
                           &sink.get_config().get_config_path(),
                           &send_channels);
-        forward_channels.insert(sink.get_config().get_config_path().clone(), forwards);
-        let recv = *recv_channels.get(sink.get_config().get_config_path()).unwrap();
+        forward_channels.insert(sink.get_config().get_config_path().clone(),
+                                forwards.clone());
+        let recv = recv_channels.remove(sink.get_config().get_config_path()).unwrap();
         joins.push(thread::spawn(move || { sink.run1(forwards, recv); }));
     }
 
