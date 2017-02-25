@@ -97,7 +97,7 @@ fn main() {
 
     let mut send_channels: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     let mut recv_channels: HashMap<String, hopper::Receiver<metric::Event>> = HashMap::new();
-    let mut all_sinks: Vec<Box<Sink1>> = Vec::new();
+    let mut all_sinks: Vec<Box<Sink1 + Send>> = Vec::new();
     if let Some(config) = args.console {
         all_sinks.push(Box::new(cernan::sink::Console::new(config)));
     };
@@ -105,23 +105,22 @@ fn main() {
         all_sinks.push(Box::new(sink::Null::new(config)));
     };
     for sink in &mut all_sinks {
-        let config = sink.get_config();
-        let (send, recv) = hopper::channel(config.get_config_path(), &args.data_directory).unwrap();
-        send_channels.insert(config.get_config_path().clone(), send);
-        recv_channels.insert(config.get_config_path().clone(), recv);
+        let (send, recv) =
+            hopper::channel(sink.get_config().get_config_path(), &args.data_directory).unwrap();
+        send_channels.insert(sink.get_config().get_config_path().clone(), send);
+        recv_channels.insert(sink.get_config().get_config_path().clone(), recv);
     }
 
     let mut forward_channels: HashMap<String, Vec<hopper::Sender<metric::Event>>> = HashMap::new();
-    for sink in &mut all_sinks {
-        let config = sink.get_config();
+    while let Some(sink) = all_sinks.pop() {
         let mut forwards = Vec::new();
         populate_forwards(&mut forwards,
-                          &config.get_forwards(),
-                          &config.get_config_path(),
+                          &sink.get_config().get_forwards(),
+                          &sink.get_config().get_config_path(),
                           &send_channels);
-        forward_channels.insert(config.get_config_path().clone(), forwards);
-        let ref recv = recv_channels.get(config.get_config_path()).unwrap();
-        // joins.push(thread::spawn(move || { sink.run1(forwards, recv); }));
+        forward_channels.insert(sink.get_config().get_config_path().clone(), forwards);
+        let recv = *recv_channels.get(sink.get_config().get_config_path()).unwrap();
+        joins.push(thread::spawn(move || { sink.run1(forwards, recv); }));
     }
 
     if let Some(config) = args.wavefront {

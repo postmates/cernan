@@ -83,3 +83,4 @@ pub trait Sink1: Sink {
         self.run(recv)
     }
 }
+// unsafe impl Send for Sink1 {}
