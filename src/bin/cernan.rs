@@ -200,7 +200,6 @@ fn main() {
     // BACKGROUND
     //
 
-    let flush_interval = 1;
     joins.push(thread::spawn(move || {
         let mut flush_channels = Vec::new();
         for destination in flush_sends.iter() {
@@ -215,7 +214,7 @@ fn main() {
                 }
             }
         }
-        cernan::source::FlushTimer::new(flush_channels, flush_interval).run();
+        cernan::source::FlushTimer::new(flush_channels).run();
     }));
 
     joins.push(thread::spawn(move || { cernan::time::update_time(); }));
