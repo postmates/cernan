@@ -1,0 +1,23 @@
+data-directory = "data/"
+scripts-directory = "examples/scripts/"
+
+flush-interval = 1
+
+[tags]
+source = "cernan"
+
+[sources]
+  [sources.statsd.primary]
+  enabled = true
+  port = 8125
+  forwards = ["filters.keep_count"]
+
+[filters]
+  [filters.keep_count]
+  script = "keep_count.lua"
+  forwards = ["sinks.console"]
+
+[sinks]
+  [sinks.console]
+  bin_width = 1
+  flush_interval = 2

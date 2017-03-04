@@ -30,7 +30,7 @@ pub struct Args {
     pub files: Vec<FileServerConfig>,
     pub filters: HashMap<String, ProgrammableFilterConfig>,
     pub firehosen: Vec<FirehoseConfig>,
-    pub global_flush_interval: u64,
+    pub flush_interval: u64,
     pub graphites: HashMap<String, GraphiteConfig>,
     pub native_sink_config: Option<NativeConfig>,
     pub native_server_config: Option<NativeServerConfig>,
@@ -79,7 +79,7 @@ pub fn parse_args() -> Args {
         }
         // We read from CLI arguments
         None => {
-            let global_flush_interval = 60;
+            let flush_interval = 60;
             let wavefront = if args.is_present("wavefront") {
                 let percentiles = vec![("min".to_string(), 0.0),
                                        ("max".to_string(), 1.0),
@@ -101,7 +101,7 @@ pub fn parse_args() -> Args {
                     config_path: "sinks.wavefront".to_string(),
                     percentiles: percentiles,
                     tags: Default::default(),
-                    flush_interval: global_flush_interval,
+                    flush_interval: flush_interval,
                 })
             } else {
                 None
@@ -112,7 +112,7 @@ pub fn parse_args() -> Args {
                 None
             };
             let console = if args.is_present("console") {
-                Some(ConsoleConfig::new("sinks.console".to_string(), global_flush_interval))
+                Some(ConsoleConfig::new("sinks.console".to_string(), flush_interval))
             } else {
                 None
             };
@@ -152,7 +152,7 @@ pub fn parse_args() -> Args {
                 influxdb: None,
                 prometheus: None,
                 firehosen: Vec::default(),
-                global_flush_interval: global_flush_interval,
+                flush_interval: flush_interval,
                 files: Default::default(),
                 filters: Default::default(),
                 verbose: verb,
@@ -184,7 +184,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         None => TagMap::default(),
     };
 
-    let global_flush_interval = value.lookup("global_flush_interval")
+    let global_flush_interval = value.lookup("flush-interval")
         .unwrap_or(&Value::Integer(60))
         .as_integer()
         .unwrap();
@@ -337,12 +337,6 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .as_integer()
                 .expect("could not parse sinks.prometheus.bin_width"),
             config_path: "sinks.prometheus".to_string(),
-            flush_interval: value.lookup("prometheus.flush_interval")
-                .or(value.lookup("sinks.prometheus.flush_interval"))
-                .unwrap_or(&Value::Integer(global_flush_interval))
-                .as_integer()
-                .map(|i| i as u64)
-                .unwrap(),
         })
     } else {
         None
@@ -734,10 +728,10 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         graphites: graphites,
         native_sink_config: native_sink_config,
         native_server_config: native_server_config,
-        global_flush_interval: value.lookup("global-flush-interval")
+        flush_interval: value.lookup("flush-interval")
             .unwrap_or(&Value::Integer(60))
             .as_integer()
-            .expect("global-flush-interval must be integer") as u64,
+            .expect("flush-interval must be integer") as u64,
         console: console,
         null: null,
         wavefront: wavefront,
@@ -811,7 +805,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(args.statsds.get("sources.statsd").unwrap().port, 8125);
         assert!(!args.graphites.is_empty());
         assert_eq!(args.graphites.get("sources.graphite").unwrap().port, 2003);
-        assert_eq!(args.global_flush_interval, 60);
+        assert_eq!(args.flush_interval, 60);
         assert!(args.console.is_none());
         assert!(args.null.is_none());
         assert_eq!(true, args.firehosen.is_empty());
@@ -1236,7 +1230,6 @@ bin_width = 9
   port = 3131
   host = "example.com"
   bin_width = 9
-  flush_interval = 10
 "#
             .to_string();
 
@@ -1247,7 +1240,6 @@ bin_width = 9
         assert_eq!(prometheus.host, String::from("example.com"));
         assert_eq!(prometheus.port, 3131);
         assert_eq!(prometheus.bin_width, 9);
-        assert_eq!(prometheus.flush_interval, 10);
     }
 
     #[test]
@@ -1502,7 +1494,7 @@ mission = "from_gad"
 statsd-port = 1024
 graphite-port = 1034
 
-global-flush-interval = 128
+flush-interval = 128
 
 [wavefront]
 port = 3131
@@ -1537,7 +1529,7 @@ mission = "from_gad"
         let graphite_config = args.graphites.get("sources.graphite").unwrap();
         assert_eq!(graphite_config.port, 1034);
         assert_eq!(graphite_config.tags, tags);
-        assert_eq!(args.global_flush_interval, 128);
+        assert_eq!(args.flush_interval, 128);
         assert!(args.console.is_some());
         assert!(args.null.is_some());
         assert!(args.firehosen.is_empty());

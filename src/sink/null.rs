@@ -34,8 +34,8 @@ impl Sink for Null {
         // discard point
     }
 
-    fn get_flush_interval(&self) -> u64 {
-        1
+    fn flush_interval(&self) -> Option<u64> {
+        None
     }
 
 

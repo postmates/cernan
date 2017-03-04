@@ -80,8 +80,10 @@ impl Sink for Native {
                     match event {
                         metric::Event::TimerFlush(idx) => {
                             if idx > last_flush_idx {
-                                if idx % self.get_flush_interval() == 0 {
-                                    self.flush();
+                                if let Some(flush_interval) = self.flush_interval() {
+                                    if idx % flush_interval == 0 {
+                                        self.flush();
+                                    }
                                 }
                                 last_flush_idx = idx;
                             }
@@ -93,8 +95,8 @@ impl Sink for Native {
         }
     }
 
-    fn get_flush_interval(&self) -> u64 {
-        self.flush_interval
+    fn flush_interval(&self) -> Option<u64> {
+        Some(self.flush_interval)
     }
 
     fn flush(&mut self) {

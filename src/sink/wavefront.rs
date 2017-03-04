@@ -137,8 +137,8 @@ impl Wavefront {
 }
 
 impl Sink for Wavefront {
-    fn get_flush_interval(&self) -> u64 {
-        self.flush_interval
+    fn flush_interval(&self) -> Option<u64> {
+        Some(self.flush_interval)
     }
 
     fn flush(&mut self) {
