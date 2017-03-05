@@ -78,30 +78,30 @@ fn main() {
 
     let mut send_channels: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     let mut recv_channels: HashMap<String, hopper::Receiver<metric::Event>> = HashMap::new();
-    let mut all_sinks: Vec<Box<Entry + Send>> = Vec::new();
+    let mut all_entries: Vec<Box<Entry + Send>> = Vec::new();
     if let Some(config) = args.console {
-        all_sinks.push(Box::new(cernan::sink::Console::new(config)));
+        all_entries.push(Box::new(cernan::sink::Console::new(config)));
     };
     if let Some(config) = args.null {
-        all_sinks.push(Box::new(sink::Null::new(config)));
+        all_entries.push(Box::new(sink::Null::new(config)));
     };
     if let Some(config) = args.wavefront {
-        all_sinks.push(Box::new(cernan::sink::Wavefront::new(config)));
+        all_entries.push(Box::new(cernan::sink::Wavefront::new(config)));
     }
     if let Some(config) = args.prometheus {
-        all_sinks.push(Box::new(cernan::sink::Prometheus::new(config)));
+        all_entries.push(Box::new(cernan::sink::Prometheus::new(config)));
     }
     if let Some(config) = args.influxdb {
-        all_sinks.push(Box::new(cernan::sink::InfluxDB::new(config)));
+        all_entries.push(Box::new(cernan::sink::InfluxDB::new(config)));
     }
     if let Some(config) = args.native_sink_config {
-        all_sinks.push(Box::new(cernan::sink::Native::new(config)));
+        all_entries.push(Box::new(cernan::sink::Native::new(config)));
     }
     for config in &args.firehosen {
-        all_sinks.push(Box::new(cernan::sink::Firehose::new(config.clone())));
+        all_entries.push(Box::new(cernan::sink::Firehose::new(config.clone())));
     }
 
-    for sink in &mut all_sinks {
+    for sink in &mut all_entries {
         let (send, recv) =
             hopper::channel(sink.get_config().get_config_path(), &args.data_directory).unwrap();
         send_channels.insert(sink.get_config().get_config_path().clone(), send);
@@ -109,7 +109,7 @@ fn main() {
     }
 
     let mut forward_channels: HashMap<String, Vec<hopper::Sender<metric::Event>>> = HashMap::new();
-    while let Some(mut sink) = all_sinks.pop() {
+    while let Some(mut sink) = all_entries.pop() {
         let mut forwards = Vec::new();
         populate_forwards(&mut forwards,
                           &sink.get_config().get_forwards(),
