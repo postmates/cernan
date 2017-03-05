@@ -118,24 +118,24 @@ fn main() {
     }
 
 
-    for sink in &mut all_entries {
+    for entry in &mut all_entries {
         let (send, recv) =
-            hopper::channel(sink.get_config().get_config_path(), &args.data_directory).unwrap();
-        send_channels.insert(sink.get_config().get_config_path().clone(), send);
-        recv_channels.insert(sink.get_config().get_config_path().clone(), recv);
+            hopper::channel(entry.get_config().get_config_path(), &args.data_directory).unwrap();
+        send_channels.insert(entry.get_config().get_config_path().clone(), send);
+        recv_channels.insert(entry.get_config().get_config_path().clone(), recv);
     }
 
     let mut forward_channels: HashMap<String, Vec<hopper::Sender<metric::Event>>> = HashMap::new();
-    while let Some(mut sink) = all_entries.pop() {
+    while let Some(mut entry) = all_entries.pop() {
         let mut forwards = Vec::new();
         populate_forwards(&mut forwards,
-                          &sink.get_config().get_forwards(),
-                          &sink.get_config().get_config_path(),
+                          &entry.get_config().get_forwards(),
+                          &entry.get_config().get_config_path(),
                           &send_channels);
-        forward_channels.insert(sink.get_config().get_config_path().clone(),
+        forward_channels.insert(entry.get_config().get_config_path().clone(),
                                 forwards.clone());
-        let recv = recv_channels.remove(sink.get_config().get_config_path()).unwrap(); // removing to move ownership
-        joins.push(thread::spawn(move || { sink.run1(forwards, recv); }));
+        let recv = recv_channels.remove(entry.get_config().get_config_path()).unwrap(); // removing to move ownership
+        joins.push(thread::spawn(move || { entry.run1(forwards, recv); }));
     }
 
     //
