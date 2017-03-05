@@ -8,7 +8,7 @@ extern crate hopper;
 use cernan::filter::{Filter, ProgrammableFilterConfig};
 use cernan::metric;
 use cernan::sink;
-use cernan::sink::{FirehoseConfig, Sink, Sink1, SinkConfig};
+use cernan::sink::{FirehoseConfig, Sink, Sink1};
 use cernan::source::Source;
 use cernan::util;
 use chrono::UTC;
@@ -85,6 +85,13 @@ fn main() {
     if let Some(config) = args.null {
         all_sinks.push(Box::new(sink::Null::new(config)));
     };
+    if let Some(config) = args.wavefront {
+        all_sinks.push(Box::new(cernan::sink::Wavefront::new(config)));
+    }
+    if let Some(config) = args.prometheus {
+        all_sinks.push(Box::new(cernan::sink::Prometheus::new(config)));
+    }
+
     for sink in &mut all_sinks {
         let (send, recv) =
             hopper::channel(sink.get_config().get_config_path(), &args.data_directory).unwrap();
@@ -105,20 +112,6 @@ fn main() {
         joins.push(thread::spawn(move || { sink.run1(forwards, recv); }));
     }
 
-    if let Some(config) = args.wavefront {
-        let (wf_send, wf_recv) = hopper::channel(&config.config_path, &args.data_directory)
-            .unwrap();
-        flush_sends.push(wf_send.clone());
-        sends.insert(config.config_path.clone(), wf_send);
-        joins.push(thread::spawn(move || { cernan::sink::Wavefront::new(config).run(wf_recv); }));
-    }
-    if let Some(config) = args.prometheus {
-        let (wf_send, wf_recv) = hopper::channel(&config.config_path, &args.data_directory)
-            .unwrap();
-        flush_sends.push(wf_send.clone());
-        sends.insert(config.config_path.clone(), wf_send);
-        joins.push(thread::spawn(move || { cernan::sink::Prometheus::new(config).run(wf_recv); }));
-    }
     if let Some(config) = args.influxdb {
         let (flx_send, flx_recv) = hopper::channel(&config.config_path, &args.data_directory)
             .unwrap();

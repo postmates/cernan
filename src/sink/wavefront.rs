@@ -1,6 +1,6 @@
 use buckets::Buckets;
 use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
-use sink::{Sink, Valve};
+use sink::{Sink, Sink1, SinkConfig, Valve};
 use std::cmp;
 use std::io::Write as IoWrite;
 use std::net::TcpStream;
@@ -15,6 +15,7 @@ pub struct Wavefront {
     aggrs: Buckets,
     delivery_attempts: u32,
     pub stats: String,
+    config: WavefrontConfig,
 }
 
 #[derive(Debug)]
@@ -24,6 +25,13 @@ pub struct WavefrontConfig {
     pub port: u16,
     pub config_path: String,
     pub tags: TagMap,
+}
+
+
+impl SinkConfig for WavefrontConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
+    }
 }
 
 #[inline]
@@ -59,11 +67,12 @@ fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
 impl Wavefront {
     pub fn new(config: WavefrontConfig) -> Wavefront {
         Wavefront {
-            host: config.host,
+            host: config.host.clone(),
             port: config.port,
             aggrs: Buckets::new(config.bin_width),
             delivery_attempts: 0,
             stats: String::with_capacity(8_192),
+            config: config,
         }
     }
 
@@ -295,5 +304,11 @@ mod test {
         assert!(lines.contains(&"test.timer.999 12.101 645181811 source=test-src"));
         assert!(lines.contains(&"test.timer.count 3 645181811 source=test-src"));
         assert!(lines.contains(&"test.raw 1 645181811 source=test-src"));
+    }
+}
+
+impl Sink1 for Wavefront {
+    fn get_config(&self) -> &SinkConfig {
+        &self.config
     }
 }

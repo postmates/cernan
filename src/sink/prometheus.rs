@@ -5,7 +5,7 @@ use metric;
 use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protocols::prometheus::*;
-use sink::{Sink, Valve};
+use sink::{Sink, Sink1, SinkConfig, Valve};
 use std::io::Write;
 use std::mem;
 use std::sync;
@@ -19,6 +19,7 @@ pub struct Prometheus {
     // `http_srv` is never used but we must keep it in this struct to avoid the
     // listening server being dropped
     http_srv: Listening,
+    config: PrometheusConfig,
 }
 
 #[derive(Debug)]
@@ -27,6 +28,12 @@ pub struct PrometheusConfig {
     pub host: String,
     pub port: u16,
     pub config_path: String,
+}
+
+impl SinkConfig for PrometheusConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
+    }
 }
 
 struct SenderHandler {
@@ -142,6 +149,7 @@ impl Prometheus {
         Prometheus {
             aggrs: aggrs,
             http_srv: listener,
+            config: config,
         }
     }
 }
@@ -199,3 +207,9 @@ impl Sink for Prometheus {
 
 #[cfg(test)]
 mod test {}
+
+impl Sink1 for Prometheus {
+    fn get_config(&self) -> &SinkConfig {
+        &self.config
+    }
+}
