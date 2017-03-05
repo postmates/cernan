@@ -80,11 +80,25 @@ pub fn parse_args() -> Args {
         // We read from CLI arguments
         None => {
             let wavefront = if args.is_present("wavefront") {
+                let percentiles = vec![("min".to_string(), 0.0),
+                                       ("max".to_string(), 1.0),
+                                       ("2".to_string(), 0.02),
+                                       ("9".to_string(), 0.09),
+                                       ("25".to_string(), 0.25),
+                                       ("50".to_string(), 0.5),
+                                       ("75".to_string(), 0.75),
+                                       ("90".to_string(), 0.90),
+                                       ("91".to_string(), 0.91),
+                                       ("95".to_string(), 0.95),
+                                       ("98".to_string(), 0.98),
+                                       ("99".to_string(), 0.99),
+                                       ("999".to_string(), 0.999)];
                 Some(WavefrontConfig {
                     port: u16::from_str(args.value_of("wavefront-port").unwrap()).unwrap(),
                     host: args.value_of("wavefront-host").unwrap().to_string(),
                     bin_width: 1,
                     config_path: "sinks.wavefront".to_string(),
+                    percentiles: percentiles,
                     tags: Default::default(),
                 })
             } else {
@@ -189,6 +203,44 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     };
 
     let wavefront = if value.lookup("wavefront").or(value.lookup("sinks.wavefront")).is_some() {
+        let mut prcnt = Vec::new();
+        if let Some(tbl) = value.lookup("wavefront.percentiles")
+            .or(value.lookup("sinks.wavefront.percentiles"))
+            .and_then(|t| t.as_slice()) {
+            for opt_val in tbl.iter().map(|x| x.as_slice()) {
+                match opt_val {
+                    Some(val) => {
+                        let k: String =
+                            val[0].as_str().expect("percentile name must be a string").to_string();
+                        let v: f64 = val[1]
+                            .as_str()
+                            .expect("percentile value must be a string of a float")
+                            .parse()
+                            .expect("percentile value must be a float");
+                        prcnt.push((k.clone(), v));
+                    }
+                    None => {}
+                }
+            }
+        }
+        let percentiles = if prcnt.is_empty() {
+            vec![("min".to_string(), 0.0),
+                 ("max".to_string(), 1.0),
+                 ("2".to_string(), 0.02),
+                 ("9".to_string(), 0.09),
+                 ("25".to_string(), 0.25),
+                 ("50".to_string(), 0.5),
+                 ("75".to_string(), 0.75),
+                 ("90".to_string(), 0.90),
+                 ("91".to_string(), 0.91),
+                 ("95".to_string(), 0.95),
+                 ("98".to_string(), 0.98),
+                 ("99".to_string(), 0.99),
+                 ("999".to_string(), 0.999)]
+        } else {
+            prcnt
+        };
+
         Some(WavefrontConfig {
             port: value.lookup("wavefront.port")
                 .or(value.lookup("sinks.wavefront.port"))
@@ -208,6 +260,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 .as_integer()
                 .expect("could not parse sinks.wavefront.bin_width"),
             config_path: "sinks.wavefront".to_string(),
+            percentiles: percentiles,
             tags: tags.clone(),
         })
     } else {
@@ -1036,6 +1089,33 @@ bin_width = 9
         assert_eq!(wavefront.port, 3131);
         assert_eq!(wavefront.bin_width, 9);
     }
+
+    #[test]
+    fn config_file_wavefront_percentile_specification() {
+        let config = r#"
+[sinks]
+  [sinks.wavefront]
+  port = 3131
+  host = "example.com"
+  bin_width = 9
+  percentiles = [ ["min", "0.0"], ["max", "1.0"], ["median", "0.5"] ]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.wavefront.is_some());
+        let wavefront = args.wavefront.unwrap();
+        assert_eq!(wavefront.host, String::from("example.com"));
+        assert_eq!(wavefront.port, 3131);
+        assert_eq!(wavefront.bin_width, 9);
+
+        assert_eq!(wavefront.percentiles.len(), 3);
+        assert_eq!(wavefront.percentiles[0], ("min".to_string(), 0.0));
+        assert_eq!(wavefront.percentiles[1], ("max".to_string(), 1.0));
+        assert_eq!(wavefront.percentiles[2], ("median".to_string(), 0.5));
+    }
+
 
     #[test]
     fn config_file_influxdb() {

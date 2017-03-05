@@ -14,6 +14,7 @@ pub struct Wavefront {
     port: u16,
     aggrs: Buckets,
     delivery_attempts: u32,
+    percentiles: Vec<(String, f64)>,
     pub stats: String,
 }
 
@@ -23,6 +24,7 @@ pub struct WavefrontConfig {
     pub host: String,
     pub port: u16,
     pub config_path: String,
+    pub percentiles: Vec<(String, f64)>,
     pub tags: TagMap,
 }
 
@@ -63,6 +65,7 @@ impl Wavefront {
             port: config.port,
             aggrs: Buckets::new(config.bin_width),
             delivery_attempts: 0,
+            percentiles: config.percentiles,
             stats: String::with_capacity(8_192),
         }
     }
@@ -95,20 +98,8 @@ impl Wavefront {
                     }
                     AggregationMethod::Summarize => {
                         fmt_tags(&value.tags, &mut tag_buf);
-                        for tup in &[("min", 0.0),
-                                     ("max", 1.0),
-                                     ("2", 0.02),
-                                     ("9", 0.09),
-                                     ("25", 0.25),
-                                     ("50", 0.5),
-                                     ("75", 0.75),
-                                     ("90", 0.90),
-                                     ("91", 0.91),
-                                     ("95", 0.95),
-                                     ("98", 0.98),
-                                     ("99", 0.99),
-                                     ("999", 0.999)] {
-                            let stat: &str = tup.0;
+                        for tup in self.percentiles.iter() {
+                            let ref stat: String = tup.0;
                             let quant: f64 = tup.1;
                             self.stats.push_str(&value.name);
                             self.stats.push_str(".");
@@ -216,12 +207,26 @@ mod test {
     fn test_format_wavefront() {
         let mut tags = TagMap::default();
         tags.insert("source".into(), "test-src".into());
+        let percentiles = vec![("min".to_string(), 0.0),
+                               ("max".to_string(), 1.0),
+                               ("2".to_string(), 0.02),
+                               ("9".to_string(), 0.09),
+                               ("25".to_string(), 0.25),
+                               ("50".to_string(), 0.5),
+                               ("75".to_string(), 0.75),
+                               ("90".to_string(), 0.90),
+                               ("91".to_string(), 0.91),
+                               ("95".to_string(), 0.95),
+                               ("98".to_string(), 0.98),
+                               ("99".to_string(), 0.99),
+                               ("999".to_string(), 0.999)];
         let config = WavefrontConfig {
             bin_width: 1,
             host: "127.0.0.1".to_string(),
             port: 1987,
             config_path: "sinks.wavefront".to_string(),
             tags: tags.clone(),
+            percentiles: percentiles,
         };
         let mut wavefront = Wavefront::new(config);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
