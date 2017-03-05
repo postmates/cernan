@@ -337,6 +337,9 @@ impl EntryConfig for ProgrammableFilterConfig {
     fn get_config_path(&self) -> &String {
         &self.config_path
     }
+    fn get_forwards(&self) -> Vec<String> {
+        self.forwards.clone() // TODO: should we avoid clonning here?
+    }
 }
 
 impl ProgrammableFilter {
