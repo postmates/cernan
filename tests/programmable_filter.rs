@@ -35,6 +35,55 @@ mod integration {
         }
 
         #[test]
+        fn test_clear_metrics_filter() {
+            let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            script.push("resources/tests/scripts/clear_metrics.lua");
+
+            let config = ProgrammableFilterConfig {
+                script: script,
+                forwards: Vec::new(),
+                config_path: "filters.clear_metrics".to_string(),
+                tags: Default::default(),
+            };
+            let mut cs = ProgrammableFilter::new(config);
+
+            let metric = metric::Telemetry::new("clear_me", 12.0)
+                .overlay_tag("foo", "bar")
+                .overlay_tag("bizz", "bazz");
+            let event = metric::Event::new_telemetry(metric);
+
+            let mut events: Vec<metric::Event> = Vec::new();
+            let res = cs.process(event.clone(), &mut events);
+            assert!(res.is_ok());
+            assert!(events.is_empty());
+        }
+
+        #[test]
+        fn test_clear_logs_filter() {
+            let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            script.push("resources/tests/scripts/clear_logs.lua");
+
+            let config = ProgrammableFilterConfig {
+                script: script,
+                forwards: Vec::new(),
+                config_path: "filters.clear_logs".to_string(),
+                tags: Default::default(),
+            };
+            let mut cs = ProgrammableFilter::new(config);
+
+            let log = metric::LogLine::new("clear_me",
+                                           "i am the very model of the modern major general")
+                .overlay_tag("foo", "bar")
+                .overlay_tag("bizz", "bazz");
+            let event = metric::Event::new_log(log);
+
+            let mut events: Vec<metric::Event> = Vec::new();
+            let res = cs.process(event.clone(), &mut events);
+            assert!(res.is_ok());
+            assert!(events.is_empty());
+        }
+
+        #[test]
         fn test_remove_log_tag_kv() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             script.push("resources/tests/scripts/remove_keys.lua");
