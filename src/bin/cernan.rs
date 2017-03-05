@@ -97,6 +97,9 @@ fn main() {
     if let Some(config) = args.native_sink_config {
         all_sinks.push(Box::new(cernan::sink::Native::new(config)));
     }
+    for config in &args.firehosen {
+        all_sinks.push(Box::new(cernan::sink::Firehose::new(config)));
+    }
 
     for sink in &mut all_sinks {
         let (send, recv) =
@@ -116,15 +119,6 @@ fn main() {
                                 forwards.clone());
         let recv = recv_channels.remove(sink.get_config().get_config_path()).unwrap();
         joins.push(thread::spawn(move || { sink.run1(forwards, recv); }));
-    }
-
-    for config in &args.firehosen {
-        let f: FirehoseConfig = config.clone();
-        let (firehose_send, firehose_recv) =
-            hopper::channel(&config.config_path, &args.data_directory).unwrap();
-        flush_sends.push(firehose_send.clone());
-        sends.insert(config.config_path.clone(), firehose_send);
-        joins.push(thread::spawn(move || { cernan::sink::Firehose::new(f).run(firehose_recv); }));
     }
 
     // FILTERS

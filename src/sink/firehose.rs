@@ -11,7 +11,7 @@ use rusoto::firehose::PutRecordBatchError::*;
 use serde_json;
 use serde_json::Map;
 use serde_json::value::Value;
-use sink::{Sink, Valve};
+use sink::{Sink, Sink1, SinkConfig, Valve};
 use std::sync;
 use uuid::Uuid;
 
@@ -23,20 +23,28 @@ pub struct FirehoseConfig {
     pub config_path: String,
 }
 
+impl SinkConfig for FirehoseConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
+    }
+}
+
 pub struct Firehose {
     buffer: Vec<LogLine>,
     delivery_stream_name: String,
     region: Region,
     batch_size: usize,
+    config: FirehoseConfig,
 }
 
 impl Firehose {
     pub fn new(config: FirehoseConfig) -> Firehose {
         Firehose {
             buffer: Vec::new(),
-            delivery_stream_name: config.delivery_stream,
+            delivery_stream_name: config.delivery_stream.clone(),
             region: config.region,
             batch_size: config.batch_size,
+            config: config,
         }
     }
 }
@@ -150,4 +158,10 @@ fn format_time(time: i64) -> String {
     let naive_time = NaiveDateTime::from_timestamp(time, 0);
     let utc_time: DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
     format!("{}", utc_time.format("%Y-%m-%dT%H:%M:%S%.3fZ"))
+}
+
+impl Sink1 for Firehose {
+    fn get_config(&self) -> &SinkConfig {
+        &self.config
+    }
 }
