@@ -1,4 +1,5 @@
 use super::Source;
+use entry::{Entry, EntryConfig};
 use metric;
 use protocols::graphite::parse_graphite;
 use std::io::BufReader;
@@ -12,9 +13,9 @@ use util;
 use util::send;
 
 pub struct Graphite {
-    chans: util::Channel,
     port: u16,
     tags: Arc<metric::TagMap>,
+    config: GraphiteConfig,
 }
 
 #[derive(Debug,Clone)]
@@ -24,6 +25,12 @@ pub struct GraphiteConfig {
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
     pub config_path: String,
+}
+
+impl EntryConfig for GraphiteConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
+    }
 }
 
 impl Default for GraphiteConfig {
@@ -39,11 +46,11 @@ impl Default for GraphiteConfig {
 }
 
 impl Graphite {
-    pub fn new(chans: util::Channel, config: GraphiteConfig) -> Graphite {
+    pub fn new(config: GraphiteConfig) -> Graphite {
         Graphite {
-            chans: chans,
             port: config.port,
-            tags: Arc::new(config.tags),
+            tags: Arc::new(config.tags.clone()),
+            config: config,
         }
     }
 }
@@ -105,19 +112,19 @@ fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: Tc
 }
 
 impl Source for Graphite {
-    fn run(&mut self) {
+    fn run(&mut self, chans: util::Channel) {
         let mut joins = Vec::new();
 
         let addr_v6 = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), self.port, 0, 0);
         let listener_v6 = TcpListener::bind(addr_v6).expect("Unable to bind to TCP V6 socket");
-        let chans_v6 = self.chans.clone();
+        let chans_v6 = chans.clone();
         let tags_v6 = self.tags.clone();
         info!("server started on ::1 {}", self.port);
         joins.push(thread::spawn(move || handle_tcp(chans_v6, tags_v6, listener_v6)));
 
         let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
         let listener_v4 = TcpListener::bind(addr_v4).expect("Unable to bind to TCP V4 socket");
-        let chans_v4 = self.chans.clone();
+        let chans_v4 = chans.clone();
         let tags_v4 = self.tags.clone();
         info!("server started on 127.0.0.1:{}", self.port);
         joins.push(thread::spawn(move || handle_tcp(chans_v4, tags_v4, listener_v4)));

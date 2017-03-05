@@ -1,3 +1,4 @@
+use entry::{Entry, EntryConfig};
 use metric;
 use protocols::statsd::parse_statsd;
 use source::Source;
@@ -9,9 +10,9 @@ use util;
 use util::send;
 
 pub struct Statsd {
-    chans: util::Channel,
     port: u16,
     tags: sync::Arc<metric::TagMap>,
+    config: StatsdConfig,
 }
 
 #[derive(Debug,Clone)]
@@ -22,6 +23,12 @@ pub struct StatsdConfig {
     pub forwards: Vec<String>,
     pub config_path: String,
     pub delete_gauges: bool,
+}
+
+impl EntryConfig for StatsdConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
+    }
 }
 
 impl Default for StatsdConfig {
@@ -38,11 +45,11 @@ impl Default for StatsdConfig {
 }
 
 impl Statsd {
-    pub fn new(chans: util::Channel, config: StatsdConfig) -> Statsd {
+    pub fn new(config: StatsdConfig) -> Statsd {
         Statsd {
-            chans: chans,
             port: config.port,
-            tags: sync::Arc::new(config.tags),
+            tags: sync::Arc::new(config.tags.clone()),
+            config: config,
         }
     }
 }
@@ -82,19 +89,19 @@ fn handle_udp(mut chans: util::Channel, tags: sync::Arc<metric::TagMap>, socket:
 }
 
 impl Source for Statsd {
-    fn run(&mut self) {
+    fn run(&mut self, chans: util::Channel) {
         let mut joins = Vec::new();
 
         let addr_v6 = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), self.port, 0, 0);
         let socket_v6 = UdpSocket::bind(addr_v6).expect("Unable to bind to UDP V6 socket");
-        let chans_v6 = self.chans.clone();
+        let chans_v6 = chans.clone();
         let tags_v6 = self.tags.clone();
         info!("server started on ::1 {}", self.port);
         joins.push(thread::spawn(move || handle_udp(chans_v6, tags_v6, socket_v6)));
 
         let addr_v4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
         let socket_v4 = UdpSocket::bind(addr_v4).expect("Unable to bind to UDP socket");
-        let chans_v4 = self.chans.clone();
+        let chans_v4 = chans.clone();
         let tags_v4 = self.tags.clone();
         info!("server started on 127.0.0.1:{}", self.port);
         joins.push(thread::spawn(move || handle_udp(chans_v4, tags_v4, socket_v4)));

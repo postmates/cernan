@@ -1,7 +1,9 @@
 use super::Source;
 use byteorder::{BigEndian, ReadBytesExt};
+use entry::{Entry, EntryConfig};
 use hopper;
 use metric;
+use metric::Event;
 use protobuf;
 use protocols::native::{AggregationMethod, Payload};
 use std::io;
@@ -12,10 +14,10 @@ use std::thread;
 use util;
 
 pub struct NativeServer {
-    chans: util::Channel,
     ip: String,
     port: u16,
     tags: metric::TagMap,
+    config: NativeServerConfig,
 }
 
 #[derive(Debug)]
@@ -27,15 +29,19 @@ pub struct NativeServerConfig {
     pub config_path: String,
 }
 
+impl EntryConfig for NativeServerConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
+    }
+}
+
 impl NativeServer {
-    pub fn new(chans: Vec<hopper::Sender<metric::Event>>,
-               config: NativeServerConfig)
-               -> NativeServer {
+    pub fn new(config: NativeServerConfig) -> NativeServer {
         NativeServer {
-            chans: chans,
-            ip: config.ip,
+            ip: config.ip.clone(),
             port: config.port,
-            tags: config.tags,
+            tags: config.tags.clone(),
+            config: config,
         }
     }
 }
@@ -131,18 +137,26 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
 
 
 impl Source for NativeServer {
-    fn run(&mut self) {
+    fn run(&mut self, chans: util::Channel) {
         let srv: Vec<_> = (self.ip.as_str(), self.port)
             .to_socket_addrs()
             .expect("unable to make socket addr")
             .collect();
         let listener = TcpListener::bind(srv.first().unwrap())
             .expect("Unable to bind to TCP socket");
-        let chans = self.chans.clone();
         let tags = self.tags.clone();
         info!("server started on {}:{}", self.ip, self.port);
         let jh = thread::spawn(move || handle_tcp(chans, tags, listener));
 
         jh.join().expect("Uh oh, child thread paniced!");
+    }
+}
+
+impl Entry for NativeServer {
+    fn get_config(&self) -> &EntryConfig {
+        &self.config
+    }
+    fn run1(&mut self, forwards: Vec<hopper::Sender<Event>>, _recv: hopper::Receiver<Event>) {
+        self.run(forwards)
     }
 }

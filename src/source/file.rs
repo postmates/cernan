@@ -1,3 +1,4 @@
+use entry::{Entry, EntryConfig};
 use glob::glob;
 use metric;
 use seahash::SeaHasher;
@@ -19,9 +20,9 @@ use util::send;
 type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<SeaHasher>>;
 
 pub struct FileServer {
-    chans: util::Channel,
     path: PathBuf,
     tags: metric::TagMap,
+    config: FileServerConfig,
 }
 
 #[derive(Debug)]
@@ -32,12 +33,18 @@ pub struct FileServerConfig {
     pub config_path: String,
 }
 
+impl EntryConfig for FileServerConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
+    }
+}
+
 impl FileServer {
-    pub fn new(chans: util::Channel, config: FileServerConfig) -> FileServer {
+    pub fn new(config: FileServerConfig) -> FileServer {
         FileServer {
-            chans: chans,
-            path: config.path,
-            tags: config.tags,
+            path: config.path.clone(),
+            tags: config.tags.clone(),
+            config: config,
         }
     }
 }
@@ -114,7 +121,7 @@ impl FileWatcher {
 }
 
 impl Source for FileServer {
-    fn run(&mut self) {
+    fn run(&mut self, mut chans: util::Channel) {
         let mut fp_map: HashMapFnv<PathBuf, FileWatcher> = HashMapFnv::default();
         let glob_delay = Duration::from_secs(60);
         let mut buffer = String::new();
@@ -176,7 +183,7 @@ impl Source for FileServer {
                     }
                     if !lines.is_empty() {
                         for l in lines.drain(..) {
-                            send("file", &mut self.chans, metric::Event::new_log(l));
+                            send("file", &mut chans, metric::Event::new_log(l));
                         }
                     }
                 }

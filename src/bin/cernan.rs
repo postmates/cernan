@@ -136,7 +136,7 @@ fn main() {
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
-            cernan::source::NativeServer::new(native_server_send, config).run();
+            cernan::source::NativeServer::new(config).run(native_server_send);
         }))
     }
     for config in args.statsds.values() {
@@ -146,7 +146,7 @@ fn main() {
                           &config.forwards,
                           &config.config_path,
                           &sends);
-        joins.push(thread::spawn(move || { cernan::source::Statsd::new(statsd_sends, c).run(); }));
+        joins.push(thread::spawn(move || { cernan::source::Statsd::new(c).run(statsd_sends); }));
     }
 
     for config in args.graphites.values() {
@@ -157,7 +157,7 @@ fn main() {
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
-            cernan::source::Graphite::new(graphite_sends, c).run();
+            cernan::source::Graphite::new(c).run(graphite_sends);
         }));
     }
 
@@ -165,7 +165,7 @@ fn main() {
         let mut fp_sends = Vec::new();
         populate_forwards(&mut fp_sends, &config.forwards, &config.config_path, &sends);
         joins.push(thread::spawn(move || {
-            cernan::source::FileServer::new(fp_sends, config).run();
+            cernan::source::FileServer::new(config).run(fp_sends);
         }));
     }
 
@@ -174,7 +174,7 @@ fn main() {
 
     let flush_interval = args.flush_interval;
     joins.push(thread::spawn(move || {
-        cernan::source::FlushTimer::new(flush_sends, flush_interval).run();
+        cernan::source::FlushTimer::new(flush_interval).run(flush_sends);
     }));
 
     joins.push(thread::spawn(move || { cernan::time::update_time(); }));
