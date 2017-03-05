@@ -5,7 +5,7 @@ use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protobuf::stream::CodedOutputStream;
 use protocols::native::{AggregationMethod, LogLine, Payload, Telemetry};
-use sink::{Sink, Valve};
+use sink::{Sink, Sink1, SinkConfig, Valve};
 use std::collections::HashMap;
 use std::io::BufWriter;
 use std::mem::replace;
@@ -17,6 +17,7 @@ pub struct Native {
     port: u16,
     host: String,
     buffer: Vec<metric::Event>,
+    config: NativeConfig,
 }
 
 #[derive(Debug)]
@@ -26,12 +27,19 @@ pub struct NativeConfig {
     pub config_path: String,
 }
 
+impl SinkConfig for NativeConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
+    }
+}
+
 impl Native {
     pub fn new(config: NativeConfig) -> Native {
         Native {
             port: config.port,
-            host: config.host,
+            host: config.host.clone(),
             buffer: Vec::new(),
+            config: config,
         }
     }
 }
@@ -42,6 +50,11 @@ impl Default for Native {
             port: 1972,
             host: String::from("127.0.0.1"),
             buffer: Vec::new(),
+            config: NativeConfig {
+                port: 1972,
+                host: String::from("127.0.0.1"),
+                config_path: String::from("sinks.native"),
+            },
         }
     }
 }
@@ -175,5 +188,11 @@ impl Sink for Native {
                       e);
             }
         }
+    }
+}
+
+impl Sink1 for Native {
+    fn get_config(&self) -> &SinkConfig {
+        &self.config
     }
 }

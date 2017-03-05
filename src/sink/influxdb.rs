@@ -1,6 +1,6 @@
 use buckets::Buckets;
 use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
-use sink::{Sink, Valve};
+use sink::{Sink, Sink1, SinkConfig, Valve};
 use std::cmp;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::string;
@@ -13,6 +13,7 @@ pub struct InfluxDB {
     aggrs: Buckets,
     delivery_attempts: u32,
     stats: String,
+    config: InfluxDBConfig,
 }
 
 #[derive(Debug)]
@@ -22,6 +23,12 @@ pub struct InfluxDBConfig {
     pub port: u16,
     pub config_path: String,
     pub tags: TagMap,
+}
+
+impl SinkConfig for InfluxDBConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
+    }
 }
 
 #[inline]
@@ -62,11 +69,12 @@ fn ms_to_ns(ms_time: i64) -> i64 {
 impl InfluxDB {
     pub fn new(config: InfluxDBConfig) -> InfluxDB {
         InfluxDB {
-            host: config.host,
+            host: config.host.clone(),
             port: config.port,
             aggrs: Buckets::new(config.bin_width),
             delivery_attempts: 0,
             stats: String::with_capacity(8_192),
+            config: config,
         }
     }
 
@@ -304,5 +312,11 @@ mod test {
         assert!(lines.contains(&"test.timer,source=test-src \
                                  min=1.101,max=12.101,25=1.101,50=3.101,75=3.101,90=12.101,\
                                  95=12.101,99=12.101,999=12.101,count=3 645181811000000"));
+    }
+}
+
+impl Sink1 for InfluxDB {
+    fn get_config(&self) -> &SinkConfig {
+        &self.config
     }
 }

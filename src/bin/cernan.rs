@@ -91,6 +91,12 @@ fn main() {
     if let Some(config) = args.prometheus {
         all_sinks.push(Box::new(cernan::sink::Prometheus::new(config)));
     }
+    if let Some(config) = args.influxdb {
+        all_sinks.push(Box::new(cernan::sink::InfluxDB::new(config)));
+    }
+    if let Some(config) = args.native_sink_config {
+        all_sinks.push(Box::new(cernan::sink::Native::new(config)));
+    }
 
     for sink in &mut all_sinks {
         let (send, recv) =
@@ -112,20 +118,6 @@ fn main() {
         joins.push(thread::spawn(move || { sink.run1(forwards, recv); }));
     }
 
-    if let Some(config) = args.influxdb {
-        let (flx_send, flx_recv) = hopper::channel(&config.config_path, &args.data_directory)
-            .unwrap();
-        flush_sends.push(flx_send.clone());
-        sends.insert(config.config_path.clone(), flx_send);
-        joins.push(thread::spawn(move || { cernan::sink::InfluxDB::new(config).run(flx_recv); }));
-    }
-    if let Some(config) = args.native_sink_config {
-        let (cernan_send, cernan_recv) = hopper::channel(&config.config_path, &args.data_directory)
-            .unwrap();
-        flush_sends.push(cernan_send.clone());
-        sends.insert(config.config_path.clone(), cernan_send);
-        joins.push(thread::spawn(move || { cernan::sink::Native::new(config).run(cernan_recv); }));
-    }
     for config in &args.firehosen {
         let f: FirehoseConfig = config.clone();
         let (firehose_send, firehose_recv) =
