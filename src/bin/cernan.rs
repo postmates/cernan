@@ -5,8 +5,7 @@ extern crate fern;
 extern crate log;
 extern crate hopper;
 
-use cernan::entry;
-use cernan::entry::{Configable, Runnable};
+use cernan::entry::Entry;
 use cernan::filter::{Filter, ProgrammableFilterConfig};
 use cernan::metric;
 use cernan::sink;
