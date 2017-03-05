@@ -69,8 +69,6 @@ fn main() {
 
     info!("cernan - {}", args.version);
     let mut joins = Vec::new();
-    let sends: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
-
     let flush_sends = Vec::new();
 
     let mut send_channels: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
@@ -115,6 +113,9 @@ fn main() {
     for config in args.graphites.values() {
         all_entries.push(Box::new(cernan::source::Graphite::new(config.clone())));
     }
+    for config in args.files {
+        all_entries.push(Box::new(cernan::source::FileServer::new(config)));
+    }
 
 
     for sink in &mut all_entries {
@@ -138,13 +139,6 @@ fn main() {
     }
 
     //
-    for config in args.files {
-        let mut fp_sends = Vec::new();
-        populate_forwards(&mut fp_sends, &config.forwards, &config.config_path, &sends);
-        joins.push(thread::spawn(move || {
-            cernan::source::FileServer::new(config).run(fp_sends);
-        }));
-    }
 
     // BACKGROUND
     //
