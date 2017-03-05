@@ -1,10 +1,14 @@
+use entry::{Entry, EntryConfig};
 use filter;
+use filter::Filter;
+use hopper;
 use libc::c_int;
 
 use lua;
 use lua::{Function, State, ThreadStatus};
 use lua::ffi::lua_State;
 use metric;
+use metric::Event;
 use std::path::PathBuf;
 use std::sync;
 
@@ -318,6 +322,7 @@ pub struct ProgrammableFilter {
     state: lua::State,
     path: String,
     global_tags: metric::TagMap,
+    config: ProgrammableFilterConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -326,6 +331,12 @@ pub struct ProgrammableFilterConfig {
     pub forwards: Vec<String>,
     pub config_path: String,
     pub tags: metric::TagMap,
+}
+
+impl EntryConfig for ProgrammableFilterConfig {
+    fn get_config_path(&self) -> &String {
+        &self.config_path
+    }
 }
 
 impl ProgrammableFilter {
@@ -337,7 +348,8 @@ impl ProgrammableFilter {
         state.set_fns(&PAYLOAD_LIB, 0);
         state.set_global("payload");
 
-        let script_path = &config.script.to_str().unwrap();
+        let script = config.script.clone();
+        let script_path = &script.to_str().unwrap();
         match state.load_file(script_path) {
             ThreadStatus::Ok => trace!("was able to load script at {}", script_path),
             ThreadStatus::SyntaxError => {
@@ -363,8 +375,9 @@ impl ProgrammableFilter {
 
         ProgrammableFilter {
             state: state,
-            path: config.config_path,
-            global_tags: config.tags,
+            path: config.config_path.clone(),
+            global_tags: config.tags.clone(),
+            config: config,
         }
     }
 }
@@ -468,5 +481,14 @@ impl filter::Filter for ProgrammableFilter {
                 Ok(())
             }
         }
+    }
+}
+
+impl Entry for ProgrammableFilter {
+    fn get_config(&self) -> &EntryConfig {
+        &self.config
+    }
+    fn run1(&mut self, forwards: Vec<hopper::Sender<Event>>, recv: hopper::Receiver<Event>) {
+        self.run(recv, forwards)
     }
 }
