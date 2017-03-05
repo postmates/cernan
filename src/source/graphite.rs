@@ -1,6 +1,8 @@
 use super::Source;
 use entry::{Entry, EntryConfig};
+use hopper;
 use metric;
+use metric::Event;
 use protocols::graphite::parse_graphite;
 use std::io::BufReader;
 use std::io::prelude::*;
@@ -30,6 +32,9 @@ pub struct GraphiteConfig {
 impl EntryConfig for GraphiteConfig {
     fn get_config_path(&self) -> &String {
         &self.config_path
+    }
+    fn get_forwards(&self) -> Vec<String> {
+        self.forwards.clone() // TODO: should we avoid clonning here?
     }
 }
 
@@ -136,5 +141,14 @@ impl Source for Graphite {
             // some manner of sub-thread communication going on.
             jh.join().expect("Uh oh, child thread paniced!");
         }
+    }
+}
+
+impl Entry for Graphite {
+    fn get_config(&self) -> &EntryConfig {
+        &self.config
+    }
+    fn run1(&mut self, forwards: Vec<hopper::Sender<Event>>, _recv: hopper::Receiver<Event>) {
+        self.run(forwards)
     }
 }

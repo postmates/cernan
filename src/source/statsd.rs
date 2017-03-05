@@ -1,5 +1,7 @@
 use entry::{Entry, EntryConfig};
+use hopper;
 use metric;
+use metric::Event;
 use protocols::statsd::parse_statsd;
 use source::Source;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6, UdpSocket};
@@ -28,6 +30,9 @@ pub struct StatsdConfig {
 impl EntryConfig for StatsdConfig {
     fn get_config_path(&self) -> &String {
         &self.config_path
+    }
+    fn get_forwards(&self) -> Vec<String> {
+        self.forwards.clone() // TODO: should we avoid clonning here?
     }
 }
 
@@ -112,5 +117,14 @@ impl Source for Statsd {
             // some manner of sub-thread communication going on.
             jh.join().expect("Uh oh, child thread paniced!");
         }
+    }
+}
+
+impl Entry for Statsd {
+    fn get_config(&self) -> &EntryConfig {
+        &self.config
+    }
+    fn run1(&mut self, forwards: Vec<hopper::Sender<Event>>, _recv: hopper::Receiver<Event>) {
+        self.run(forwards)
     }
 }

@@ -1,6 +1,8 @@
 use entry::{Entry, EntryConfig};
 use glob::glob;
+use hopper;
 use metric;
+use metric::Event;
 use seahash::SeaHasher;
 use source::Source;
 use std::collections::HashMap;
@@ -36,6 +38,9 @@ pub struct FileServerConfig {
 impl EntryConfig for FileServerConfig {
     fn get_config_path(&self) -> &String {
         &self.config_path
+    }
+    fn get_forwards(&self) -> Vec<String> {
+        self.forwards.clone() // TODO: should we avoid clonning here?
     }
 }
 
@@ -192,5 +197,14 @@ impl Source for FileServer {
                 }
             }
         }
+    }
+}
+
+impl Entry for FileServer {
+    fn get_config(&self) -> &EntryConfig {
+        &self.config
+    }
+    fn run1(&mut self, forwards: Vec<hopper::Sender<Event>>, _recv: hopper::Receiver<Event>) {
+        self.run(forwards)
     }
 }

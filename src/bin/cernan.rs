@@ -6,7 +6,6 @@ extern crate log;
 extern crate hopper;
 
 use cernan::entry::Entry;
-use cernan::filter::ProgrammableFilterConfig;
 use cernan::metric;
 use cernan::sink;
 use cernan::source::Source;
@@ -103,9 +102,20 @@ fn main() {
 
     // FILTERS
     for config in args.filters.values() {
-        let c: ProgrammableFilterConfig = (*config).clone();
-        all_entries.push(Box::new(cernan::filter::ProgrammableFilter::new(c)));
+        all_entries.push(Box::new(cernan::filter::ProgrammableFilter::new(config.clone())));
     }
+
+    // SOURCES
+    if let Some(config) = args.native_server_config {
+        all_entries.push(Box::new(cernan::source::NativeServer::new(config)));
+    }
+    for config in args.statsds.values() {
+        all_entries.push(Box::new(cernan::source::Statsd::new(config.clone())));
+    }
+    for config in args.graphites.values() {
+        all_entries.push(Box::new(cernan::source::Graphite::new(config.clone())));
+    }
+
 
     for sink in &mut all_entries {
         let (send, recv) =
@@ -127,40 +137,7 @@ fn main() {
         joins.push(thread::spawn(move || { sink.run1(forwards, recv); }));
     }
 
-    // SOURCES
     //
-    if let Some(config) = args.native_server_config {
-        let mut native_server_send = Vec::new();
-        populate_forwards(&mut native_server_send,
-                          &config.forwards,
-                          &config.config_path,
-                          &sends);
-        joins.push(thread::spawn(move || {
-            cernan::source::NativeServer::new(config).run(native_server_send);
-        }))
-    }
-    for config in args.statsds.values() {
-        let c = (*config).clone();
-        let mut statsd_sends = Vec::new();
-        populate_forwards(&mut statsd_sends,
-                          &config.forwards,
-                          &config.config_path,
-                          &sends);
-        joins.push(thread::spawn(move || { cernan::source::Statsd::new(c).run(statsd_sends); }));
-    }
-
-    for config in args.graphites.values() {
-        let c = (*config).clone();
-        let mut graphite_sends = Vec::new();
-        populate_forwards(&mut graphite_sends,
-                          &config.forwards,
-                          &config.config_path,
-                          &sends);
-        joins.push(thread::spawn(move || {
-            cernan::source::Graphite::new(c).run(graphite_sends);
-        }));
-    }
-
     for config in args.files {
         let mut fp_sends = Vec::new();
         populate_forwards(&mut fp_sends, &config.forwards, &config.config_path, &sends);
