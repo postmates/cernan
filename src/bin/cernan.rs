@@ -6,7 +6,7 @@ extern crate log;
 extern crate hopper;
 
 use cernan::entry::Entry;
-use cernan::filter::{Filter, ProgrammableFilterConfig};
+use cernan::filter::ProgrammableFilterConfig;
 use cernan::metric;
 use cernan::sink;
 use cernan::source::Source;
@@ -70,15 +70,15 @@ fn main() {
 
     info!("cernan - {}", args.version);
     let mut joins = Vec::new();
-    let mut sends: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
+    let sends: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
 
-    // SINKS
-    //
     let flush_sends = Vec::new();
 
     let mut send_channels: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     let mut recv_channels: HashMap<String, hopper::Receiver<metric::Event>> = HashMap::new();
     let mut all_entries: Vec<Box<Entry + Send>> = Vec::new();
+
+    // SINKS
     if let Some(config) = args.console {
         all_entries.push(Box::new(cernan::sink::Console::new(config)));
     };
@@ -101,6 +101,12 @@ fn main() {
         all_entries.push(Box::new(cernan::sink::Firehose::new(config.clone())));
     }
 
+    // FILTERS
+    for config in args.filters.values() {
+        let c: ProgrammableFilterConfig = (*config).clone();
+        all_entries.push(Box::new(cernan::filter::ProgrammableFilter::new(c)));
+    }
+
     for sink in &mut all_entries {
         let (send, recv) =
             hopper::channel(sink.get_config().get_config_path(), &args.data_directory).unwrap();
@@ -117,25 +123,8 @@ fn main() {
                           &send_channels);
         forward_channels.insert(sink.get_config().get_config_path().clone(),
                                 forwards.clone());
-        let recv = recv_channels.remove(sink.get_config().get_config_path()).unwrap();
+        let recv = recv_channels.remove(sink.get_config().get_config_path()).unwrap(); // removing to move ownership
         joins.push(thread::spawn(move || { sink.run1(forwards, recv); }));
-    }
-
-    // FILTERS
-    //
-    for config in args.filters.values() {
-        let c: ProgrammableFilterConfig = (*config).clone();
-        let (flt_send, flt_recv) = hopper::channel(&config.config_path, &args.data_directory)
-            .unwrap();
-        sends.insert(config.config_path.clone(), flt_send);
-        let mut downstream_sends = Vec::new();
-        populate_forwards(&mut downstream_sends,
-                          &config.forwards,
-                          &config.config_path,
-                          &sends);
-        joins.push(thread::spawn(move || {
-            cernan::filter::ProgrammableFilter::new(c).run(flt_recv, downstream_sends);
-        }));
     }
 
     // SOURCES
