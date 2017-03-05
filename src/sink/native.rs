@@ -1,11 +1,13 @@
 use byteorder::{BigEndian, ByteOrder};
+use entry::{Entry, EntryConfig};
 use hopper;
 use metric;
+use metric::Event;
 use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protobuf::stream::CodedOutputStream;
 use protocols::native::{AggregationMethod, LogLine, Payload, Telemetry};
-use sink::{Sink, Sink1, SinkConfig, Valve};
+use sink::{Sink, Valve};
 use std::collections::HashMap;
 use std::io::BufWriter;
 use std::mem::replace;
@@ -27,7 +29,7 @@ pub struct NativeConfig {
     pub config_path: String,
 }
 
-impl SinkConfig for NativeConfig {
+impl EntryConfig for NativeConfig {
     fn get_config_path(&self) -> &String {
         &self.config_path
     }
@@ -191,8 +193,11 @@ impl Sink for Native {
     }
 }
 
-impl Sink1 for Native {
-    fn get_config(&self) -> &SinkConfig {
+impl Entry for Native {
+    fn get_config(&self) -> &EntryConfig {
         &self.config
+    }
+    fn run1(&mut self, _forwards: Vec<hopper::Sender<Event>>, recv: hopper::Receiver<Event>) {
+        self.run(recv)
     }
 }

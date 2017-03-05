@@ -1,5 +1,7 @@
-use metric::{LogLine, Telemetry};
-use sink::{Sink, Sink1, SinkConfig, Valve};
+use entry::{Entry, EntryConfig};
+use hopper;
+use metric::{Event, LogLine, Telemetry};
+use sink::{Sink, Valve};
 use std::sync;
 
 pub struct Null {
@@ -23,7 +25,7 @@ impl NullConfig {
     }
 }
 
-impl SinkConfig for NullConfig {
+impl EntryConfig for NullConfig {
     fn get_config_path(&self) -> &String {
         &self.config_path
     }
@@ -47,8 +49,11 @@ impl Sink for Null {
     }
 }
 
-impl Sink1 for Null {
-    fn get_config(&self) -> &SinkConfig {
+impl Entry for Null {
+    fn get_config(&self) -> &EntryConfig {
         &self.config
+    }
+    fn run1(&mut self, _forwards: Vec<hopper::Sender<Event>>, recv: hopper::Receiver<Event>) {
+        self.run(recv)
     }
 }

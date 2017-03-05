@@ -5,10 +5,11 @@ extern crate fern;
 extern crate log;
 extern crate hopper;
 
+use cernan::entry;
+use cernan::entry::{Configable, Runnable};
 use cernan::filter::{Filter, ProgrammableFilterConfig};
 use cernan::metric;
 use cernan::sink;
-use cernan::sink::Sink1;
 use cernan::source::Source;
 use cernan::util;
 use chrono::UTC;
@@ -78,7 +79,7 @@ fn main() {
 
     let mut send_channels: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     let mut recv_channels: HashMap<String, hopper::Receiver<metric::Event>> = HashMap::new();
-    let mut all_sinks: Vec<Box<Sink1 + Send>> = Vec::new();
+    let mut all_sinks: Vec<Box<Entry + Send>> = Vec::new();
     if let Some(config) = args.console {
         all_sinks.push(Box::new(cernan::sink::Console::new(config)));
     };

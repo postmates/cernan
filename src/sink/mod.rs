@@ -30,13 +30,6 @@ pub enum Valve {
     Closed,
 }
 
-pub trait SinkConfig {
-    fn get_forwards(&self) -> Vec<String> {
-        Vec::new()
-    }
-    fn get_config_path(&self) -> &String;
-}
-
 /// A 'sink' is a sink for metrics.
 pub trait Sink {
     fn flush(&mut self) -> ();
@@ -75,12 +68,3 @@ pub trait Sink {
         }
     }
 }
-
-pub trait Sink1: Sink {
-    // fn run();
-    fn get_config(&self) -> &SinkConfig;
-    fn run1(&mut self, _forwards: Vec<hopper::Sender<Event>>, recv: hopper::Receiver<Event>) {
-        self.run(recv)
-    }
-}
-// unsafe impl Send for Sink1 {}

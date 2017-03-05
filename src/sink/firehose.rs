@@ -1,7 +1,10 @@
 use chrono::datetime::DateTime;
 use chrono::naive::datetime::NaiveDateTime;
 use chrono::offset::utc::UTC;
+use entry::{Entry, EntryConfig};
+use hopper;
 use metric::{LogLine, Telemetry};
+use metric::Event;
 
 use rusoto::{DefaultCredentialsProvider, Region};
 use rusoto::default_tls_client;
@@ -11,7 +14,7 @@ use rusoto::firehose::PutRecordBatchError::*;
 use serde_json;
 use serde_json::Map;
 use serde_json::value::Value;
-use sink::{Sink, Sink1, SinkConfig, Valve};
+use sink::{Sink, Valve};
 use std::sync;
 use uuid::Uuid;
 
@@ -23,7 +26,7 @@ pub struct FirehoseConfig {
     pub config_path: String,
 }
 
-impl SinkConfig for FirehoseConfig {
+impl EntryConfig for FirehoseConfig {
     fn get_config_path(&self) -> &String {
         &self.config_path
     }
@@ -160,8 +163,11 @@ fn format_time(time: i64) -> String {
     format!("{}", utc_time.format("%Y-%m-%dT%H:%M:%S%.3fZ"))
 }
 
-impl Sink1 for Firehose {
-    fn get_config(&self) -> &SinkConfig {
+impl Entry for Firehose {
+    fn get_config(&self) -> &EntryConfig {
         &self.config
+    }
+    fn run1(&mut self, _forwards: Vec<hopper::Sender<Event>>, recv: hopper::Receiver<Event>) {
+        self.run(recv)
     }
 }

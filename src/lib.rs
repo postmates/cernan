@@ -52,6 +52,7 @@ pub mod sink;
 pub mod buckets;
 pub mod config;
 pub mod metric;
+pub mod entry;
 pub mod time;
 pub mod source;
 pub mod filter;

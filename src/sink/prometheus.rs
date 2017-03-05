@@ -1,11 +1,14 @@
+use entry::{Entry, EntryConfig};
+use hopper;
 use hyper::header::ContentType;
 use hyper::mime::{Attr, Mime, SubLevel, TopLevel, Value};
 use hyper::server::{Handler, Listening, Request, Response, Server};
 use metric;
+use metric::Event;
 use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protocols::prometheus::*;
-use sink::{Sink, Sink1, SinkConfig, Valve};
+use sink::{Sink, Valve};
 use std::io::Write;
 use std::mem;
 use std::sync;
@@ -30,7 +33,7 @@ pub struct PrometheusConfig {
     pub config_path: String,
 }
 
-impl SinkConfig for PrometheusConfig {
+impl EntryConfig for PrometheusConfig {
     fn get_config_path(&self) -> &String {
         &self.config_path
     }
@@ -205,11 +208,14 @@ impl Sink for Prometheus {
     }
 }
 
-#[cfg(test)]
-mod test {}
-
-impl Sink1 for Prometheus {
-    fn get_config(&self) -> &SinkConfig {
+impl Entry for Prometheus {
+    fn get_config(&self) -> &EntryConfig {
         &self.config
     }
+    fn run1(&mut self, _forwards: Vec<hopper::Sender<Event>>, recv: hopper::Receiver<Event>) {
+        self.run(recv)
+    }
 }
+
+#[cfg(test)]
+mod test {}

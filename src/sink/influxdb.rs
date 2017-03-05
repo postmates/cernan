@@ -1,6 +1,9 @@
 use buckets::Buckets;
+use entry::{Entry, EntryConfig};
+use hopper;
 use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
-use sink::{Sink, Sink1, SinkConfig, Valve};
+use metric::Event;
+use sink::{Sink, Valve};
 use std::cmp;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::string;
@@ -25,7 +28,7 @@ pub struct InfluxDBConfig {
     pub tags: TagMap,
 }
 
-impl SinkConfig for InfluxDBConfig {
+impl EntryConfig for InfluxDBConfig {
     fn get_config_path(&self) -> &String {
         &self.config_path
     }
@@ -315,8 +318,11 @@ mod test {
     }
 }
 
-impl Sink1 for InfluxDB {
-    fn get_config(&self) -> &SinkConfig {
+impl Entry for InfluxDB {
+    fn get_config(&self) -> &EntryConfig {
         &self.config
+    }
+    fn run1(&mut self, _forwards: Vec<hopper::Sender<Event>>, recv: hopper::Receiver<Event>) {
+        self.run(recv)
     }
 }

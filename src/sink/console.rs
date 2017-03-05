@@ -2,8 +2,11 @@
 
 use buckets::Buckets;
 use chrono;
+use entry::{Entry, EntryConfig};
+use hopper;
 use metric::{AggregationMethod, LogLine, Telemetry};
-use sink::{Sink, Sink1, SinkConfig, Valve};
+use metric::Event;
+use sink::{Sink, Valve};
 use std::sync;
 
 /// The 'console' sink exists for development convenience. The sink will
@@ -64,7 +67,7 @@ impl ConsoleConfig {
     }
 }
 
-impl SinkConfig for ConsoleConfig {
+impl EntryConfig for ConsoleConfig {
     fn get_config_path(&self) -> &String {
         &self.config_path
     }
@@ -152,8 +155,11 @@ impl Sink for Console {
     }
 }
 
-impl Sink1 for Console {
-    fn get_config(&self) -> &SinkConfig {
+impl Entry for Console {
+    fn get_config(&self) -> &EntryConfig {
         &self.config
+    }
+    fn run1(&mut self, _forwards: Vec<hopper::Sender<Event>>, recv: hopper::Receiver<Event>) {
+        self.run(recv)
     }
 }
