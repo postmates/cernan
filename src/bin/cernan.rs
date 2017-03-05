@@ -8,7 +8,7 @@ extern crate hopper;
 use cernan::filter::{Filter, ProgrammableFilterConfig};
 use cernan::metric;
 use cernan::sink;
-use cernan::sink::{FirehoseConfig, Sink, Sink1};
+use cernan::sink::Sink1;
 use cernan::source::Source;
 use cernan::util;
 use chrono::UTC;
@@ -74,7 +74,7 @@ fn main() {
 
     // SINKS
     //
-    let mut flush_sends = Vec::new();
+    let flush_sends = Vec::new();
 
     let mut send_channels: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     let mut recv_channels: HashMap<String, hopper::Receiver<metric::Event>> = HashMap::new();
@@ -98,7 +98,7 @@ fn main() {
         all_sinks.push(Box::new(cernan::sink::Native::new(config)));
     }
     for config in &args.firehosen {
-        all_sinks.push(Box::new(cernan::sink::Firehose::new(config)));
+        all_sinks.push(Box::new(cernan::sink::Firehose::new(config.clone())));
     }
 
     for sink in &mut all_sinks {
