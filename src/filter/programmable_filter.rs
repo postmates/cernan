@@ -89,7 +89,7 @@ impl<'a> Payload<'a> {
     }
 
     #[allow(non_snake_case)]
-    unsafe extern "C" fn lua_clear_metric(L: *mut lua_State) -> c_int {
+    unsafe extern "C" fn lua_clear_metrics(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         (*pyld).metrics.clear();
@@ -114,7 +114,7 @@ impl<'a> Payload<'a> {
     }
 
     #[allow(non_snake_case)]
-    unsafe extern "C" fn lua_clear_log(L: *mut lua_State) -> c_int {
+    unsafe extern "C" fn lua_clear_logs(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         (*pyld).logs.clear();
@@ -317,8 +317,8 @@ impl<'a> Payload<'a> {
 
 const PAYLOAD_LIB: [(&'static str, Function); 14] =
     [("set_metric_name", Some(Payload::lua_set_metric_name)),
-     ("clear_logs", Some(Payload::lua_clear_log)),
-     ("clear_metrics", Some(Payload::lua_clear_metric)),
+     ("clear_logs", Some(Payload::lua_clear_logs)),
+     ("clear_metrics", Some(Payload::lua_clear_metrics)),
      ("log_remove_tag", Some(Payload::lua_log_remove_tag)),
      ("log_set_tag", Some(Payload::lua_log_set_tag)),
      ("log_tag_value", Some(Payload::lua_log_tag_value)),
