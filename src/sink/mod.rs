@@ -32,6 +32,7 @@ pub enum Valve {
 
 /// A 'sink' is a sink for metrics.
 pub trait Sink {
+    fn flush_interval(&self) -> Option<u64>;
     fn flush(&mut self) -> ();
     fn valve_state(&self) -> Valve;
     fn deliver(&mut self, point: sync::Arc<Option<Telemetry>>) -> ();
@@ -39,6 +40,7 @@ pub trait Sink {
     fn run(&mut self, recv: hopper::Receiver<Event>) {
         let mut attempts = 0;
         let mut recv = recv.into_iter();
+        let mut last_flush_idx = 0;
         loop {
             time::delay(attempts);
             match recv.next() {
@@ -48,7 +50,16 @@ pub trait Sink {
                     match self.valve_state() {
                         Valve::Open => {
                             match event {
-                                Event::TimerFlush => self.flush(),
+                                Event::TimerFlush(idx) => {
+                                    if idx > last_flush_idx {
+                                        if let Some(flush_interval) = self.flush_interval() {
+                                            if idx % flush_interval == 0 {
+                                                self.flush();
+                                            }
+                                        }
+                                        last_flush_idx = idx;
+                                    }
+                                }
                                 Event::Telemetry(metric) => {
                                     self.deliver(metric);
                                 }

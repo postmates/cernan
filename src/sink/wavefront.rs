@@ -16,6 +16,7 @@ pub struct Wavefront {
     delivery_attempts: u32,
     percentiles: Vec<(String, f64)>,
     pub stats: String,
+    flush_interval: u64,
 }
 
 #[derive(Debug)]
@@ -26,6 +27,7 @@ pub struct WavefrontConfig {
     pub config_path: String,
     pub percentiles: Vec<(String, f64)>,
     pub tags: TagMap,
+    pub flush_interval: u64,
 }
 
 #[inline]
@@ -67,6 +69,7 @@ impl Wavefront {
             delivery_attempts: 0,
             percentiles: config.percentiles,
             stats: String::with_capacity(8_192),
+            flush_interval: config.flush_interval,
         }
     }
 
@@ -134,6 +137,10 @@ impl Wavefront {
 }
 
 impl Sink for Wavefront {
+    fn flush_interval(&self) -> Option<u64> {
+        Some(self.flush_interval)
+    }
+
     fn flush(&mut self) {
         loop {
             if self.delivery_attempts > 0 {
@@ -227,6 +234,7 @@ mod test {
             config_path: "sinks.wavefront".to_string(),
             tags: tags.clone(),
             percentiles: percentiles,
+            flush_interval: 60,
         };
         let mut wavefront = Wavefront::new(config);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();

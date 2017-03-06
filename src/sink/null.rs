@@ -34,6 +34,11 @@ impl Sink for Null {
         // discard point
     }
 
+    fn flush_interval(&self) -> Option<u64> {
+        None
+    }
+
+
     fn flush(&mut self) {
         // do nothing
     }

@@ -163,6 +163,10 @@ fn sanitize(metric: metric::Telemetry) -> metric::Telemetry {
 }
 
 impl Sink for Prometheus {
+    fn flush_interval(&self) -> Option<u64> {
+        None
+    }
+
     fn flush(&mut self) {
         // There is no flush for the Prometheus sink. Prometheus prefers to
         // pull via HTTP / Protobuf. See PrometheusSrv.

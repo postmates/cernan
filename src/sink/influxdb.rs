@@ -13,6 +13,7 @@ pub struct InfluxDB {
     aggrs: Buckets,
     delivery_attempts: u32,
     stats: String,
+    flush_interval: u64,
 }
 
 #[derive(Debug)]
@@ -22,6 +23,7 @@ pub struct InfluxDBConfig {
     pub port: u16,
     pub config_path: String,
     pub tags: TagMap,
+    pub flush_interval: u64,
 }
 
 #[inline]
@@ -67,6 +69,7 @@ impl InfluxDB {
             aggrs: Buckets::new(config.bin_width),
             delivery_attempts: 0,
             stats: String::with_capacity(8_192),
+            flush_interval: config.flush_interval,
         }
     }
 
@@ -159,6 +162,10 @@ impl InfluxDB {
 }
 
 impl Sink for InfluxDB {
+    fn flush_interval(&self) -> Option<u64> {
+        Some(self.flush_interval)
+    }
+
     fn flush(&mut self) {
         loop {
             if self.delivery_attempts > 0 {
@@ -240,6 +247,7 @@ mod test {
             port: 1987,
             config_path: "sinks.influxdb".to_string(),
             tags: tags.clone(),
+            flush_interval: 60,
         };
         let mut influxdb = InfluxDB::new(config);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
