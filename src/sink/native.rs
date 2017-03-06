@@ -62,6 +62,7 @@ impl Sink for Native {
     fn run(&mut self, recv: hopper::Receiver<metric::Event>) {
         let mut attempts = 0;
         let mut recv = recv.into_iter();
+        let mut last_flush_idx = 0;
         loop {
             time::delay(attempts);
             if self.buffer.len() > 10_000 {
@@ -73,7 +74,11 @@ impl Sink for Native {
                 Some(event) => {
                     attempts = 0;
                     match event {
-                        metric::Event::TimerFlush => self.flush(),
+                        metric::Event::TimerFlush(idx) if idx > last_flush_idx => {
+                            self.flush();
+                            last_flush_idx = idx;
+                        }
+                        metric::Event::TimerFlush(_) => {}
                         _ => self.buffer.push(event),
                     }
                 }

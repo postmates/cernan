@@ -39,6 +39,7 @@ pub trait Sink {
     fn run(&mut self, recv: hopper::Receiver<Event>) {
         let mut attempts = 0;
         let mut recv = recv.into_iter();
+        let mut last_flush_idx = 0;
         loop {
             time::delay(attempts);
             match recv.next() {
@@ -48,7 +49,11 @@ pub trait Sink {
                     match self.valve_state() {
                         Valve::Open => {
                             match event {
-                                Event::TimerFlush => self.flush(),
+                                Event::TimerFlush(idx) if idx > last_flush_idx => {
+                                    self.flush();
+                                    last_flush_idx = idx;
+                                }
+                                Event::TimerFlush(_) => {}
                                 Event::Telemetry(metric) => {
                                     self.deliver(metric);
                                 }

@@ -229,19 +229,21 @@ mod integration {
             let log2 = metric::Event::new_log(metric::LogLine::new("identity", "more"));
             let log3 = metric::Event::new_log(metric::LogLine::new("identity", "less"));
 
-            let flush = metric::Event::TimerFlush;
+            let flush1 = metric::Event::TimerFlush(1);
+            let flush2 = metric::Event::TimerFlush(2);
 
             let mut events = Vec::new();
             for ev in &[metric0, metric1, metric2, log0, log1] {
                 let _ = cs.process(ev.clone(), &mut events);
             }
             events.clear();
-            let res = cs.process(flush.clone(), &mut events);
+            let res = cs.process(flush1, &mut events);
             assert!(res.is_ok());
 
             assert!(!events.is_empty());
-            assert_eq!(events.len(), 2);
+            assert_eq!(events.len(), 3);
             println!("EVENTS: {:?}", events);
+            assert_eq!(events[2], metric::Event::TimerFlush(1));
             assert_eq!(events[1],
                        metric::Event::new_telemetry(metric::Telemetry::new("count_per_tick", 5.0)));
             assert_eq!(events[0],
@@ -253,12 +255,13 @@ mod integration {
                 let _ = cs.process(ev.clone(), &mut events);
             }
             events.clear();
-            let res = cs.process(flush, &mut events);
+            let res = cs.process(flush2, &mut events);
             assert!(res.is_ok());
 
             assert!(!events.is_empty());
-            assert_eq!(events.len(), 2);
+            assert_eq!(events.len(), 3);
             println!("EVENTS: {:?}", events);
+            assert_eq!(events[2], metric::Event::TimerFlush(2));
             assert_eq!(events[1],
                        metric::Event::new_telemetry(metric::Telemetry::new("count_per_tick", 2.0)));
             assert_eq!(events[0],
