@@ -9,8 +9,7 @@ use std::path::PathBuf;
 use std::sync;
 
 struct Payload<'a> {
-    metrics: Vec<Box<metric::Telemetry>>, // TODO if we switch from Box to Arc we
-    // might be better off
+    metrics: Vec<Box<metric::Telemetry>>,
     logs: Vec<Box<metric::LogLine>>,
     global_tags: &'a metric::TagMap,
     path: &'a str,
@@ -90,6 +89,14 @@ impl<'a> Payload<'a> {
     }
 
     #[allow(non_snake_case)]
+    unsafe extern "C" fn lua_clear_metrics(L: *mut lua_State) -> c_int {
+        let mut state = State::from_ptr(L);
+        let pyld = state.to_userdata(1) as *mut Payload;
+        (*pyld).metrics.clear();
+        0
+    }
+
+    #[allow(non_snake_case)]
     unsafe extern "C" fn lua_push_log(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
@@ -103,6 +110,14 @@ impl<'a> Payload<'a> {
                 error!("[push_log] no line argument given");
             }
         };
+        0
+    }
+
+    #[allow(non_snake_case)]
+    unsafe extern "C" fn lua_clear_logs(L: *mut lua_State) -> c_int {
+        let mut state = State::from_ptr(L);
+        let pyld = state.to_userdata(1) as *mut Payload;
+        (*pyld).logs.clear();
         0
     }
 
@@ -300,19 +315,21 @@ impl<'a> Payload<'a> {
     }
 }
 
-const PAYLOAD_LIB: [(&'static str, Function); 12] =
-    [("metric_name", Some(Payload::lua_metric_name)),
-     ("metric_query", Some(Payload::lua_metric_query)),
+const PAYLOAD_LIB: [(&'static str, Function); 14] =
+    [("set_metric_name", Some(Payload::lua_set_metric_name)),
+     ("clear_logs", Some(Payload::lua_clear_logs)),
+     ("clear_metrics", Some(Payload::lua_clear_metrics)),
      ("log_remove_tag", Some(Payload::lua_log_remove_tag)),
      ("log_set_tag", Some(Payload::lua_log_set_tag)),
      ("log_tag_value", Some(Payload::lua_log_tag_value)),
+     ("metric_query", Some(Payload::lua_metric_query)),
      ("metric_remove_tag", Some(Payload::lua_metric_remove_tag)),
      ("metric_set_tag", Some(Payload::lua_metric_set_tag)),
      ("metric_tag_value", Some(Payload::lua_metric_tag_value)),
      ("metric_value", Some(Payload::lua_metric_value)),
      ("push_log", Some(Payload::lua_push_log)),
      ("push_metric", Some(Payload::lua_push_metric)),
-     ("set_metric_name", Some(Payload::lua_set_metric_name))];
+     ("metric_name", Some(Payload::lua_metric_name))];
 
 pub struct ProgrammableFilter {
     state: lua::State,
