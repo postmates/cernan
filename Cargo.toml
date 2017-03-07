@@ -7,7 +7,7 @@ license = "MIT"
 name = "cernan"
 readme = "README.md"
 repository = "https://github.com/postmates/cernan"
-version = "0.5.4"
+version = "0.5.5"
 
 [[bin]]
 name = "cernan"
@@ -15,8 +15,8 @@ doc = false
 
 [dependencies]
 byteorder = "1.0"
-chrono = "0.2"
-clap = "2.10.0"
+chrono = "0.3"
+clap = "2.20.5"
 fern = "0.3.5"
 flate2 = "0.2"
 glob = "0.2.11"
@@ -29,7 +29,7 @@ lua = "0.0.10"
 protobuf = "1.2"
 quantiles = "0.3"
 rand = "0.3"
-rusoto = {version = "0.22", features = ["firehose"]}
+rusoto = {version = "0.23.1", features = ["firehose"]}
 seahash = "3.0"
 serde = "0.9"
 serde_derive = "0.9"
