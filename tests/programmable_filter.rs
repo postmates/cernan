@@ -11,9 +11,12 @@ mod integration {
         #[test]
         fn test_id_filter() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/identity.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("identity.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.identity".to_string(),
@@ -37,9 +40,12 @@ mod integration {
         #[test]
         fn test_clear_metrics_filter() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/clear_metrics.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("clear_metrics.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.clear_metrics".to_string(),
@@ -61,9 +67,12 @@ mod integration {
         #[test]
         fn test_clear_logs_filter() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/clear_logs.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("clear_logs.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.clear_logs".to_string(),
@@ -86,9 +95,12 @@ mod integration {
         #[test]
         fn test_remove_log_tag_kv() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/remove_keys.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("remove_keys.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.remove_keys".to_string(),
@@ -118,9 +130,12 @@ mod integration {
         #[test]
         fn test_remove_metric_tag_kv() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/remove_keys.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("remove_keys.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.remove_keys".to_string(),
@@ -147,9 +162,12 @@ mod integration {
         #[test]
         fn test_insufficient_args_no_crash() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/insufficient_args.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("insufficient_args.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.no_args_no_crash".to_string(),
@@ -174,9 +192,12 @@ mod integration {
         #[test]
         fn test_missing_func() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/missing_func.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("missing_func.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.missing_func".to_string(),
@@ -197,11 +218,49 @@ mod integration {
         }
 
         #[test]
-        fn test_add_log_tag_kv() {
+        fn test_demo_require() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/add_keys.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("demonstrate_require.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
+                script: script,
+                forwards: Vec::new(),
+                config_path: "filters.demonstrate_require".to_string(),
+                tags: Default::default(),
+            };
+            let mut cs = ProgrammableFilter::new(config);
+
+            let expected_log = metric::LogLine::new("identity",
+                                                    "i am the very model of the modern major \
+                                                     general")
+                .overlay_tag("foo", "bar")
+                .overlay_tag("bizz", "bazz");
+            let orig_log = metric::LogLine::new("identity",
+                                                "i am the very model of the modern major general")
+                .overlay_tag("foo", "bar");
+            let orig_event = metric::Event::new_log(orig_log);
+            let expected_event = metric::Event::new_log(expected_log);
+
+            let mut events = Vec::new();
+            let res = cs.process(orig_event, &mut events);
+            assert!(res.is_ok());
+            assert!(!events.is_empty());
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0], expected_event);
+        }
+
+        #[test]
+        fn test_add_log_tag_kv() {
+            let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("add_keys.lua");
+
+            let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.add_keys".to_string(),
@@ -231,9 +290,12 @@ mod integration {
         #[test]
         fn test_add_metric_tag_kv() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/add_keys.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("add_keys.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.add_keys".to_string(),
@@ -259,9 +321,12 @@ mod integration {
         #[test]
         fn test_tick_keeps_counts() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/keep_count.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("keep_count.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.keep_count".to_string(),
@@ -321,9 +386,12 @@ mod integration {
         #[test]
         fn test_collectd_non_ip_extraction() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/collectd_scrub.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("collectd_scrub.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.collectd_scrub".to_string(),
@@ -360,9 +428,12 @@ mod integration {
         #[test]
         fn test_non_collectd_extraction() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            script.push("resources/tests/scripts/collectd_scrub.lua");
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("collectd_scrub.lua");
 
             let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
                 script: script,
                 forwards: Vec::new(),
                 config_path: "filters.collectd_scrub".to_string(),

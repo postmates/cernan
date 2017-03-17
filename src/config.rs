@@ -449,6 +449,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                     };
                     let config_path = format!("filters.{}", name);
                     let config = ProgrammableFilterConfig {
+                        scripts_directory: scripts_dir.clone(),
                         script: scripts_dir.join(path),
                         forwards: fwds,
                         config_path: config_path.clone(),
