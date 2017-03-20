@@ -340,6 +340,7 @@ pub struct ProgrammableFilter {
 
 #[derive(Debug, Clone)]
 pub struct ProgrammableFilterConfig {
+    pub scripts_directory: PathBuf,
     pub script: PathBuf,
     pub forwards: Vec<String>,
     pub config_path: String,
@@ -350,6 +351,16 @@ impl ProgrammableFilter {
     pub fn new(config: ProgrammableFilterConfig) -> ProgrammableFilter {
         let mut state = lua::State::new();
         state.open_libs();
+
+        state.get_global("package");
+        let mut path = String::new();
+        path.push_str(config.scripts_directory
+            .to_str()
+            .expect("must have valid unicode scripts_directory"));
+        path.push_str("/?.lua");
+        state.push_string(&path);
+        state.set_field(-2, "path");
+        state.pop(1);
 
         state.new_table();
         state.set_fns(&PAYLOAD_LIB, 0);
@@ -373,8 +384,14 @@ impl ProgrammableFilter {
                 error!("syntax error in script at {}", script_path);
                 panic!()
             }
+            ThreadStatus::RuntimeError => {
+                error!("encountered a runtime error");
+                println!("encountered a runtime error");
+                panic!()
+            }
             other => {
                 error!("unknown status: {:?}", other);
+                println!("unknown status: {:?}", other);
                 panic!()
             }
         }
