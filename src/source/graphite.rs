@@ -1,6 +1,7 @@
 use super::Source;
 use metric;
 use protocols::graphite::parse_graphite;
+use source::internal::report_telemetry;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
@@ -56,6 +57,7 @@ fn handle_tcp(chans: util::Channel,
               -> thread::JoinHandle<()> {
     thread::spawn(move || for stream in listner.incoming() {
         if let Ok(stream) = stream {
+            report_telemetry("cernan.graphite.new_peer", 1.0);
             debug!("new peer at {:?} | local addr for peer {:?}",
                    stream.peer_addr(),
                    stream.local_addr());
@@ -77,12 +79,7 @@ fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: Tc
         while let Some(len) = line_reader.read_line(&mut line).ok() {
             if len > 0 {
                 if parse_graphite(&line, &mut res, basic_metric.clone()) {
-                    let metric = metric::Telemetry::new("cernan.graphite.packet", 1.0)
-                        .aggr_sum()
-                        .overlay_tags_from_map(&tags);
-                    send("graphite",
-                         &mut chans,
-                         metric::Event::Telemetry(Arc::new(Some(metric))));
+                    report_telemetry("cernan.graphite.packet", 1.0);
                     for m in res.drain(..) {
                         send("graphite",
                              &mut chans,
@@ -90,12 +87,7 @@ fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: Tc
                     }
                     line.clear();
                 } else {
-                    let metric = metric::Telemetry::new("cernan.graphite.bad_packet", 1.0)
-                        .aggr_sum()
-                        .overlay_tags_from_map(&tags);
-                    send("graphite",
-                         &mut chans,
-                         metric::Event::Telemetry(Arc::new(Some(metric))));
+                    report_telemetry("cernan.graphite.bad_packet", 1.0);
                     error!("bad packet: {:?}", line);
                     line.clear();
                 }

@@ -19,13 +19,15 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 use super::filter::ProgrammableFilterConfig;
 use super::sink::{ConsoleConfig, FirehoseConfig, InfluxDBConfig, NativeConfig, NullConfig,
                   PrometheusConfig, WavefrontConfig};
-use super::source::{FileServerConfig, GraphiteConfig, NativeServerConfig, StatsdConfig};
+use super::source::{FileServerConfig, GraphiteConfig, InternalConfig, NativeServerConfig,
+                    StatsdConfig};
 
 #[derive(Debug)]
 pub struct Args {
     pub console: Option<ConsoleConfig>,
     pub data_directory: PathBuf,
     pub influxdb: Option<InfluxDBConfig>,
+    pub internal: InternalConfig,
     pub prometheus: Option<PrometheusConfig>,
     pub files: Vec<FileServerConfig>,
     pub filters: HashMap<String, ProgrammableFilterConfig>,
@@ -139,12 +141,19 @@ pub fn parse_args() -> Args {
             let mut statsds = HashMap::new();
             statsds.insert("sources.statsd".to_string(), statsd_config);
 
+            let internal = InternalConfig {
+                config_path: "sources.internal".into(),
+                forwards: Default::default(),
+                tags: Default::default(),
+            };
+
             Args {
                 data_directory: Path::new("/tmp/cernan-data").to_path_buf(),
                 scripts_directory: Path::new("/tmp/cernan-scripts").to_path_buf(),
                 statsds: statsds,
                 graphites: graphites,
                 native_server_config: None,
+                internal: internal,
                 native_sink_config: None,
                 console: console,
                 null: null,
@@ -748,6 +757,31 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         None
     };
 
+    let internal_config = if value.lookup("sources.internal").is_some() {
+        let fwds = match value.lookup("sources.internal.forwards") {
+            Some(fwds) => {
+                fwds.as_slice()
+                    .expect("forwards must be an array")
+                    .to_vec()
+                    .iter()
+                    .map(|s| s.as_str().unwrap().to_string())
+                    .collect()
+            }
+            None => Vec::new(),
+        };
+        InternalConfig {
+            config_path: "sources.internal".into(),
+            forwards: fwds,
+            tags: tags.clone(),
+        }
+    } else {
+        InternalConfig {
+            config_path: "sources.internal".into(),
+            forwards: Default::default(),
+            tags: Default::default(),
+        }
+    };
+
     Args {
         data_directory: value.lookup("data-directory")
             .unwrap_or(&Value::String("/tmp/cernan-data".to_string()))
@@ -755,6 +789,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             .map(|s| Path::new(s).to_path_buf())
             .expect("could not parse data-directory"),
         scripts_directory: scripts_dir,
+        internal: internal_config,
         statsds: statsds,
         graphites: graphites,
         native_sink_config: native_sink_config,
@@ -860,6 +895,21 @@ scripts-directory = "/foo/bar"
         let native_server_config = args.native_server_config.unwrap();
         assert_eq!(native_server_config.port, 1972);
         assert_eq!(native_server_config.ip, String::from("127.0.0.1"));
+    }
+
+    #[test]
+    fn config_internal_source() {
+        let config = r#"
+[sources]
+  [sources.internal]
+  forwards = ["sinks.console", "sinks.null"]
+"#
+            .to_string();
+
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.internal.forwards,
+                   vec!["sinks.console".to_string(), "sinks.null".to_string()]);
     }
 
     #[test]

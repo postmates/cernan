@@ -1,6 +1,7 @@
 use metric;
 use protocols::statsd::parse_statsd;
 use source::Source;
+use source::internal::report_telemetry;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::str;
 use std::sync;
@@ -65,14 +66,10 @@ fn handle_udp(mut chans: util::Channel, tags: sync::Arc<metric::TagMap>, socket:
                     for m in metrics.drain(..) {
                         send("statsd", &mut chans, metric::Event::new_telemetry(m));
                     }
-                    let mut metric = metric::Telemetry::new("cernan.statsd.packet", 1.0).aggr_sum();
-                    metric = metric.overlay_tags_from_map(&tags);
-                    send("statsd", &mut chans, metric::Event::new_telemetry(metric));
+
+                    report_telemetry("cernan.statsd.packet", 1.0);
                 } else {
-                    let mut metric = metric::Telemetry::new("cernan.statsd.bad_packet", 1.0)
-                        .aggr_sum();
-                    metric = metric.overlay_tags_from_map(&tags);
-                    send("statsd", &mut chans, metric::Event::new_telemetry(metric));
+                    report_telemetry("cernan.statsd.bad_packet", 1.0);
                     error!("BAD PACKET: {:?}", val);
                 }
             }
