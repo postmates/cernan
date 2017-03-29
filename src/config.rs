@@ -383,11 +383,26 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                             }
                             None => Vec::new(),
                         };
+                        // NOTE The table lookup will return an i64 but we
+                        // convert to usize. Strictly speaking this IS NOT a
+                        // safe conversion but it makes no good sense for a user
+                        // to be reading anywhere above 2**60 lines per file. We
+                        // leave these people to their own wild works and hope
+                        // for the best.
+                        //
+                        // Someday a static analysis system will flag this as
+                        // unsafe. Welcome.
+                        let max_read_lines = tbl.lookup("max_read_lines")
+                            .unwrap_or(&Value::Integer(10_000))
+                            .as_integer()
+                            .expect("could not parse file.max_read_lines") as
+                                             usize;
                         let path_buf = path.to_path_buf();
                         let config = FileServerConfig {
                             path: path_buf.clone(),
                             tags: tags.clone(),
                             forwards: fwds,
+                            max_read_lines: max_read_lines,
                             config_path: format!("sources.files.{}", path_buf.to_str().unwrap()),
                         };
                         files.push(config)
@@ -413,11 +428,26 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                                 }
                                 None => Vec::new(),
                             };
+                            // NOTE The table lookup will return an i64 but we
+                            // convert to usize. Strictly speaking this IS NOT a
+                            // safe conversion but it makes no good sense for a user
+                            // to be reading anywhere above 2**60 lines per file. We
+                            // leave these people to their own wild works and hope
+                            // for the best.
+                            //
+                            // Someday a static analysis system will flag this as
+                            // unsafe. Welcome.
+                            let max_read_lines = tbl.lookup("max_read_lines")
+                                .unwrap_or(&Value::Integer(10_000))
+                                .as_integer()
+                                .expect("could not parse file.max_read_lines") as
+                                                 usize;
                             let path_buf = path.to_path_buf();
                             let config = FileServerConfig {
                                 path: path_buf.clone(),
                                 tags: tags.clone(),
                                 forwards: fwds,
+                                max_read_lines: max_read_lines,
                                 config_path: format!("sources.files.{}",
                                                      path_buf.to_str().unwrap()),
                             };
@@ -1442,6 +1472,7 @@ path = "/bar.txt"
         assert!(!args.files.is_empty());
         assert_eq!(args.files[0].path, PathBuf::from("/foo/bar.txt"));
         assert_eq!(args.files[0].forwards, vec!["sink.blech"]);
+        assert_eq!(args.files[0].max_read_lines, 10_000);
     }
 
     #[test]
@@ -1451,6 +1482,7 @@ path = "/bar.txt"
   [sources.files]
   [sources.files.foo_bar_txt]
   path = "/foo/bar.txt"
+  max_read_lines = 10
   forwards = ["sink.blech"]
 
   [sources.files.bar_txt]
@@ -1463,6 +1495,7 @@ path = "/bar.txt"
 
         assert!(!args.files.is_empty());
         assert_eq!(args.files[1].path, PathBuf::from("/foo/bar.txt"));
+        assert_eq!(args.files[1].max_read_lines, 10);
         assert_eq!(args.files[1].forwards, vec!["sink.blech"]);
         assert_eq!(args.files[0].path, PathBuf::from("/bar.txt"));
         assert_eq!(args.files[0].forwards, vec!["sink.bar.blech"]);

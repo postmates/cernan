@@ -1,5 +1,3 @@
-//! TODO
-
 use buckets::Buckets;
 use chrono;
 use metric::{AggregationMethod, LogLine, Telemetry};
