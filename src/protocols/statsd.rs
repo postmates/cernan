@@ -208,37 +208,33 @@ mod tests {
         }
     }
 
-    fn payload_to_str(pyld: StatsdPayload) -> String {
+    fn payload_to_str(pyld: &StatsdPayload) -> String {
         let mut pyld_buf = String::with_capacity(1_024);
 
         let max = pyld.lines.len();
-        if max == 0 {
-            // empty payload
-            return "".into();
-        } else if max > 1 {
-            for line in &pyld.lines[1..] {
-                pyld_buf.push_str(&line.name);
-                pyld_buf.push_str(":");
-                pyld_buf.push_str(&line.value.to_string());
-                pyld_buf.push_str("|");
-                match line.aggregation {
-                    StatsdAggregation::Gauge => pyld_buf.push_str("g"),
-                    StatsdAggregation::Counter => pyld_buf.push_str("c"),
-                    StatsdAggregation::Timer => pyld_buf.push_str("ms"),
-                    StatsdAggregation::Histogram => pyld_buf.push_str("h"),
-                };
-                if line.sampled {
-                    if line.sample_bar {
-                        pyld_buf.push_str("|@");
-                    } else {
-                        pyld_buf.push_str("@");
-                    }
-                    pyld_buf.push_str(&line.sample_rate.to_string());
+        assert!(max != 0);
+        for line in &pyld.lines[0..max - 1] {
+            pyld_buf.push_str(&line.name);
+            pyld_buf.push_str(":");
+            pyld_buf.push_str(&line.value.to_string());
+            pyld_buf.push_str("|");
+            match line.aggregation {
+                StatsdAggregation::Gauge => pyld_buf.push_str("g"),
+                StatsdAggregation::Counter => pyld_buf.push_str("c"),
+                StatsdAggregation::Timer => pyld_buf.push_str("ms"),
+                StatsdAggregation::Histogram => pyld_buf.push_str("h"),
+            };
+            if line.sampled {
+                if line.sample_bar {
+                    pyld_buf.push_str("|@");
+                } else {
+                    pyld_buf.push_str("@");
                 }
-                pyld_buf.push_str("\n");
+                pyld_buf.push_str(&line.sample_rate.to_string());
             }
+            pyld_buf.push_str("\n");
         }
-        let line = &pyld.lines[0];
+        let line = &pyld.lines[max - 1];
         pyld_buf.push_str(&line.name);
         pyld_buf.push_str(":");
         pyld_buf.push_str(&line.value.to_string());
@@ -266,15 +262,43 @@ mod tests {
     #[test]
     fn test_parse_qc() {
         fn inner(pyld: StatsdPayload) -> TestResult {
-            let lines = payload_to_str(pyld);
+            let lines = payload_to_str(&pyld);
             let metric = sync::Arc::new(Some(Telemetry::default()));
             let mut res = Vec::new();
 
-            if !parse_statsd(&lines, &mut res, metric) {
-                println!("LINES: {}", lines);
-                TestResult::failed()
-            } else {
+            if parse_statsd(&lines, &mut res, metric) {
+                assert_eq!(res.len(), pyld.lines.len());
+                for (sline, telem) in pyld.lines.iter().zip(res.iter()) {
+                    assert_eq!(sline.name, telem.name);
+                    if sline.sampled {
+                        assert!((sline.value * (1.0 / sline.sample_rate) -
+                                 telem.value().unwrap())
+                            .abs() < 0.0001);
+                    } else {
+                        assert!((sline.value - telem.value().unwrap()).abs() < 0.0001);
+                    }
+                    match sline.aggregation {
+                        StatsdAggregation::Counter => {
+                            assert_eq!(telem.aggr_method, AggregationMethod::Sum);
+                            assert_eq!(telem.persist, false);
+                        }
+                        StatsdAggregation::Gauge => {
+                            assert_eq!(telem.aggr_method, AggregationMethod::Set);
+                            assert_eq!(telem.persist, true);
+                        }
+                        StatsdAggregation::Timer => {
+                            assert_eq!(telem.aggr_method, AggregationMethod::Summarize);
+                            assert_eq!(telem.persist, false);
+                        }
+                        StatsdAggregation::Histogram => {
+                            assert_eq!(telem.aggr_method, AggregationMethod::Summarize);
+                            assert_eq!(telem.persist, false);
+                        }
+                    }
+                }
                 TestResult::passed()
+            } else {
+                TestResult::failed()
             }
         }
         QuickCheck::new()
