@@ -161,6 +161,18 @@ fn main() {
             cernan::source::NativeServer::new(native_server_send, config).run();
         }))
     }
+
+    let internal_config = args.internal;
+    let mut internal_send = Vec::new();
+    populate_forwards(&mut internal_send,
+                      Some(&mut flush_sends),
+                      &internal_config.forwards,
+                      &internal_config.config_path,
+                      &sends);
+    joins.push(thread::spawn(move || {
+        cernan::source::Internal::new(internal_send, internal_config).run();
+    }));
+
     for config in args.statsds.values() {
         let c = (*config).clone();
         let mut statsd_sends = Vec::new();

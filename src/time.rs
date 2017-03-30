@@ -23,7 +23,6 @@ pub fn update_time() {
         thread::sleep(dur);
         let now = UTC::now().timestamp() as usize;
         let order = Ordering::Relaxed;
-        trace!("updated cernan {:?} now, is: {}", order, now);
         NOW.store(now, order);
     }
 }

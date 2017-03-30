@@ -206,7 +206,7 @@ impl Source for FileServer {
                 }
             }
             let start = Instant::now();
-            let mut attempts = 0;
+            let mut attempts: u32 = 0;
             loop {
                 // file poll
                 if fp_map.is_empty() {
@@ -220,7 +220,7 @@ impl Source for FileServer {
                         let mut lines_read = 0;
                         match file.read_line(&mut buffer) {
                             Ok(sz) => {
-                                attempts = 0;
+                                attempts = attempts.saturating_sub(1);
                                 if sz > 0 {
                                     lines_read += 1;
                                     buffer.pop();

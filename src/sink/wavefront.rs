@@ -1,6 +1,7 @@
 use buckets::Buckets;
 use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
+use source::report_telemetry;
 use std::cmp;
 use std::io::Write as IoWrite;
 use std::net::TcpStream;
@@ -143,6 +144,8 @@ impl Sink for Wavefront {
 
     fn flush(&mut self) {
         loop {
+            report_telemetry("cernan.sinks.wavefront.delivery_attempts",
+                             self.delivery_attempts as f64);
             if self.delivery_attempts > 0 {
                 debug!("delivery attempts: {}", self.delivery_attempts);
             }

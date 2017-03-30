@@ -68,10 +68,10 @@ pub fn report_telemetry<S>(name: S, value: f64) -> ()
 /// floor.
 impl Source for Internal {
     fn run(&mut self) {
-        let mut attempts = 0;
+        let mut attempts: u32 = 0;
         loop {
             if let Some(mut telem) = Q.lock().unwrap().pop_front() {
-                attempts -= 1;
+                attempts = attempts.saturating_sub(1);
                 if !self.chans.is_empty() {
                     telem = telem.overlay_tags_from_map(&self.tags);
                     util::send("internal",
