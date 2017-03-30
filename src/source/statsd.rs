@@ -66,7 +66,6 @@ fn handle_udp(mut chans: util::Channel, tags: sync::Arc<metric::TagMap>, socket:
                     for m in metrics.drain(..) {
                         send("statsd", &mut chans, metric::Event::new_telemetry(m));
                     }
-
                     report_telemetry("cernan.statsd.packet", 1.0);
                 } else {
                     report_telemetry("cernan.statsd.bad_packet", 1.0);

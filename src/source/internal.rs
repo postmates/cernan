@@ -12,7 +12,7 @@ lazy_static! {
 /// 'Internal' is a Source which is meant to allow cernan to
 /// self-telemeter. This is an improvement over past methods as an explicit
 /// Source gives operators the ability to define a filter topology for such
-/// telemetry and makes it easier to modules to report on themeselves. 
+/// telemetry and makes it easier for modules to report on themeselves.
 pub struct Internal {
     chans: util::Channel,
     tags: sync::Arc<metric::TagMap>,
@@ -25,7 +25,8 @@ pub struct InternalConfig {
     pub config_path: String,
     /// The forwards which Internal will obey.
     pub forwards: Vec<String>,
-    /// The default tags to apply to each Telemetry that comes through the queue.
+    /// The default tags to apply to each Telemetry that comes through the
+    /// queue.
     pub tags: metric::TagMap,
 }
 
@@ -69,14 +70,15 @@ impl Source for Internal {
     fn run(&mut self) {
         let mut attempts = 0;
         loop {
-            if let Some(telem) = Q.lock().unwrap().pop_front() {
+            if let Some(mut telem) = Q.lock().unwrap().pop_front() {
                 attempts -= 1;
                 if !self.chans.is_empty() {
+                    telem = telem.overlay_tags_from_map(&self.tags);
                     util::send("internal",
                                &mut self.chans,
-                               metric::Event::new_telemetry(telem.overlay_tags_from_map(&self.tags)));
+                               metric::Event::new_telemetry(telem));
                 } else {
-                    // do nothing, intentionally 
+                    // do nothing, intentionally
                 }
             } else {
                 // We mod by an arbitrary constant. We don't want to wait _too_
