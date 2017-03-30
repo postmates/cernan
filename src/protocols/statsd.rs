@@ -52,12 +52,18 @@ pub fn parse_statsd(source: &str,
                             Some(sample_idx) => {
                                 match &src[offset..(offset + sample_idx)] {
                                     "g|" | "g" => {
+                                        let sample = match f64::from_str(&src[(offset + sample_idx +
+                                                                           1)..]) {
+                                            Ok(f) => f,
+                                            Err(_) => return false,
+                                        };
                                         metric.persist = true;
-                                        if signed {
+                                        metric = if signed {
                                             metric.aggr_sum()
                                         } else {
                                             metric.aggr_set()
-                                        }
+                                        };
+                                        metric.set_value(val * (1.0 / sample))
                                     }
                                     "c|" | "c" => {
                                         let sample = match f64::from_str(&src[(offset + sample_idx +
@@ -66,6 +72,15 @@ pub fn parse_statsd(source: &str,
                                             Err(_) => return false,
                                         };
                                         metric = metric.aggr_sum().ephemeral();
+                                        metric.set_value(val * (1.0 / sample))
+                                    }
+                                    "ms" | "ms|" | "h" | "h|" => {
+                                        let sample = match f64::from_str(&src[(offset + sample_idx +
+                                                                           1)..]) {
+                                            Ok(f) => f,
+                                            Err(_) => return false,
+                                        };
+                                        metric = metric.aggr_summarize().ephemeral();
                                         metric.set_value(val * (1.0 / sample))
                                     }
                                     _ => return false,
@@ -100,9 +115,173 @@ pub fn parse_statsd(source: &str,
 
 #[cfg(test)]
 mod tests {
+    extern crate rand;
+    extern crate quickcheck;
+
+    use self::quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
+    use self::rand::{Rand, Rng};
     use super::*;
     use metric::{AggregationMethod, Telemetry};
     use std::sync;
+
+    #[derive(Clone, Debug)]
+    enum StatsdAggregation {
+        Gauge,
+        Counter,
+        Timer,
+        Histogram,
+    }
+
+    impl Arbitrary for StatsdAggregation {
+        fn arbitrary<G: Gen>(g: &mut G) -> StatsdAggregation {
+            g.gen()
+        }
+    }
+
+    impl Rand for StatsdAggregation {
+        fn rand<R: Rng>(rng: &mut R) -> StatsdAggregation {
+            let i: usize = rng.gen_range(0, 4);
+            match i {
+                0 => StatsdAggregation::Gauge,
+                1 => StatsdAggregation::Counter,
+                2 => StatsdAggregation::Timer,
+                _ => StatsdAggregation::Histogram,
+            }
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct StatsdLine {
+        name: String,
+        value: f64,
+        sampled: bool,
+        sample_bar: bool,
+        sample_rate: f64,
+        newline_terminated: bool,
+        aggregation: StatsdAggregation,
+    }
+
+    impl Rand for StatsdLine {
+        fn rand<R: Rng>(rng: &mut R) -> StatsdLine {
+            let name_len = rng.gen_range(1, 256);
+            let val: f64 = rng.gen();
+            let sampled: bool = rng.gen();
+            let sample_bar: bool = rng.gen();
+            let sample_rate: f64 = rng.gen();
+            let newline_terminated: bool = rng.gen();
+            let aggregation: StatsdAggregation = rng.gen();
+
+            let tmp: String = rng.gen_ascii_chars().take(name_len).collect();
+            StatsdLine {
+                name: tmp,
+                value: val,
+                sampled: sampled,
+                sample_bar: sample_bar,
+                sample_rate: sample_rate,
+                newline_terminated: newline_terminated,
+                aggregation: aggregation,
+            }
+        }
+    }
+
+    impl Arbitrary for StatsdLine {
+        fn arbitrary<G: Gen>(g: &mut G) -> StatsdLine {
+            g.gen()
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct StatsdPayload {
+        lines: Vec<StatsdLine>,
+    }
+
+    impl Rand for StatsdPayload {
+        fn rand<R: Rng>(rng: &mut R) -> StatsdPayload {
+            let payload_len = rng.gen_range(1, 50);
+            StatsdPayload { lines: rng.gen_iter::<StatsdLine>().take(payload_len).collect() }
+        }
+    }
+
+    impl Arbitrary for StatsdPayload {
+        fn arbitrary<G: Gen>(g: &mut G) -> StatsdPayload {
+            g.gen()
+        }
+    }
+
+    fn payload_to_str(pyld: StatsdPayload) -> String {
+        let mut pyld_buf = String::with_capacity(1_024);
+
+        let max = pyld.lines.len();
+        if max == 0 {
+            // empty payload
+            return "".into();
+        } else if max > 1 {
+            for line in &pyld.lines[1..] {
+                pyld_buf.push_str(&line.name);
+                pyld_buf.push_str(":");
+                pyld_buf.push_str(&line.value.to_string());
+                pyld_buf.push_str("|");
+                match line.aggregation {
+                    StatsdAggregation::Gauge => pyld_buf.push_str("g"),
+                    StatsdAggregation::Counter => pyld_buf.push_str("c"),
+                    StatsdAggregation::Timer => pyld_buf.push_str("ms"),
+                    StatsdAggregation::Histogram => pyld_buf.push_str("h"),
+                };
+                if line.sampled {
+                    if line.sample_bar {
+                        pyld_buf.push_str("|@");
+                    } else {
+                        pyld_buf.push_str("@");
+                    }
+                    pyld_buf.push_str(&line.sample_rate.to_string());
+                }
+                pyld_buf.push_str("\n");
+            }
+        }
+        let line = &pyld.lines[0];
+        pyld_buf.push_str(&line.name);
+        pyld_buf.push_str(":");
+        pyld_buf.push_str(&line.value.to_string());
+        pyld_buf.push_str("|");
+        match line.aggregation {
+            StatsdAggregation::Gauge => pyld_buf.push_str("g"),
+            StatsdAggregation::Counter => pyld_buf.push_str("c"),
+            StatsdAggregation::Timer => pyld_buf.push_str("ms"),
+            StatsdAggregation::Histogram => pyld_buf.push_str("h"),
+        };
+        if line.sampled {
+            if line.sample_bar {
+                pyld_buf.push_str("|@");
+            } else {
+                pyld_buf.push_str("@");
+            }
+            pyld_buf.push_str(&line.sample_rate.to_string());
+        }
+        if line.newline_terminated {
+            pyld_buf.push_str("\n");
+        }
+        pyld_buf
+    }
+
+    #[test]
+    fn test_parse_qc() {
+        fn inner(pyld: StatsdPayload) -> TestResult {
+            let lines = payload_to_str(pyld);
+            let metric = sync::Arc::new(Some(Telemetry::default()));
+            let mut res = Vec::new();
+
+            if !parse_statsd(&lines, &mut res, metric) {
+                println!("LINES: {}", lines);
+                TestResult::failed()
+            } else {
+                TestResult::passed()
+            }
+        }
+        QuickCheck::new()
+            .tests(10000)
+            .max_tests(100000)
+            .quickcheck(inner as fn(StatsdPayload) -> TestResult);
+    }
 
     #[test]
     fn test_counter() {
@@ -170,22 +349,22 @@ mod tests {
         assert_eq!(res[0].aggr_method, AggregationMethod::Set);
         assert_eq!(res[0].name, "foo");
         assert_eq!(res[0].persist, true);
-        assert_eq!(Some(1.0), res[0].query(1.0));
+        assert_eq!(Some(1.0 * (1.0 / 0.22)), res[0].query(1.0));
 
         assert_eq!(res[1].aggr_method, AggregationMethod::Set);
         assert_eq!(res[1].name, "bar");
         assert_eq!(res[1].persist, true);
-        assert_eq!(Some(101.0), res[1].query(1.0));
+        assert_eq!(Some(101.0 * (1.0 / 2.0)), res[1].query(1.0));
 
         assert_eq!(res[2].aggr_method, AggregationMethod::Set);
         assert_eq!(res[2].name, "baz");
         assert_eq!(res[2].persist, true);
-        assert_eq!(Some(2.0), res[2].query(1.0));
+        assert_eq!(Some(2.0 * (1.0 / 0.2)), res[2].query(1.0));
 
         assert_eq!(res[3].aggr_method, AggregationMethod::Set);
         assert_eq!(res[3].name, "qux");
         assert_eq!(res[3].persist, true);
-        assert_eq!(Some(4.0), res[3].query(1.0));
+        assert_eq!(Some(4.0 * (1.0 / 0.1)), res[3].query(1.0));
     }
 
     #[test]
