@@ -2,6 +2,7 @@ use glob::glob;
 use metric;
 use seahash::SeaHasher;
 use source::Source;
+use source::internal::report_telemetry;
 use std::collections::HashMap;
 use std::fs;
 use std::hash::BuildHasherDefault;
@@ -225,6 +226,9 @@ impl Source for FileServer {
                                     buffer.pop();
                                     let path_name =
                                         file.path.to_str().expect("could not make path_name");
+                                    report_telemetry(format!("cernan.sources.file.{}.lines_read",
+                                                             path_name),
+                                                     1.0);
                                     trace!("{} | {}", path_name, buffer);
                                     lines.push(metric::LogLine::new(path_name, &buffer)
                                         .overlay_tags_from_map(&self.tags));
