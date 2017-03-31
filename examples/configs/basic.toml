@@ -7,6 +7,9 @@ flush-interval = 5
 source = "cernan"
 
 [sources]
+  [sources.internal]
+  forwards = ["sinks.console", "sinks.null"]
+
   [sources.statsd.primary]
   enabled = true
   port = 8125
