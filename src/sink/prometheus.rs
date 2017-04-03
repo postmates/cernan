@@ -6,8 +6,10 @@ use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protocols::prometheus::*;
 use sink::{Sink, Valve};
+use source::report_telemetry;
 use std::io::Write;
 use std::mem;
+use std::str;
 use std::sync;
 use std::sync::Mutex;
 
@@ -118,14 +120,34 @@ impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
         let mut guard = self.aggrs.lock().unwrap();
         let aggrs: AggrMap = mem::replace(&mut guard, Default::default());
-        // hyper::mime is challenging to use. In particular, we need
-        // SubLevel::Ext in a match but SubLevel::Ext takes a String, not a
-        // &str, and rather than construct the whole match for all the
-        // permutations of support we'll just be monsters and assume if you
-        // aren't asking for plaintext you're asking for protobuf.
-        match req.headers.get() {
-            Some(&ContentType(Mime(TopLevel::Text, SubLevel::Plain, _))) => write_text(aggrs, res),
-            _ => write_binary(aggrs, res),
+        // Typed hyper::mime is challenging to use. In particular, matching does
+        // not seem to work like I expect and handling all other MIME cases in
+        // the existing enum strikes me as a fool's errand, on account of there
+        // may be an infinite number of MIMEs that'll come right on in. We'll
+        // just be monsters and assume if you aren't asking for protobuf you're
+        // asking for plaintext.
+        let raw_headers: Vec<&str> = req.headers
+            .get_raw("content-type")
+            .unwrap_or(&[])
+            .iter()
+            .map(|x| str::from_utf8(x))
+            .filter(|x| x.is_ok())
+            .map(|x| x.unwrap())
+            .collect();
+        assert!(raw_headers.len() <= 1);
+        if raw_headers.is_empty() {
+            report_telemetry("cernan.sinks.prometheus.write.text", 1.0);
+            report_telemetry("cernan.sinks.prometheus.empty_header", 1.0);
+            write_text(aggrs, res);
+        } else {
+            let header = raw_headers[0];
+            if header.starts_with("application/vnd.google.protobuf;") {
+                report_telemetry("cernan.sinks.prometheus.write.binary", 1.0);
+                write_binary(aggrs, res);
+            } else if header.starts_with("text/plain;") {
+                report_telemetry("cernan.sinks.prometheus.write.text", 1.0);
+                write_text(aggrs, res);
+            }
         }
     }
 }
