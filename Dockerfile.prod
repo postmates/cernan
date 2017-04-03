@@ -1,0 +1,6 @@
+FROM busybox:glibc
+
+ADD cernan /usr/bin/cernan
+ADD cernan.toml /etc/cernan.toml 
+
+ENTRYPOINT ["/usr/bin/cernan", "--config", "/etc/cernan.toml"]

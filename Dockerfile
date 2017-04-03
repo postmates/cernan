@@ -1,8 +1,13 @@
-FROM alpine:edge
+FROM quay.io/postmates/postmates-rust:stable
 
-COPY target/x86_64-unknown-linux-musl/release/cernan /usr/local/bin/cernan
-RUN mkdir -p /etc/cernan
-COPY examples/configs/basic.toml /etc/cernan/cernan.conf
-RUN chmod +x /usr/local/bin/cernan
-ENTRYPOINT ["/usr/local/bin/cernan"]
-CMD ["-C", "/etc/cernan/cernan.conf"]
+ADD . /source
+WORKDIR /source
+RUN cargo build --release 
+
+WORKDIR /source/target/release
+
+ADD Dockerfile.prod Dockerfile 
+ADD examples/configs/basic.toml cernan.toml
+
+CMD docker build -t quay.io/postmates/cernan:latest . && \
+    docker push quay.io/postmates/cernan:latest 
