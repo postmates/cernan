@@ -219,17 +219,8 @@ mod test {
         tags.insert("source".into(), "test-src".into());
         let percentiles = vec![("min".to_string(), 0.0),
                                ("max".to_string(), 1.0),
-                               ("2".to_string(), 0.02),
-                               ("9".to_string(), 0.09),
-                               ("25".to_string(), 0.25),
                                ("50".to_string(), 0.5),
-                               ("75".to_string(), 0.75),
-                               ("90".to_string(), 0.90),
-                               ("91".to_string(), 0.91),
-                               ("95".to_string(), 0.95),
-                               ("98".to_string(), 0.98),
-                               ("99".to_string(), 0.99),
-                               ("999".to_string(), 0.999)];
+                               ("99".to_string(), 0.99)];
         let config = WavefrontConfig {
             bin_width: 1,
             host: "127.0.0.1".to_string(),
