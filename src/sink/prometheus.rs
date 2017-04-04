@@ -12,6 +12,7 @@ use std::mem;
 use std::str;
 use std::sync;
 use std::sync::Mutex;
+use time;
 
 pub type AggrMap = Vec<metric::Telemetry>;
 
@@ -119,7 +120,25 @@ fn write_text(aggrs: AggrMap, mut res: Response) {
 impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
         let mut guard = self.aggrs.lock().unwrap();
+        // Prometheus does not allow metrics to appear from the same time
+        // interval across reports. Consider what happens in the following
+        // situation:
+        //
+        //     T0 - - - x - - - REPORT - - - x - - - T1 - - - - - - REPORT
+        //
+        // Where T0 and T1 are times, REPORT is a prometheus scrape and x is
+        // some metric to the same time series. In both cases x will have the
+        // same time, T0, but across two reports, giving prometheus
+        // heartburn. What we do is partition the guarded set where values in
+        // the current second are kept behind.
+        let current_second = time::now(); // NOTE when #166 lands this will
+        // _not_ be accurate and must be correctly adjusted.
         let aggrs: AggrMap = mem::replace(&mut guard, Default::default());
+        let (reportable, not_fresh): (Vec<metric::Telemetry>, Vec<metric::Telemetry>) =
+            aggrs.into_iter().partition(|ref x| x.timestamp == current_second);
+        for x in not_fresh.into_iter() {
+            guard.push(x);
+        }
         // Typed hyper::mime is challenging to use. In particular, matching does
         // not seem to work like I expect and handling all other MIME cases in
         // the existing enum strikes me as a fool's errand, on account of there
@@ -138,15 +157,15 @@ impl Handler for SenderHandler {
         if raw_headers.is_empty() {
             report_telemetry("cernan.sinks.prometheus.write.text", 1.0);
             report_telemetry("cernan.sinks.prometheus.empty_header", 1.0);
-            write_text(aggrs, res);
+            write_text(reportable, res);
         } else {
             let header = raw_headers[0];
             if header.starts_with("application/vnd.google.protobuf;") {
                 report_telemetry("cernan.sinks.prometheus.write.binary", 1.0);
-                write_binary(aggrs, res);
+                write_binary(reportable, res);
             } else if header.starts_with("text/plain;") {
                 report_telemetry("cernan.sinks.prometheus.write.text", 1.0);
-                write_text(aggrs, res);
+                write_text(reportable, res);
             }
         }
     }
