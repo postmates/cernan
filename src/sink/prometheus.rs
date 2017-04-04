@@ -88,10 +88,18 @@ fn write_text(aggrs: AggrMap, mut res: Response) {
     let mut buf = String::with_capacity(1024);
     let mut res = res.start().unwrap();
     for m in aggrs.into_iter() {
+        let sum_tags = m.tags.clone();
+        let count_tags = m.tags.clone();
         for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
             buf.push_str(&m.name);
             buf.push_str("{quantile=\"");
             buf.push_str(&q.to_string());
+            for (k, v) in m.tags.into_iter() {
+                buf.push_str("\", ");
+                buf.push_str(k);
+                buf.push_str("=\"");
+                buf.push_str(v);
+            }
             buf.push_str("\"} ");
             buf.push_str(&m.query(*q).unwrap().to_string());
             buf.push_str(" ");
@@ -100,12 +108,28 @@ fn write_text(aggrs: AggrMap, mut res: Response) {
         }
         buf.push_str(&m.name);
         buf.push_str("_sum ");
+        buf.push_str("{");
+        for (k, v) in sum_tags.into_iter() {
+            buf.push_str(k);
+            buf.push_str("=\"");
+            buf.push_str(v);
+            buf.push_str("\", ");
+        }
+        buf.push_str("} ");
         buf.push_str(&m.sum().to_string());
         buf.push_str(" ");
         buf.push_str(&m.timestamp.to_string());
         buf.push_str("\n");
         buf.push_str(&m.name);
         buf.push_str("_count ");
+        buf.push_str("{");
+        for (k, v) in count_tags.into_iter() {
+            buf.push_str(k);
+            buf.push_str("=\"");
+            buf.push_str(v);
+            buf.push_str("\", ");
+        }
+        buf.push_str("} ");
         buf.push_str(&m.count().to_string());
         buf.push_str(" ");
         buf.push_str(&m.timestamp.to_string());
@@ -145,28 +169,27 @@ impl Handler for SenderHandler {
         // may be an infinite number of MIMEs that'll come right on in. We'll
         // just be monsters and assume if you aren't asking for protobuf you're
         // asking for plaintext.
-        let raw_headers: Vec<&str> = req.headers
-            .get_raw("content-type")
+        let accept: Vec<&str> = req.headers
+            .get_raw("accept")
             .unwrap_or(&[])
             .iter()
             .map(|x| str::from_utf8(x))
             .filter(|x| x.is_ok())
             .map(|x| x.unwrap())
             .collect();
-        assert!(raw_headers.len() <= 1);
-        if raw_headers.is_empty() {
-            report_telemetry("cernan.sinks.prometheus.write.text", 1.0);
-            report_telemetry("cernan.sinks.prometheus.empty_header", 1.0);
-            write_text(reportable, res);
-        } else {
-            let header = raw_headers[0];
-            if header.starts_with("application/vnd.google.protobuf;") {
-                report_telemetry("cernan.sinks.prometheus.write.binary", 1.0);
-                write_binary(reportable, res);
-            } else if header.starts_with("text/plain;") {
-                report_telemetry("cernan.sinks.prometheus.write.text", 1.0);
-                write_text(reportable, res);
+        let mut accept_proto = false;
+        for hdr in &accept {
+            if hdr.contains("application/vnd.google.protobuf;") {
+                accept_proto = true;
+                break;
             }
+        }
+        if accept_proto {
+            report_telemetry("cernan.sinks.prometheus.write.binary", 1.0);
+            write_binary(reportable, res);
+        } else {
+            report_telemetry("cernan.sinks.prometheus.write.text", 1.0);
+            write_text(reportable, res);
         }
     }
 }
