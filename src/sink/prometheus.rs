@@ -1,5 +1,3 @@
-use hyper::header::ContentType;
-use hyper::mime::{Attr, Mime, SubLevel, TopLevel, Value};
 use hyper::server::{Handler, Listening, Request, Response, Server};
 use metric;
 use protobuf::Message;
@@ -38,18 +36,16 @@ struct SenderHandler {
 
 #[inline]
 fn write_binary(aggrs: AggrMap, mut res: Response) {
-    let mut params = Vec::with_capacity(2);
-    params.push((Attr::Ext("proto".to_string()),
-                 Value::Ext("io.prometheus.client.MetricFamily".to_string())));
-    params.push((Attr::Ext("encoding".to_string()), Value::Ext("delimited".to_string())));
-    res.headers_mut().set(ContentType(Mime(TopLevel::Application,
-
-                                           SubLevel::Ext("application/vnd.google.protobuf"
-                                               .to_string()),
-                                           params)));
+    res.headers_mut()
+        .set_raw("content-type",
+                 vec!["application/vnd.google.protobuf; \
+                       proto=io.prometheus.client.MetricFamily; encoding=delimited"
+                          .as_bytes()
+                          .to_vec()]);
     let mut res = res.start().unwrap();
-    for m in aggrs.into_iter() {
+    for mut m in aggrs.into_iter() {
         let mut metric_family = MetricFamily::new();
+        metric_family.set_name(mem::replace(&mut m.name, Default::default()));
         let mut metric = Metric::new();
         let mut label_pairs = Vec::with_capacity(8);
         for (k, v) in m.tags.into_iter() {
@@ -82,9 +78,8 @@ fn write_binary(aggrs: AggrMap, mut res: Response) {
 
 #[inline]
 fn write_text(aggrs: AggrMap, mut res: Response) {
-    let mut params = Vec::with_capacity(1);
-    params.push((Attr::Ext("version".to_string()), Value::Ext("0.0.4".to_string())));
-    res.headers_mut().set(ContentType(Mime(TopLevel::Text, SubLevel::Plain, params)));
+    res.headers_mut().set_raw("content-type",
+                              vec!["text/plain; version=0.0.4".as_bytes().to_vec()]);
     let mut buf = String::with_capacity(1024);
     let mut res = res.start().unwrap();
     for m in aggrs.into_iter() {
@@ -159,7 +154,7 @@ impl Handler for SenderHandler {
         // _not_ be accurate and must be correctly adjusted.
         let aggrs: AggrMap = mem::replace(&mut guard, Default::default());
         let (reportable, not_fresh): (Vec<metric::Telemetry>, Vec<metric::Telemetry>) =
-            aggrs.into_iter().partition(|ref x| x.timestamp == current_second);
+            aggrs.into_iter().partition(|ref x| x.timestamp < current_second);
         for x in not_fresh.into_iter() {
             guard.push(x);
         }
