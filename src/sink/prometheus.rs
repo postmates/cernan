@@ -205,20 +205,31 @@ impl Prometheus {
     }
 }
 
-#[inline]
-fn sanitize(metric: metric::Telemetry) -> metric::Telemetry {
-    // According to https://prometheus.io/docs/instrumenting/writing_exporters/
-    // "Only [a-zA-Z0-9:_] are valid in metric names, any other characters
-    // should be sanitized to an underscore."
-    //
-    // Most metrics coming into cernan will have periods in them. This function
-    // replaces all those periods with an underscore but does not attempt to do
-    // a full sweep and convert every other invalid character.
-    let name = metric.name.replace(".", "_");
-    // In addition, we want to make sure nothing goofy happens to our metrics
-    // and so set the kind to Summarize. The prometheus sink _does not_ respect
-    // source metadata and stores everything as quantiles.
-    metric.set_name(name).aggr_summarize()
+/// Sanitize cernan Telemetry into prometheus' notion
+///
+/// Prometheus is pretty strict about the names of its ingested metrics.
+/// According to https://prometheus.io/docs/instrumenting/writing_exporters/
+/// "Only [a-zA-Z0-9:_] are valid in metric names, any other characters should
+/// be sanitized to an underscore."
+///
+/// Metrics coming into cernan can have full utf8 names, save for some ingestion
+/// protocols that special-case certain characters. To cope with this we just
+/// mangle the mess out of names and hope for forgiveness in the hereafter.
+///
+/// In addition, we want to make sure nothing goofy happens to our metrics and
+/// so set the kind to Summarize. The prometheus sink _does not_ respect source
+/// metadata and stores everything as quantiles.
+fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
+    let name: String = mem::replace(&mut metric.name, Default::default());
+    let mut new_name: Vec<u8> = Vec::with_capacity(128);
+    for c in name.as_bytes().into_iter() {
+        match *c {
+            b'a'...b'z' | b'A'...b'Z' | b'0'...b'9' | b':' | b'_' => new_name.push(*c),
+            _ => new_name.push(b'_'),
+        }
+    }
+    metric.set_name(String::from_utf8(new_name).expect("wait, we bungled the conversion"))
+        .aggr_summarize()
 }
 
 impl Sink for Prometheus {
@@ -261,4 +272,29 @@ impl Sink for Prometheus {
 }
 
 #[cfg(test)]
-mod test {}
+mod test {
+    extern crate quickcheck;
+
+    use self::quickcheck::{QuickCheck, TestResult};
+    use super::*;
+    use metric;
+
+    #[test]
+    fn test_sanitization() {
+        fn inner(metric: metric::Telemetry) -> TestResult {
+            let metric = sanitize(metric);
+            assert!(metric.is_summarize());
+            for c in metric.name.chars() {
+                match c {
+                    'a'...'z' | 'A'...'Z' | '0'...'9' | ':' | '_' => continue,
+                    _ => return TestResult::failed(),
+                }
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(1000)
+            .max_tests(10000)
+            .quickcheck(inner as fn(metric::Telemetry) -> TestResult);
+    }
+}
