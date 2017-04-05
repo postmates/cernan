@@ -62,6 +62,15 @@ impl<'a> Payload<'a> {
     }
 
     #[allow(non_snake_case)]
+    unsafe extern "C" fn lua_log_value(L: *mut lua_State) -> c_int {
+        let mut state = State::from_ptr(L);
+        let pyld = state.to_userdata(1) as *mut Payload;
+        let idx = idx(state.to_integer(2), (*pyld).logs.len());
+        state.push_string(&(*pyld).logs[idx].value);
+        1
+    }
+
+    #[allow(non_snake_case)]
     unsafe extern "C" fn lua_set_metric_name(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
@@ -145,6 +154,30 @@ impl<'a> Payload<'a> {
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => {
                 match (*pyld).logs[idx].tags.get(&key) {
+                    Some(v) => {
+                        state.push_string(v);
+                    }
+                    None => {
+                        state.push_nil();
+                    }
+                }
+            }
+            None => {
+                error!("[log_tag_value] no key provided");
+                state.push_nil();
+            }
+        }
+        1
+    }
+
+    #[allow(non_snake_case)]
+    unsafe extern "C" fn lua_log_field_value(L: *mut lua_State) -> c_int {
+        let mut state = State::from_ptr(L);
+        let pyld = state.to_userdata(1) as *mut Payload;
+        let idx = idx(state.to_integer(2), (*pyld).logs.len());
+        match state.to_str(3).map(|k| k.to_owned()) {
+            Some(key) => {
+                match (*pyld).logs[idx].fields.get(&key) {
                     Some(v) => {
                         state.push_string(v);
                     }
@@ -250,6 +283,38 @@ impl<'a> Payload<'a> {
     }
 
     #[allow(non_snake_case)]
+    unsafe extern "C" fn lua_log_set_field(L: *mut lua_State) -> c_int {
+        let mut state = State::from_ptr(L);
+        let pyld = state.to_userdata(1) as *mut Payload;
+        let idx = idx(state.to_integer(2), (*pyld).logs.len());
+        match state.to_str(3).map(|k| k.to_owned()) {
+            Some(key) => {
+                match state.to_str(4).map(|v| v.to_owned()) {
+                    Some(val) => {
+                        match (*pyld).logs[idx].fields.insert(key, val) {
+                            Some(old_v) => {
+                                state.push_string(&old_v);
+                            }
+                            None => {
+                                state.push_nil();
+                            }
+                        }
+                    }
+                    None => {
+                        error!("[log_set_field] no key provided");
+                        state.push_nil();
+                    }
+                }
+            }
+            None => {
+                error!("[log_set_field] no val provided");
+                state.push_nil();
+            }
+        }
+        1
+    }
+
+    #[allow(non_snake_case)]
     unsafe extern "C" fn lua_metric_remove_tag(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
@@ -315,13 +380,16 @@ impl<'a> Payload<'a> {
     }
 }
 
-const PAYLOAD_LIB: [(&'static str, Function); 14] =
+const PAYLOAD_LIB: [(&'static str, Function); 17] =
     [("set_metric_name", Some(Payload::lua_set_metric_name)),
      ("clear_logs", Some(Payload::lua_clear_logs)),
      ("clear_metrics", Some(Payload::lua_clear_metrics)),
      ("log_remove_tag", Some(Payload::lua_log_remove_tag)),
      ("log_set_tag", Some(Payload::lua_log_set_tag)),
      ("log_tag_value", Some(Payload::lua_log_tag_value)),
+     ("log_set_field", Some(Payload::lua_log_set_field)),
+     ("log_field_value", Some(Payload::lua_log_field_value)),
+     ("log_value", Some(Payload::lua_log_value)),
      ("metric_query", Some(Payload::lua_metric_query)),
      ("metric_remove_tag", Some(Payload::lua_metric_remove_tag)),
      ("metric_set_tag", Some(Payload::lua_metric_set_tag)),
