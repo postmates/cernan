@@ -74,6 +74,9 @@ impl Sink for Firehose {
                         for &(ref k, ref v) in m.tags.iter() {
                             pyld.insert(k.clone(), Value::String(v.clone()));
                         }
+                        for &(ref k, ref v) in m.fields.iter() {
+                            pyld.insert(k.clone(), Value::String(v.clone()));
+                        }
                         Record { data: serde_json::ser::to_vec(&pyld).unwrap() }
                     })
                     .collect(),
