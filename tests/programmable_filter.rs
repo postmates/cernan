@@ -465,5 +465,37 @@ mod integration {
                 }
             }
         }
+
+        #[test]
+        fn test_parse_json_add_fields() {
+            let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("json_parse.lua");
+
+            let config = ProgrammableFilterConfig {
+                scripts_directory: script_dir,
+                script: script,
+                forwards: Vec::new(),
+                config_path: "filters.json_parse".to_string(),
+                tags: Default::default(),
+            };
+            let mut cs = ProgrammableFilter::new(config);
+
+            let expected_log = metric::LogLine::new("identity", "{\"foo\": \"bar\"}")
+                .insert_field("foo", "bar");
+            let orig_log = metric::LogLine::new("identity", "{\"foo\": \"bar\"}");
+
+            let orig_event = metric::Event::new_log(orig_log);
+            let expected_event = metric::Event::new_log(expected_log);
+
+            let mut events = Vec::new();
+            let res = cs.process(orig_event, &mut events);
+            assert!(res.is_ok());
+            assert!(!events.is_empty());
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0], expected_event);
+        }
+
     }
 }
