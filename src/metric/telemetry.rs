@@ -288,19 +288,71 @@ impl Telemetry {
         self
     }
 
+    /// Set Telemetry aggregation to SET
+    ///
+    /// This function sets the telemetry aggregation method to set, meaning our
+    /// view into its values will be that of the last value inserted.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::Telemetry;
+    ///
+    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_set();
+    /// assert!(m.is_set());
+    /// ```
     pub fn aggr_set(mut self) -> Telemetry {
         self.aggr_method = AggregationMethod::Set;
         self
     }
 
+    pub fn is_set(&self) -> bool {
+        self.aggr_method == AggregationMethod::Set
+    }
+
+    /// Set Telemetry aggregation to SUM
+    ///
+    /// This function sets the telemetry aggregation method to sum, meaning our
+    /// view into its values will be a summation of them in order of insertion.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::Telemetry;
+    ///
+    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_sum();
+    /// assert!(m.is_sum());
+    /// ```
     pub fn aggr_sum(mut self) -> Telemetry {
         self.aggr_method = AggregationMethod::Sum;
         self
     }
 
+    pub fn is_sum(&self) -> bool {
+        self.aggr_method == AggregationMethod::Sum
+    }
+
+    /// Set Telemetry aggregation to SUMMARIZE
+    ///
+    /// This function sets the telemetry aggregation method to summarize,
+    /// meaning our view into its values will be a quantile structure over all
+    /// values inserted.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cernan::metric::Telemetry;
+    ///
+    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_summarize();
+    /// assert!(m.is_summarize());
+    /// ```
     pub fn aggr_summarize(mut self) -> Telemetry {
         self.aggr_method = AggregationMethod::Summarize;
         self
+    }
+
+    pub fn is_summarize(&self) -> bool {
+        self.aggr_method == AggregationMethod::Summarize
     }
 
     /// Adjust Telemetry time
@@ -508,7 +560,7 @@ mod tests {
 
     impl Rand for Telemetry {
         fn rand<R: Rng>(rng: &mut R) -> Telemetry {
-            let name: String = rng.gen_ascii_chars().take(2).collect();
+            let name: String = rng.gen_iter::<char>().filter(|&x| x != ':').take(30).collect();
             let val: f64 = rng.gen();
             let kind: AggregationMethod = rng.gen();
             let persist: bool = rng.gen();
