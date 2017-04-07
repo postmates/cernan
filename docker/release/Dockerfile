@@ -1,4 +1,4 @@
-FROM busybox:glibc
+FROM busybox:musl
 
 COPY docker/release/cernan /usr/bin/cernan
 COPY docker/release/cernan.toml /etc/cernan.toml 

@@ -18,7 +18,8 @@ VERSION="${1}"
 
 docker build -t cernan-build -f docker/build/Dockerfile .
 CONTAINER_ID=$(docker create cernan-build)
-docker container cp ${CONTAINER_ID}:/source/target/release/cernan docker/release/
+# Remove 'cernan' from the build image 
+docker container cp ${CONTAINER_ID}:/source/target/x86_64-unknown-linux-musl/release/cernan docker/release/
 docker rm ${CONTAINER_ID}
 cp examples/configs/basic.toml docker/release/cernan.toml
 docker build -t cernan:latest -t cernan:${VERSION} -f docker/release/Dockerfile .
