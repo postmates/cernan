@@ -15,12 +15,15 @@ if [ -z "$1" ]; then
 fi
 
 VERSION="${1}"
+confd_version=0.11.0
+confd_url="https://github.com/kelseyhightower/confd/releases/download/v${confd_version}/confd-${confd_version}-linux-amd64"
+[ -f docker/release/confd-bin ] || curl -L "$confd_url" > docker/release/confd-bin
+chmod +x docker/release/confd-bin
 
 docker build -t cernan-build -f docker/build/Dockerfile .
 CONTAINER_ID=$(docker create cernan-build)
 # Remove 'cernan' from the build image 
 docker container cp ${CONTAINER_ID}:/source/target/x86_64-unknown-linux-musl/release/cernan docker/release/
 docker rm ${CONTAINER_ID}
-cp examples/configs/basic.toml docker/release/cernan.toml
-docker build -t cernan:latest -t cernan:${VERSION} -f docker/release/Dockerfile .
-rm docker/release/cernan.toml docker/release/cernan
+docker build -t quay.io/postmates/cernan:latest -t quay.io/postmates/cernan:${VERSION} -f docker/release/Dockerfile .
+rm docker/release/cernan

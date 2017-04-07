@@ -1,0 +1,12 @@
+flush-interval = 10
+
+[sources]
+  [sources.statsd.primary]
+  # This is a confd template value with a default
+  # using getv instead of getenv allows any backend to be used
+  # the keys are defined in /etc/confd/conf.d/
+  port = {{getv "/statsd/port" 8125}}
+  forwards = ["sinks.console"]
+
+[sinks]
+  [sinks.console]
