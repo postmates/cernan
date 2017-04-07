@@ -1,6 +1,9 @@
 flush-interval = 10
 
 [sources]
+  [sources.internal]
+  forwards = ["sinks.console"]
+
   [sources.statsd.primary]
   # This is a confd template value with a default
   # using getv instead of getenv allows any backend to be used
