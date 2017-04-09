@@ -560,7 +560,7 @@ mod tests {
 
     impl Rand for Telemetry {
         fn rand<R: Rng>(rng: &mut R) -> Telemetry {
-            let name: String = rng.gen_iter::<char>().filter(|&x| x != ':').take(30).collect();
+            let name: String = rng.gen_iter::<char>().take(128).collect();
             let val: f64 = rng.gen();
             let kind: AggregationMethod = rng.gen();
             let persist: bool = rng.gen();

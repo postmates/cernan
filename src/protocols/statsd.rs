@@ -214,7 +214,7 @@ mod tests {
         let max = pyld.lines.len();
         assert!(max != 0);
         for line in &pyld.lines[0..max - 1] {
-            pyld_buf.push_str(&line.name);
+            pyld_buf.push_str(&line.name.replace(":", "."));
             pyld_buf.push_str(":");
             pyld_buf.push_str(&line.value.to_string());
             pyld_buf.push_str("|");
@@ -235,7 +235,7 @@ mod tests {
             pyld_buf.push_str("\n");
         }
         let line = &pyld.lines[max - 1];
-        pyld_buf.push_str(&line.name);
+        pyld_buf.push_str(&line.name.replace(":", "."));
         pyld_buf.push_str(":");
         pyld_buf.push_str(&line.value.to_string());
         pyld_buf.push_str("|");
