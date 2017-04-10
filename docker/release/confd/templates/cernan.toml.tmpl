@@ -8,7 +8,7 @@ flush-interval = 10
   # This is a confd template value with a default
   # using getv instead of getenv allows any backend to be used
   # the keys are defined in /etc/confd/conf.d/
-  port = {{getv "/statsd/port" 8125}}
+  port = {{getv "/statsd/port"}}
   forwards = ["sinks.console"]
 
 [sinks]
