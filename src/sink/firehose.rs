@@ -12,6 +12,7 @@ use serde_json;
 use serde_json::Map;
 use serde_json::value::Value;
 use sink::{Sink, Valve};
+use source::report_telemetry;
 use std::sync;
 use uuid::Uuid;
 
@@ -87,7 +88,10 @@ impl Sink for Firehose {
                         debug!("Wrote {} records to delivery stream {}",
                                prbi.records.len(),
                                prbi.delivery_stream_name);
+                        report_telemetry("cernan.sinks.firehose.records.delivery", 1.0);
+                        report_telemetry("cernan.sinks.firehose.records.total_delivered", 1.0);
                         let failed_put_count = prbo.failed_put_count;
+                        report_telemetry("cernan.sinks.firehose.records.total_failed", 1.0);
                         if failed_put_count > 0 {
                             error!("Failed to write {} put records", failed_put_count);
                         }
@@ -102,30 +106,40 @@ impl Sink for Firehose {
                             // the payload being wonky. This is an optimization for
                             // the future.
                             ResourceNotFound(rnf_err) => {
+                                report_telemetry("cernan.sinks.firehose.error.resource_not_found",
+                                                 1.0);
                                 error!("Unable to write to resource, not found: {}", rnf_err);
                                 break;
                             }
                             InvalidArgument(ia_err) => {
+                                report_telemetry("cernan.sinks.firehose.error.invalid_argument",
+                                                 1.0);
                                 error!("Unable to write, invalid argument: {}", ia_err);
                                 break;
                             }
                             HttpDispatch(hd_err) => {
+                                report_telemetry("cernan.sinks.firehose.error.http_dispatch", 1.0);
                                 error!("Unable to write, http dispatch: {}", hd_err);
                                 break;
                             }
                             Validation(v_err) => {
+                                report_telemetry("cernan.sinks.firehose.error.validation", 1.0);
                                 error!("Unable to write, validation failure: {}", v_err);
                                 break;
                             }
                             Unknown(u_err) => {
+                                report_telemetry("cernan.sinks.firehose.error.unknown", 1.0);
                                 error!("Unable to write, unknown failure: {}", u_err);
                                 break;
                             }
                             // The following errors are recoverable, potentially.
                             Credentials(c_err) => {
+                                report_telemetry("cernan.sinks.firehose.error.credentials", 1.0);
                                 error!("Unable to write, credential failure: {}", c_err);
                             }
                             ServiceUnavailable(su_err) => {
+                                report_telemetry("cernan.sinks.firehose.error.service_unavailable",
+                                                 1.0);
                                 error!("Service unavailable, will retry: {}", su_err);
                             }
                         }
