@@ -73,8 +73,8 @@ impl PrometheusAggr {
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
         match self.inner
             .binary_search_by(|probe| prometheus_cmp(probe, &telem).expect("could not compare")) {
-            Ok(idx) => Some(self.inner[idx].clone()), 
-            Err(_) => None, 
+            Ok(idx) => Some(self.inner[idx].clone()),
+            Err(_) => None,
         }
     }
 
@@ -348,12 +348,11 @@ mod test {
 
     impl Rand for PrometheusAggr {
         fn rand<R: Rng>(rng: &mut R) -> PrometheusAggr {
-            let total_inner_sz: usize = rng.gen_range(0, 1024);
-            let mut inner: Vec<metric::Telemetry> = rng.gen_iter::<metric::Telemetry>().take(total_inner_sz).collect();
+            let total_inner_sz: usize = rng.gen_range(0, 512);
+            let mut inner: Vec<metric::Telemetry> =
+                rng.gen_iter::<metric::Telemetry>().take(total_inner_sz).collect();
             inner.sort_by(|a, b| prometheus_cmp(a, b).unwrap());
-            PrometheusAggr {
-                inner: inner
-            }
+            PrometheusAggr { inner: inner }
         }
     }
 
@@ -375,7 +374,7 @@ mod test {
 
             aggr.recombine(recomb);
 
-            let lower = cur_cnt; 
+            let lower = cur_cnt;
             let upper = cur_cnt + recomb_len;
 
             assert!(lower <= aggr.count() || aggr.count() <= upper);
