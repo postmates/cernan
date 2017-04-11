@@ -5,14 +5,12 @@ use protobuf::repeated::RepeatedField;
 use protocols::prometheus::*;
 use sink::{Sink, Valve};
 use source::report_telemetry;
-use std::collections::BTreeMap;
 use std::io;
 use std::io::Write;
 use std::mem;
 use std::str;
 use std::sync;
 use std::sync::Mutex;
-use time;
 
 #[allow(dead_code)]
 pub struct Prometheus {
@@ -48,35 +46,36 @@ struct SenderHandler {
 /// establish the above invariants.
 #[derive(Clone, Debug)]
 struct PrometheusAggr {
-    /// last_time_report allows PrometheusAggr to keep track of when the last
-    /// report from this structure was done, giving us the ability to reject
-    /// points (per point three above) and compute what points to
-    /// retain. Because these gates are _per time series_ we must keep a map of
-    /// metric-name to report time.
-    last_time_report: BTreeMap<String, i64>, // WARNING: UNBOUNDED
+    // The approach we take is unique in cernan: we drop all timestamps and _do
+    // not bin_. This is driven by the following comment in Prometheus' doc /
+    // our own experience trying to set explict timestamps:
+    //
+    //     Accordingly you should not set timestamps on the metric you expose,
+    //     let Prometheus take care of that. If you think you need timestamps,
+    //     then you probably need the pushgateway (without timestamps) instead.
+    //
+    // Prometheus has a certain view of the world -- and that's fine -- so we
+    // need to meet it there.
     inner: Vec<metric::Telemetry>,
 }
 
+fn prometheus_cmp(l: &metric::Telemetry, r: &metric::Telemetry) -> Option<::std::cmp::Ordering> {
+    match l.name.partial_cmp(&r.name) {
+        Some(::std::cmp::Ordering::Equal) => ::metric::tagmap::cmp(&l.tags, &r.tags),
+        other => other,
+    }
+}
+
 impl PrometheusAggr {
-    /// Return the last time 'name' was reported
-    ///
-    /// It's possible that this function will return None if the 'name' was
-    /// never part of any report.
+    /// Return a reference to the stored Telemetry if it matches the passed
+    /// Telemetry
     #[cfg(test)]
-    fn get_last_time_report(&self, name: &str) -> Option<i64> {
-        self.last_time_report.get(name).map(|x| *x)
-    }
-
-    /// Return an iterator over the aggregation's stored Telemetry
-    #[cfg(test)]
-    fn iter(&self) -> ::std::slice::Iter<metric::Telemetry> {
-        self.inner.iter()
-    }
-
-    /// Return an iterator over the aggregation's report times
-    #[cfg(test)]
-    fn iter_times(&self) -> ::std::collections::btree_map::Iter<String, i64> {
-        self.last_time_report.iter()
+    fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
+        match self.inner
+            .binary_search_by(|probe| prometheus_cmp(probe, &telem).expect("could not compare")) {
+            Ok(idx) => Some(self.inner[idx].clone()), 
+            Err(_) => None, 
+        }
     }
 
     /// Return all 'reportable' Telemetry
@@ -84,50 +83,18 @@ impl PrometheusAggr {
     /// This function returns all the stored Telemetry points that are available
     /// for shipping to Prometheus. Shipping a point to Prometheus drops that
     /// point from memory, once it's gone over the wire.
-    ///
-    /// A Telemetry will _not_ be reportable if it is within the current second
-    /// bin. This function resets the last report time for each time series.
-    fn reportable(&mut self, current_time: i64) -> Vec<metric::Telemetry> {
-        // Prometheus does not allow metrics to appear from the same time
-        // interval across reports. Consider what happens in the following
-        // situation:
-        //
-        //     T0 - - - x - - - REPORT - - - x - - - T1 - - - - - - REPORT
-        //
-        // Where T0 and T1 are times, REPORT is a prometheus scrape and x is
-        // some metric to the same time series. In both cases x will have the
-        // same time, T0, but across two reports, giving prometheus
-        // heartburn. What we do is partition the guarded set where values in
-        // the current second are kept behind.
-        let inner = mem::replace(&mut self.inner, Default::default());
-        let (reportable, not_ripe): (Vec<metric::Telemetry>, Vec<metric::Telemetry>) =
-            inner.into_iter().partition(|ref x| x.timestamp < current_time);
-        for x in not_ripe.into_iter() {
-            self.inner.push(x);
-        }
-        reportable
+    fn reportable(&mut self) -> Vec<metric::Telemetry> {
+        mem::replace(&mut self.inner, Default::default())
     }
 
     /// Insert a Telemetry into the aggregation
     ///
     /// This function inserts the given Telemetry into the inner aggregation of
-    /// PrometheusAggr, being sure to respect any last report time gates. This
-    /// function _does not_ change those time gates.
-    ///
-    /// If the Telemetry is inserted true is returned, else false.
+    /// PrometheusAggr. Timestamps are _not_ respected. Distinctions between
+    /// Telemetry of the same name are only made if their tagmaps are distinct.
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
-        if let Some(t) = self.last_time_report.get(&telem.name) {
-            if telem.timestamp < *t {
-                return false;
-            }
-        };
-        // Why not use Metric::within to do the comparison? The documentation
-        // here https://prometheus.io/docs/instrumenting/exposition_formats/
-        // demands that "Each Metric within the same MetricFamily must have a
-        // unique set of LabelPair fields.". It's very likely in cernan-world
-        // that every metric which shares a name also shares its tags. It's not
-        // for-sure but very, very likely.
-        match self.inner.binary_search_by(|probe| probe.partial_cmp(&telem).unwrap()) {
+        match self.inner
+            .binary_search_by(|probe| prometheus_cmp(probe, &telem).expect("could not compare")) {
             Ok(idx) => self.inner[idx] += telem,
             Err(idx) => self.inner.insert(idx, telem),
         }
@@ -156,18 +123,18 @@ impl PrometheusAggr {
 
 impl Default for PrometheusAggr {
     fn default() -> PrometheusAggr {
-        PrometheusAggr {
-            last_time_report: Default::default(),
-            inner: Default::default(),
-        }
+        PrometheusAggr { inner: Default::default() }
     }
 }
 
 impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
-        let current_second = time::now(); // NOTE when #166 lands this will be broken
         let mut aggr = self.aggr.lock().unwrap();
-        let reportable: Vec<metric::Telemetry> = aggr.reportable(current_second);
+        let reportable: Vec<metric::Telemetry> = aggr.reportable();
+        report_telemetry("cernan.sinks.prometheus.aggregation.reportable",
+                         reportable.len() as f64);
+        report_telemetry("cernan.sinks.prometheus.aggregation.remaining",
+                         aggr.count() as f64);
         // Typed hyper::mime is challenging to use. In particular, matching does
         // not seem to work like I expect and handling all other MIME cases in
         // the existing enum strikes me as a fool's errand, on account of there
@@ -197,6 +164,7 @@ impl Handler for SenderHandler {
             write_text(&reportable, res)
         };
         if res.is_err() {
+            report_telemetry("cernan.sinks.prometheus.report_error", 1.0);
             aggr.recombine(reportable);
         }
     }
@@ -238,7 +206,6 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
             label_pairs.push(lp);
         }
         metric.set_label(RepeatedField::from_vec(label_pairs));
-        metric.set_timestamp_ms(m.timestamp * 1000); // FIXME #166
         let mut summary = Summary::new();
         summary.set_sample_count(m.count() as u64);
         summary.set_sample_sum(m.sum());
@@ -279,8 +246,6 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
             }
             buf.push_str("\"} ");
             buf.push_str(&m.query(*q).unwrap().to_string());
-            buf.push_str(" ");
-            buf.push_str(&m.timestamp.to_string());
             buf.push_str("\n");
         }
         buf.push_str(&m.name);
@@ -294,8 +259,6 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         }
         buf.push_str("} ");
         buf.push_str(&m.sum().to_string());
-        buf.push_str(" ");
-        buf.push_str(&m.timestamp.to_string());
         buf.push_str("\n");
         buf.push_str(&m.name);
         buf.push_str("_count ");
@@ -308,8 +271,6 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         }
         buf.push_str("} ");
         buf.push_str(&m.count().to_string());
-        buf.push_str(" ");
-        buf.push_str(&m.timestamp.to_string());
         buf.push_str("\n");
         res.write(buf.as_bytes()).expect("FAILED TO WRITE BUFFER INTO HTTP
     STREAMING RESPONSE");
@@ -387,17 +348,11 @@ mod test {
 
     impl Rand for PrometheusAggr {
         fn rand<R: Rng>(rng: &mut R) -> PrometheusAggr {
-            let mut lt_reports: BTreeMap<String, i64> = Default::default();
-            let total_lt_reports: u16 = rng.gen_range(0, 512);
-            for _ in 0..total_lt_reports {
-                let name: String = rng.gen_iter::<char>().take(30).collect();
-                let report: i64 = rng.gen();
-                lt_reports.insert(name, report);
-            }
             let total_inner_sz: usize = rng.gen_range(0, 1024);
+            let mut inner: Vec<metric::Telemetry> = rng.gen_iter::<metric::Telemetry>().take(total_inner_sz).collect();
+            inner.sort_by(|a, b| prometheus_cmp(a, b).unwrap());
             PrometheusAggr {
-                last_time_report: lt_reports,
-                inner: rng.gen_iter::<metric::Telemetry>().take(total_inner_sz).collect(),
+                inner: inner
             }
         }
     }
@@ -416,24 +371,14 @@ mod test {
     fn test_recombine() {
         fn inner(mut aggr: PrometheusAggr, recomb: Vec<metric::Telemetry>) -> TestResult {
             let cur_cnt = aggr.count();
-            let expected_cnt = recomb.len() + cur_cnt;
-            let mut expected_last_reports: BTreeMap<String, i64> = Default::default();
-            for telem in recomb.iter() {
-                let elr_t = expected_last_reports.entry(telem.name.clone())
-                    .or_insert(telem.timestamp);
-                if *elr_t > telem.timestamp {
-                    *elr_t = telem.timestamp;
-                }
-            }
+            let recomb_len = recomb.len();
 
             aggr.recombine(recomb);
 
-            assert_eq!(aggr.count(), expected_cnt);
-            for (nm, time) in aggr.iter_times() {
-                if let Some(t) = expected_last_reports.get(nm) {
-                    assert_eq!(time, t);
-                }
-            }
+            let lower = cur_cnt; 
+            let upper = cur_cnt + recomb_len;
+
+            assert!(lower <= aggr.count() || aggr.count() <= upper);
             TestResult::passed()
         }
         QuickCheck::new()
@@ -444,80 +389,62 @@ mod test {
 
     #[test]
     fn test_reportable() {
-        // points will be dropped on 'reportable' run iff
-        //   * telem.timestamp < reportable current_time
-        // additionally
-        //   * count will be equal to the number of points where time >= reportable
-        //     current_time
-        //   * last_report_time will be set to the max timestamp such that timestamp
-        //     < reportable current_time
-        fn inner(mut aggr: PrometheusAggr, current_time: i64) -> TestResult {
-            if current_time < 0 {
-                return TestResult::discard();
-            }
-            let mut expected_remain = 0;
-            let mut expected_reportable = 0;
-            let mut expected_last_reports: BTreeMap<String, i64> = Default::default();
-            for telem in aggr.iter() {
-                if telem.timestamp >= current_time {
-                    expected_remain += 1;
-                } else {
-                    expected_reportable += 1;
-                    let mut lr = expected_last_reports.entry(telem.name.clone()).or_insert(0);
-                    if *lr < telem.timestamp {
-                        *lr = telem.timestamp;
-                    }
+        fn inner(mut aggr: PrometheusAggr) -> TestResult {
+            let cur_cnt = aggr.count();
+
+            let reportable = aggr.reportable();
+
+            assert_eq!(cur_cnt, reportable.len());
+            assert_eq!(0, aggr.count());
+
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(1000)
+            .max_tests(10000)
+            .quickcheck(inner as fn(PrometheusAggr) -> TestResult);
+    }
+
+    // insertion must obey two properties, based on existence or not
+    //
+    //  IF EXISTS
+    //    - insertion should NOT increase total count
+    //    - insertion WILL modify existing telemetry in aggregation
+    //
+    //  IF NOT EXISTS
+    //    - insertion WILL increase count by 1
+    //    - insertion WILL make telemetry exist after the insertion
+    #[test]
+    fn test_insertion_exists_property() {
+        fn inner(mut aggr: PrometheusAggr, telem: metric::Telemetry) -> TestResult {
+            let cur_cnt = aggr.count();
+            match aggr.find_match(&telem) {
+                Some(other) => {
+                    assert!(aggr.insert(telem.clone()));
+                    assert_eq!(cur_cnt, aggr.count());
+                    let new_t = aggr.find_match(&telem).expect("could not find in test");
+                    assert_eq!(other.count() + 1, new_t.count());
                 }
-            }
-
-            let reportable = aggr.reportable(current_time);
-
-            assert_eq!(expected_reportable, reportable.len());
-            assert_eq!(expected_remain, aggr.count());
-
-            for (nm, time) in aggr.iter_times() {
-                if let Some(t) = expected_last_reports.get(nm) {
-                    assert_eq!(time, t);
-                }
+                None => return TestResult::discard(),
             }
             TestResult::passed()
         }
         QuickCheck::new()
             .tests(1000)
             .max_tests(10000)
-            .quickcheck(inner as fn(PrometheusAggr, i64) -> TestResult);
+            .quickcheck(inner as fn(PrometheusAggr, metric::Telemetry) -> TestResult);
     }
 
     #[test]
-    fn test_insertion_property() {
+    fn test_insertion_not_exists_property() {
         fn inner(mut aggr: PrometheusAggr, telem: metric::Telemetry) -> TestResult {
             let cur_cnt = aggr.count();
-            match aggr.get_last_time_report(&telem.name) {
-                Some(t) => {
-                    if telem.timestamp < t {
-                        // inserting point where time < last_report does not insert
-                        assert!(!aggr.insert(telem.clone()));
-                        //   * count remains the same
-                        assert_eq!(cur_cnt, aggr.count());
-                        //   * point timestamp is NOT changed
-                        assert_eq!(t, aggr.get_last_time_report(&telem.name).unwrap());
-                    } else {
-                        // inserting point where time >= last_report does insert
-                        assert!(aggr.insert(telem.clone()));
-                        //   * count increases by one
-                        assert_eq!(cur_cnt + 1, aggr.count());
-                        //   * point timestamp is NOT changed
-                        assert_eq!(t, aggr.get_last_time_report(&telem.name).unwrap());
-                    }
-                }
+            match aggr.find_match(&telem) {
+                Some(_) => return TestResult::discard(),
                 None => {
-                    // inserting new point:
-                    //   * insertion returns true
                     assert!(aggr.insert(telem.clone()));
-                    //   * count increases by one
                     assert_eq!(cur_cnt + 1, aggr.count());
-                    //   * point timestamp is NOT changed
-                    assert_eq!(None, aggr.get_last_time_report(&telem.name));
+                    aggr.find_match(&telem).expect("could not find");
                 }
             }
             TestResult::passed()
