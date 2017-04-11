@@ -1,4 +1,4 @@
-mod tagmap;
+pub mod tagmap;
 mod logline;
 mod event;
 mod telemetry;
