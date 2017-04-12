@@ -147,6 +147,19 @@ impl Wavefront {
                         self.stats.push_str(&tag_buf);
                         self.stats.push_str("\n");
 
+                        let mean = value.mean();
+                        self.stats.push_str(&value.name);
+                        self.stats.push_str(".mean");
+                        self.stats.push_str(" ");
+                        self.stats
+                            .push_str(get_from_cache(&mut value_cache, mean));
+                        self.stats.push_str(" ");
+                        self.stats
+                            .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                        self.stats.push_str(" ");
+                        self.stats.push_str(&tag_buf);
+                        self.stats.push_str("\n");
+
                         tag_buf.clear();
                     }
                 }
@@ -335,6 +348,7 @@ mod test {
         assert!(lines.contains(&"test.timer.99 12.101 645181811 source=test-src"));
         assert!(lines.contains(&"test.timer.999 12.101 645181811 source=test-src"));
         assert!(lines.contains(&"test.timer.count 3 645181811 source=test-src"));
+        assert!(lines.contains(&"test.timer.mean 5.434333333333334 645181811 source=test-src"));
         assert!(lines.contains(&"test.raw 1 645181811 source=test-src"));
     }
 }

@@ -27,7 +27,7 @@ libc = "0.2"
 log = "0.3.6"
 lua = "0.0.10"
 protobuf = "1.2"
-quantiles = "0.3"
+quantiles = "0.4"
 rand = "0.3"
 rusoto = {version = "0.23.1", features = ["firehose"]}
 seahash = "3.0"
