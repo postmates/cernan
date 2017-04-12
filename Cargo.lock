@@ -15,7 +15,7 @@ dependencies = [
  "log 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "lua 0.0.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf 1.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "quantiles 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quantiles 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "quickcheck 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto 0.23.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -472,7 +472,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "quantiles"
-version = "0.3.2"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "serde 0.9.11 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1028,7 +1028,7 @@ dependencies = [
 "checksum openssl-sys 0.9.9 (registry+https://github.com/rust-lang/crates.io-index)" = "376c5c6084e5ea95eea9c3280801e46d0dcf51251d4f01b747e044fb64d1fb31"
 "checksum pkg-config 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)" = "3a8b4c6b8165cd1a1cd4b9b120978131389f64bdaf456435caa41e630edba903"
 "checksum protobuf 1.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c3e2ed6fe8ff3b20b44bb4b4f54de12ac89dc38cb451dce8ae5e9dcd1507f738"
-"checksum quantiles 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "5b3b5be43df9ffd0570cbd14f25ae72c8f2f9233e99dc186be959e7812358555"
+"checksum quantiles 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c3ef2080d9bd8158eddd47a8944349ce185064ee990d94d10ac6701db151f2c2"
 "checksum quickcheck 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "02c2411d418cea2364325b18a205664f9ef8252e06b2e911db97c0b0d98b1406"
 "checksum quote 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)" = "7a6e920b65c65f10b2ae65c831a81a073a89edd28c7cce89475bff467ab4167a"
 "checksum rand 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)" = "022e0636ec2519ddae48154b028864bdce4eaf7d35226ab8e65c611be97b189d"

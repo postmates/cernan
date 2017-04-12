@@ -383,6 +383,10 @@ impl Telemetry {
         self.value.count()
     }
 
+    pub fn mean(&self) -> f64 {
+        self.value.mean().unwrap()
+    }
+
     pub fn sum(&self) -> f64 {
         self.value.sum().unwrap()
     }
@@ -493,6 +497,18 @@ impl Value {
                 match self.many {
                     Some(ref ckms) => ckms.count(),
                     None => 0,
+                }
+            }
+        }
+    }
+
+    fn mean(&self) -> Option<f64> {
+        match self.kind {
+            ValueKind::Single => self.single,
+            ValueKind::Many => {
+                match self.many {
+                    Some(ref x) => x.cma(),
+                    None => None,
                 }
             }
         }
