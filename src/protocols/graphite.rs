@@ -21,10 +21,11 @@ pub fn parse_graphite(source: &str,
                             Err(_) => return false,
                         };
                         let metric = sync::Arc::make_mut(&mut metric.clone()).take().unwrap();
-                        res.push(metric.set_name(name)
-                            .set_value(parsed_val)
-                            .aggr_set()
-                            .timestamp(parsed_time));
+                        res.push(metric
+                                     .set_name(name)
+                                     .set_value(parsed_val)
+                                     .aggr_set()
+                                     .timestamp(parsed_time));
                     }
                     None => return false,
                 }

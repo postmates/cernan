@@ -56,16 +56,16 @@ fn handle_tcp(chans: util::Channel,
               listner: TcpListener)
               -> thread::JoinHandle<()> {
     thread::spawn(move || for stream in listner.incoming() {
-        if let Ok(stream) = stream {
-            report_telemetry("cernan.graphite.new_peer", 1.0);
-            debug!("new peer at {:?} | local addr for peer {:?}",
-                   stream.peer_addr(),
-                   stream.local_addr());
-            let tags = tags.clone();
-            let chans = chans.clone();
-            thread::spawn(move || { handle_stream(chans, tags, stream); });
-        }
-    })
+                      if let Ok(stream) = stream {
+                          report_telemetry("cernan.graphite.new_peer", 1.0);
+                          debug!("new peer at {:?} | local addr for peer {:?}",
+                                 stream.peer_addr(),
+                                 stream.local_addr());
+                          let tags = tags.clone();
+                          let chans = chans.clone();
+                          thread::spawn(move || { handle_stream(chans, tags, stream); });
+                      }
+                  })
 }
 
 
@@ -75,7 +75,7 @@ fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: Tc
         let mut res = Vec::new();
         let mut line_reader = BufReader::new(stream);
         let basic_metric = Arc::new(Some(metric::Telemetry::default()
-            .overlay_tags_from_map(&tags)));
+                                             .overlay_tags_from_map(&tags)));
         while let Some(len) = line_reader.read_line(&mut line).ok() {
             if len > 0 {
                 if parse_graphite(&line, &mut res, basic_metric.clone()) {

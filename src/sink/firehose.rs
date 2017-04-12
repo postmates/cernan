@@ -62,7 +62,8 @@ impl Sink for Firehose {
         for chunk in self.buffer.chunks(self.batch_size) {
             let prbi = PutRecordBatchInput {
                 delivery_stream_name: self.delivery_stream_name.clone(),
-                records: chunk.iter()
+                records: chunk
+                    .iter()
                     .filter(|m| m.value.len() < 1_024_000)
                     .map(|m| {
                         let mut pyld = Map::new();

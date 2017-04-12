@@ -28,11 +28,11 @@ mod benches {
                         protocol_counter-TCPFastOpenActive";
 
             b.iter(|| {
-                let metric = metric::Telemetry::new(orig, 12.0);
-                let event = metric::Event::new_telemetry(metric);
-                let res = cs.process(event);
-                assert!(res.is_ok());
-            });
+                       let metric = metric::Telemetry::new(orig, 12.0);
+                       let event = metric::Event::new_telemetry(metric);
+                       let res = cs.process(event);
+                       assert!(res.is_ok());
+                   });
         }
 
     }
