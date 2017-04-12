@@ -8,7 +8,6 @@ rust:
 script:
   - cargo build
   - cargo test
-  - cargo fmt -- --write-mode=diff
 
 matrix:
   allow_failures:
@@ -18,7 +17,6 @@ before_install:
   - sudo apt-get update
 
 install:
-  - (cargo install rustfmt || true)
   - PATH=$PATH:/home/travis/.cargo/bin
 
 addons:

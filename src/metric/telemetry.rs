@@ -540,7 +540,10 @@ mod tests {
 
     #[test]
     fn partial_ord_gauges() {
-        let mdg = Telemetry::new("l6", 0.7913855).aggr_set().persist().timestamp(47);
+        let mdg = Telemetry::new("l6", 0.7913855)
+            .aggr_set()
+            .persist()
+            .timestamp(47);
         let mg = Telemetry::new("l6", 0.9683).aggr_set().timestamp(47);
 
         assert_eq!(Some(cmp::Ordering::Equal), mg.partial_cmp(&mdg));
@@ -560,7 +563,8 @@ mod tests {
 
     impl Rand for Telemetry {
         fn rand<R: Rng>(rng: &mut R) -> Telemetry {
-            let name: String = rng.gen_iter::<char>().take(128).collect();
+            let name_len = rng.gen_range(0, 64);
+            let name: String = rng.gen_iter::<char>().take(name_len).collect();
             let val: f64 = rng.gen();
             let kind: AggregationMethod = rng.gen();
             let persist: bool = rng.gen();
