@@ -1,5 +1,6 @@
 use metric::{LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
+use source::report_telemetry;
 use std::cmp;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::string;
@@ -11,7 +12,6 @@ pub struct InfluxDB {
     port: u16,
     aggrs: Vec<Telemetry>,
     delivery_attempts: u32,
-    stats: String,
     flush_interval: u64,
 }
 
@@ -62,35 +62,36 @@ impl InfluxDB {
             port: config.port,
             aggrs: Vec::with_capacity(4048),
             delivery_attempts: 0,
-            stats: String::with_capacity(8_192),
             flush_interval: config.flush_interval,
         }
     }
 
-    /// Convert the buckets into a String that
-    /// can be sent to the the wavefront proxy
-    pub fn format_stats(&mut self) -> () {
+    /// Convert the slice into a payload that can be sent to InfluxDB
+    pub fn format_stats(&self, mut buffer: &mut String, telems: &[Telemetry]) -> () {
         let mut time_cache: Vec<(u64, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let mut tag_buf = String::with_capacity(1_024);
-        for telem in self.aggrs.iter() {
+        for telem in telems.iter() {
             if let Some(val) = telem.value() {
-                self.stats.push_str(&telem.name);
-                self.stats.push_str(",");
+                buffer.push_str(&telem.name);
+                buffer.push_str(",");
                 fmt_tags(&telem.tags, &mut tag_buf);
-                self.stats.push_str(&tag_buf);
-                self.stats.push_str(" ");
-                self.stats.push_str("value=");
-                self.stats
-                    .push_str(get_from_cache(&mut value_cache, val));
-                self.stats.push_str(" ");
-                self.stats
-                    .push_str(get_from_cache(&mut time_cache, telem.timestamp_ns));
-                self.stats.push_str("\n");
+                buffer.push_str(&tag_buf);
+                buffer.push_str(" ");
+                buffer.push_str("value=");
+                buffer.push_str(get_from_cache(&mut value_cache, val));
+                buffer.push_str(" ");
+                buffer.push_str(get_from_cache(&mut time_cache, telem.timestamp_ns));
+                buffer.push_str("\n");
                 tag_buf.clear();
             }
         }
+    }
+
+    #[cfg(test)]
+    pub fn aggr_slice(&self) -> &[Telemetry] {
+        &self.aggrs
     }
 }
 
@@ -101,6 +102,8 @@ impl Sink for InfluxDB {
 
     fn flush(&mut self) {
         loop {
+            report_telemetry("cernan.sinks.influxdb.delivery_attempts",
+                             self.delivery_attempts as f64);
             if self.delivery_attempts > 0 {
                 debug!("delivery attempts: {}", self.delivery_attempts);
             }
@@ -111,20 +114,34 @@ impl Sink for InfluxDB {
                     for ip in ips {
                         time::delay(self.delivery_attempts);
                         match UdpSocket::bind("0.0.0.0:0") {
+                            // NOTE it's not clear to me if we should be
+                            // re-using the socket like this over multiple
+                            // chunks in the event of faiure or if we should get
+                            // ourselves a brand new socket
                             Ok(socket) => {
-                                self.format_stats();
-                                let res = socket.send_to(self.stats.as_bytes(), ip);
-                                if res.is_ok() {
-                                    self.aggrs.clear();
-                                    self.stats.clear();
-                                    self.delivery_attempts = 0;
-                                    return;
-                                } else {
-                                    self.delivery_attempts = self.delivery_attempts
-                                        .saturating_add(1);
+                                let mut buffer = String::with_capacity(4048);
+                                for chunk in self.aggrs.chunks(256) {
+                                    report_telemetry("cernan.sinks.influxdb.chunks.attempted", 1.0);
+                                    self.format_stats(&mut buffer, chunk);
+                                    loop {
+                                        let res = socket.send_to(buffer.as_bytes(), ip);
+                                        if res.is_ok() {
+                                            report_telemetry("cernan.sinks.influxdb.chunks.success",
+                                                             1.0);
+                                            buffer.clear();
+                                            self.delivery_attempts = 0;
+                                            break;
+                                        } else {
+                                            report_telemetry("cernan.sinks.influxdb.chunks.failure",
+                                                             1.0);
+                                            self.delivery_attempts = self.delivery_attempts
+                                                .saturating_add(1);
+                                        }
+                                    }
                                 }
                             }
                             Err(e) => {
+                                report_telemetry("cernan.sinks.influxdb.db_connect_failure", 1.0);
                                 info!("Unable to connect to db at {} using addr {} with error \
                                        {}",
                                       self.host,
@@ -132,6 +149,7 @@ impl Sink for InfluxDB {
                                       e)
                             }
                         }
+                        self.aggrs.clear();
                     }
                 }
                 Err(e) => {
@@ -242,8 +260,9 @@ mod test {
                                                              dt_1.timestamp_subsec_nanos())
                                            .aggr_set()
                                            .overlay_tags_from_map(&tags))));
-        influxdb.format_stats();
-        let lines: Vec<&str> = influxdb.stats.lines().collect();
+        let mut buffer = String::new();
+        influxdb.format_stats(&mut buffer, influxdb.aggr_slice());
+        let lines: Vec<&str> = buffer.lines().collect();
 
         println!("{:?}", lines);
         assert_eq!(11, lines.len());
