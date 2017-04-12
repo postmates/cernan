@@ -72,7 +72,9 @@ impl PrometheusAggr {
     #[cfg(test)]
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
         match self.inner
-            .binary_search_by(|probe| prometheus_cmp(probe, &telem).expect("could not compare")) {
+                  .binary_search_by(|probe| {
+                                        prometheus_cmp(probe, &telem).expect("could not compare")
+                                    }) {
             Ok(idx) => Some(self.inner[idx].clone()),
             Err(_) => None,
         }
@@ -94,7 +96,9 @@ impl PrometheusAggr {
     /// Telemetry of the same name are only made if their tagmaps are distinct.
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
         match self.inner
-            .binary_search_by(|probe| prometheus_cmp(probe, &telem).expect("could not compare")) {
+                  .binary_search_by(|probe| {
+                                        prometheus_cmp(probe, &telem).expect("could not compare")
+                                    }) {
             Ok(idx) => self.inner[idx] += telem,
             Err(idx) => self.inner.insert(idx, telem),
         }
@@ -191,8 +195,8 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
         .set_raw("content-type",
                  vec!["application/vnd.google.protobuf; \
                        proto=io.prometheus.client.MetricFamily; encoding=delimited"
-                          .as_bytes()
-                          .to_vec()]);
+                              .as_bytes()
+                              .to_vec()]);
     let mut res = res.start().unwrap();
     for m in aggrs.into_iter() {
         let mut metric_family = MetricFamily::new();
@@ -220,15 +224,17 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
         metric.set_summary(summary);
         metric_family.set_field_type(MetricType::SUMMARY);
         metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-        metric_family.write_length_delimited_to_writer(res.by_ref())
+        metric_family
+            .write_length_delimited_to_writer(res.by_ref())
             .expect("FAILED TO WRITE TO HTTP RESPONSE");
     }
     res.end()
 }
 
 fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
-    res.headers_mut().set_raw("content-type",
-                              vec!["text/plain; version=0.0.4".as_bytes().to_vec()]);
+    res.headers_mut()
+        .set_raw("content-type",
+                 vec!["text/plain; version=0.0.4".as_bytes().to_vec()]);
     let mut buf = String::with_capacity(1024);
     let mut res = res.start().unwrap();
     for m in aggrs.into_iter() {
@@ -272,7 +278,8 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         buf.push_str("} ");
         buf.push_str(&m.count().to_string());
         buf.push_str("\n");
-        res.write(buf.as_bytes()).expect("FAILED TO WRITE BUFFER INTO HTTP
+        res.write(buf.as_bytes())
+            .expect("FAILED TO WRITE BUFFER INTO HTTP
     STREAMING RESPONSE");
         buf.clear();
     }
@@ -302,7 +309,8 @@ fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
             _ => new_name.push(b'_'),
         }
     }
-    metric.set_name(String::from_utf8(new_name).expect("wait, we bungled the conversion"))
+    metric
+        .set_name(String::from_utf8(new_name).expect("wait, we bungled the conversion"))
         .aggr_summarize()
 }
 
@@ -348,9 +356,10 @@ mod test {
 
     impl Rand for PrometheusAggr {
         fn rand<R: Rng>(rng: &mut R) -> PrometheusAggr {
-            let total_inner_sz: usize = rng.gen_range(0, 512);
-            let mut inner: Vec<metric::Telemetry> =
-                rng.gen_iter::<metric::Telemetry>().take(total_inner_sz).collect();
+            let total_inner_sz: usize = rng.gen_range(0, 256);
+            let mut inner: Vec<metric::Telemetry> = rng.gen_iter::<metric::Telemetry>()
+                .take(total_inner_sz)
+                .collect();
             inner.sort_by(|a, b| prometheus_cmp(a, b).unwrap());
             PrometheusAggr { inner: inner }
         }
