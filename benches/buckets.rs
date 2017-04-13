@@ -14,31 +14,37 @@ use rand::Rng;
 
 #[bench]
 fn bench_single_timer(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
+               let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
-    });
+               bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+           });
 }
 
 #[bench]
 fn bench_single_timer_100(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
+               let mut bucket = buckets::Buckets::default();
 
-        for _ in 0..100 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
-        }
-    });
+               for _ in 0..100 {
+                   bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+               }
+           });
 }
 
 #[bench]
 fn bench_single_timer_rand_100(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -46,27 +52,33 @@ fn bench_single_timer_rand_100(b: &mut Bencher) {
 
         for _ in 0..100 {
             let i: usize = rng.gen_range(0, 100);
-            bucket.add(Telemetry::new("a", i as f64).timestamp(dt_0).aggr_summarize());
+            bucket.add(Telemetry::new("a", i as f64)
+                           .timestamp(dt_0)
+                           .aggr_summarize());
         }
     });
 }
 
 #[bench]
 fn bench_single_timer_1000(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
+               let mut bucket = buckets::Buckets::default();
 
-        for _ in 0..1000 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
-        }
-    });
+               for _ in 0..1000 {
+                   bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+               }
+           });
 }
 
 #[bench]
 fn bench_single_timer_rand_1000(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -74,27 +86,33 @@ fn bench_single_timer_rand_1000(b: &mut Bencher) {
 
         for _ in 0..1000 {
             let i: usize = rng.gen_range(0, 1000);
-            bucket.add(Telemetry::new("a", i as f64).timestamp(dt_0).aggr_summarize());
+            bucket.add(Telemetry::new("a", i as f64)
+                           .timestamp(dt_0)
+                           .aggr_summarize());
         }
     });
 }
 
 #[bench]
 fn bench_single_timer_10000(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
+               let mut bucket = buckets::Buckets::default();
 
-        for _ in 0..10000 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
-        }
-    });
+               for _ in 0..10000 {
+                   bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+               }
+           });
 }
 
 #[bench]
 fn bench_single_timer_rand_10000(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -102,38 +120,46 @@ fn bench_single_timer_rand_10000(b: &mut Bencher) {
 
         for _ in 0..10000 {
             let i: usize = rng.gen_range(0, 10000);
-            bucket.add(Telemetry::new("a", i as f64).timestamp(dt_0).aggr_summarize());
+            bucket.add(Telemetry::new("a", i as f64)
+                           .timestamp(dt_0)
+                           .aggr_summarize());
         }
     });
 }
 
 #[bench]
 fn bench_single_histogram(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
+               let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
-    });
+               bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+           });
 }
 
 #[bench]
 fn bench_single_histogram_100(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
+               let mut bucket = buckets::Buckets::default();
 
-        for _ in 0..100 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
-        }
-    });
+               for _ in 0..100 {
+                   bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+               }
+           });
 }
 
 #[bench]
 fn bench_single_histogram_rand_100(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -141,27 +167,33 @@ fn bench_single_histogram_rand_100(b: &mut Bencher) {
 
         for _ in 0..100 {
             let i: usize = rng.gen_range(0, 100);
-            bucket.add(Telemetry::new("a", i as f64).timestamp(dt_0).aggr_summarize());
+            bucket.add(Telemetry::new("a", i as f64)
+                           .timestamp(dt_0)
+                           .aggr_summarize());
         }
     });
 }
 
 #[bench]
 fn bench_single_histogram_1000(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
+               let mut bucket = buckets::Buckets::default();
 
-        for _ in 0..1_000 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
-        }
-    });
+               for _ in 0..1_000 {
+                   bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+               }
+           });
 }
 
 #[bench]
 fn bench_single_histogram_rand_1000(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -169,27 +201,33 @@ fn bench_single_histogram_rand_1000(b: &mut Bencher) {
 
         for _ in 0..1_000 {
             let i: usize = rng.gen_range(0, 1_000);
-            bucket.add(Telemetry::new("a", i as f64).timestamp(dt_0).aggr_summarize());
+            bucket.add(Telemetry::new("a", i as f64)
+                           .timestamp(dt_0)
+                           .aggr_summarize());
         }
     });
 }
 
 #[bench]
 fn bench_single_histogram_10000(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
+               let mut bucket = buckets::Buckets::default();
 
-        for _ in 0..10_000 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
-        }
-    });
+               for _ in 0..10_000 {
+                   bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+               }
+           });
 }
 
 #[bench]
 fn bench_single_histogram_rand_10000(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -197,15 +235,21 @@ fn bench_single_histogram_rand_10000(b: &mut Bencher) {
 
         for _ in 0..10_000 {
             let i: usize = rng.gen_range(0, 10_000);
-            bucket.add(Telemetry::new("a", i as f64).timestamp(dt_0).aggr_summarize());
+            bucket.add(Telemetry::new("a", i as f64)
+                           .timestamp(dt_0)
+                           .aggr_summarize());
         }
     });
 }
 
 #[bench]
 fn bench_multi_counters(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
-    let dt_1 = UTC.ymd(1972, 12, 14).and_hms_milli(5, 40, 56, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
+    let dt_1 = UTC.ymd(1972, 12, 14)
+        .and_hms_milli(5, 40, 56, 0)
+        .timestamp();
 
 
     b.iter(|| {
@@ -225,19 +269,25 @@ fn bench_multi_counters(b: &mut Bencher) {
 
 #[bench]
 fn bench_single_counter(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
+               let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_sum());
-    });
+               bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_sum());
+           });
 }
 
 #[bench]
 fn bench_multi_gauges(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
-    let dt_1 = UTC.ymd(1972, 12, 14).and_hms_milli(5, 40, 56, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
+    let dt_1 = UTC.ymd(1972, 12, 14)
+        .and_hms_milli(5, 40, 56, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -256,11 +306,13 @@ fn bench_multi_gauges(b: &mut Bencher) {
 
 #[bench]
 fn bench_single_gauge(b: &mut Bencher) {
-    let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = UTC.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
+               let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_set());
-    });
+               bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_set());
+           });
 }

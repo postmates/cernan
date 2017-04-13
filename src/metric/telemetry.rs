@@ -15,6 +15,7 @@ pub struct Telemetry {
     pub aggr_method: AggregationMethod,
     pub tags: sync::Arc<TagMap>,
     pub timestamp: i64, // seconds, see #166
+    pub timestamp_ns: u64,
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
@@ -51,11 +52,12 @@ impl AddAssign for Telemetry {
 impl fmt::Debug for Telemetry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,
-               "Telemetry {{ aggr_method: {:#?}, name: {}, timestamp: {}, persist: {}, tags: \
-                {:?}, value: {:?} }}",
+               "Telemetry {{ aggr_method: {:#?}, name: {}, timestamp: {}, \
+                timestamp_ns: {}, persist: {}, tags: {:?}, value: {:?} }}",
                self.aggr_method,
                self.name,
                self.timestamp,
+               self.timestamp_ns,
                self.persist,
                self.tags,
                self.value())
@@ -85,6 +87,7 @@ impl Default for Telemetry {
             aggr_method: AggregationMethod::Summarize,
             tags: sync::Arc::new(TagMap::default()),
             timestamp: time::now(),
+            timestamp_ns: time::now_ns(),
         }
     }
 }
@@ -116,6 +119,7 @@ impl Telemetry {
             name: name.into(),
             tags: sync::Arc::new(TagMap::default()),
             timestamp: time::now(),
+            timestamp_ns: time::now_ns(),
             value: val,
             persist: false,
         }
@@ -375,6 +379,18 @@ impl Telemetry {
         self
     }
 
+    pub fn timestamp_ns(mut self, time_ns: u64) -> Telemetry {
+        self.timestamp_ns = time_ns;
+        self
+    }
+
+    pub fn timestamp_and_ns(mut self, sec: i64, ns: u32) -> Telemetry {
+        self.timestamp = sec;
+        let seconds = (sec as u64) * 1_000_000_000;
+        self.timestamp_ns = seconds.saturating_add(ns as u64);
+        self
+    }
+
     pub fn query(&self, prcnt: f64) -> Option<f64> {
         self.value.query(prcnt).map(|x| x.1)
     }
@@ -585,7 +601,10 @@ mod tests {
             let kind: AggregationMethod = rng.gen();
             let persist: bool = rng.gen();
             let time: i64 = rng.gen_range(0, 100);
-            let mut mb = Telemetry::new(name, val).timestamp(time);
+            let time_ns: u64 = (time as u64) * 1_000_000_000;
+            let mut mb = Telemetry::new(name, val)
+                .timestamp(time)
+                .timestamp_ns(time_ns);
             mb = match kind {
                 AggregationMethod::Set => mb.aggr_set(),
                 AggregationMethod::Sum => mb.aggr_sum(),

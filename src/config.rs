@@ -50,15 +50,15 @@ pub fn parse_args() -> Args {
         .author("Brian L. Troutwine <blt@postmates.com>")
         .about("telemetry aggregation and shipping, last up the ladder")
         .arg(Arg::with_name("config-file")
-            .long("config")
-            .short("C")
-            .value_name("config")
-            .help("The config file to feed in.")
-            .takes_value(true))
+                 .long("config")
+                 .short("C")
+                 .value_name("config")
+                 .help("The config file to feed in.")
+                 .takes_value(true))
         .arg(Arg::with_name("verbose")
-            .short("v")
-            .multiple(true)
-            .help("Turn on verbose output."))
+                 .short("v")
+                 .multiple(true)
+                 .help("Turn on verbose output."))
         .get_matches();
 
     let verb = if args.is_present("verbose") {
@@ -97,14 +97,14 @@ pub fn parse_args() -> Args {
                                        ("99".to_string(), 0.99),
                                        ("999".to_string(), 0.999)];
                 Some(WavefrontConfig {
-                    port: u16::from_str(args.value_of("wavefront-port").unwrap()).unwrap(),
-                    host: args.value_of("wavefront-host").unwrap().to_string(),
-                    bin_width: 1,
-                    config_path: "sinks.wavefront".to_string(),
-                    percentiles: percentiles,
-                    tags: Default::default(),
-                    flush_interval: flush_interval,
-                })
+                         port: u16::from_str(args.value_of("wavefront-port").unwrap()).unwrap(),
+                         host: args.value_of("wavefront-host").unwrap().to_string(),
+                         bin_width: 1,
+                         config_path: "sinks.wavefront".to_string(),
+                         percentiles: percentiles,
+                         tags: Default::default(),
+                         flush_interval: flush_interval,
+                     })
             } else {
                 None
             };
@@ -127,16 +127,16 @@ pub fn parse_args() -> Args {
 
             let mut graphite_config = GraphiteConfig::default();
             if let Some(gport_str) = args.value_of("graphite-port") {
-                graphite_config.port = u16::from_str(gport_str)
-                    .expect("graphite-port must be an integer");
+                graphite_config.port =
+                    u16::from_str(gport_str).expect("graphite-port must be an integer");
             }
             let mut graphites = HashMap::new();
             graphites.insert("sources.graphite".to_string(), graphite_config);
 
             let mut statsd_config = StatsdConfig::default();
             if let Some(sport_str) = args.value_of("statsd-port") {
-                statsd_config.port = u16::from_str(sport_str)
-                    .expect("statsd-port must be an integer");
+                statsd_config.port =
+                    u16::from_str(sport_str).expect("statsd-port must be an integer");
             }
             let mut statsds = HashMap::new();
             statsds.insert("sources.statsd".to_string(), statsd_config);
@@ -174,7 +174,8 @@ pub fn parse_args() -> Args {
 pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     let value: toml::Value = buffer.parse().unwrap();
 
-    let scripts_dir: PathBuf = value.lookup("scripts-directory")
+    let scripts_dir: PathBuf = value
+        .lookup("scripts-directory")
         .unwrap_or(&Value::String("/tmp/cernan-scripts".to_string()))
         .as_str()
         .map(|s| Path::new(s).to_path_buf())
@@ -193,46 +194,61 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         None => TagMap::default(),
     };
 
-    let global_flush_interval = value.lookup("flush-interval")
+    let global_flush_interval = value
+        .lookup("flush-interval")
         .unwrap_or(&Value::Integer(60))
         .as_integer()
         .unwrap();
 
-    let null = if value.lookup("null").or(value.lookup("sinks.null")).is_some() {
+    let null = if value
+           .lookup("null")
+           .or(value.lookup("sinks.null"))
+           .is_some() {
         Some(NullConfig { config_path: "sinks.null".to_string() })
     } else {
         None
     };
 
-    let console = if value.lookup("console").or(value.lookup("sinks.console")).is_some() {
+    let console = if value
+           .lookup("console")
+           .or(value.lookup("sinks.console"))
+           .is_some() {
         Some(ConsoleConfig {
-            bin_width: value.lookup("console.bin_width")
-                .or(value.lookup("sinks.console.bin_width"))
-                .unwrap_or(&Value::Integer(1))
-                .as_integer()
-                .expect("could not parse sinks.console.bin_width"),
-            config_path: "sinks.console".to_string(),
-            flush_interval: value.lookup("console.flush_interval")
-                .or(value.lookup("sinks.console.flush_interval"))
-                .unwrap_or(&Value::Integer(global_flush_interval))
-                .as_integer()
-                .map(|i| i as u64)
-                .unwrap(),
-        })
+                 bin_width: value
+                     .lookup("console.bin_width")
+                     .or(value.lookup("sinks.console.bin_width"))
+                     .unwrap_or(&Value::Integer(1))
+                     .as_integer()
+                     .expect("could not parse sinks.console.bin_width"),
+                 config_path: "sinks.console".to_string(),
+                 flush_interval: value
+                     .lookup("console.flush_interval")
+                     .or(value.lookup("sinks.console.flush_interval"))
+                     .unwrap_or(&Value::Integer(global_flush_interval))
+                     .as_integer()
+                     .map(|i| i as u64)
+                     .unwrap(),
+             })
     } else {
         None
     };
 
-    let wavefront = if value.lookup("wavefront").or(value.lookup("sinks.wavefront")).is_some() {
+    let wavefront = if value
+           .lookup("wavefront")
+           .or(value.lookup("sinks.wavefront"))
+           .is_some() {
         let mut prcnt = Vec::new();
-        if let Some(tbl) = value.lookup("wavefront.percentiles")
-            .or(value.lookup("sinks.wavefront.percentiles"))
-            .and_then(|t| t.as_slice()) {
+        if let Some(tbl) = value
+               .lookup("wavefront.percentiles")
+               .or(value.lookup("sinks.wavefront.percentiles"))
+               .and_then(|t| t.as_slice()) {
             for opt_val in tbl.iter().map(|x| x.as_slice()) {
                 match opt_val {
                     Some(val) => {
-                        let k: String =
-                            val[0].as_str().expect("percentile name must be a string").to_string();
+                        let k: String = val[0]
+                            .as_str()
+                            .expect("percentile name must be a string")
+                            .to_string();
                         let v: f64 = val[1]
                             .as_str()
                             .expect("percentile value must be a string of a float")
@@ -263,113 +279,133 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         };
 
         Some(WavefrontConfig {
-            port: value.lookup("wavefront.port")
-                .or(value.lookup("sinks.wavefront.port"))
-                .unwrap_or(&Value::Integer(2878))
-                .as_integer()
-                .map(|i| i as u16)
-                .expect("could not parse sinks.wavefront.port"),
-            host: value.lookup("wavefront.host")
-                .or(value.lookup("sinks.wavefront.host"))
-                .unwrap_or(&Value::String("127.0.0.1".to_string()))
-                .as_str()
-                .map(|s| s.to_string())
-                .expect("could not parse sinks.wavefront.host"),
-            bin_width: value.lookup("wavefront.bin_width")
-                .or(value.lookup("sinks.wavefront.bin_width"))
-                .unwrap_or(&Value::Integer(1))
-                .as_integer()
-                .expect("could not parse sinks.wavefront.bin_width"),
-            config_path: "sinks.wavefront".to_string(),
-            percentiles: percentiles,
-            tags: tags.clone(),
-            flush_interval: value.lookup("wavefront.flush_interval")
-                .or(value.lookup("sinks.wavefront.flush_interval"))
-                .unwrap_or(&Value::Integer(global_flush_interval))
-                .as_integer()
-                .map(|i| i as u64)
-                .unwrap(),
-        })
+                 port: value
+                     .lookup("wavefront.port")
+                     .or(value.lookup("sinks.wavefront.port"))
+                     .unwrap_or(&Value::Integer(2878))
+                     .as_integer()
+                     .map(|i| i as u16)
+                     .expect("could not parse sinks.wavefront.port"),
+                 host: value
+                     .lookup("wavefront.host")
+                     .or(value.lookup("sinks.wavefront.host"))
+                     .unwrap_or(&Value::String("127.0.0.1".to_string()))
+                     .as_str()
+                     .map(|s| s.to_string())
+                     .expect("could not parse sinks.wavefront.host"),
+                 bin_width: value
+                     .lookup("wavefront.bin_width")
+                     .or(value.lookup("sinks.wavefront.bin_width"))
+                     .unwrap_or(&Value::Integer(1))
+                     .as_integer()
+                     .expect("could not parse sinks.wavefront.bin_width"),
+                 config_path: "sinks.wavefront".to_string(),
+                 percentiles: percentiles,
+                 tags: tags.clone(),
+                 flush_interval: value
+                     .lookup("wavefront.flush_interval")
+                     .or(value.lookup("sinks.wavefront.flush_interval"))
+                     .unwrap_or(&Value::Integer(global_flush_interval))
+                     .as_integer()
+                     .map(|i| i as u64)
+                     .unwrap(),
+             })
     } else {
         None
     };
 
-    let influxdb = if value.lookup("influxdb").or(value.lookup("sinks.influxdb")).is_some() {
+    let influxdb = if value
+           .lookup("influxdb")
+           .or(value.lookup("sinks.influxdb"))
+           .is_some() {
         Some(InfluxDBConfig {
-            port: value.lookup("influxdb.port")
-                .or(value.lookup("sinks.influxdb.port"))
-                .unwrap_or(&Value::Integer(8089))
-                .as_integer()
-                .map(|i| i as u16)
-                .expect("could not parse sinks.influxdb.port"),
-            host: value.lookup("influxdb.host")
-                .or(value.lookup("sinks.influxdb.host"))
-                .unwrap_or(&Value::String("127.0.0.1".to_string()))
-                .as_str()
-                .map(|s| s.to_string())
-                .expect("could not parse sinks.influxdb.host"),
-            bin_width: value.lookup("influxdb.bin_width")
-                .or(value.lookup("sinks.influxdb.bin_width"))
-                .unwrap_or(&Value::Integer(1))
-                .as_integer()
-                .expect("could not parse sinks.influxdb.bin_width"),
-            config_path: "sinks.influxdb".to_string(),
-            tags: tags.clone(),
-            flush_interval: value.lookup("influxdb.flush_interval")
-                .or(value.lookup("sinks.influxdb.flush_interval"))
-                .unwrap_or(&Value::Integer(global_flush_interval))
-                .as_integer()
-                .map(|i| i as u64)
-                .unwrap(),
-        })
+                 port: value
+                     .lookup("influxdb.port")
+                     .or(value.lookup("sinks.influxdb.port"))
+                     .unwrap_or(&Value::Integer(8089))
+                     .as_integer()
+                     .map(|i| i as u16)
+                     .expect("could not parse sinks.influxdb.port"),
+                 host: value
+                     .lookup("influxdb.host")
+                     .or(value.lookup("sinks.influxdb.host"))
+                     .unwrap_or(&Value::String("127.0.0.1".to_string()))
+                     .as_str()
+                     .map(|s| s.to_string())
+                     .expect("could not parse sinks.influxdb.host"),
+                 bin_width: value
+                     .lookup("influxdb.bin_width")
+                     .or(value.lookup("sinks.influxdb.bin_width"))
+                     .unwrap_or(&Value::Integer(1))
+                     .as_integer()
+                     .expect("could not parse sinks.influxdb.bin_width"),
+                 config_path: "sinks.influxdb".to_string(),
+                 tags: tags.clone(),
+                 flush_interval: value
+                     .lookup("influxdb.flush_interval")
+                     .or(value.lookup("sinks.influxdb.flush_interval"))
+                     .unwrap_or(&Value::Integer(global_flush_interval))
+                     .as_integer()
+                     .map(|i| i as u64)
+                     .unwrap(),
+             })
     } else {
         None
     };
 
-    let prometheus = if value.lookup("prometheus").or(value.lookup("sinks.prometheus")).is_some() {
+    let prometheus = if value
+           .lookup("prometheus")
+           .or(value.lookup("sinks.prometheus"))
+           .is_some() {
         Some(PrometheusConfig {
-            port: value.lookup("prometheus.port")
-                .or(value.lookup("sinks.prometheus.port"))
-                .unwrap_or(&Value::Integer(8086))
-                .as_integer()
-                .map(|i| i as u16)
-                .expect("could not parse sinks.prometheus.port"),
-            host: value.lookup("prometheus.host")
-                .or(value.lookup("sinks.prometheus.host"))
-                .unwrap_or(&Value::String("127.0.0.1".to_string()))
-                .as_str()
-                .map(|s| s.to_string())
-                .expect("could not parse sinks.prometheus.host"),
-            bin_width: value.lookup("prometheus.bin_width")
-                .or(value.lookup("sinks.prometheus.bin_width"))
-                .unwrap_or(&Value::Integer(1))
-                .as_integer()
-                .expect("could not parse sinks.prometheus.bin_width"),
-            config_path: "sinks.prometheus".to_string(),
-        })
+                 port: value
+                     .lookup("prometheus.port")
+                     .or(value.lookup("sinks.prometheus.port"))
+                     .unwrap_or(&Value::Integer(8086))
+                     .as_integer()
+                     .map(|i| i as u16)
+                     .expect("could not parse sinks.prometheus.port"),
+                 host: value
+                     .lookup("prometheus.host")
+                     .or(value.lookup("sinks.prometheus.host"))
+                     .unwrap_or(&Value::String("127.0.0.1".to_string()))
+                     .as_str()
+                     .map(|s| s.to_string())
+                     .expect("could not parse sinks.prometheus.host"),
+                 bin_width: value
+                     .lookup("prometheus.bin_width")
+                     .or(value.lookup("sinks.prometheus.bin_width"))
+                     .unwrap_or(&Value::Integer(1))
+                     .as_integer()
+                     .expect("could not parse sinks.prometheus.bin_width"),
+                 config_path: "sinks.prometheus".to_string(),
+             })
     } else {
         None
     };
 
     let native_sink_config = if value.lookup("sinks.native").is_some() {
         Some(NativeConfig {
-            port: value.lookup("sinks.native.port")
-                .unwrap_or(&Value::Integer(1972))
-                .as_integer()
-                .map(|i| i as u16)
-                .expect("could not parse sinks.native.port"),
-            host: value.lookup("sinks.native.host")
-                .unwrap_or(&Value::String("127.0.0.1".to_string()))
-                .as_str()
-                .map(|s| s.to_string())
-                .expect("could not parse sinks.native.host"),
-            config_path: "sinks.native".to_string(),
-            flush_interval: value.lookup("sinks.native.flush_interval")
-                .unwrap_or(&Value::Integer(global_flush_interval))
-                .as_integer()
-                .map(|i| i as u64)
-                .unwrap(),
-        })
+                 port: value
+                     .lookup("sinks.native.port")
+                     .unwrap_or(&Value::Integer(1972))
+                     .as_integer()
+                     .map(|i| i as u16)
+                     .expect("could not parse sinks.native.port"),
+                 host: value
+                     .lookup("sinks.native.host")
+                     .unwrap_or(&Value::String("127.0.0.1".to_string()))
+                     .as_str()
+                     .map(|s| s.to_string())
+                     .expect("could not parse sinks.native.host"),
+                 config_path: "sinks.native".to_string(),
+                 flush_interval: value
+                     .lookup("sinks.native.flush_interval")
+                     .unwrap_or(&Value::Integer(global_flush_interval))
+                     .as_integer()
+                     .map(|i| i as u64)
+                     .unwrap(),
+             })
     } else {
         None
     };
@@ -446,11 +482,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                             //
                             // Someday a static analysis system will flag this as
                             // unsafe. Welcome.
-                            let max_read_lines = tbl.lookup("max_read_lines")
-                                .unwrap_or(&Value::Integer(10_000))
-                                .as_integer()
-                                .expect("could not parse file.max_read_lines") as
-                                                 usize;
+                            let max_read_lines =
+                                tbl.lookup("max_read_lines")
+                                    .unwrap_or(&Value::Integer(10_000))
+                                    .as_integer()
+                                    .expect("could not parse file.max_read_lines") as
+                                usize;
                             let path_buf = path.to_path_buf();
                             let config = FileServerConfig {
                                 path: path_buf.clone(),
@@ -518,19 +555,19 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                                 .unwrap_or(&Value::String("us-west-2".into()))
                                 .as_str()
                                 .map(|s| match s {
-                                    "ap-northeast-1" => Region::ApNortheast1,
-                                    "ap-northeast-2" => Region::ApNortheast2,
-                                    "ap-south-1" => Region::ApSouth1,
-                                    "ap-southeast-1" => Region::ApSoutheast1,
-                                    "ap-southeast-2" => Region::ApSoutheast2,
-                                    "cn-north-1" => Region::CnNorth1,
-                                    "eu-central-1" => Region::EuCentral1,
-                                    "eu-west-1" => Region::EuWest1,
-                                    "sa-east-1" => Region::SaEast1,
-                                    "us-east-1" => Region::UsEast1,
-                                    "us-west-1" => Region::UsWest1,
-                                    "us-west-2" | _ => Region::UsWest2,
-                                });
+                                         "ap-northeast-1" => Region::ApNortheast1,
+                                         "ap-northeast-2" => Region::ApNortheast2,
+                                         "ap-south-1" => Region::ApSouth1,
+                                         "ap-southeast-1" => Region::ApSoutheast1,
+                                         "ap-southeast-2" => Region::ApSoutheast2,
+                                         "cn-north-1" => Region::CnNorth1,
+                                         "eu-central-1" => Region::EuCentral1,
+                                         "eu-west-1" => Region::EuWest1,
+                                         "sa-east-1" => Region::SaEast1,
+                                         "us-east-1" => Region::UsEast1,
+                                         "us-west-1" => Region::UsWest1,
+                                         "us-west-2" | _ => Region::UsWest2,
+                                     });
                             let delivery_stream = ds.unwrap().to_string();
                             let flush_interval = val.lookup("flush_interval")
                                 .unwrap_or(&Value::Integer(global_flush_interval))
@@ -538,12 +575,13 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                                 .map(|i| i as u64)
                                 .unwrap();
                             firehosen.push(FirehoseConfig {
-                                delivery_stream: delivery_stream.clone(),
-                                batch_size: bs,
-                                region: r.unwrap(),
-                                config_path: format!("sinks.firehose.{}", delivery_stream),
-                                flush_interval: flush_interval,
-                            })
+                                               delivery_stream: delivery_stream.clone(),
+                                               batch_size: bs,
+                                               region: r.unwrap(),
+                                               config_path: format!("sinks.firehose.{}",
+                                                                    delivery_stream),
+                                               flush_interval: flush_interval,
+                                           })
                         }
                         None => continue,
                     }
@@ -564,31 +602,31 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                                 .unwrap_or(&Value::String("us-west-2".into()))
                                 .as_str()
                                 .map(|s| match s {
-                                    "ap-northeast-1" => Region::ApNortheast1,
-                                    "ap-northeast-2" => Region::ApNortheast2,
-                                    "ap-south-1" => Region::ApSouth1,
-                                    "ap-southeast-1" => Region::ApSoutheast1,
-                                    "ap-southeast-2" => Region::ApSoutheast2,
-                                    "cn-north-1" => Region::CnNorth1,
-                                    "eu-central-1" => Region::EuCentral1,
-                                    "eu-west-1" => Region::EuWest1,
-                                    "sa-east-1" => Region::SaEast1,
-                                    "us-east-1" => Region::UsEast1,
-                                    "us-west-1" => Region::UsWest1,
-                                    "us-west-2" | _ => Region::UsWest2,
-                                });
+                                         "ap-northeast-1" => Region::ApNortheast1,
+                                         "ap-northeast-2" => Region::ApNortheast2,
+                                         "ap-south-1" => Region::ApSouth1,
+                                         "ap-southeast-1" => Region::ApSoutheast1,
+                                         "ap-southeast-2" => Region::ApSoutheast2,
+                                         "cn-north-1" => Region::CnNorth1,
+                                         "eu-central-1" => Region::EuCentral1,
+                                         "eu-west-1" => Region::EuWest1,
+                                         "sa-east-1" => Region::SaEast1,
+                                         "us-east-1" => Region::UsEast1,
+                                         "us-west-1" => Region::UsWest1,
+                                         "us-west-2" | _ => Region::UsWest2,
+                                     });
                             let flush_interval = tbl.lookup("flush_interval")
                                 .unwrap_or(&Value::Integer(global_flush_interval))
                                 .as_integer()
                                 .map(|i| i as u64)
                                 .unwrap();
                             firehosen.push(FirehoseConfig {
-                                delivery_stream: ds.unwrap().to_string(),
-                                batch_size: bs,
-                                region: r.unwrap(),
-                                config_path: format!("sinks.firehose.{}", key),
-                                flush_interval: flush_interval,
-                            })
+                                               delivery_stream: ds.unwrap().to_string(),
+                                               batch_size: bs,
+                                               region: r.unwrap(),
+                                               config_path: format!("sinks.firehose.{}", key),
+                                               flush_interval: flush_interval,
+                                           })
                         }
                         None => continue,
                     }
@@ -622,9 +660,10 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                             sconfig.host = p.as_str().unwrap().to_string();
                         }
                         if let Some(p) = tbl.lookup("delete-gauges") {
-                            sconfig.delete_gauges = p.as_bool()
-                                .expect("statsd delete-gauges must be boolean") as
-                                                    bool;
+                            sconfig.delete_gauges =
+                                p.as_bool()
+                                    .expect("statsd delete-gauges must be boolean") as
+                                bool;
                         }
                         if let Some(fwds) = tbl.lookup("forwards") {
                             sconfig.forwards = fwds.as_slice()
@@ -639,7 +678,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                     }
                 }
             } else {
-                let is_enabled = value.lookup("statsd.enabled")
+                let is_enabled = value
+                    .lookup("statsd.enabled")
                     .unwrap_or(&Value::Boolean(true))
                     .as_bool()
                     .expect("must be a bool");
@@ -700,7 +740,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                     }
                 }
             } else {
-                let is_enabled = value.lookup("graphite.enabled")
+                let is_enabled = value
+                    .lookup("graphite.enabled")
                     .unwrap_or(&Value::Boolean(true))
                     .as_bool()
                     .expect("must be a bool");
@@ -725,8 +766,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         }
     };
 
-    let native_server_config = if value.lookup("sources.native")
-        .is_some() {
+    let native_server_config = if value.lookup("sources.native").is_some() {
         let port = match value.lookup("sources.native.port") {
             Some(p) => p.as_integer().expect("fed_server.port must be integer") as u16,
             None => 1972,
@@ -747,12 +787,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
             None => Vec::new(),
         };
         Some(NativeServerConfig {
-            ip: ip.to_owned(),
-            port: port,
-            tags: tags.clone(),
-            forwards: fwds,
-            config_path: "sources.native".to_string(),
-        })
+                 ip: ip.to_owned(),
+                 port: port,
+                 tags: tags.clone(),
+                 forwards: fwds,
+                 config_path: "sources.native".to_string(),
+             })
     } else {
         None
     };
@@ -783,7 +823,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     };
 
     Args {
-        data_directory: value.lookup("data-directory")
+        data_directory: value
+            .lookup("data-directory")
             .unwrap_or(&Value::String("/tmp/cernan-data".to_string()))
             .as_str()
             .map(|s| Path::new(s).to_path_buf())
@@ -794,7 +835,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
         graphites: graphites,
         native_sink_config: native_sink_config,
         native_server_config: native_server_config,
-        flush_interval: value.lookup("flush-interval")
+        flush_interval: value
+            .lookup("flush-interval")
             .unwrap_or(&Value::Integer(60))
             .as_integer()
             .expect("flush-interval must be integer") as u64,
@@ -824,7 +866,7 @@ mod test {
         let config = r#"
 data-directory = "/foo/bar"
 "#
-            .to_string();
+                .to_string();
         let args = parse_config_file(config, 4);
         let dir = Path::new("/foo/bar").to_path_buf();
 
@@ -845,7 +887,7 @@ data-directory = "/foo/bar"
         let config = r#"
 scripts-directory = "/foo/bar"
 "#
-            .to_string();
+                .to_string();
         let args = parse_config_file(config, 4);
         let dir = Path::new("/foo/bar").to_path_buf();
 
@@ -887,7 +929,7 @@ scripts-directory = "/foo/bar"
   ip = "127.0.0.1"
   port = 1972
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -904,7 +946,7 @@ scripts-directory = "/foo/bar"
   [sources.internal]
   forwards = ["sinks.console", "sinks.null"]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -921,7 +963,7 @@ scripts-directory = "/foo/bar"
   port = 1972
   flush_interval = 120
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -937,7 +979,7 @@ scripts-directory = "/foo/bar"
         let config = r#"
 statsd-port = 1024
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -953,7 +995,7 @@ statsd-port = 1024
 [statsd]
 port = 1024
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -968,7 +1010,7 @@ port = 1024
 enabled = false
 port = 1024
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -986,7 +1028,7 @@ port = 1024
   delete-gauges = true
   forwards = ["sinks.console", "sinks.null"]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1015,7 +1057,7 @@ port = 1024
   port = 4048
   forwards = ["sinks.wavefront"]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1038,7 +1080,7 @@ port = 1024
         let config = r#"
 graphite-port = 1024
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1054,7 +1096,7 @@ graphite-port = 1024
 [graphite]
 port = 1024
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1071,7 +1113,7 @@ port = 1024
 enabled = false
 port = 1024
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1088,7 +1130,7 @@ port = 1024
   port = 2003
   forwards = ["filters.collectd_scrub"]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1115,7 +1157,7 @@ port = 1024
   port = 2004
   forwards = ["sinks.wavefront"]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1139,7 +1181,7 @@ port = 1024
   script = "cernan_bridge.lua"
   forwards = ["sinks.console"]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1162,7 +1204,7 @@ scripts-directory = "data/"
   script = "cernan_bridge.lua"
   forwards = ["sinks.console"]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1183,7 +1225,7 @@ port = 3131
 host = "example.com"
 bin_width = 9
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1204,7 +1246,7 @@ bin_width = 9
   bin_width = 9
   flush_interval = 15
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1226,7 +1268,7 @@ bin_width = 9
   bin_width = 9
   percentiles = [ ["min", "0.0"], ["max", "1.0"], ["median", "0.5"] ]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1251,7 +1293,7 @@ port = 3131
 host = "example.com"
 bin_width = 9
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1272,7 +1314,7 @@ bin_width = 9
   bin_width = 9
   flush_interval = 70
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1292,7 +1334,7 @@ port = 3131
 host = "example.com"
 bin_width = 9
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1312,7 +1354,7 @@ bin_width = 9
   host = "example.com"
   bin_width = 9
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1328,7 +1370,7 @@ bin_width = 9
         let config = r#"
 [console]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1342,7 +1384,7 @@ bin_width = 9
 [console]
 bin_width = 9
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1357,7 +1399,7 @@ bin_width = 9
   [sinks.console]
   bin_width = 9
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1372,7 +1414,7 @@ bin_width = 9
         let config = r#"
 [null]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1385,7 +1427,7 @@ bin_width = 9
 [sinks]
   [sinks.null]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1401,7 +1443,7 @@ delivery_stream = "stream_one"
 [[firehose]]
 delivery_stream = "stream_two"
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1428,7 +1470,7 @@ delivery_stream = "stream_two"
 batch_size = 800
 region = "us-east-1"
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1457,7 +1499,7 @@ region = "us-east-1"
   batch_size = 800
   region = "us-east-1"
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1480,7 +1522,7 @@ region = "us-east-1"
 [[file]]
 path = "/foo/bar.txt"
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1497,7 +1539,7 @@ path = "/foo/bar.txt"
 [[file]]
 path = "/bar.txt"
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1515,7 +1557,7 @@ path = "/bar.txt"
   path = "/foo/bar.txt"
   forwards = ["sink.blech"]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1539,7 +1581,7 @@ path = "/bar.txt"
   path = "/bar.txt"
   forwards = ["sink.bar.blech"]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
 
@@ -1561,7 +1603,7 @@ mission = "from_gad"
 
 [wavefront]
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
         let mut tags = TagMap::default();
@@ -1596,7 +1638,7 @@ purpose = "serious_business"
 mission = "from_gad"
 
 "#
-            .to_string();
+                .to_string();
 
         let args = parse_config_file(config, 4);
         println!("ARGS : {:?}", args);

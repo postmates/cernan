@@ -54,7 +54,7 @@ fn handle_udp(mut chans: util::Channel, tags: sync::Arc<metric::TagMap>, socket:
     let mut buf = [0; 8192];
     let mut metrics = Vec::new();
     let basic_metric = sync::Arc::new(Some(metric::Telemetry::default()
-        .overlay_tags_from_map(&tags)));
+                                               .overlay_tags_from_map(&tags)));
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
             Ok(r) => r,

@@ -45,15 +45,15 @@ fn handle_tcp(chans: util::Channel,
               listner: TcpListener)
               -> thread::JoinHandle<()> {
     thread::spawn(move || for stream in listner.incoming() {
-        if let Ok(stream) = stream {
-            debug!("new peer at {:?} | local addr for peer {:?}",
-                   stream.peer_addr(),
-                   stream.local_addr());
-            let tags = tags.clone();
-            let chans = chans.clone();
-            thread::spawn(move || { handle_stream(chans, tags, stream); });
-        }
-    })
+                      if let Ok(stream) = stream {
+                          debug!("new peer at {:?} | local addr for peer {:?}",
+                                 stream.peer_addr(),
+                                 stream.local_addr());
+                          let tags = tags.clone();
+                          let chans = chans.clone();
+                          thread::spawn(move || { handle_stream(chans, tags, stream); });
+                      }
+                  })
 }
 
 fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStream) {
@@ -136,8 +136,8 @@ impl Source for NativeServer {
             .to_socket_addrs()
             .expect("unable to make socket addr")
             .collect();
-        let listener = TcpListener::bind(srv.first().unwrap())
-            .expect("Unable to bind to TCP socket");
+        let listener =
+            TcpListener::bind(srv.first().unwrap()).expect("Unable to bind to TCP socket");
         let chans = self.chans.clone();
         let tags = self.tags.clone();
         info!("server started on {}:{}", self.ip, self.port);

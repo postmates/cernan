@@ -82,8 +82,8 @@ mod integration {
 
             let log = metric::LogLine::new("clear_me",
                                            "i am the very model of the modern major general")
-                .overlay_tag("foo", "bar")
-                .overlay_tag("bizz", "bazz");
+                    .overlay_tag("foo", "bar")
+                    .overlay_tag("bizz", "bazz");
             let event = metric::Event::new_log(log);
 
             let mut events: Vec<metric::Event> = Vec::new();
@@ -110,12 +110,12 @@ mod integration {
 
             let orig_log = metric::LogLine::new("identity",
                                                 "i am the very model of the modern major general")
-                .overlay_tag("foo", "bar")
-                .overlay_tag("bizz", "bazz");
+                    .overlay_tag("foo", "bar")
+                    .overlay_tag("bizz", "bazz");
             let expected_log = metric::LogLine::new("identity",
                                                     "i am the very model of the modern major \
                                                      general")
-                .overlay_tag("foo", "bar");
+                    .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -143,11 +143,9 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_metric = metric::Telemetry::new("identity", 12.0)
-                .overlay_tag("foo", "bar")
-                .overlay_tag("bizz", "bazz");
-            let expected_metric = metric::Telemetry::new("identity", 12.0)
-                .overlay_tag("foo", "bar");
+            let expected_metric =
+                metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
+            let orig_metric = expected_metric.clone().overlay_tag("bizz", "bazz");
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
 
@@ -236,11 +234,11 @@ mod integration {
             let expected_log = metric::LogLine::new("identity",
                                                     "i am the very model of the modern major \
                                                      general")
-                .overlay_tag("foo", "bar")
-                .overlay_tag("bizz", "bazz");
+                    .overlay_tag("foo", "bar")
+                    .overlay_tag("bizz", "bazz");
             let orig_log = metric::LogLine::new("identity",
                                                 "i am the very model of the modern major general")
-                .overlay_tag("foo", "bar");
+                    .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -271,11 +269,11 @@ mod integration {
             let expected_log = metric::LogLine::new("identity",
                                                     "i am the very model of the modern major \
                                                      general")
-                .overlay_tag("foo", "bar")
-                .overlay_tag("bizz", "bazz");
+                    .overlay_tag("foo", "bar")
+                    .overlay_tag("bizz", "bazz");
             let orig_log = metric::LogLine::new("identity",
                                                 "i am the very model of the modern major general")
-                .overlay_tag("foo", "bar");
+                    .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -303,10 +301,8 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let expected_metric = metric::Telemetry::new("identity", 12.0)
-                .overlay_tag("foo", "bar")
-                .overlay_tag("bizz", "bazz");
             let orig_metric = metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
+            let expected_metric = orig_metric.clone().overlay_tag("bizz", "bazz");
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
 
@@ -358,8 +354,16 @@ mod integration {
             assert_eq!(events.len(), 3);
             println!("EVENTS: {:?}", events);
             assert_eq!(events[2], metric::Event::TimerFlush(1));
-            assert_eq!(events[1],
-                       metric::Event::new_telemetry(metric::Telemetry::new("count_per_tick", 5.0)));
+            match events[1] {
+                metric::Event::Telemetry(ref mut m) => {
+                    let p = ::std::sync::Arc::make_mut(m).take().unwrap();
+                    assert_eq!(p.name, "count_per_tick");
+                    assert_eq!(p.value(), Some(5.0));
+                }
+                _ => {
+                    assert!(false);
+                }
+            }
             assert_eq!(events[0],
                        metric::Event::new_log(metric::LogLine::new("filters.keep_count",
                                                                    "count_per_tick: 5")));
@@ -376,8 +380,16 @@ mod integration {
             assert_eq!(events.len(), 3);
             println!("EVENTS: {:?}", events);
             assert_eq!(events[2], metric::Event::TimerFlush(2));
-            assert_eq!(events[1],
-                       metric::Event::new_telemetry(metric::Telemetry::new("count_per_tick", 2.0)));
+            match events[1] {
+                metric::Event::Telemetry(ref mut m) => {
+                    let p = ::std::sync::Arc::make_mut(m).take().unwrap();
+                    assert_eq!(p.name, "count_per_tick");
+                    assert_eq!(p.value(), Some(2.0));
+                }
+                _ => {
+                    assert!(false);
+                }
+            }
             assert_eq!(events[0],
                        metric::Event::new_log(metric::LogLine::new("filters.keep_count",
                                                                    "count_per_tick: 2")));

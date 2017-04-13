@@ -70,7 +70,8 @@ impl Sink for Console {
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        self.aggrs.add(sync::Arc::make_mut(&mut point).take().unwrap());
+        self.aggrs
+            .add(sync::Arc::make_mut(&mut point).take().unwrap());
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {

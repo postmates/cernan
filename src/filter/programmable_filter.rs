@@ -422,9 +422,10 @@ impl ProgrammableFilter {
 
         state.get_global("package");
         let mut path = String::new();
-        path.push_str(config.scripts_directory
-            .to_str()
-            .expect("must have valid unicode scripts_directory"));
+        path.push_str(config
+                          .scripts_directory
+                          .to_str()
+                          .expect("must have valid unicode scripts_directory"));
         path.push_str("/?.lua");
         state.push_string(&path);
         state.set_field(-2, "path");
@@ -486,7 +487,7 @@ impl filter::Filter for ProgrammableFilter {
                                                                        process_metric.failure",
                                                                       self.path),
                                                               1.0)
-                        .aggr_sum();
+                            .aggr_sum();
                     let fail = metric::Event::Telemetry(sync::Arc::new(Some(filter_telem)));
                     return Err(filter::FilterError::NoSuchFunction("process_metric", fail));
                 }
@@ -519,7 +520,7 @@ impl filter::Filter for ProgrammableFilter {
                                                                                   {}.tick.failure",
                                                                                     self.path),
                                                                             1.0)
-                            .aggr_sum());
+                                                             .aggr_sum());
                     return Err(filter::FilterError::NoSuchFunction("tick", fail));
                 }
 
@@ -551,7 +552,7 @@ impl filter::Filter for ProgrammableFilter {
                                                                                   failure",
                                                                                     self.path),
                                                                             1.0)
-                            .aggr_sum());
+                                                             .aggr_sum());
                     return Err(filter::FilterError::NoSuchFunction("process_log", fail));
                 }
 

@@ -273,7 +273,7 @@ mod tests {
                     if sline.sampled {
                         assert!((sline.value * (1.0 / sline.sample_rate) -
                                  telem.value().unwrap())
-                            .abs() < 0.0001);
+                                        .abs() < 0.0001);
                     } else {
                         assert!((sline.value - telem.value().unwrap()).abs() < 0.0001);
                     }
@@ -475,7 +475,13 @@ mod tests {
 
     #[test]
     fn test_metric_invalid() {
-        let invalid = vec!["", "metric", "metric|11:", "metric|12", "metric:13|", ":|@", ":1.0|c"];
+        let invalid = vec!["",
+                           "metric",
+                           "metric|11:",
+                           "metric|12",
+                           "metric:13|",
+                           ":|@",
+                           ":1.0|c"];
         let metric = sync::Arc::new(Some(Telemetry::default()));
         for input in invalid.iter() {
             assert!(!parse_statsd(*input, &mut Vec::new(), metric.clone()));

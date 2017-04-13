@@ -55,13 +55,13 @@ fn main() {
 
     let logger_config = fern::DispatchConfig {
         format: Box::new(|msg: &str, level: &log::LogLevel, location: &log::LogLocation| {
-            format!("[{}][{}][{}][{}] {}",
-                    location.module_path(),
-                    location.line(),
-                    UTC::now().to_rfc3339(),
-                    level,
-                    msg)
-        }),
+                             format!("[{}][{}][{}][{}] {}",
+                                     location.module_path(),
+                                     location.line(),
+                                     UTC::now().to_rfc3339(),
+                                     level,
+                                     msg)
+                         }),
         output: vec![fern::OutputConfig::stdout()],
         level: level,
     };
@@ -86,8 +86,8 @@ fn main() {
             hopper::channel(&config.config_path, &args.data_directory).unwrap();
         sends.insert(config.config_path.clone(), console_send);
         joins.push(thread::spawn(move || {
-                cernan::sink::Console::new(config).run(console_recv);
-            }));
+                                     cernan::sink::Console::new(config).run(console_recv);
+                                 }));
     }
     if let Some(config) = args.null {
         let (null_send, null_recv) = hopper::channel(&config.config_path, &args.data_directory)
@@ -106,8 +106,8 @@ fn main() {
             hopper::channel(&config.config_path, &args.data_directory).unwrap();
         sends.insert(config.config_path.clone(), prometheus_send);
         joins.push(thread::spawn(move || {
-            cernan::sink::Prometheus::new(config).run(prometheus_recv);
-        }));
+                                     cernan::sink::Prometheus::new(config).run(prometheus_recv);
+                                 }));
     }
     if let Some(config) = args.influxdb {
         let (flx_send, flx_recv) = hopper::channel(&config.config_path, &args.data_directory)
@@ -144,8 +144,9 @@ fn main() {
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
-            cernan::filter::ProgrammableFilter::new(c).run(flt_recv, downstream_sends);
-        }));
+                                     cernan::filter::ProgrammableFilter::new(c)
+                                         .run(flt_recv, downstream_sends);
+                                 }));
     }
 
     // SOURCES
@@ -158,8 +159,9 @@ fn main() {
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
-            cernan::source::NativeServer::new(native_server_send, config).run();
-        }))
+                                     cernan::source::NativeServer::new(native_server_send, config)
+                                         .run();
+                                 }))
     }
 
     let internal_config = args.internal;
@@ -170,8 +172,9 @@ fn main() {
                       &internal_config.config_path,
                       &sends);
     joins.push(thread::spawn(move || {
-        cernan::source::Internal::new(internal_send, internal_config).run();
-    }));
+                                 cernan::source::Internal::new(internal_send, internal_config)
+                                     .run();
+                             }));
 
     for config in args.statsds.values() {
         let c = (*config).clone();
@@ -193,8 +196,8 @@ fn main() {
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
-            cernan::source::Graphite::new(graphite_sends, c).run();
-        }));
+                                     cernan::source::Graphite::new(graphite_sends, c).run();
+                                 }));
     }
 
     for config in args.files {
@@ -205,8 +208,8 @@ fn main() {
                           &config.config_path,
                           &sends);
         joins.push(thread::spawn(move || {
-            cernan::source::FileServer::new(fp_sends, config).run();
-        }));
+                                     cernan::source::FileServer::new(fp_sends, config).run();
+                                 }));
     }
 
     // BACKGROUND

@@ -17,6 +17,12 @@ pub fn now() -> i64 {
     NOW.load(Ordering::Relaxed) as i64
 }
 
+pub fn now_ns() -> u64 {
+    let now = UTC::now();
+    let seconds = (now.timestamp() as u64).saturating_mul(1_000_000_000);
+    seconds.saturating_add(now.timestamp_subsec_nanos() as u64)
+}
+
 pub fn update_time() {
     let dur = time::Duration::from_millis(500);
     loop {

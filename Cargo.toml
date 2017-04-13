@@ -29,7 +29,7 @@ lua = "0.0.10"
 protobuf = "1.2"
 quantiles = "0.4"
 rand = "0.3"
-rusoto = {version = "0.23.1", features = ["firehose"]}
+rusoto = {version = "0.24.0", features = ["firehose"]}
 seahash = "3.0"
 serde = "0.9"
 serde_derive = "0.9"
