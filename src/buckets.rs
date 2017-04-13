@@ -729,12 +729,29 @@ mod test {
                 assert_eq!(cnts_v.len(), v.len());
 
                 for (i, c_v) in cnts_v.iter().enumerate() {
-                    assert_eq!((c_v.0, c_v.1.clone()), (v[i].timestamp, v[i].ckms()));
+                    assert_eq!(c_v.0, v[i].timestamp);
+                    let l_ckms = c_v.1.clone();
+                    let r_ckms = v[i].ckms();
+
+                    assert!((l_ckms.sum().unwrap() - r_ckms.sum().unwrap()).abs() < 0.0001);
+                    assert!((l_ckms.cma().unwrap() - r_ckms.cma().unwrap()).abs() < 0.0001);
+                    assert_eq!(l_ckms.count(), r_ckms.count());
+                    assert!((l_ckms.query(0.5).unwrap().1 - r_ckms.query(0.5).unwrap().1).abs() <
+                            0.0001);
+                    assert!((l_ckms.query(0.75).unwrap().1 - r_ckms.query(0.75).unwrap().1)
+                                .abs() < 0.0001);
+                    assert!((l_ckms.query(0.99).unwrap().1 - r_ckms.query(0.99).unwrap().1)
+                                .abs() < 0.0001);
+                    assert!((l_ckms.query(0.999).unwrap().1 - r_ckms.query(0.999).unwrap().1)
+                                .abs() < 0.0001);
                 }
             }
 
             TestResult::passed()
         }
-        QuickCheck::new().quickcheck(qos_ret as fn(Vec<Telemetry>) -> TestResult);
+        QuickCheck::new()
+            .tests(1000)
+            .max_tests(10000)
+            .quickcheck(qos_ret as fn(Vec<Telemetry>) -> TestResult);
     }
 }
