@@ -74,8 +74,9 @@ impl FileServer {
 /// longer exist.
 struct FileWatcher {
     pub path: PathBuf,
-    pub reader: io::BufReader<fs::File>,
-    pub file_id: (u64, u64), // (dev, ino)
+    reader: io::BufReader<fs::File>,
+    offset: u64,
+    file_id: (u64, u64), // (dev, ino)
 }
 
 impl FileWatcher {
@@ -88,20 +89,41 @@ impl FileWatcher {
         match fs::File::open(&path) {
             Ok(f) => {
                 let mut rdr = io::BufReader::new(f);
-                let _ = rdr.seek(io::SeekFrom::End(0));
-                let metadata = fs::metadata(&path)
-                    .expect(&format!("no metadata in FileWatcher::new : {:?}", &path));
+                assert!(rdr.seek(io::SeekFrom::End(0)).is_ok());
+                let offset = rdr.get_ref().seek(io::SeekFrom::Current(0)).unwrap();
+                let metadata = fs::metadata(&path).expect("no metadata");
                 let dev = metadata.dev();
                 let ino = metadata.ino();
 
                 Some(FileWatcher {
-                    path: path,
-                    reader: rdr,
-                    file_id: (dev, ino),
-                })
+                         path: path,
+                         reader: rdr,
+                         offset: offset,
+                         file_id: (dev, ino),
+                     })
             }
             Err(_) => None,
         }
+    }
+
+    fn reset_from_md(&mut self) -> bool {
+        if let Ok(metadata) = fs::metadata(&self.path) {
+            let dev = metadata.dev();
+            let ino = metadata.ino();
+
+            if (dev, ino) != self.file_id {
+                report_telemetry(format!("cernan.sources.file.{}.switch",
+                                         &self.path.to_str().expect("could not make path")),
+                                 1.0);
+                if let Ok(f) = fs::File::open(&self.path) {
+                    self.file_id = (dev, ino);
+                    self.reader = io::BufReader::new(f);
+                    self.offset = 0;
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Read a single line from the underlying file
@@ -110,47 +132,55 @@ impl FileWatcher {
     /// up to some maximum but unspecified amount of time. `read_line` will open
     /// a new file handler at need, transparently to the caller.
     pub fn read_line(&mut self, mut buffer: &mut String) -> io::Result<usize> {
-        let max_attempts = 6;
-        loop {
-            let mut attempts = 0;
-            // Read lines, delaying up to max_attempts times.
-            loop {
-                match self.reader.read_line(&mut buffer) {
-                    Ok(sz) => {
-                        if sz == 0 {
-                            time::delay(attempts);
-                            attempts += 1;
-                            if attempts > max_attempts {
-                                break;
-                            } else {
-                                continue;
-                            }
-                        } else {
-                            return Ok(sz);
-                        }
+        // This assert doesn't check for equality. Why? The BufReader may jump
+        // way ahead of our current offset but we need to track where we _know_
+        // we are based on lines because when we seek back to reset the inner
+        // buffer of BufReader will get dumped.
+        assert!(self.offset <=
+                self.reader
+                    .get_ref()
+                    .seek(io::SeekFrom::Current(0))
+                    .unwrap());
+        let mut attempts = 0;
+        while attempts < 3 {
+            time::delay(attempts);
+            match self.reader.read_line(&mut buffer) {
+                Ok(0) => {
+                    // In some situations BufReader will return a read of
+                    // zero. That's not success for our purposes and so we
+                    // potentially reset from metadata and, if no, go ahead and
+                    // back up to the last known good offset.
+                    if !self.reset_from_md() {
+                        let seek: bool = self.reader
+                            .seek(io::SeekFrom::Start(self.offset))
+                            .is_ok();
+                        assert!(seek);
                     }
-                    Err(e) => {
-                        return Err(e);
+                }
+                Ok(sz) => {
+                    // Success! We've read a line out of the underlying file. We
+                    // pull the newline off the end and return the size of the
+                    // buffer read without the newline.
+                    self.offset += sz as u64;
+                    assert!(sz != 0);
+                    buffer.truncate(sz - 1);
+                    return Ok(sz - 1);
+                }
+                Err(_) => {
+                    // Similar situation to Ok(0) above excepting that there's a
+                    // real, honest IO error to bubble up to the glob loop.
+                    if !self.reset_from_md() {
+                        return Err(io::Error::last_os_error());
                     }
                 }
             }
-            // Check to see if the file_id has changed and, if so, open up a new
-            // file handler.
-            if let Ok(metadata) = fs::metadata(&self.path) {
-                let dev = metadata.dev();
-                let ino = metadata.ino();
-
-                if (dev, ino) != self.file_id {
-                    if let Ok(f) = fs::File::open(&self.path) {
-                        self.file_id = (dev, ino);
-                        let rdr = io::BufReader::new(f);
-                        self.reader = rdr;
-                    }
-                } else {
-                    return Err(io::Error::last_os_error());
-                }
-            }
+            attempts += 1;
         }
+        // We've polled too many times to no good effect and have run out of
+        // time. We'll signal this with TimedOut -- which might also come from
+        // BufReader -- so it's hard for the caller to know where this came
+        // from. Doesn't seem to be a pain in practice.
+        return Err(io::Error::new(io::ErrorKind::TimedOut, "read_line hit max delay"));
     }
 }
 
@@ -220,7 +250,7 @@ impl Source for FileServer {
                         let mut lines_read = 0;
                         match file.read_line(&mut buffer) {
                             Ok(sz) => {
-                                attempts = attempts.saturating_sub(1);
+                                attempts = (attempts + 1) % 10;
                                 if sz > 0 {
                                     lines_read += 1;
                                     buffer.pop();
@@ -231,7 +261,7 @@ impl Source for FileServer {
                                                      1.0);
                                     trace!("{} | {}", path_name, buffer);
                                     lines.push(metric::LogLine::new(path_name, &buffer)
-                                        .overlay_tags_from_map(&self.tags));
+                                                   .overlay_tags_from_map(&self.tags));
                                     buffer.clear();
                                     if lines_read > self.max_read_lines {
                                         break;
@@ -243,15 +273,13 @@ impl Source for FileServer {
                                     io::ErrorKind::TimedOut => {}
                                     _ => trace!("read-line error: {}", e),
                                 }
-                                attempts += 1;
+                                attempts = (attempts + 1) % 10;
                                 break;
                             }
                         }
                     }
-                    if !lines.is_empty() {
-                        for l in lines.drain(..) {
-                            send("file", &mut self.chans, metric::Event::new_log(l));
-                        }
+                    for l in lines.drain(..) {
+                        send("file", &mut self.chans, metric::Event::new_log(l));
                     }
                 }
                 if start.elapsed() >= glob_delay {
@@ -260,4 +288,111 @@ impl Source for FileServer {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod test {
+    extern crate quickcheck;
+    extern crate rand;
+    extern crate tempdir;
+
+    use self::quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
+    use self::rand::{Rand, Rng};
+    use super::*;
+    use std::fs;
+
+    // actions that apply to a single FileWatcher
+    #[derive(Clone, Debug)]
+    enum FWAction {
+        WriteLine(String),
+        RotateFile,
+        DeleteFile,
+        Pause(u32),
+        Exit,
+    }
+
+    impl Arbitrary for FWAction {
+        fn arbitrary<G: Gen>(g: &mut G) -> FWAction {
+            g.gen()
+        }
+    }
+
+    impl Rand for FWAction {
+        fn rand<R: Rng>(rng: &mut R) -> FWAction {
+            let i: usize = rng.gen_range(0, 100);
+            let ln_sz = rng.gen_range(0, 256);
+            let pause = rng.gen_range(1, 3);
+            match i {
+                0...50 => FWAction::WriteLine(rng.gen_ascii_chars().take(ln_sz).collect()),
+                51...75 => FWAction::Pause(pause),
+                76...85 => FWAction::RotateFile,
+                86...95 => FWAction::DeleteFile,
+                _ => FWAction::Exit,
+            }
+        }
+    }
+
+    #[test]
+    fn test_file_watcher() {
+        fn inner(actions: Vec<FWAction>) -> TestResult {
+            let dir = tempdir::TempDir::new("file_watcher_qc").unwrap();
+            let path = dir.path().join("a_file.log");
+            let mut fp = fs::File::create(&path).expect("could not create");
+            let mut fw = FileWatcher::new(path.clone()).expect("must be able to create");
+
+            let mut expected_read = Vec::new();
+
+            for action in actions.iter() {
+                match *action {
+                    FWAction::DeleteFile => {
+                        let _ = fs::remove_file(&path);
+                        assert!(!path.exists());
+                        assert!(expected_read.is_empty());
+                        break;
+                    }
+                    FWAction::Pause(ps) => time::delay(ps),
+                    FWAction::Exit => break,
+                    FWAction::WriteLine(ref s) => {
+                        assert!(fp.write(s.as_bytes()).is_ok());
+                        expected_read.push(s);
+                        assert!(fp.write("\n".as_bytes()).is_ok());
+                        assert!(fp.flush().is_ok());
+                    }
+                    FWAction::RotateFile => {
+                        let mut new_path = path.clone();
+                        new_path.set_extension("log.1");
+                        match fs::rename(&path, &new_path) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                println!("ERROR: {:?}", e);
+                                assert!(false);
+                            }
+                        }
+                        fp = fs::File::create(&path).expect("could not create");
+                    }
+                }
+
+                let mut buf = String::new();
+                while !expected_read.is_empty() {
+                    match fw.read_line(&mut buf) {
+                        Ok(sz) => {
+                            let exp = expected_read.pop().expect("must be a read here");
+                            assert_eq!(buf, *exp);
+                            assert_eq!(sz, buf.len());
+                            buf.clear();
+                        }
+                        Err(_) => break,
+                    }
+                }
+
+                assert!(expected_read.is_empty());
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(10000)
+            .max_tests(100000)
+            .quickcheck(inner as fn(Vec<FWAction>) -> TestResult);
+    }
+
 }
