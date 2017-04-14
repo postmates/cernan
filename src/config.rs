@@ -326,6 +326,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                      .as_integer()
                      .map(|i| i as u16)
                      .expect("could not parse sinks.influxdb.port"),
+                 secure: value
+                     .lookup("influxdb.secure")
+                     .or(value.lookup("sinks.influxdb.secure"))
+                     .unwrap_or(&Value::Boolean(true))
+                     .as_bool()
+                     .expect("could not parse sinks.influxdb.secure"),
                  host: value
                      .lookup("influxdb.host")
                      .or(value.lookup("sinks.influxdb.host"))
@@ -333,12 +339,13 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                      .as_str()
                      .map(|s| s.to_string())
                      .expect("could not parse sinks.influxdb.host"),
-                 bin_width: value
-                     .lookup("influxdb.bin_width")
-                     .or(value.lookup("sinks.influxdb.bin_width"))
-                     .unwrap_or(&Value::Integer(1))
-                     .as_integer()
-                     .expect("could not parse sinks.influxdb.bin_width"),
+                 db: value
+                     .lookup("influxdb.db")
+                     .or(value.lookup("sinks.influxdb.db"))
+                     .unwrap_or(&Value::String("cernan".to_string()))
+                     .as_str()
+                     .map(|s| s.to_string())
+                     .expect("could not parse sinks.influxdb.db"),
                  config_path: "sinks.influxdb".to_string(),
                  tags: tags.clone(),
                  flush_interval: value
@@ -1291,7 +1298,7 @@ bin_width = 9
 [influxdb]
 port = 3131
 host = "example.com"
-bin_width = 9
+secure = false
 "#
                 .to_string();
 
@@ -1300,8 +1307,9 @@ bin_width = 9
         assert!(args.influxdb.is_some());
         let influxdb = args.influxdb.unwrap();
         assert_eq!(influxdb.host, String::from("example.com"));
+        assert_eq!(influxdb.db, String::from("cernan"));
         assert_eq!(influxdb.port, 3131);
-        assert_eq!(influxdb.bin_width, 9);
+        assert_eq!(influxdb.secure, false);
     }
 
     #[test]
@@ -1311,8 +1319,9 @@ bin_width = 9
   [sinks.influxdb]
   port = 3131
   host = "example.com"
-  bin_width = 9
+  db = "postmates"
   flush_interval = 70
+  secure = true
 "#
                 .to_string();
 
@@ -1321,9 +1330,10 @@ bin_width = 9
         assert!(args.influxdb.is_some());
         let influxdb = args.influxdb.unwrap();
         assert_eq!(influxdb.host, String::from("example.com"));
+        assert_eq!(influxdb.db, String::from("postmates"));
         assert_eq!(influxdb.port, 3131);
-        assert_eq!(influxdb.bin_width, 9);
         assert_eq!(influxdb.flush_interval, 70);
+        assert_eq!(influxdb.secure, true);
     }
 
     #[test]

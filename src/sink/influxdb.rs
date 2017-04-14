@@ -1,13 +1,16 @@
+use hyper::Client;
 use metric::{LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
 use source::report_telemetry;
 use std::cmp;
-use std::net::{ToSocketAddrs, UdpSocket};
 use std::string;
 use std::sync;
 use time;
+use url::Url;
 
 pub struct InfluxDB {
+    secure: bool,
+    db: String,
     host: String,
     port: u16,
     aggrs: Vec<Telemetry>,
@@ -17,7 +20,8 @@ pub struct InfluxDB {
 
 #[derive(Debug)]
 pub struct InfluxDBConfig {
-    pub bin_width: i64,
+    pub secure: bool,
+    pub db: String,
     pub host: String,
     pub port: u16,
     pub config_path: String,
@@ -58,6 +62,8 @@ fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
 impl InfluxDB {
     pub fn new(config: InfluxDBConfig) -> InfluxDB {
         InfluxDB {
+            secure: config.secure,
+            db: config.db,
             host: config.host,
             port: config.port,
             aggrs: Vec::with_capacity(4048),
@@ -101,64 +107,48 @@ impl Sink for InfluxDB {
     }
 
     fn flush(&mut self) {
+        let mut buffer = String::with_capacity(4048);
+        self.format_stats(&mut buffer, &self.aggrs);
+
         loop {
+            let client = Client::new();
+            let scheme = if self.secure { "https" } else { "http" };
+            let uri = Url::parse(&format!("{}://{}:{}/write?db={}",
+                                          scheme,
+                                          self.host,
+                                          self.port,
+                                          self.db))
+                    .ok()
+                    .expect("malformed url");
+
             report_telemetry("cernan.sinks.influxdb.delivery_attempts",
                              self.delivery_attempts as f64);
             if self.delivery_attempts > 0 {
                 debug!("delivery attempts: {}", self.delivery_attempts);
             }
-            let addrs = (self.host.as_str(), self.port).to_socket_addrs();
-            match addrs {
-                Ok(srv) => {
-                    let ips: Vec<_> = srv.collect();
-                    for ip in ips {
-                        time::delay(self.delivery_attempts);
-                        match UdpSocket::bind("0.0.0.0:0") {
-                            // NOTE it's not clear to me if we should be
-                            // re-using the socket like this over multiple
-                            // chunks in the event of faiure or if we should get
-                            // ourselves a brand new socket
-                            Ok(socket) => {
-                                let mut buffer = String::with_capacity(4048);
-                                for chunk in self.aggrs.chunks(256) {
-                                    report_telemetry("cernan.sinks.influxdb.chunks.attempted", 1.0);
-                                    self.format_stats(&mut buffer, chunk);
-                                    loop {
-                                        let res = socket.send_to(buffer.as_bytes(), ip);
-                                        if res.is_ok() {
-                                            report_telemetry("cernan.sinks.influxdb.chunks.success",
-                                                             1.0);
-                                            buffer.clear();
-                                            self.delivery_attempts = 0;
-                                            break;
-                                        } else {
-                                            report_telemetry("cernan.sinks.influxdb.chunks.failure",
-                                                             1.0);
-                                            self.delivery_attempts = self.delivery_attempts
-                                                .saturating_add(1);
-                                        }
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                report_telemetry("cernan.sinks.influxdb.db_connect_failure", 1.0);
-                                info!("Unable to connect to db at {} using addr {} with error \
-                                       {}",
-                                      self.host,
-                                      ip,
-                                      e)
-                            }
-                        }
-                        self.aggrs.clear();
+            time::delay(self.delivery_attempts);
+
+            match client.post(uri).body(&buffer).send() {
+                Err(e) => debug!("hyper error doing POST: {:?}", e),
+                Ok(resp) => {
+                    // https://docs.influxdata.com/influxdb/v1.
+                    // 2/guides/writing_data/#http-response-summary
+                    self.delivery_attempts = self.delivery_attempts.saturating_add(1) % 10;
+                    if resp.status.is_success() {
+                        report_telemetry("cernan.sinks.influxdb.success", 1.0);
+                        buffer.clear();
+                        self.delivery_attempts = 0;
+                        break;
+                    } else if resp.status.is_client_error() {
+                        report_telemetry("cernan.sinks.influxdb.failure.client_error", 1.0);
+                    } else if resp.status.is_server_error() {
+                        report_telemetry("cernan.sinks.influxdb.failure.server_error", 1.0);
                     }
-                }
-                Err(e) => {
-                    info!("Unable to perform DNS lookup on host {} with error {}",
-                          self.host,
-                          e);
                 }
             }
         }
+
+        self.aggrs.clear();
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
@@ -194,8 +184,9 @@ mod test {
         let mut tags = TagMap::default();
         tags.insert("source".into(), "test-src".into());
         let config = InfluxDBConfig {
-            bin_width: 1,
+            db: "cernan".to_string(),
             host: "127.0.0.1".to_string(),
+            secure: false,
             port: 1987,
             config_path: "sinks.influxdb".to_string(),
             tags: tags.clone(),

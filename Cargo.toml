@@ -22,6 +22,7 @@ flate2 = "0.2"
 glob = "0.2.11"
 hopper = "0.2.1"
 hyper = "0.10"
+hyper-native-tls = "0.2"
 lazy_static = "0.2.1"
 libc = "0.2"
 log = "0.3.6"
@@ -35,6 +36,7 @@ serde = "0.9"
 serde_derive = "0.9"
 serde_json = "0.9"
 toml = "0.2.0"
+url = "1.4.0"
 uuid = {version = "0.4", features = ["v4"]}
 
 [dev-dependencies]
