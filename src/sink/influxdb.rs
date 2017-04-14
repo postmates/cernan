@@ -8,24 +8,44 @@ use std::sync;
 use time;
 use url::Url;
 
+/// The InfluxDB structure
+///
+/// InfluxDB is a time-series database with nanosecond accuracy. This structure
+/// holds all the information needed to communicate with it. See InfluxDBConfig
+/// for configurable parameters.
 pub struct InfluxDB {
     secure: bool,
     db: String,
     host: String,
     port: u16,
+    /// The store of Telemetry to be reported
     aggrs: Vec<Telemetry>,
+    /// Number of failed delivery attempts by this sink. We keep track of this
+    /// across flushes to avoid stampeding between flushes.
     delivery_attempts: u32,
     flush_interval: u64,
 }
 
+/// InfluxDB configuration
+///
+/// The cernan InfluxDB integration is done by HTTP/S. The options present here
+/// assume that integration, as well as cernan inside-baseball.
 #[derive(Debug)]
 pub struct InfluxDBConfig {
+    /// If secure, use HTTPS. Else, HTTP.
     pub secure: bool,
+    /// The name of the database to connect to. This database MUST exist prior
+    /// to cernan writing to it.
     pub db: String,
+    /// The host machine toward which to report. May be an IP address or a DNS.
     pub host: String,
+    /// The port of the host machine toward which to report.
     pub port: u16,
+    /// The name of the influxdb sink in cernan.
     pub config_path: String,
+    /// The default tags to apply to all telemetry flowing through the sink.
     pub tags: TagMap,
+    /// The interval, in seconds, on which the InfluxDB sink will report.
     pub flush_interval: u64,
 }
 
@@ -60,6 +80,7 @@ fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
 }
 
 impl InfluxDB {
+    /// Create a new InfluxDB given an InfluxDBConfig
     pub fn new(config: InfluxDBConfig) -> InfluxDB {
         InfluxDB {
             secure: config.secure,
@@ -73,7 +94,7 @@ impl InfluxDB {
     }
 
     /// Convert the slice into a payload that can be sent to InfluxDB
-    pub fn format_stats(&self, mut buffer: &mut String, telems: &[Telemetry]) -> () {
+    fn format_stats(&self, mut buffer: &mut String, telems: &[Telemetry]) -> () {
         let mut time_cache: Vec<(u64, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
@@ -110,7 +131,10 @@ impl Sink for InfluxDB {
         let mut buffer = String::with_capacity(4048);
         self.format_stats(&mut buffer, &self.aggrs);
 
+        // report loop, infinite
         loop {
+            // TODO we should not create a new cliet each go-around. This will
+            // exhaust connections in a failure DB.
             let client = Client::new();
             let scheme = if self.secure { "https" } else { "http" };
             let uri = Url::parse(&format!("{}://{}:{}/write?db={}",
@@ -121,11 +145,15 @@ impl Sink for InfluxDB {
                     .ok()
                     .expect("malformed url");
 
+            // Report our delivery attempts and delay, potentially. As mentioned
+            // in the documentation for the InfluxDB struct we want to avoid
+            // stampeeding the database. If a flush fails X times then the next
+            // flush will have delivery_attempts_1 = (X - 1) +
+            // delivery_attempts_0 waits. The idea is that a failure that
+            // happens to succeed may succeed against a degraded system; we
+            // should not assume full health.
             report_telemetry("cernan.sinks.influxdb.delivery_attempts",
                              self.delivery_attempts as f64);
-            if self.delivery_attempts > 0 {
-                debug!("delivery attempts: {}", self.delivery_attempts);
-            }
             time::delay(self.delivery_attempts);
 
             match client.post(uri).body(&buffer).send() {
@@ -133,15 +161,16 @@ impl Sink for InfluxDB {
                 Ok(resp) => {
                     // https://docs.influxdata.com/influxdb/v1.
                     // 2/guides/writing_data/#http-response-summary
-                    self.delivery_attempts = self.delivery_attempts.saturating_add(1) % 10;
                     if resp.status.is_success() {
                         report_telemetry("cernan.sinks.influxdb.success", 1.0);
                         buffer.clear();
-                        self.delivery_attempts = 0;
+                        self.delivery_attempts = self.delivery_attempts.saturating_sub(1);
                         break;
                     } else if resp.status.is_client_error() {
+                        self.delivery_attempts = self.delivery_attempts.saturating_add(1);
                         report_telemetry("cernan.sinks.influxdb.failure.client_error", 1.0);
                     } else if resp.status.is_server_error() {
+                        self.delivery_attempts = self.delivery_attempts.saturating_add(1);
                         report_telemetry("cernan.sinks.influxdb.failure.server_error", 1.0);
                     }
                 }
