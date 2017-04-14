@@ -20,10 +20,11 @@ confd_url="https://github.com/kelseyhightower/confd/releases/download/v${confd_v
 [ -f docker/release/confd-bin ] || curl -L "$confd_url" > docker/release/confd-bin
 chmod +x docker/release/confd-bin
 
-docker build -t cernan-build -f docker/build/Dockerfile .
+# docker build -t cernan-build -f docker/build/Dockerfile .
 CONTAINER_ID=$(docker create cernan-build)
 # Remove 'cernan' from the build image 
-docker container cp ${CONTAINER_ID}:/source/target/x86_64-unknown-linux-musl/release/cernan docker/release/
+docker container cp ${CONTAINER_ID}:/source/target/release/cernan docker/release/
 docker rm ${CONTAINER_ID}
-docker build -t quay.io/postmates/cernan:latest -t quay.io/postmates/cernan:${VERSION} -f docker/release/Dockerfile .
+# docker build -t quay.io/postmates/cernan:latest -t quay.io/postmates/cernan:${VERSION} -f docker/release/Dockerfile .
+docker build -t cernan:latest -t cernan:${VERSION} -f docker/release/Dockerfile .
 rm docker/release/cernan

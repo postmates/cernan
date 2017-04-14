@@ -1,4 +1,10 @@
-FROM alpine:3.5
+FROM alpine:edge
+
+RUN echo '@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing' >> /etc/apk/repositories
+
+RUN apk add --no-cache --update \
+  llvm-libunwind@testing \ 
+  openssl
 
 RUN apk update \
   && apk upgrade --no-cache
