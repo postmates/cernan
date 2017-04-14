@@ -1,4 +1,5 @@
 use hyper::Client;
+use hyper::header;
 use metric::{LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
 use source::report_telemetry;
@@ -14,16 +15,14 @@ use url::Url;
 /// holds all the information needed to communicate with it. See InfluxDBConfig
 /// for configurable parameters.
 pub struct InfluxDB {
-    secure: bool,
-    db: String,
-    host: String,
-    port: u16,
     /// The store of Telemetry to be reported
     aggrs: Vec<Telemetry>,
     /// Number of failed delivery attempts by this sink. We keep track of this
     /// across flushes to avoid stampeding between flushes.
     delivery_attempts: u32,
     flush_interval: u64,
+    client: Client,
+    uri: Url,
 }
 
 /// InfluxDB configuration
@@ -82,14 +81,21 @@ fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
 impl InfluxDB {
     /// Create a new InfluxDB given an InfluxDBConfig
     pub fn new(config: InfluxDBConfig) -> InfluxDB {
+        let scheme = if config.secure { "https" } else { "http" };
+        let uri = Url::parse(&format!("{}://{}:{}/write?db={}",
+                                      scheme,
+                                      config.host,
+                                      config.port,
+                                      config.db))
+                .ok()
+                .expect("malformed url");
+
         InfluxDB {
-            secure: config.secure,
-            db: config.db,
-            host: config.host,
-            port: config.port,
             aggrs: Vec::with_capacity(4048),
             delivery_attempts: 0,
             flush_interval: config.flush_interval,
+            client: Client::new(),
+            uri: uri,
         }
     }
 
@@ -133,18 +139,6 @@ impl Sink for InfluxDB {
 
         // report loop, infinite
         loop {
-            // TODO we should not create a new cliet each go-around. This will
-            // exhaust connections in a failure DB.
-            let client = Client::new();
-            let scheme = if self.secure { "https" } else { "http" };
-            let uri = Url::parse(&format!("{}://{}:{}/write?db={}",
-                                          scheme,
-                                          self.host,
-                                          self.port,
-                                          self.db))
-                    .ok()
-                    .expect("malformed url");
-
             // Report our delivery attempts and delay, potentially. As mentioned
             // in the documentation for the InfluxDB struct we want to avoid
             // stampeeding the database. If a flush fails X times then the next
@@ -156,7 +150,11 @@ impl Sink for InfluxDB {
                              self.delivery_attempts as f64);
             time::delay(self.delivery_attempts);
 
-            match client.post(uri).body(&buffer).send() {
+            match self.client
+                      .post(self.uri.clone())
+                      .header(header::Connection::keep_alive())
+                      .body(&buffer)
+                      .send() {
                 Err(e) => debug!("hyper error doing POST: {:?}", e),
                 Ok(resp) => {
                     // https://docs.influxdata.com/influxdb/v1.
