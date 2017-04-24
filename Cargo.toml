@@ -26,7 +26,7 @@ hyper-native-tls = "0.2"
 lazy_static = "0.2.1"
 libc = "0.2"
 log = "0.3.6"
-lua = "0.0.10"
+lua = { git = "https://github.com/blt/rust-lua53.git", branch = "master" } 
 protobuf = "1.2"
 quantiles = "0.4"
 rand = "0.3"
