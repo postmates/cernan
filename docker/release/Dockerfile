@@ -9,12 +9,12 @@ RUN apk add --no-cache --update \
 RUN apk update \
   && apk upgrade --no-cache
 
-ARG EXE_ROOT="target/bindir"
+ARG DIST_ROOT="target/bindir"
 
-COPY docker/release/confd /etc/confd
-COPY docker/release/entrypoint.sh /entrypoint.sh
-COPY ${EXE_ROOT}/confd-bin /usr/bin/confd
-COPY ${EXE_ROOT}/cernan /usr/bin/cernan
+COPY ${DIST_ROOT}/confd /etc/confd
+COPY ${DIST_ROOT}/entrypoint.sh /entrypoint.sh
+COPY ${DIST_ROOT}/confd-bin /usr/bin/confd
+COPY ${DIST_ROOT}/cernan /usr/bin/cernan
 
 ENV STATSD_PORT 8125
 

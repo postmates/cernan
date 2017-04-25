@@ -9,4 +9,3 @@ RUN apk add --no-cache --update \
   openssl-dev \
   cargo@testing \
   rust@testing
-
