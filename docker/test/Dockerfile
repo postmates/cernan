@@ -1,13 +1,14 @@
-FROM alpine:edge
+FROM debian:jessie-slim
 
-RUN echo '@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing' >> /etc/apk/repositories
+RUN apt-get update && apt-get -y upgrade && \
+    apt-get install -y build-essential curl openssl pkg-config libssl-dev
 
-RUN apk add --no-cache --update \
-  alpine-sdk \
-  perl \
-  openssl-dev \
-  cargo@testing \
-  rust@testing
+ARG channel="stable"
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain "${channel}"
 
-ENV PATH=/root/.cargo/bin:$PATH
+ENV PATH=/root/.cargo/bin:"$PATH"
+RUN if [ "$channel" = "nightly" ]; then \
+    cargo install clippy && \
+    cargo install cargo-fuzz; \
+fi
 RUN cargo install rustfmt
