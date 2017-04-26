@@ -1,7 +1,7 @@
 FROM debian:jessie-slim
 
 RUN apt-get update && apt-get -y upgrade && \
-    apt-get install -y build-essential curl openssl pkg-config libssl-dev
+    apt-get install -y build-essential git curl openssl pkg-config libssl-dev
 
 ARG channel="stable"
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain "${channel}"
