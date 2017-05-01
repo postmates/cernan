@@ -2,12 +2,15 @@ FROM alpine:edge
 
 RUN echo '@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing' >> /etc/apk/repositories
 
-RUN apk add --no-cache --update \
-  llvm-libunwind@testing \ 
-  openssl
-
 RUN apk update \
   && apk upgrade --no-cache
+
+RUN apk add --no-cache --update \
+  ca-certificates \
+  llvm-libunwind@testing \ 
+  openssl && \
+  update-ca-certificates && \
+  rm -rf /var/cache/apk/*
 
 ARG DIST_ROOT="target/bindir"
 
