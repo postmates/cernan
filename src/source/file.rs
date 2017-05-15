@@ -70,9 +70,7 @@ impl FileServer {
     pub fn new(chans: util::Channel, config: FileServerConfig) -> FileServer {
         FileServer {
             chans: chans,
-            path: config
-                .path
-                .expect("must specify a 'path' for FileServer"),
+            path: config.path.expect("must specify a 'path' for FileServer"),
             tags: config.tags,
             max_read_lines: config.max_read_lines,
         }
@@ -150,11 +148,7 @@ impl FileWatcher {
         // way ahead of our current offset but we need to track where we _know_
         // we are based on lines because when we seek back to reset the inner
         // buffer of BufReader will get dumped.
-        assert!(self.offset <=
-                self.reader
-                    .get_ref()
-                    .seek(io::SeekFrom::Current(0))
-                    .unwrap());
+        assert!(self.offset <= self.reader.get_ref().seek(io::SeekFrom::Current(0)).unwrap());
         let mut attempts = 0;
         while attempts < 3 {
             time::delay(attempts);
@@ -165,9 +159,7 @@ impl FileWatcher {
                     // potentially reset from metadata and, if no, go ahead and
                     // back up to the last known good offset.
                     if !self.reset_from_md() {
-                        let seek: bool = self.reader
-                            .seek(io::SeekFrom::Start(self.offset))
-                            .is_ok();
+                        let seek: bool = self.reader.seek(io::SeekFrom::Start(self.offset)).is_ok();
                         assert!(seek);
                     }
                 }
@@ -236,7 +228,7 @@ impl Source for FileServer {
         loop {
             // glob poll
             for entry in glob(self.path.to_str().expect("no ability to glob"))
-                .expect("Failed to read glob pattern") {
+                    .expect("Failed to read glob pattern") {
                 match entry {
                     Ok(path) => {
                         let entry = fp_map.entry(path.clone());

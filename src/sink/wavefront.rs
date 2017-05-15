@@ -132,8 +132,7 @@ impl Wavefront {
                             self.stats.push_str(" ");
                             self.stats.push_str(get_from_cache(&mut value_cache, v));
                             self.stats.push_str(" ");
-                            self.stats
-                                .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                            self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
                             self.stats.push_str(" ");
                             fmt_tags(&value.tags, &mut tag_buf);
                             self.stats.push_str(&tag_buf);
@@ -155,8 +154,7 @@ impl Wavefront {
                                 .push_str(get_from_cache(&mut value_cache,
                                                          value.query(quant).unwrap()));
                             self.stats.push_str(" ");
-                            self.stats
-                                .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                            self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
                             self.stats.push_str(" ");
                             self.stats.push_str(&tag_buf);
                             self.stats.push_str("\n");
@@ -165,11 +163,9 @@ impl Wavefront {
                         self.stats.push_str(&value.name);
                         self.stats.push_str(".count");
                         self.stats.push_str(" ");
-                        self.stats
-                            .push_str(get_from_cache(&mut count_cache, count));
+                        self.stats.push_str(get_from_cache(&mut count_cache, count));
                         self.stats.push_str(" ");
-                        self.stats
-                            .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                        self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
                         self.stats.push_str(" ");
                         self.stats.push_str(&tag_buf);
                         self.stats.push_str("\n");
@@ -178,11 +174,9 @@ impl Wavefront {
                         self.stats.push_str(&value.name);
                         self.stats.push_str(".mean");
                         self.stats.push_str(" ");
-                        self.stats
-                            .push_str(get_from_cache(&mut value_cache, mean));
+                        self.stats.push_str(get_from_cache(&mut value_cache, mean));
                         self.stats.push_str(" ");
-                        self.stats
-                            .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                        self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
                         self.stats.push_str(" ");
                         self.stats.push_str(&tag_buf);
                         self.stats.push_str("\n");
@@ -247,8 +241,7 @@ impl Sink for Wavefront {
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        self.aggrs
-            .add(sync::Arc::make_mut(&mut point).take().unwrap());
+        self.aggrs.add(sync::Arc::make_mut(&mut point).take().unwrap());
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
@@ -299,15 +292,9 @@ mod test {
             flush_interval: 60,
         };
         let mut wavefront = Wavefront::new(config);
-        let dt_0 = UTC.ymd(1990, 6, 12)
-            .and_hms_milli(9, 10, 11, 00)
-            .timestamp();
-        let dt_1 = UTC.ymd(1990, 6, 12)
-            .and_hms_milli(9, 10, 12, 00)
-            .timestamp();
-        let dt_2 = UTC.ymd(1990, 6, 12)
-            .and_hms_milli(9, 10, 13, 00)
-            .timestamp();
+        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
+        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
+        let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
         wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0)
                                             .timestamp(dt_0)
                                             .aggr_sum()

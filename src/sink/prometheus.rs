@@ -368,9 +368,8 @@ mod test {
     impl Rand for PrometheusAggr {
         fn rand<R: Rng>(rng: &mut R) -> PrometheusAggr {
             let total_inner_sz: usize = rng.gen_range(0, 256);
-            let mut inner: Vec<metric::Telemetry> = rng.gen_iter::<metric::Telemetry>()
-                .take(total_inner_sz)
-                .collect();
+            let mut inner: Vec<metric::Telemetry> =
+                rng.gen_iter::<metric::Telemetry>().take(total_inner_sz).collect();
             inner.sort_by(|a, b| prometheus_cmp(a, b).unwrap());
             PrometheusAggr { inner: inner }
         }

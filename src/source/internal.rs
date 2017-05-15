@@ -57,9 +57,7 @@ impl Internal {
 pub fn report_telemetry<S>(name: S, value: f64) -> ()
     where S: Into<String>
 {
-    Q.lock()
-        .unwrap()
-        .push_back(metric::Telemetry::new(name, value).aggr_sum());
+    Q.lock().unwrap().push_back(metric::Telemetry::new(name, value).aggr_sum());
 }
 
 /// Internal as Source

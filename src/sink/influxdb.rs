@@ -97,10 +97,10 @@ impl InfluxDB {
     pub fn new(config: InfluxDBConfig) -> InfluxDB {
         let scheme = if config.secure { "https" } else { "http" };
         let uri = Url::parse(&format!("{}://{}:{}/write?db={}",
-                                      scheme,
-                                      config.host,
-                                      config.port,
-                                      config.db))
+                                     scheme,
+                                     config.host,
+                                     config.port,
+                                     config.db))
                 .ok()
                 .expect("malformed url");
 
@@ -193,8 +193,7 @@ impl Sink for InfluxDB {
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        self.aggrs
-            .push(sync::Arc::make_mut(&mut point).take().unwrap());
+        self.aggrs.push(sync::Arc::make_mut(&mut point).take().unwrap());
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {

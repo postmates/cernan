@@ -448,9 +448,7 @@ impl ProgrammableFilter {
         state.set_fns(&PAYLOAD_LIB, 0);
         state.set_global("payload");
 
-        let script = &config
-                          .script
-                          .expect("must have a specified scripts config");
+        let script = &config.script.expect("must have a specified scripts config");
         let script_path = script.to_str().unwrap();
         match state.load_file(script_path) {
             ThreadStatus::Ok => trace!("was able to load script at {}", script_path),
@@ -483,9 +481,7 @@ impl ProgrammableFilter {
 
         ProgrammableFilter {
             state: state,
-            path: config
-                .config_path
-                .expect("must have a config_path for ProgrammableFilter"),
+            path: config.config_path.expect("must have a config_path for ProgrammableFilter"),
             global_tags: config.tags,
             last_flush_idx: 0,
         }

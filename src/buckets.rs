@@ -127,8 +127,7 @@ impl Buckets {
     /// ```
     pub fn add(&mut self, value: Telemetry) {
         let mut hsh =
-            match self.keys
-                      .binary_search_by(|probe| probe.partial_cmp(&value.name).unwrap()) {
+            match self.keys.binary_search_by(|probe| probe.partial_cmp(&value.name).unwrap()) {
                 Ok(hsh_idx) => self.values.index_mut(hsh_idx),
                 Err(hsh_idx) => {
                     self.keys.insert(hsh_idx, value.name.to_owned());
@@ -143,10 +142,8 @@ impl Buckets {
             Err(idx) => {
                 self.count = self.count.saturating_add(1);
                 if value.persist && idx > 0 {
-                    let mut cur: Telemetry = hsh[idx - 1]
-                        .clone()
-                        .timestamp(value.timestamp)
-                        .persist();
+                    let mut cur: Telemetry =
+                        hsh[idx - 1].clone().timestamp(value.timestamp).persist();
                     cur += value;
                     hsh.insert(idx, cur)
                 } else {
@@ -201,18 +198,9 @@ mod test {
         //  * an ephemeral SET|SUM will have its value inherited by a persist SET|SUM
         //  * an ephemeral SET|SUM will not inherit the value of a persist SET|SUM
         let bin_width = 1;
-        let m0 = Telemetry::new("lO", 1.0)
-            .timestamp(0)
-            .aggr_set()
-            .ephemeral();
-        let m1 = Telemetry::new("lO", 2.0)
-            .timestamp(1)
-            .aggr_sum()
-            .persist();
-        let m2 = Telemetry::new("lO", 0.0)
-            .timestamp(1)
-            .aggr_set()
-            .ephemeral();
+        let m0 = Telemetry::new("lO", 1.0).timestamp(0).aggr_set().ephemeral();
+        let m1 = Telemetry::new("lO", 2.0).timestamp(1).aggr_sum().persist();
+        let m2 = Telemetry::new("lO", 0.0).timestamp(1).aggr_set().ephemeral();
 
         let mut bkt = Buckets::new(bin_width);
         bkt.add(m0);
@@ -266,15 +254,9 @@ mod test {
     #[test]
     fn test_gauge_small_bin_width() {
         let bin_width = 1;
-        let m0 = Telemetry::new("lO", 3.211)
-            .timestamp(645181811)
-            .aggr_set();
-        let m1 = Telemetry::new("lO", 4.322)
-            .timestamp(645181812)
-            .aggr_set();
-        let m2 = Telemetry::new("lO", 5.433)
-            .timestamp(645181813)
-            .aggr_set();
+        let m0 = Telemetry::new("lO", 3.211).timestamp(645181811).aggr_set();
+        let m1 = Telemetry::new("lO", 4.322).timestamp(645181812).aggr_set();
+        let m2 = Telemetry::new("lO", 5.433).timestamp(645181813).aggr_set();
 
         let mut bkt = Buckets::new(bin_width);
         bkt.add(m0);
@@ -388,9 +370,7 @@ mod test {
     #[test]
     fn test_reset_add_counter_metric() {
         let mut buckets = Buckets::default();
-        let m0 = Telemetry::new("some.metric", 1.0)
-            .aggr_sum()
-            .timestamp(101);
+        let m0 = Telemetry::new("some.metric", 1.0).aggr_sum().timestamp(101);
         let m1 = m0.clone();
 
         buckets.add(m0);
@@ -411,26 +391,14 @@ mod test {
     fn test_true_histogram() {
         let mut buckets = Buckets::default();
 
-        let dt_0 = UTC.ymd(1996, 10, 7)
-            .and_hms_milli(10, 11, 11, 0)
-            .timestamp();
-        let dt_1 = UTC.ymd(1996, 10, 7)
-            .and_hms_milli(10, 11, 12, 0)
-            .timestamp();
-        let dt_2 = UTC.ymd(1996, 10, 7)
-            .and_hms_milli(10, 11, 13, 0)
-            .timestamp();
+        let dt_0 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 11, 0).timestamp();
+        let dt_1 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 12, 0).timestamp();
+        let dt_2 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 13, 0).timestamp();
 
         let name = String::from("some.metric");
-        let m0 = Telemetry::new("some.metric", 1.0)
-            .timestamp(dt_0)
-            .aggr_summarize();
-        let m1 = Telemetry::new("some.metric", 2.0)
-            .timestamp(dt_1)
-            .aggr_summarize();
-        let m2 = Telemetry::new("some.metric", 3.0)
-            .timestamp(dt_2)
-            .aggr_summarize();
+        let m0 = Telemetry::new("some.metric", 1.0).timestamp(dt_0).aggr_summarize();
+        let m1 = Telemetry::new("some.metric", 2.0).timestamp(dt_1).aggr_summarize();
+        let m2 = Telemetry::new("some.metric", 3.0).timestamp(dt_2).aggr_summarize();
 
         buckets.add(m0.clone());
         buckets.add(m1.clone());
@@ -496,14 +464,9 @@ mod test {
         // require this explicit reset, only the +/- on the metric value.
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Telemetry::new("some.metric", 100.0)
-            .timestamp(0)
-            .aggr_set();
+        let metric = Telemetry::new("some.metric", 100.0).timestamp(0).aggr_set();
         buckets.add(metric);
-        let delta_metric = Telemetry::new("some.metric", -11.5)
-            .timestamp(0)
-            .aggr_sum()
-            .persist();
+        let delta_metric = Telemetry::new("some.metric", -11.5).timestamp(0).aggr_sum().persist();
         buckets.add(delta_metric);
         assert_eq!(Some(88.5), buckets.get(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.count());
@@ -547,25 +510,13 @@ mod test {
     #[test]
     fn test_raws_store_one_point_per_second() {
         let mut buckets = Buckets::default();
-        let dt_0 = UTC.ymd(2016, 9, 13)
-            .and_hms_milli(11, 30, 0, 0)
-            .timestamp();
-        let dt_1 = UTC.ymd(2016, 9, 13)
-            .and_hms_milli(11, 30, 1, 0)
-            .timestamp();
+        let dt_0 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 0, 0).timestamp();
+        let dt_1 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 1, 0).timestamp();
 
-        buckets.add(Telemetry::new("some.metric", 1.0)
-                        .timestamp(dt_0)
-                        .aggr_set());
-        buckets.add(Telemetry::new("some.metric", 2.0)
-                        .timestamp(dt_0)
-                        .aggr_set());
-        buckets.add(Telemetry::new("some.metric", 3.0)
-                        .timestamp(dt_0)
-                        .aggr_set());
-        buckets.add(Telemetry::new("some.metric", 4.0)
-                        .timestamp(dt_1)
-                        .aggr_set());
+        buckets.add(Telemetry::new("some.metric", 1.0).timestamp(dt_0).aggr_set());
+        buckets.add(Telemetry::new("some.metric", 2.0).timestamp(dt_0).aggr_set());
+        buckets.add(Telemetry::new("some.metric", 3.0).timestamp(dt_0).aggr_set());
+        buckets.add(Telemetry::new("some.metric", 4.0).timestamp(dt_1).aggr_set());
 
         let mname = String::from("some.metric");
         let metrics = buckets.get(&mname).unwrap();

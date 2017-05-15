@@ -1,3 +1,6 @@
+chain_one_line_max = 80
+chain_indent = "Block"
+
 reorder_imports = true 
 reorder_imported_names = true
 wrap_comments = true 
