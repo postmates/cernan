@@ -23,7 +23,6 @@
 extern crate byteorder;
 extern crate chrono;
 extern crate clap;
-extern crate flate2;
 extern crate glob;
 extern crate hopper;
 extern crate hyper;
@@ -32,6 +31,7 @@ extern crate lua;
 extern crate protobuf;
 extern crate quantiles;
 extern crate rand;
+#[cfg(feature = "firehose")]
 extern crate rusoto;
 extern crate seahash;
 extern crate serde;

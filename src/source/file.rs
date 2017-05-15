@@ -36,11 +36,11 @@ pub struct FileServer {
 }
 
 /// The configuration struct for 'FileServer'.
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct FileServerConfig {
     /// The path that FileServer will watch. Globs are allowed and FileServer
     /// will watch multiple files.
-    pub path: PathBuf,
+    pub path: Option<PathBuf>,
     /// The maximum number of lines to read from a file before switching to a
     /// new file.
     pub max_read_lines: usize,
@@ -49,7 +49,19 @@ pub struct FileServerConfig {
     /// The forwards which FileServer will obey.
     pub forwards: Vec<String>,
     /// The configured name of FileServer.
-    pub config_path: String,
+    pub config_path: Option<String>,
+}
+
+impl Default for FileServerConfig {
+    fn default() -> Self {
+        FileServerConfig {
+            path: None,
+            max_read_lines: 10_000,
+            tags: metric::TagMap::default(),
+            forwards: Vec::default(),
+            config_path: None,
+        }
+    }
 }
 
 impl FileServer {
@@ -58,7 +70,9 @@ impl FileServer {
     pub fn new(chans: util::Channel, config: FileServerConfig) -> FileServer {
         FileServer {
             chans: chans,
-            path: config.path,
+            path: config
+                .path
+                .expect("must specify a 'path' for FileServer"),
             tags: config.tags,
             max_read_lines: config.max_read_lines,
         }

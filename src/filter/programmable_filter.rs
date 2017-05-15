@@ -406,13 +406,25 @@ pub struct ProgrammableFilter {
     last_flush_idx: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ProgrammableFilterConfig {
-    pub scripts_directory: PathBuf,
-    pub script: PathBuf,
+    pub scripts_directory: Option<PathBuf>,
+    pub script: Option<PathBuf>,
     pub forwards: Vec<String>,
-    pub config_path: String,
+    pub config_path: Option<String>,
     pub tags: metric::TagMap,
+}
+
+impl Default for ProgrammableFilterConfig {
+    fn default() -> Self {
+        ProgrammableFilterConfig {
+            scripts_directory: None,
+            script: None,
+            forwards: Vec::default(),
+            config_path: None,
+            tags: metric::TagMap::default(),
+        }
+    }
 }
 
 impl ProgrammableFilter {
@@ -424,6 +436,7 @@ impl ProgrammableFilter {
         let mut path = String::new();
         path.push_str(config
                           .scripts_directory
+                          .expect("must have a specified scripts_directory")
                           .to_str()
                           .expect("must have valid unicode scripts_directory"));
         path.push_str("/?.lua");
@@ -435,7 +448,10 @@ impl ProgrammableFilter {
         state.set_fns(&PAYLOAD_LIB, 0);
         state.set_global("payload");
 
-        let script_path = &config.script.to_str().unwrap();
+        let script = &config
+                          .script
+                          .expect("must have a specified scripts config");
+        let script_path = script.to_str().unwrap();
         match state.load_file(script_path) {
             ThreadStatus::Ok => trace!("was able to load script at {}", script_path),
             ThreadStatus::SyntaxError => {
@@ -467,7 +483,9 @@ impl ProgrammableFilter {
 
         ProgrammableFilter {
             state: state,
-            path: config.config_path,
+            path: config
+                .config_path
+                .expect("must have a config_path for ProgrammableFilter"),
             global_tags: config.tags,
             last_flush_idx: 0,
         }

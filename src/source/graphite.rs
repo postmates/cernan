@@ -19,23 +19,23 @@ pub struct Graphite {
     tags: Arc<metric::TagMap>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct GraphiteConfig {
     pub host: String,
     pub port: u16,
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
-    pub config_path: String,
+    pub config_path: Option<String>,
 }
 
 impl Default for GraphiteConfig {
     fn default() -> GraphiteConfig {
         GraphiteConfig {
-            host: String::from("localhost"),
+            host: "localhost".to_string(),
             port: 2003,
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
-            config_path: "sources.graphite".to_string(),
+            config_path: Some("sources.graphite".to_string()),
         }
     }
 }

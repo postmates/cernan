@@ -16,10 +16,10 @@ mod integration {
             script.push("identity.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.identity".to_string(),
+                config_path: Some("filters.identity".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -45,10 +45,10 @@ mod integration {
             script.push("clear_metrics.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.clear_metrics".to_string(),
+                config_path: Some("filters.clear_metrics".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -72,10 +72,10 @@ mod integration {
             script.push("clear_logs.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.clear_logs".to_string(),
+                config_path: Some("filters.clear_logs".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -100,10 +100,10 @@ mod integration {
             script.push("remove_keys.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.remove_keys".to_string(),
+                config_path: Some("filters.remove_keys".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -135,10 +135,10 @@ mod integration {
             script.push("remove_keys.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.remove_keys".to_string(),
+                config_path: Some("filters.remove_keys".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -165,10 +165,10 @@ mod integration {
             script.push("insufficient_args.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.no_args_no_crash".to_string(),
+                config_path: Some("filters.no_args_no_crash".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -195,10 +195,10 @@ mod integration {
             script.push("missing_func.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.missing_func".to_string(),
+                config_path: Some("filters.missing_func".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -223,10 +223,10 @@ mod integration {
             script.push("demonstrate_require.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.demonstrate_require".to_string(),
+                config_path: Some("filters.demonstrate_require".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -258,10 +258,10 @@ mod integration {
             script.push("add_keys.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.add_keys".to_string(),
+                config_path: Some("filters.add_keys".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -293,10 +293,10 @@ mod integration {
             script.push("add_keys.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.add_keys".to_string(),
+                config_path: Some("filters.add_keys".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -322,10 +322,10 @@ mod integration {
             script.push("keep_count.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.keep_count".to_string(),
+                config_path: Some("filters.keep_count".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -403,10 +403,10 @@ mod integration {
             script.push("collectd_scrub.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.collectd_scrub".to_string(),
+                config_path: Some("filters.collectd_scrub".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -445,10 +445,10 @@ mod integration {
             script.push("collectd_scrub.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.collectd_scrub".to_string(),
+                config_path: Some("filters.collectd_scrub".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -486,10 +486,10 @@ mod integration {
             script.push("json_parse.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.json_parse".to_string(),
+                config_path: Some("filters.json_parse".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);

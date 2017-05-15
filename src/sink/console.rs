@@ -34,14 +34,24 @@ impl Console {
 /// The configuration struct for Console. There's not a whole lot to configure
 /// here, independent of other sinks, but Console does do aggregations and that
 /// requires knowing what the user wants for `bin_width`.
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct ConsoleConfig {
     /// The sink's unique name in the routing topology.
-    pub config_path: String,
+    pub config_path: Option<String>,
     /// Sets the bin width for Console's underlying
     /// [bucket](../buckets/struct.Bucket.html).
     pub bin_width: i64,
     pub flush_interval: u64,
+}
+
+impl Default for ConsoleConfig {
+    fn default() -> ConsoleConfig {
+        ConsoleConfig {
+            bin_width: 1,
+            flush_interval: 60,
+            config_path: None,
+        }
+    }
 }
 
 impl ConsoleConfig {
@@ -57,7 +67,7 @@ impl ConsoleConfig {
     /// ```
     pub fn new(config_path: String, flush_interval: u64) -> ConsoleConfig {
         ConsoleConfig {
-            config_path: config_path,
+            config_path: Some(config_path),
             bin_width: 1,
             flush_interval: flush_interval,
         }

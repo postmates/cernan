@@ -29,7 +29,7 @@ pub struct InfluxDB {
 ///
 /// The cernan InfluxDB integration is done by HTTP/S. The options present here
 /// assume that integration, as well as cernan inside-baseball.
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct InfluxDBConfig {
     /// If secure, use HTTPS. Else, HTTP.
     pub secure: bool,
@@ -41,11 +41,25 @@ pub struct InfluxDBConfig {
     /// The port of the host machine toward which to report.
     pub port: u16,
     /// The name of the influxdb sink in cernan.
-    pub config_path: String,
+    pub config_path: Option<String>,
     /// The default tags to apply to all telemetry flowing through the sink.
     pub tags: TagMap,
     /// The interval, in seconds, on which the InfluxDB sink will report.
     pub flush_interval: u64,
+}
+
+impl Default for InfluxDBConfig {
+    fn default() -> Self {
+        InfluxDBConfig {
+            port: 8089,
+            secure: true,
+            host: "localhost".to_string(),
+            db: "cernan".to_string(),
+            config_path: None,
+            tags: Default::default(),
+            flush_interval: 60,
+        }
+    }
 }
 
 #[inline]
@@ -215,7 +229,7 @@ mod test {
             host: "127.0.0.1".to_string(),
             secure: false,
             port: 1987,
-            config_path: "sinks.influxdb".to_string(),
+            config_path: Some("sinks.influxdb".to_string()),
             tags: tags.clone(),
             flush_interval: 60,
         };

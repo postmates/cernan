@@ -18,13 +18,25 @@ pub struct NativeServer {
     tags: metric::TagMap,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct NativeServerConfig {
     pub ip: String,
     pub port: u16,
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
-    pub config_path: String,
+    pub config_path: Option<String>,
+}
+
+impl Default for NativeServerConfig {
+    fn default() -> Self {
+        NativeServerConfig {
+            ip: "0.0.0.0".to_string(),
+            port: 1972,
+            tags: metric::TagMap::default(),
+            forwards: Vec::default(),
+            config_path: None,
+        }
+    }
 }
 
 impl NativeServer {

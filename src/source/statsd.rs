@@ -16,24 +16,24 @@ pub struct Statsd {
     tags: sync::Arc<metric::TagMap>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct StatsdConfig {
     pub host: String,
     pub port: u16,
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
-    pub config_path: String,
+    pub config_path: Option<String>,
     pub delete_gauges: bool,
 }
 
 impl Default for StatsdConfig {
     fn default() -> StatsdConfig {
         StatsdConfig {
-            host: String::from("localhost"),
+            host: "localhost".to_string(),
             port: 8125,
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
-            config_path: "sources.statsd".to_string(),
+            config_path: None,
             delete_gauges: false,
         }
     }

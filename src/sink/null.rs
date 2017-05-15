@@ -10,7 +10,7 @@ impl Null {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct NullConfig {
     pub config_path: String,
 }

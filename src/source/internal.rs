@@ -19,10 +19,10 @@ pub struct Internal {
 }
 
 /// The configuration struct for 'Internal'
-#[derive(Debug,Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct InternalConfig {
     /// The configured name of Internal.
-    pub config_path: String,
+    pub config_path: Option<String>,
     /// The forwards which Internal will obey.
     pub forwards: Vec<String>,
     /// The default tags to apply to each Telemetry that comes through the
@@ -35,7 +35,7 @@ impl Default for InternalConfig {
         InternalConfig {
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
-            config_path: "sources.internal".to_string(),
+            config_path: Some("sources.internal".to_string()),
         }
     }
 }

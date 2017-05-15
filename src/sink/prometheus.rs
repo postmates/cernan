@@ -20,12 +20,23 @@ pub struct Prometheus {
     http_srv: Listening,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct PrometheusConfig {
     pub bin_width: i64,
     pub host: String,
     pub port: u16,
-    pub config_path: String,
+    pub config_path: Option<String>,
+}
+
+impl Default for PrometheusConfig {
+    fn default() -> Self {
+        PrometheusConfig {
+            bin_width: 1,
+            host: "localhost".to_string(),
+            port: 8086,
+            config_path: None,
+        }
+    }
 }
 
 struct SenderHandler {

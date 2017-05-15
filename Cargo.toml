@@ -17,31 +17,34 @@ doc = false
 byteorder = "1.0"
 chrono = "0.3"
 clap = "2.20.5"
-fern = "0.3.5"
-flate2 = "0.2"
+fern = "0.4"
 glob = "0.2.11"
-hopper = "0.2.1"
+hopper = "0.3"
 hyper = "0.10"
 hyper-native-tls = "0.2"
 lazy_static = "0.2.1"
 libc = "0.2"
 log = "0.3.6"
-lua = { git = "https://github.com/blt/rust-lua53.git", branch = "master" } 
+lua = { git = "https://github.com/blt/rust-lua53.git", branch = "master" }
 protobuf = "1.2"
-quantiles = "0.4"
+quantiles = { version = "0.5", features = ["serde_support"] }
 rand = "0.3"
-rusoto = {version = "0.24.0", features = ["firehose"]}
+rusoto = { version = "0.24.0", features = ["firehose"], optional = true }
 seahash = "3.0"
-serde = "0.9"
-serde_derive = "0.9"
-serde_json = "0.9"
-toml = "0.2.0"
+serde = { version = "1.0", features = ["rc"] }
+serde_derive = "1.0"
+serde_json = "1.0"
+toml = "0.4"
 url = "1.4.0"
-uuid = {version = "0.4", features = ["v4"]}
+uuid = {version = "0.5", features = ["v4"]}
 
 [dev-dependencies]
 tempdir = "0.3"
 quickcheck = "0.4"
+
+[features]
+default = []
+firehose = ["rusoto"]
 
 [profile.dev]
 codegen-units = 4

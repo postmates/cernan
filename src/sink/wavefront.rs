@@ -20,15 +20,42 @@ pub struct Wavefront {
     flush_interval: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct WavefrontConfig {
     pub bin_width: i64,
     pub host: String,
     pub port: u16,
-    pub config_path: String,
+    pub config_path: Option<String>,
     pub percentiles: Vec<(String, f64)>,
     pub tags: TagMap,
     pub flush_interval: u64,
+}
+
+impl Default for WavefrontConfig {
+    fn default() -> WavefrontConfig {
+        let percentiles = vec![("min".to_string(), 0.0),
+                               ("max".to_string(), 1.0),
+                               ("2".to_string(), 0.02),
+                               ("9".to_string(), 0.09),
+                               ("25".to_string(), 0.25),
+                               ("50".to_string(), 0.5),
+                               ("75".to_string(), 0.75),
+                               ("90".to_string(), 0.90),
+                               ("91".to_string(), 0.91),
+                               ("95".to_string(), 0.95),
+                               ("98".to_string(), 0.98),
+                               ("99".to_string(), 0.99),
+                               ("999".to_string(), 0.999)];
+        WavefrontConfig {
+            bin_width: 1,
+            host: "localhost".to_string(),
+            port: 2878,
+            config_path: Some("sinks.wavefront".to_string()),
+            percentiles: percentiles,
+            tags: TagMap::default(),
+            flush_interval: 60,
+        }
+    }
 }
 
 #[inline]
@@ -266,7 +293,7 @@ mod test {
             bin_width: 1,
             host: "127.0.0.1".to_string(),
             port: 1987,
-            config_path: "sinks.wavefront".to_string(),
+            config_path: Some("sinks.wavefront".to_string()),
             tags: tags.clone(),
             percentiles: percentiles,
             flush_interval: 60,

@@ -20,12 +20,23 @@ pub struct Native {
     flush_interval: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct NativeConfig {
     pub port: u16,
     pub host: String,
-    pub config_path: String,
+    pub config_path: Option<String>,
     pub flush_interval: u64,
+}
+
+impl Default for NativeConfig {
+    fn default() -> Self {
+        NativeConfig {
+            port: 1972,
+            host: "localhost".to_string(),
+            config_path: None,
+            flush_interval: 60,
+        }
+    }
 }
 
 impl Native {
