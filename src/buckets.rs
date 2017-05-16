@@ -126,15 +126,17 @@ impl Buckets {
     /// bucket.add(metric);
     /// ```
     pub fn add(&mut self, value: Telemetry) {
-        let mut hsh =
-            match self.keys.binary_search_by(|probe| probe.partial_cmp(&value.name).unwrap()) {
-                Ok(hsh_idx) => self.values.index_mut(hsh_idx),
-                Err(hsh_idx) => {
-                    self.keys.insert(hsh_idx, value.name.to_owned());
-                    self.values.insert(hsh_idx, Vec::with_capacity(128));
-                    self.values.index_mut(hsh_idx)
-                }
-            };
+        let mut hsh = match self.keys
+                  .binary_search_by(|probe| {
+                                        probe.partial_cmp(&value.name).unwrap()
+                                    }) {
+            Ok(hsh_idx) => self.values.index_mut(hsh_idx),
+            Err(hsh_idx) => {
+                self.keys.insert(hsh_idx, value.name.to_owned());
+                self.values.insert(hsh_idx, Vec::with_capacity(128));
+                self.values.index_mut(hsh_idx)
+            }
+        };
         let bin_width = self.bin_width;
 
         match hsh.binary_search_by(|probe| probe.within(bin_width, &value)) {
@@ -287,7 +289,8 @@ mod test {
                     Ok(idx) => mp[idx] += m,
                     Err(idx) => {
                         if m.persist && idx > 0 && mp[idx - 1].name == m.name {
-                            let mut cur = mp[idx - 1].clone().timestamp(m.timestamp).persist();
+                            let mut cur =
+                                mp[idx - 1].clone().timestamp(m.timestamp).persist();
                             cur += m;
                             mp.insert(idx, cur)
                         } else {
@@ -466,7 +469,8 @@ mod test {
         let rmname = String::from("some.metric");
         let metric = Telemetry::new("some.metric", 100.0).timestamp(0).aggr_set();
         buckets.add(metric);
-        let delta_metric = Telemetry::new("some.metric", -11.5).timestamp(0).aggr_sum().persist();
+        let delta_metric =
+            Telemetry::new("some.metric", -11.5).timestamp(0).aggr_sum().persist();
         buckets.add(delta_metric);
         assert_eq!(Some(88.5), buckets.get(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.count());
@@ -684,17 +688,23 @@ mod test {
                     let l_ckms = c_v.1.clone();
                     let r_ckms = v[i].ckms();
 
-                    assert!((l_ckms.sum().unwrap() - r_ckms.sum().unwrap()).abs() < 0.0001);
-                    assert!((l_ckms.cma().unwrap() - r_ckms.cma().unwrap()).abs() < 0.0001);
-                    assert_eq!(l_ckms.count(), r_ckms.count());
-                    assert!((l_ckms.query(0.5).unwrap().1 - r_ckms.query(0.5).unwrap().1).abs() <
+                    assert!((l_ckms.sum().unwrap() - r_ckms.sum().unwrap()).abs() <
                             0.0001);
-                    assert!((l_ckms.query(0.75).unwrap().1 - r_ckms.query(0.75).unwrap().1)
-                                .abs() < 0.0001);
-                    assert!((l_ckms.query(0.99).unwrap().1 - r_ckms.query(0.99).unwrap().1)
-                                .abs() < 0.0001);
-                    assert!((l_ckms.query(0.999).unwrap().1 - r_ckms.query(0.999).unwrap().1)
-                                .abs() < 0.0001);
+                    assert!((l_ckms.cma().unwrap() - r_ckms.cma().unwrap()).abs() <
+                            0.0001);
+                    assert_eq!(l_ckms.count(), r_ckms.count());
+                    assert!((l_ckms.query(0.5).unwrap().1 -
+                             r_ckms.query(0.5).unwrap().1)
+                                    .abs() < 0.0001);
+                    assert!((l_ckms.query(0.75).unwrap().1 -
+                             r_ckms.query(0.75).unwrap().1)
+                                    .abs() < 0.0001);
+                    assert!((l_ckms.query(0.99).unwrap().1 -
+                             r_ckms.query(0.99).unwrap().1)
+                                    .abs() < 0.0001);
+                    assert!((l_ckms.query(0.999).unwrap().1 -
+                             r_ckms.query(0.999).unwrap().1)
+                                    .abs() < 0.0001);
                 }
             }
 

@@ -29,7 +29,9 @@ pub trait Filter {
                event: metric::Event,
                res: &mut Vec<metric::Event>)
                -> Result<(), FilterError>;
-    fn run(&mut self, recv: hopper::Receiver<metric::Event>, mut chans: util::Channel) {
+    fn run(&mut self,
+           recv: hopper::Receiver<metric::Event>,
+           mut chans: util::Channel) {
         let mut attempts = 0;
         let mut events = Vec::with_capacity(64);
         let mut recv = recv.into_iter();
@@ -46,7 +48,8 @@ pub trait Filter {
                             }
                         }
                         Err(fe) => {
-                            error!("Failed to run filter with error: {:?}", name_in_fe(&fe));
+                            error!("Failed to run filter with error: {:?}",
+                                   name_in_fe(&fe));
                             let event = event_in_fe(fe);
                             util::send("filter.error_path", &mut chans, event);
                         }

@@ -50,7 +50,9 @@ impl Statsd {
     }
 }
 
-fn handle_udp(mut chans: util::Channel, tags: sync::Arc<metric::TagMap>, socket: UdpSocket) {
+fn handle_udp(mut chans: util::Channel,
+              tags: sync::Arc<metric::TagMap>,
+              socket: UdpSocket) {
     let mut buf = [0; 8192];
     let mut metrics = Vec::new();
     let basic_metric = sync::Arc::new(Some(metric::Telemetry::default()
@@ -88,11 +90,14 @@ impl Source for Statsd {
             Ok(ips) => {
                 let ips: Vec<_> = ips.collect();
                 for addr in ips {
-                    let listener = UdpSocket::bind(addr).expect("Unable to bind to TCP socket");
+                    let listener =
+                        UdpSocket::bind(addr).expect("Unable to bind to TCP socket");
                     let chans = self.chans.clone();
                     let tags = self.tags.clone();
                     info!("server started on {:?} {}", addr, self.port);
-                    joins.push(thread::spawn(move || handle_udp(chans, tags, listener)));
+                    joins.push(thread::spawn(move || {
+                                                 handle_udp(chans, tags, listener)
+                                             }));
                 }
             }
             Err(e) => {

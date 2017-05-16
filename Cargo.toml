@@ -29,7 +29,6 @@ lua = { git = "https://github.com/blt/rust-lua53.git", branch = "master" }
 protobuf = "1.2"
 quantiles = { version = "0.5", features = ["serde_support"] }
 rand = "0.3"
-rusoto = { version = "0.24.0", features = ["firehose"], optional = true }
 seahash = "3.0"
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
@@ -38,13 +37,13 @@ toml = "0.4"
 url = "1.4.0"
 uuid = {version = "0.5", features = ["v4"]}
 
+[dependencies.rusoto]
+version = "0.24"
+features = ["firehose"]
+
 [dev-dependencies]
 tempdir = "0.3"
 quickcheck = "0.4"
-
-[features]
-default = []
-firehose = ["rusoto"]
 
 [profile.dev]
 codegen-units = 4

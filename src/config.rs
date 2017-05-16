@@ -5,7 +5,7 @@
 
 use clap::{App, Arg};
 use metric::TagMap;
-// use rusoto::Region;
+use rusoto::Region;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -14,20 +14,21 @@ use toml;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
-use super::filter::ProgrammableFilterConfig;
-use super::sink::ConsoleConfig;
-use super::sink::InfluxDBConfig;
-use super::sink::NativeConfig;
+use filter::ProgrammableFilterConfig;
 
-use super::sink::NullConfig;
-use super::sink::PrometheusConfig;
-use super::sink::WavefrontConfig;
-use super::source::FileServerConfig;
-use super::source::GraphiteConfig;
-use super::source::InternalConfig;
-use super::source::NativeServerConfig;
+use sink::ConsoleConfig;
+use sink::FirehoseConfig;
+use sink::InfluxDBConfig;
+use sink::NativeConfig;
+use sink::NullConfig;
+use sink::PrometheusConfig;
+use sink::WavefrontConfig;
 
-use super::source::StatsdConfig;
+use source::FileServerConfig;
+use source::GraphiteConfig;
+use source::InternalConfig;
+use source::NativeServerConfig;
+use source::StatsdConfig;
 
 // This stinks and is verbose. Once
 // https://github.com/rust-lang/rust/issues/41681 lands we'll be able to do this
@@ -61,6 +62,7 @@ pub struct Args {
     pub influxdb: Option<InfluxDBConfig>,
     pub native_sink_config: Option<NativeConfig>,
     pub prometheus: Option<PrometheusConfig>,
+    pub firehosen: Option<Vec<FirehoseConfig>>,
     // sources
     pub files: Option<Vec<FileServerConfig>>,
     pub internal: InternalConfig,
@@ -86,6 +88,7 @@ impl Default for Args {
             influxdb: None,
             prometheus: None,
             native_sink_config: None,
+            firehosen: None,
             // sources
             statsds: None,
             graphites: None,
@@ -146,14 +149,16 @@ pub fn parse_args() -> Args {
 
 pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     let mut args = Args::default();
-    let value: toml::Value = toml::from_str(&buffer).expect("could not parse config file");
+    let value: toml::Value =
+        toml::from_str(&buffer).expect("could not parse config file");
 
     args.verbose = verbosity;
 
     args.data_directory = value
         .get("data-directory")
         .map(|s| {
-                 let s = s.as_str().expect("data-directory value must be valid string");
+                 let s =
+                     s.as_str().expect("data-directory value must be valid string");
                  Path::new(s).to_path_buf()
              })
         .unwrap_or(args.data_directory);
@@ -161,7 +166,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     args.scripts_directory = value
         .get("scripts-directory")
         .map(|s| {
-                 let s = s.as_str().expect("scripts-directory value must be valid string");
+                 let s =
+                     s.as_str().expect("scripts-directory value must be valid string");
                  Path::new(s).to_path_buf()
              })
         .unwrap_or(args.scripts_directory);
@@ -189,7 +195,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     args.filters = value
         .get("filters")
         .map(|fltr| {
-            let mut filters: HashMap<String, ProgrammableFilterConfig> = HashMap::new();
+            let mut filters: HashMap<String, ProgrammableFilterConfig> =
+                HashMap::new();
             for (name, tbl) in fltr.as_table().unwrap().iter() {
                 match tbl.get("script") {
                     Some(pth) => {
@@ -226,7 +233,12 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
     if let Some(sinks) = value.get("sinks") {
         let sinks = sinks.as_table().expect("sinks must be in table format");
 
-        args.null = sinks.get("null").map(|_| NullConfig { config_path: "sinks.null".to_string() });
+        args.null = sinks.get("null").map(|_| {
+                                              NullConfig {
+                                                  config_path: "sinks.null"
+                                                      .to_string(),
+                                              }
+                                          });
 
         args.console = sinks
             .get("console")
@@ -239,10 +251,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                     .unwrap_or(res.bin_width);
 
                 res.flush_interval = snk.get("flush_interval")
-                    .map(|fi| {
-                        fi.as_integer().expect("could not parse sinks.console.flush_interval") as
-                        u64
-                    })
+                    .map(|fi| fi.as_integer().expect("could not parse sinks.console.flush_interval") as u64)
                     .unwrap_or(args.flush_interval);
 
                 res
@@ -258,13 +267,13 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 res.percentiles = snk.get("percentiles")
                     .and_then(|t| t.as_table())
                     .map(|tbl| {
-                        let mut prcnt = Vec::default();
-                        for (k, v) in tbl.iter() {
-                            let v: f64 = v.as_float().expect("percentile value must be a float");
-                            prcnt.push((k.clone(), v));
-                        }
-                        prcnt
-                    })
+                             let mut prcnt = Vec::default();
+                             for (k, v) in tbl.iter() {
+                                 let v: f64 = v.as_float().expect("percentile value must be a float");
+                                 prcnt.push((k.clone(), v));
+                             }
+                             prcnt
+                         })
                     .unwrap_or(res.percentiles);
 
                 res.port = snk.get("port")
@@ -280,10 +289,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                     .unwrap_or(res.bin_width);
 
                 res.flush_interval = snk.get("flush_interval")
-                    .map(|fi| {
-                        fi.as_integer().expect("could not parse sinks.wavefront.flush_interval") as
-                        u64
-                    })
+                    .map(|fi| fi.as_integer().expect("could not parse sinks.wavefront.flush_interval") as u64)
                     .unwrap_or(args.flush_interval);
 
                 res.tags = global_tags.clone();
@@ -314,10 +320,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                     .unwrap_or(res.db);
 
                 res.flush_interval = snk.get("flush_interval")
-                    .map(|fi| {
-                        fi.as_integer().expect("could not parse sinks.influxdb.flush_interval") as
-                        u64
-                    })
+                    .map(|fi| fi.as_integer().expect("could not parse sinks.influxdb.flush_interval") as u64)
                     .unwrap_or(args.flush_interval);
 
                 res.tags = global_tags.clone();
@@ -336,9 +339,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                     .unwrap_or(res.port);
 
                 res.host = snk.get("host")
-                    .map(|p| {
-                             p.as_str().expect("could not parse sinks.prometheus.host").to_string()
-                         })
+                    .map(|p| p.as_str().expect("could not parse sinks.prometheus.host").to_string())
                     .unwrap_or(res.host);
 
                 res.bin_width = snk.get("bin_width")
@@ -363,12 +364,56 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                     .unwrap_or(res.host);
 
                 res.flush_interval = snk.get("flush_interval")
-                    .map(|fi| {
-                        fi.as_integer().expect("could not parse sinks.native.flush_interval") as u64
-                    })
+                    .map(|fi| fi.as_integer().expect("could not parse sinks.native.flush_interval") as u64)
                     .unwrap_or(args.flush_interval);
 
                 res
+            });
+
+        args.firehosen = sinks
+            .get("firehose")
+            .map(|snk| {
+                let mut firehosen = Vec::new();
+                for (name, tbl) in snk.as_table().unwrap().iter() {
+                    println!("TBL: {:?}", tbl);
+                    let mut res = FirehoseConfig::default();
+                    res.config_path = Some(format!("sinks.firehose.{}", name));
+
+                    let ds = tbl.get("delivery_stream")
+                        .map(|x| x.as_str().expect("delivery_stream must be a string"));
+                    if !ds.is_some() {
+                        continue;
+                    }
+
+                    res.delivery_stream = ds.map(|s| s.to_string());
+
+                    res.flush_interval = tbl.get("flush_interval")
+                        .map(|fi| fi.as_integer().expect("could not parse sinks.firehose.flush_interval") as u64)
+                        .unwrap_or(args.flush_interval);
+
+                    res.batch_size = tbl.get("batch_size")
+                        .map(|fi| fi.as_integer().expect("could not parse sinks.firehose.batch_size") as usize)
+                        .unwrap_or(res.batch_size);
+
+                    res.region = match tbl.get("region").map(|x| x.as_str().expect("region must be a string")) {
+                        Some("ap-northeast-1") => Some(Region::ApNortheast1),
+                        Some("ap-northeast-2") => Some(Region::ApNortheast2),
+                        Some("ap-south-1") => Some(Region::ApSouth1),
+                        Some("ap-southeast-1") => Some(Region::ApSoutheast1),
+                        Some("ap-southeast-2") => Some(Region::ApSoutheast2),
+                        Some("cn-north-1") => Some(Region::CnNorth1),
+                        Some("eu-central-1") => Some(Region::EuCentral1),
+                        Some("eu-west-1") => Some(Region::EuWest1),
+                        Some("sa-east-1") => Some(Region::SaEast1),
+                        Some("us-east-1") => Some(Region::UsEast1),
+                        Some("us-west-1") => Some(Region::UsWest1),
+                        Some("us-west-2") => Some(Region::UsWest2),
+                        Some(_) | None => res.region,
+                    };
+
+                    firehosen.push(res);
+                }
+                firehosen
             });
     }
 
@@ -409,10 +454,8 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                             // Someday a static analysis system will flag this as
                             // unsafe. Welcome.
                             fl.max_read_lines = tbl.get("max_read_lines")
-                                               .map(|mrl| {
-                            mrl.as_integer().expect("could not parse sinks.wavefront.port") as usize
-                        })
-                                               .unwrap_or(fl.max_read_lines);
+                                .map(|mrl| mrl.as_integer().expect("could not parse sinks.wavefront.port") as usize)
+                                .unwrap_or(fl.max_read_lines);
 
                             files.push(fl)
                         }
@@ -421,64 +464,6 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                 }
                 files
             });
-
-        // let mut firehosen: Vec<FirehoseConfig> = Vec::new();
-        // match value.lookup("firehose") {
-        //     Some(array) => {
-        //     }
-        //     None => {
-        //         if let Some(tbls) = value.lookup("sinks.firehose") {
-        //             for (key, tbl) in tbls.as_table().unwrap().iter() {
-        //                 match tbl.lookup("delivery_stream").map(|x| x.as_str()) {
-        //                     Some(ds) => {
-        //                         let bs = tbl.lookup("batch_size")
-        //                             .unwrap_or(&Value::Integer(450))
-        //                             .as_integer()
-        //                             .map(|i| i as usize)
-        //                             .unwrap();
-        //                         let r = tbl.lookup("region")
-        //                             .unwrap_or(&Value::String("us-west-2".into()))
-        //                             .as_str()
-        //                             .map(|s| match s {
-        // "ap-northeast-1" =>
-        // Region::ApNortheast1,
-        // "ap-northeast-2" =>
-        // Region::ApNortheast2,
-        //                                      "ap-south-1" => Region::ApSouth1,
-        // "ap-southeast-1" =>
-        // Region::ApSoutheast1,
-        // "ap-southeast-2" =>
-        // Region::ApSoutheast2,
-        //                                      "cn-north-1" => Region::CnNorth1,
-        //                                      "eu-central-1" => Region::EuCentral1,
-        //                                      "eu-west-1" => Region::EuWest1,
-        //                                      "sa-east-1" => Region::SaEast1,
-        //                                      "us-east-1" => Region::UsEast1,
-        //                                      "us-west-1" => Region::UsWest1,
-        //                                      "us-west-2" | _ => Region::UsWest2,
-        //                                  });
-        //                         let flush_interval = tbl.lookup("flush_interval")
-        //
-        // .unwrap_or(&Value::Integer(global_flush_interval))
-        //                             .as_integer()
-        //                             .map(|i| i as u64)
-        //                             .unwrap();
-        //                         firehosen.push(FirehoseConfig {
-        // delivery_stream:
-        // ds.unwrap().to_string(),
-        //                                            batch_size: bs,
-        //                                            region: r.unwrap(),
-        // config_path:
-        // format!("sinks.firehose.{}", key),
-        //                                            flush_interval: flush_interval,
-        //                                        })
-        //                     }
-        //                     None => continue,
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
 
         args.statsds = sources
             .get("statsd")
@@ -547,9 +532,7 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                             .unwrap_or(res.port);
 
                         res.host = tbl.get("host")
-                            .map(|p| {
-                                     p.as_str().expect("could not parse graphite host").to_string()
-                                 })
+                            .map(|p| p.as_str().expect("could not parse graphite host").to_string())
                             .unwrap_or(res.host);
 
                         res.forwards = tbl.get("forwards")
@@ -589,11 +572,18 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
                         res.config_path = Some(format!("sources.native.{}", name));
 
                         res.port = tbl.get("port")
-                            .map(|p| p.as_integer().expect("could not parse native port") as u16)
+                            .map(|p| {
+                                p.as_integer().expect("could not parse native port") as
+                                u16
+                            })
                             .unwrap_or(res.port);
 
                         res.ip = tbl.get("ip")
-                            .map(|p| p.as_str().expect("could not parse native ip").to_string())
+                            .map(|p| {
+                                     p.as_str()
+                                         .expect("could not parse native ip")
+                                         .to_string()
+                                 })
                             .unwrap_or(res.ip);
 
                         res.forwards = tbl.get("forwards")
@@ -611,7 +601,9 @@ pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
 
                         assert!(res.config_path.is_some());
 
-                        native_server_config.insert(format!("sources.native.{}", name), res);
+                        native_server_config.insert(format!("sources.native.{}",
+                                                            name),
+                                                    res);
                     }
                 }
                 native_server_config
@@ -910,7 +902,8 @@ scripts-directory = "/foo/bar"
         assert!(args.filters.is_some());
         let filters = args.filters.unwrap();
 
-        let config0: &ProgrammableFilterConfig = filters.get("filters.collectd_scrub").unwrap();
+        let config0: &ProgrammableFilterConfig =
+            filters.get("filters.collectd_scrub").unwrap();
         let script = config0.script.clone();
         assert_eq!(script.unwrap().to_str().unwrap(),
                    "/tmp/cernan-scripts/cernan_bridge.lua");
@@ -933,7 +926,8 @@ scripts-directory = "/foo/bar"
         assert!(args.filters.is_some());
         let filters = args.filters.unwrap();
 
-        let config0: &ProgrammableFilterConfig = filters.get("filters.collectd_scrub").unwrap();
+        let config0: &ProgrammableFilterConfig =
+            filters.get("filters.collectd_scrub").unwrap();
         let script = config0.script.clone();
         assert_eq!(script.unwrap().to_str().unwrap(), "data/cernan_bridge.lua");
         assert_eq!(config0.forwards, vec!["sinks.console"]);
@@ -1065,36 +1059,39 @@ scripts-directory = "/foo/bar"
         assert!(args.null.is_some());
     }
 
-    // //     #[test]
-    // //     fn config_file_firehose_complicated_sinks_style() {
-    // //         let config = r#"
-    // // [sinks]
-    // //   [sinks.firehose.stream_one]
-    // //   delivery_stream = "stream_one"
-    // //   batch_size = 20
-    // //   flush_interval = 15
+    #[test]
+    fn config_file_firehose_complicated_sinks_style() {
+        let config = r#"
+    [sinks]
+      [sinks.firehose.stream_one]
+      delivery_stream = "stream_one"
+      batch_size = 20
+      flush_interval = 15
+      region = "us-west-2"
 
-    // //   [sinks.firehose.stream_two]
-    // //   delivery_stream = "stream_two"
-    // //   batch_size = 800
-    // //   region = "us-east-1"
-    // // "#
-    // //                 .to_string();
+      [sinks.firehose.stream_two]
+      delivery_stream = "stream_two"
+      batch_size = 800
+      region = "us-east-1"
+    "#
+                .to_string();
 
-    // //         let args = parse_config_file(config, 4);
+        let args = parse_config_file(config, 4);
 
-    // //         assert_eq!(args.firehosen.len(), 2);
+        assert!(args.firehosen.is_some());
+        let firehosen = args.firehosen.unwrap();
 
-    // //         assert_eq!(args.firehosen[0].delivery_stream, "stream_one");
-    // //         assert_eq!(args.firehosen[0].batch_size, 20);
-    // //         assert_eq!(args.firehosen[0].region, Region::UsWest2);
-    // //         assert_eq!(args.firehosen[0].flush_interval, 15);
+        println!("FIREHOSEN: {:?}", firehosen);
+        assert_eq!(firehosen[0].delivery_stream, Some("stream_one".to_string()));
+        assert_eq!(firehosen[0].batch_size, 20);
+        assert_eq!(firehosen[0].region, Some(Region::UsWest2));
+        assert_eq!(firehosen[0].flush_interval, 15);
 
-    // //         assert_eq!(args.firehosen[1].delivery_stream, "stream_two");
-    // //         assert_eq!(args.firehosen[1].batch_size, 800);
-    // //         assert_eq!(args.firehosen[1].region, Region::UsEast1);
-    // //         assert_eq!(args.firehosen[1].flush_interval, 60); // default
-    // //     }
+        assert_eq!(firehosen[1].delivery_stream, Some("stream_two".to_string()));
+        assert_eq!(firehosen[1].batch_size, 800);
+        assert_eq!(firehosen[1].region, Some(Region::UsEast1));
+        assert_eq!(firehosen[1].flush_interval, 60); // default
+    }
 
     #[test]
     fn config_file_file_source_single_sources_style() {

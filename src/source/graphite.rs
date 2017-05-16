@@ -63,13 +63,17 @@ fn handle_tcp(chans: util::Channel,
                                  stream.local_addr());
                           let tags = tags.clone();
                           let chans = chans.clone();
-                          thread::spawn(move || { handle_stream(chans, tags, stream); });
+                          thread::spawn(move || {
+                                            handle_stream(chans, tags, stream);
+                                        });
                       }
                   })
 }
 
 
-fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: TcpStream) {
+fn handle_stream(mut chans: util::Channel,
+                 tags: Arc<metric::TagMap>,
+                 stream: TcpStream) {
     thread::spawn(move || {
         let mut line = String::new();
         let mut res = Vec::new();
@@ -107,11 +111,14 @@ impl Source for Graphite {
             Ok(ips) => {
                 let ips: Vec<_> = ips.collect();
                 for addr in ips {
-                    let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
+                    let listener =
+                        TcpListener::bind(addr).expect("Unable to bind to TCP socket");
                     let chans = self.chans.clone();
                     let tags = self.tags.clone();
                     info!("server started on {:?} {}", addr, self.port);
-                    joins.push(thread::spawn(move || handle_tcp(chans, tags, listener)));
+                    joins.push(thread::spawn(move || {
+                                                 handle_tcp(chans, tags, listener)
+                                             }));
                 }
             }
             Err(e) => {

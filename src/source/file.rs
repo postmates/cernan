@@ -148,7 +148,8 @@ impl FileWatcher {
         // way ahead of our current offset but we need to track where we _know_
         // we are based on lines because when we seek back to reset the inner
         // buffer of BufReader will get dumped.
-        assert!(self.offset <= self.reader.get_ref().seek(io::SeekFrom::Current(0)).unwrap());
+        assert!(self.offset <=
+                self.reader.get_ref().seek(io::SeekFrom::Current(0)).unwrap());
         let mut attempts = 0;
         while attempts < 3 {
             time::delay(attempts);
@@ -159,7 +160,8 @@ impl FileWatcher {
                     // potentially reset from metadata and, if no, go ahead and
                     // back up to the last known good offset.
                     if !self.reset_from_md() {
-                        let seek: bool = self.reader.seek(io::SeekFrom::Start(self.offset)).is_ok();
+                        let seek: bool =
+                            self.reader.seek(io::SeekFrom::Start(self.offset)).is_ok();
                         assert!(seek);
                     }
                 }
@@ -260,14 +262,12 @@ impl Source for FileServer {
                                 if sz > 0 {
                                     lines_read += 1;
                                     buffer.pop();
-                                    let path_name =
-                                        file.path.to_str().expect("could not make path_name");
+                                    let path_name = file.path.to_str().expect("could not make path_name");
                                     report_telemetry(format!("cernan.sources.file.{}.lines_read",
                                                              path_name),
                                                      1.0);
                                     trace!("{} | {}", path_name, buffer);
-                                    lines.push(metric::LogLine::new(path_name, &buffer)
-                                                   .overlay_tags_from_map(&self.tags));
+                                    lines.push(metric::LogLine::new(path_name, &buffer).overlay_tags_from_map(&self.tags));
                                     buffer.clear();
                                     if lines_read > self.max_read_lines {
                                         break;
@@ -329,7 +329,9 @@ mod test {
             let ln_sz = rng.gen_range(0, 256);
             let pause = rng.gen_range(1, 3);
             match i {
-                0...50 => FWAction::WriteLine(rng.gen_ascii_chars().take(ln_sz).collect()),
+                0...50 => {
+                    FWAction::WriteLine(rng.gen_ascii_chars().take(ln_sz).collect())
+                }
                 51...75 => FWAction::Pause(pause),
                 76...85 => FWAction::RotateFile,
                 86...95 => FWAction::DeleteFile,
@@ -344,7 +346,8 @@ mod test {
             let dir = tempdir::TempDir::new("file_watcher_qc").unwrap();
             let path = dir.path().join("a_file.log");
             let mut fp = fs::File::create(&path).expect("could not create");
-            let mut fw = FileWatcher::new(path.clone()).expect("must be able to create");
+            let mut fw =
+                FileWatcher::new(path.clone()).expect("must be able to create");
 
             let mut expected_read = Vec::new();
 
@@ -382,7 +385,8 @@ mod test {
                 while !expected_read.is_empty() {
                     match fw.read_line(&mut buf) {
                         Ok(sz) => {
-                            let exp = expected_read.pop().expect("must be a read here");
+                            let exp =
+                                expected_read.pop().expect("must be a read here");
                             assert_eq!(buf, *exp);
                             assert_eq!(sz, buf.len());
                             buf.clear();

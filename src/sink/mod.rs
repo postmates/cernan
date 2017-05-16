@@ -10,7 +10,6 @@ use std::sync;
 use time;
 
 mod console;
-#[cfg(feature = "firehose")]
 mod firehose;
 mod null;
 mod wavefront;
@@ -19,7 +18,6 @@ mod influxdb;
 mod prometheus;
 
 pub use self::console::{Console, ConsoleConfig};
-#[cfg(feature = "firehose")]
 pub use self::firehose::{Firehose, FirehoseConfig};
 pub use self::influxdb::{InfluxDB, InfluxDBConfig};
 pub use self::native::{Native, NativeConfig};
@@ -54,7 +52,8 @@ pub trait Sink {
                             match event {
                                 Event::TimerFlush(idx) => {
                                     if idx > last_flush_idx {
-                                        if let Some(flush_interval) = self.flush_interval() {
+                                        if let Some(flush_interval) =
+                                            self.flush_interval() {
                                             if idx % flush_interval == 0 {
                                                 self.flush();
                                             }

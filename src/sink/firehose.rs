@@ -18,11 +18,23 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct FirehoseConfig {
-    pub delivery_stream: String,
+    pub delivery_stream: Option<String>,
     pub batch_size: usize,
-    pub region: Region,
-    pub config_path: String,
+    pub region: Option<Region>,
+    pub config_path: Option<String>,
     pub flush_interval: u64,
+}
+
+impl Default for FirehoseConfig {
+    fn default() -> FirehoseConfig {
+        FirehoseConfig {
+            delivery_stream: None,
+            batch_size: 400,
+            region: None,
+            config_path: None,
+            flush_interval: 60,
+        }
+    }
 }
 
 pub struct Firehose {
@@ -37,8 +49,9 @@ impl Firehose {
     pub fn new(config: FirehoseConfig) -> Firehose {
         Firehose {
             buffer: Vec::new(),
-            delivery_stream_name: config.delivery_stream,
-            region: config.region,
+            delivery_stream_name:
+                config.delivery_stream.expect("delivery_stream cannot be None"),
+            region: config.region.expect("region cannot be None"),
             batch_size: config.batch_size,
             flush_interval: config.flush_interval,
         }
@@ -67,12 +80,16 @@ impl Sink for Firehose {
                     .filter(|m| m.value.len() < 1_024_000)
                     .map(|m| {
                         let mut pyld = Map::new();
-                        pyld.insert(String::from("Path"), Value::String((*m.path).to_string()));
-                        pyld.insert(String::from("Payload"), Value::String(m.value.clone()));
+                        pyld.insert(String::from("Path"),
+                                    Value::String((*m.path).to_string()));
+                        pyld.insert(String::from("Payload"),
+                                    Value::String(m.value.clone()));
                         pyld.insert(String::from("timestamp"),
                                     Value::String(format_time(m.time)));
                         pyld.insert(String::from("Uuid"),
-                                    Value::String(Uuid::new_v4().hyphenated().to_string()));
+                                    Value::String(Uuid::new_v4()
+                                                      .hyphenated()
+                                                      .to_string()));
                         for &(ref k, ref v) in m.tags.iter() {
                             pyld.insert(k.clone(), Value::String(v.clone()));
                         }
@@ -119,7 +136,8 @@ impl Sink for Firehose {
                                                           resource_not_found",
                                                          prbi.delivery_stream_name),
                                                  1.0);
-                                error!("Unable to write to resource, not found: {}", rnf_err);
+                                error!("Unable to write to resource, not found: {}",
+                                       rnf_err);
                                 break;
                             }
                             InvalidArgument(ia_err) => {
@@ -127,7 +145,8 @@ impl Sink for Firehose {
                                                           invalid_argument",
                                                          prbi.delivery_stream_name),
                                                  1.0);
-                                error!("Unable to write, invalid argument: {}", ia_err);
+                                error!("Unable to write, invalid argument: {}",
+                                       ia_err);
                                 break;
                             }
                             HttpDispatch(hd_err) => {
@@ -143,7 +162,8 @@ impl Sink for Firehose {
                                                           validation",
                                                          prbi.delivery_stream_name),
                                                  1.0);
-                                error!("Unable to write, validation failure: {}", v_err);
+                                error!("Unable to write, validation failure: {}",
+                                       v_err);
                                 break;
                             }
                             Unknown(u_err) => {
@@ -159,7 +179,8 @@ impl Sink for Firehose {
                                                           credentials",
                                                          prbi.delivery_stream_name),
                                                  1.0);
-                                error!("Unable to write, credential failure: {}", c_err);
+                                error!("Unable to write, credential failure: {}",
+                                       c_err);
                             }
                             ServiceUnavailable(su_err) => {
                                 report_telemetry(format!("cernan.sinks.firehose.{}.error.\

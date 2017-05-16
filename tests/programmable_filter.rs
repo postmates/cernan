@@ -3,7 +3,8 @@ mod integration {
 
         extern crate cernan;
 
-        use self::cernan::filter::{Filter, ProgrammableFilter, ProgrammableFilterConfig};
+        use self::cernan::filter::{Filter, ProgrammableFilter,
+                                   ProgrammableFilterConfig};
         use self::cernan::metric;
         use std::path::PathBuf;
         use std::sync::Arc;
@@ -80,10 +81,11 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let log = metric::LogLine::new("clear_me",
-                                           "i am the very model of the modern major general")
-                    .overlay_tag("foo", "bar")
-                    .overlay_tag("bizz", "bazz");
+            let log =
+                metric::LogLine::new("clear_me",
+                                     "i am the very model of the modern major general")
+                        .overlay_tag("foo", "bar")
+                        .overlay_tag("bizz", "bazz");
             let event = metric::Event::new_log(log);
 
             let mut events: Vec<metric::Event> = Vec::new();
@@ -108,14 +110,16 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_log = metric::LogLine::new("identity",
-                                                "i am the very model of the modern major general")
-                    .overlay_tag("foo", "bar")
-                    .overlay_tag("bizz", "bazz");
-            let expected_log = metric::LogLine::new("identity",
-                                                    "i am the very model of the modern major \
+            let orig_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major general")
+                        .overlay_tag("foo", "bar")
+                        .overlay_tag("bizz", "bazz");
+            let expected_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major \
                                                      general")
-                    .overlay_tag("foo", "bar");
+                        .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -143,8 +147,8 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let expected_metric =
-                metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
+            let expected_metric = metric::Telemetry::new("identity", 12.0)
+                .overlay_tag("foo", "bar");
             let orig_metric = expected_metric.clone().overlay_tag("bizz", "bazz");
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
@@ -231,14 +235,16 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let expected_log = metric::LogLine::new("identity",
-                                                    "i am the very model of the modern major \
+            let expected_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major \
                                                      general")
-                    .overlay_tag("foo", "bar")
-                    .overlay_tag("bizz", "bazz");
-            let orig_log = metric::LogLine::new("identity",
-                                                "i am the very model of the modern major general")
-                    .overlay_tag("foo", "bar");
+                        .overlay_tag("foo", "bar")
+                        .overlay_tag("bizz", "bazz");
+            let orig_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major general")
+                        .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -266,14 +272,16 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let expected_log = metric::LogLine::new("identity",
-                                                    "i am the very model of the modern major \
+            let expected_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major \
                                                      general")
-                    .overlay_tag("foo", "bar")
-                    .overlay_tag("bizz", "bazz");
-            let orig_log = metric::LogLine::new("identity",
-                                                "i am the very model of the modern major general")
-                    .overlay_tag("foo", "bar");
+                        .overlay_tag("foo", "bar")
+                        .overlay_tag("bizz", "bazz");
+            let orig_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major general")
+                        .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -301,7 +309,8 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_metric = metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
+            let orig_metric =
+                metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
             let expected_metric = orig_metric.clone().overlay_tag("bizz", "bazz");
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
@@ -330,14 +339,21 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let metric0 = metric::Event::new_telemetry(metric::Telemetry::new("identity", 12.0));
-            let metric1 = metric::Event::new_telemetry(metric::Telemetry::new("identity", 13.0));
-            let metric2 = metric::Event::new_telemetry(metric::Telemetry::new("identity", 14.0));
+            let metric0 = metric::Event::new_telemetry(metric::Telemetry::new("identity",
+                                                                              12.0));
+            let metric1 = metric::Event::new_telemetry(metric::Telemetry::new("identity",
+                                                                              13.0));
+            let metric2 = metric::Event::new_telemetry(metric::Telemetry::new("identity",
+                                                                              14.0));
 
-            let log0 = metric::Event::new_log(metric::LogLine::new("identity", "a log line"));
-            let log1 = metric::Event::new_log(metric::LogLine::new("identity", "another"));
-            let log2 = metric::Event::new_log(metric::LogLine::new("identity", "more"));
-            let log3 = metric::Event::new_log(metric::LogLine::new("identity", "less"));
+            let log0 = metric::Event::new_log(metric::LogLine::new("identity",
+                                                                   "a log line"));
+            let log1 = metric::Event::new_log(metric::LogLine::new("identity",
+                                                                   "another"));
+            let log2 = metric::Event::new_log(metric::LogLine::new("identity",
+                                                                   "more"));
+            let log3 = metric::Event::new_log(metric::LogLine::new("identity",
+                                                                   "less"));
 
             let flush1 = metric::Event::TimerFlush(1);
             let flush2 = metric::Event::TimerFlush(2);

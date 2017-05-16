@@ -70,7 +70,9 @@ struct PrometheusAggr {
     inner: Vec<metric::Telemetry>,
 }
 
-fn prometheus_cmp(l: &metric::Telemetry, r: &metric::Telemetry) -> Option<::std::cmp::Ordering> {
+fn prometheus_cmp(l: &metric::Telemetry,
+                  r: &metric::Telemetry)
+                  -> Option<::std::cmp::Ordering> {
     match l.name.partial_cmp(&r.name) {
         Some(::std::cmp::Ordering::Equal) => ::metric::tagmap::cmp(&l.tags, &r.tags),
         other => other,
@@ -84,8 +86,8 @@ impl PrometheusAggr {
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
         match self.inner
                   .binary_search_by(|probe| {
-                                        prometheus_cmp(probe, &telem).expect("could not compare")
-                                    }) {
+            prometheus_cmp(probe, &telem).expect("could not compare")
+        }) {
             Ok(idx) => Some(self.inner[idx].clone()),
             Err(_) => None,
         }
@@ -108,8 +110,8 @@ impl PrometheusAggr {
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
         match self.inner
                   .binary_search_by(|probe| {
-                                        prometheus_cmp(probe, &telem).expect("could not compare")
-                                    }) {
+            prometheus_cmp(probe, &telem).expect("could not compare")
+        }) {
             Ok(idx) => self.inner[idx] += telem,
             Err(idx) => self.inner.insert(idx, telem),
         }
@@ -387,7 +389,9 @@ mod test {
     //   combined points
     #[test]
     fn test_recombine() {
-        fn inner(mut aggr: PrometheusAggr, recomb: Vec<metric::Telemetry>) -> TestResult {
+        fn inner(mut aggr: PrometheusAggr,
+                 recomb: Vec<metric::Telemetry>)
+                 -> TestResult {
             let cur_cnt = aggr.count();
             let recomb_len = recomb.len();
 
@@ -402,7 +406,8 @@ mod test {
         QuickCheck::new()
             .tests(1000)
             .max_tests(10000)
-            .quickcheck(inner as fn(PrometheusAggr, Vec<metric::Telemetry>) -> TestResult);
+            .quickcheck(inner as
+                        fn(PrometheusAggr, Vec<metric::Telemetry>) -> TestResult);
     }
 
     #[test]
@@ -440,7 +445,8 @@ mod test {
                 Some(other) => {
                     assert!(aggr.insert(telem.clone()));
                     assert_eq!(cur_cnt, aggr.count());
-                    let new_t = aggr.find_match(&telem).expect("could not find in test");
+                    let new_t =
+                        aggr.find_match(&telem).expect("could not find in test");
                     assert_eq!(other.count() + 1, new_t.count());
                 }
                 None => return TestResult::discard(),

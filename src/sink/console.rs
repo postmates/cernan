@@ -19,7 +19,8 @@ impl Console {
     ///
     /// ```
     /// use cernan::sink::{Console, ConsoleConfig};
-    /// let config = ConsoleConfig { config_path: "sinks.console".to_string(),
+    /// let config = ConsoleConfig { config_path:
+    /// Some("sinks.console".to_string()),
     /// bin_width: 2, flush_interval: 60 };
     /// let c = Console::new(config);
     /// ```

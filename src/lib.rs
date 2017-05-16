@@ -31,7 +31,6 @@ extern crate lua;
 extern crate protobuf;
 extern crate quantiles;
 extern crate rand;
-#[cfg(feature = "firehose")]
 extern crate rusoto;
 extern crate seahash;
 extern crate serde;

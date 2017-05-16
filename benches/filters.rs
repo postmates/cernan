@@ -6,7 +6,8 @@ mod benches {
         extern crate cernan;
 
 
-        use self::cernan::filter::{Filter, ProgrammableFilter, ProgrammableFilterConfig};
+        use self::cernan::filter::{Filter, ProgrammableFilter,
+                                   ProgrammableFilterConfig};
         use self::cernan::metric;
         use self::test::Bencher;
         use std::path::PathBuf;
