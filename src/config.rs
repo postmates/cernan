@@ -149,16 +149,15 @@ pub fn parse_args() -> Args {
 
 pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     let mut args = Args::default();
-    let value: toml::Value =
-        toml::from_str(buffer).expect("could not parse config file");
+    let value: toml::Value = toml::from_str(buffer).expect("could not parse config file");
 
     args.verbose = verbosity;
 
     args.data_directory = value
         .get("data-directory")
         .map(|s| {
-                 let s =
-                     s.as_str().expect("data-directory value must be valid string");
+                 let s = s.as_str()
+                     .expect("data-directory value must be valid string");
                  Path::new(s).to_path_buf()
              })
         .unwrap_or(args.data_directory);
@@ -166,8 +165,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     args.scripts_directory = value
         .get("scripts-directory")
         .map(|s| {
-                 let s =
-                     s.as_str().expect("scripts-directory value must be valid string");
+                 let s = s.as_str()
+                     .expect("scripts-directory value must be valid string");
                  Path::new(s).to_path_buf()
              })
         .unwrap_or(args.scripts_directory);
@@ -195,8 +194,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     args.filters = value
         .get("filters")
         .map(|fltr| {
-            let mut filters: HashMap<String, ProgrammableFilterConfig> =
-                HashMap::new();
+            let mut filters: HashMap<String, ProgrammableFilterConfig> = HashMap::new();
             for (name, tbl) in fltr.as_table().unwrap().iter() {
                 match tbl.get("script") {
                     Some(pth) => {
@@ -233,12 +231,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     if let Some(sinks) = value.get("sinks") {
         let sinks = sinks.as_table().expect("sinks must be in table format");
 
-        args.null = sinks.get("null").map(|_| {
-                                              NullConfig {
-                                                  config_path: "sinks.null"
-                                                      .to_string(),
-                                              }
-                                          });
+        args.null = sinks
+            .get("null")
+            .map(|_| NullConfig { config_path: "sinks.null".to_string() });
 
         args.console = sinks
             .get("console")
@@ -247,11 +242,18 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 res.config_path = Some("sinks.console".to_string());
 
                 res.bin_width = snk.get("bin_width")
-                    .map(|bw| bw.as_integer().expect("could not parse sinks.console.bin_width"))
+                    .map(|bw| {
+                             bw.as_integer()
+                                 .expect("could not parse sinks.console.bin_width")
+                         })
                     .unwrap_or(res.bin_width);
 
                 res.flush_interval = snk.get("flush_interval")
-                    .map(|fi| fi.as_integer().expect("could not parse sinks.console.flush_interval") as u64)
+                    .map(|fi| {
+                             fi.as_integer()
+                                 .expect("could not parse sinks.console.flush_interval") as
+                             u64
+                         })
                     .unwrap_or(args.flush_interval);
 
                 res
@@ -263,33 +265,47 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 let mut res = WavefrontConfig::default();
                 res.config_path = Some("sinks.wavefront".to_string());
 
-                println!("{:?}", snk.get("percentiles"));
                 res.percentiles = snk.get("percentiles")
                     .and_then(|t| t.as_table())
                     .map(|tbl| {
-                             let mut prcnt = Vec::default();
-                             for (k, v) in tbl.iter() {
-                                 let v: f64 = v.as_float().expect("percentile value must be a float");
-                                 prcnt.push((k.clone(), v));
-                             }
-                             prcnt
-                         })
+                        let mut prcnt = Vec::default();
+                        for (k, v) in tbl.iter() {
+                            let v: f64 = v.as_float().expect("percentile value must be a float");
+                            prcnt.push((k.clone(), v));
+                        }
+                        prcnt
+                    })
                     .unwrap_or(res.percentiles);
 
                 res.port = snk.get("port")
-                    .map(|p| p.as_integer().expect("could not parse sinks.wavefront.port") as u16)
+                    .map(|p| {
+                             p.as_integer()
+                                 .expect("could not parse sinks.wavefront.port") as
+                             u16
+                         })
                     .unwrap_or(res.port);
 
                 res.host = snk.get("host")
-                    .map(|p| p.as_str().expect("could not parse sinks.wavefront.host").to_string())
+                    .map(|p| {
+                             p.as_str()
+                                 .expect("could not parse sinks.wavefront.host")
+                                 .to_string()
+                         })
                     .unwrap_or(res.host);
 
                 res.bin_width = snk.get("bin_width")
-                    .map(|bw| bw.as_integer().expect("could not parse sinks.wavefront.bin_width"))
+                    .map(|bw| {
+                             bw.as_integer()
+                                 .expect("could not parse sinks.wavefront.bin_width")
+                         })
                     .unwrap_or(res.bin_width);
 
                 res.flush_interval = snk.get("flush_interval")
-                    .map(|fi| fi.as_integer().expect("could not parse sinks.wavefront.flush_interval") as u64)
+                    .map(|fi| {
+                             fi.as_integer()
+                                 .expect("could not parse sinks.wavefront.flush_interval") as
+                             u64
+                         })
                     .unwrap_or(args.flush_interval);
 
                 res.tags = global_tags.clone();
@@ -312,15 +328,27 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     .unwrap_or(res.secure);
 
                 res.host = snk.get("host")
-                    .map(|p| p.as_str().expect("could not parse sinks.influxdb.host").to_string())
+                    .map(|p| {
+                             p.as_str()
+                                 .expect("could not parse sinks.influxdb.host")
+                                 .to_string()
+                         })
                     .unwrap_or(res.host);
 
                 res.db = snk.get("db")
-                    .map(|p| p.as_str().expect("could not parse sinks.influxdb.db").to_string())
+                    .map(|p| {
+                             p.as_str()
+                                 .expect("could not parse sinks.influxdb.db")
+                                 .to_string()
+                         })
                     .unwrap_or(res.db);
 
                 res.flush_interval = snk.get("flush_interval")
-                    .map(|fi| fi.as_integer().expect("could not parse sinks.influxdb.flush_interval") as u64)
+                    .map(|fi| {
+                             fi.as_integer()
+                                 .expect("could not parse sinks.influxdb.flush_interval") as
+                             u64
+                         })
                     .unwrap_or(args.flush_interval);
 
                 res.tags = global_tags.clone();
@@ -335,15 +363,26 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 res.config_path = Some("sinks.prometheus".to_string());
 
                 res.port = snk.get("port")
-                    .map(|p| p.as_integer().expect("could not parse sinks.prometheus.port") as u16)
+                    .map(|p| {
+                             p.as_integer()
+                                 .expect("could not parse sinks.prometheus.port") as
+                             u16
+                         })
                     .unwrap_or(res.port);
 
                 res.host = snk.get("host")
-                    .map(|p| p.as_str().expect("could not parse sinks.prometheus.host").to_string())
+                    .map(|p| {
+                             p.as_str()
+                                 .expect("could not parse sinks.prometheus.host")
+                                 .to_string()
+                         })
                     .unwrap_or(res.host);
 
                 res.bin_width = snk.get("bin_width")
-                    .map(|bw| bw.as_integer().expect("could not parse sinks.prometheus.bin_width"))
+                    .map(|bw| {
+                             bw.as_integer()
+                                 .expect("could not parse sinks.prometheus.bin_width")
+                         })
                     .unwrap_or(res.bin_width);
 
                 res
@@ -360,11 +399,19 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     .unwrap_or(res.port);
 
                 res.host = snk.get("host")
-                    .map(|p| p.as_str().expect("could not parse sinks.native.host").to_string())
+                    .map(|p| {
+                             p.as_str()
+                                 .expect("could not parse sinks.native.host")
+                                 .to_string()
+                         })
                     .unwrap_or(res.host);
 
                 res.flush_interval = snk.get("flush_interval")
-                    .map(|fi| fi.as_integer().expect("could not parse sinks.native.flush_interval") as u64)
+                    .map(|fi| {
+                             fi.as_integer()
+                                 .expect("could not parse sinks.native.flush_interval") as
+                             u64
+                         })
                     .unwrap_or(args.flush_interval);
 
                 res
@@ -375,7 +422,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             .map(|snk| {
                 let mut firehosen = Vec::new();
                 for (name, tbl) in snk.as_table().unwrap().iter() {
-                    println!("TBL: {:?}", tbl);
                     let mut res = FirehoseConfig::default();
                     res.config_path = Some(format!("sinks.firehose.{}", name));
 
@@ -388,14 +434,23 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     res.delivery_stream = ds.map(|s| s.to_string());
 
                     res.flush_interval = tbl.get("flush_interval")
-                        .map(|fi| fi.as_integer().expect("could not parse sinks.firehose.flush_interval") as u64)
+                        .map(|fi| {
+                                 fi.as_integer()
+                                     .expect("could not parse sinks.firehose.flush_interval") as
+                                 u64
+                             })
                         .unwrap_or(args.flush_interval);
 
                     res.batch_size = tbl.get("batch_size")
-                        .map(|fi| fi.as_integer().expect("could not parse sinks.firehose.batch_size") as usize)
+                        .map(|fi| {
+                                 fi.as_integer()
+                                     .expect("could not parse sinks.firehose.batch_size") as
+                                 usize
+                             })
                         .unwrap_or(res.batch_size);
 
-                    res.region = match tbl.get("region").map(|x| x.as_str().expect("region must be a string")) {
+                    res.region = match tbl.get("region")
+                              .map(|x| x.as_str().expect("region must be a string")) {
                         Some("ap-northeast-1") => Some(Region::ApNortheast1),
                         Some("ap-northeast-2") => Some(Region::ApNortheast2),
                         Some("ap-south-1") => Some(Region::ApSouth1),
@@ -454,7 +509,11 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             // Someday a static analysis system will flag this as
                             // unsafe. Welcome.
                             fl.max_read_lines = tbl.get("max_read_lines")
-                                .map(|mrl| mrl.as_integer().expect("could not parse sinks.wavefront.port") as usize)
+                                .map(|mrl| {
+                                         mrl.as_integer()
+                                             .expect("could not parse sinks.wavefront.port") as
+                                         usize
+                                     })
                                 .unwrap_or(fl.max_read_lines);
 
                             files.push(fl)
@@ -512,8 +571,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 statsds
             });
 
-        println!("VALUE: {:?}", value);
-        println!("GRAPHITES: {:?}", sources.get("graphite"));
         args.graphites = sources
             .get("graphite")
             .map(|src| {
@@ -532,7 +589,11 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             .unwrap_or(res.port);
 
                         res.host = tbl.get("host")
-                            .map(|p| p.as_str().expect("could not parse graphite host").to_string())
+                            .map(|p| {
+                                     p.as_str()
+                                         .expect("could not parse graphite host")
+                                         .to_string()
+                                 })
                             .unwrap_or(res.host);
 
                         res.forwards = tbl.get("forwards")
@@ -562,7 +623,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             .map(|src| {
                 let mut native_server_config = HashMap::default();
                 for (name, tbl) in src.as_table().unwrap().iter() {
-                    println!("NAME: {:?} | TABLE: {:?}", name, tbl);
                     let is_enabled = tbl.get("enabled")
                         .unwrap_or(&toml::Value::Boolean(true))
                         .as_bool()
@@ -572,18 +632,11 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         res.config_path = Some(format!("sources.native.{}", name));
 
                         res.port = tbl.get("port")
-                            .map(|p| {
-                                p.as_integer().expect("could not parse native port") as
-                                u16
-                            })
+                            .map(|p| p.as_integer().expect("could not parse native port") as u16)
                             .unwrap_or(res.port);
 
                         res.ip = tbl.get("ip")
-                            .map(|p| {
-                                     p.as_str()
-                                         .expect("could not parse native ip")
-                                         .to_string()
-                                 })
+                            .map(|p| p.as_str().expect("could not parse native ip").to_string())
                             .unwrap_or(res.ip);
 
                         res.forwards = tbl.get("forwards")
@@ -601,9 +654,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                         assert!(res.config_path.is_some());
 
-                        native_server_config.insert(format!("sources.native.{}",
-                                                            name),
-                                                    res);
+                        native_server_config.insert(format!("sources.native.{}", name), res);
                     }
                 }
                 native_server_config
@@ -862,7 +913,6 @@ scripts-directory = "/foo/bar"
 
         let args = parse_config_file(config, 4);
 
-        println!("{:?}", args.graphites);
         assert!(args.graphites.is_some());
 
         assert!(args.graphites.is_some());
@@ -892,8 +942,7 @@ scripts-directory = "/foo/bar"
         assert!(args.filters.is_some());
         let filters = args.filters.unwrap();
 
-        let config0: &ProgrammableFilterConfig =
-            filters.get("filters.collectd_scrub").unwrap();
+        let config0: &ProgrammableFilterConfig = filters.get("filters.collectd_scrub").unwrap();
         let script = config0.script.clone();
         assert_eq!(script.unwrap().to_str().unwrap(),
                    "/tmp/cernan-scripts/cernan_bridge.lua");
@@ -915,8 +964,7 @@ scripts-directory = "/foo/bar"
         assert!(args.filters.is_some());
         let filters = args.filters.unwrap();
 
-        let config0: &ProgrammableFilterConfig =
-            filters.get("filters.collectd_scrub").unwrap();
+        let config0: &ProgrammableFilterConfig = filters.get("filters.collectd_scrub").unwrap();
         let script = config0.script.clone();
         assert_eq!(script.unwrap().to_str().unwrap(), "data/cernan_bridge.lua");
         assert_eq!(config0.forwards, vec!["sinks.console"]);
@@ -1063,7 +1111,6 @@ scripts-directory = "/foo/bar"
         assert!(args.firehosen.is_some());
         let firehosen = args.firehosen.unwrap();
 
-        println!("FIREHOSEN: {:?}", firehosen);
         assert_eq!(firehosen[0].delivery_stream, Some("stream_one".to_string()));
         assert_eq!(firehosen[0].batch_size, 20);
         assert_eq!(firehosen[0].region, Some(Region::UsWest2));
