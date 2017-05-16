@@ -109,7 +109,7 @@ impl Wavefront {
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let mut tag_buf = String::with_capacity(1_024);
-        for values in self.aggrs.into_iter() {
+        for values in &self.aggrs {
             for value in values {
                 match value.aggr_method {
                     AggregationMethod::Sum => {
@@ -146,8 +146,8 @@ impl Wavefront {
                     }
                     AggregationMethod::Summarize => {
                         fmt_tags(&value.tags, &mut tag_buf);
-                        for tup in self.percentiles.iter() {
-                            let ref stat: String = tup.0;
+                        for tup in &self.percentiles {
+                            let stat: &String = &tup.0;
                             let quant: f64 = tup.1;
                             self.stats.push_str(&value.name);
                             self.stats.push_str(".");

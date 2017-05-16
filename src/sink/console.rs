@@ -99,7 +99,7 @@ impl Sink for Console {
         let mut sets = String::new();
         let mut summaries = String::new();
 
-        for values in self.aggrs.into_iter() {
+        for values in &self.aggrs {
             for value in values {
                 match value.aggr_method {
                     AggregationMethod::Sum => {

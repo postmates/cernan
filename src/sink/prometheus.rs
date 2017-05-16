@@ -53,7 +53,7 @@ struct SenderHandler {
 ///   * We _never_ submit new points for an already reported bin.
 ///
 /// To help demonstrate this we have a special aggregation for Prometheus:
-/// PrometheusAggr. It's job is to encode these operations and allow us to
+/// `PrometheusAggr`. It's job is to encode these operations and allow us to
 /// establish the above invariants.
 #[derive(Clone, Debug)]
 struct PrometheusAggr {
@@ -206,9 +206,8 @@ impl Prometheus {
 fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
     res.headers_mut()
         .set_raw("content-type",
-                 vec!["application/vnd.google.protobuf; \
+                 vec![b"application/vnd.google.protobuf; \
                        proto=io.prometheus.client.MetricFamily; encoding=delimited"
-                              .as_bytes()
                               .to_vec()]);
     let mut res = res.start().unwrap();
     for m in aggrs.into_iter() {
@@ -246,8 +245,7 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
 
 fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
     res.headers_mut()
-        .set_raw("content-type",
-                 vec!["text/plain; version=0.0.4".as_bytes().to_vec()]);
+        .set_raw("content-type", vec![b"text/plain; version=0.0.4".to_vec()]);
     let mut buf = String::with_capacity(1024);
     let mut res = res.start().unwrap();
     for m in aggrs.into_iter() {

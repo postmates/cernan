@@ -9,11 +9,11 @@ use std::sync;
 use time;
 use url::Url;
 
-/// The InfluxDB structure
+/// The `InfluxDB` structure
 ///
-/// InfluxDB is a time-series database with nanosecond accuracy. This structure
-/// holds all the information needed to communicate with it. See InfluxDBConfig
-/// for configurable parameters.
+/// `InfluxDB` is a time-series database with nanosecond accuracy. This
+/// structure holds all the information needed to communicate with it. See
+/// `InfluxDBConfig` for configurable parameters.
 pub struct InfluxDB {
     /// The store of Telemetry to be reported
     aggrs: Vec<Telemetry>,
@@ -25,10 +25,10 @@ pub struct InfluxDB {
     uri: Url,
 }
 
-/// InfluxDB configuration
+/// `InfluxDB` configuration
 ///
-/// The cernan InfluxDB integration is done by HTTP/S. The options present here
-/// assume that integration, as well as cernan inside-baseball.
+/// The cernan `InfluxDB` integration is done by HTTP/S. The options present
+/// here assume that integration, as well as cernan inside-baseball.
 #[derive(Debug, Deserialize)]
 pub struct InfluxDBConfig {
     /// If secure, use HTTPS. Else, HTTP.
@@ -44,7 +44,7 @@ pub struct InfluxDBConfig {
     pub config_path: Option<String>,
     /// The default tags to apply to all telemetry flowing through the sink.
     pub tags: TagMap,
-    /// The interval, in seconds, on which the InfluxDB sink will report.
+    /// The interval, in seconds, on which the `InfluxDB` sink will report.
     pub flush_interval: u64,
 }
 
@@ -93,7 +93,7 @@ fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
 }
 
 impl InfluxDB {
-    /// Create a new InfluxDB given an InfluxDBConfig
+    /// Create a new `InfluxDB` given an InfluxDBConfig
     pub fn new(config: InfluxDBConfig) -> InfluxDB {
         let scheme = if config.secure { "https" } else { "http" };
         let uri = Url::parse(&format!("{}://{}:{}/write?db={}",
@@ -101,7 +101,6 @@ impl InfluxDB {
                                      config.host,
                                      config.port,
                                      config.db))
-                .ok()
                 .expect("malformed url");
 
         InfluxDB {

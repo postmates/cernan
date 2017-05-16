@@ -154,7 +154,7 @@ impl Sink for Native {
                     //
                     // Learn how to consume bits of the metric without having to
                     // clone like crazy
-                    for (k, v) in l.tags.into_iter() {
+                    for (k, v) in &l.tags {
                         meta.insert(k.clone(), v.clone());
                     }
                     ll.set_metadata(meta);

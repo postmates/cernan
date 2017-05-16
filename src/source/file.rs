@@ -20,10 +20,10 @@ use util::send;
 type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<SeaHasher>>;
 
 /// `FileServer` is a Source which cooperatively schedules reads over files,
-/// converting the lines of said files into LogLine structures. As `FileServer`
-/// is intended to be useful across multiple operating systems with POSIX
-/// filesystem semantics `FileServer` must poll for changes. That is, no event
-/// notification is used by FileServer.
+/// converting the lines of said files into `LogLine` structures. As
+/// `FileServer` is intended to be useful across multiple operating systems with
+/// POSIX filesystem semantics `FileServer` must poll for changes. That is, no
+/// event notification is used by `FileServer`.
 ///
 /// `FileServer` is configured on a path to watch. The files do _not_ need to
 /// exist at cernan startup. `FileServer` will discover new files which match
@@ -35,11 +35,11 @@ pub struct FileServer {
     tags: metric::TagMap,
 }
 
-/// The configuration struct for 'FileServer'.
+/// The configuration struct for `FileServer`.
 #[derive(Debug, Deserialize)]
 pub struct FileServerConfig {
-    /// The path that `FileServer` will watch. Globs are allowed and FileServer
-    /// will watch multiple files.
+    /// The path that `FileServer` will watch. Globs are allowed and
+    /// `FileServer` will watch multiple files.
     pub path: Option<PathBuf>,
     /// The maximum number of lines to read from a file before switching to a
     /// new file.
@@ -77,12 +77,12 @@ impl FileServer {
     }
 }
 
-/// The 'FileWatcher' struct defines the polling based state machine which reads
+/// The `FileWatcher` struct defines the polling based state machine which reads
 /// from a file path, transparently updating the underlying file descriptor when
 /// the file has been rolled over, as is common for logs.
 ///
-/// The 'FileWatcher' is expected to live for the lifetime of the file
-/// path. `FileServer` is responsible for clearing away FileWatchers which no
+/// The `FileWatcher` is expected to live for the lifetime of the file
+/// path. `FileServer` is responsible for clearing away `FileWatchers` which no
 /// longer exist.
 struct FileWatcher {
     pub path: PathBuf,
@@ -188,14 +188,14 @@ impl FileWatcher {
         // time. We'll signal this with TimedOut -- which might also come from
         // BufReader -- so it's hard for the caller to know where this came
         // from. Doesn't seem to be a pain in practice.
-        return Err(io::Error::new(io::ErrorKind::TimedOut, "read_line hit max delay"));
+        Err(io::Error::new(io::ErrorKind::TimedOut, "read_line hit max delay"))
     }
 }
 
 /// `FileServer` as Source
 ///
 /// The 'run' of `FileServer` performs the cooperative scheduling of reads over
-/// FileServer's configured files. Much care has been taking to make this
+/// `FileServer`'s configured files. Much care has been taking to make this
 /// scheduling 'fair', meaning busy files do not drown out quiet files or vice
 /// versa but there's no one perfect approach. Very fast files _will_ be lost if
 /// your system aggressively rolls log files. `FileServer` will keep a file
