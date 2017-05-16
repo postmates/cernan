@@ -132,7 +132,7 @@ pub fn parse_args() -> Args {
 
             let mut buffer = String::new();
             fp.read_to_string(&mut buffer).unwrap();
-            parse_config_file(buffer, verb)
+            parse_config_file(&buffer, verb)
         }
         // We read from CLI arguments
         None => {
@@ -147,10 +147,10 @@ pub fn parse_args() -> Args {
     }
 }
 
-pub fn parse_config_file(buffer: String, verbosity: u64) -> Args {
+pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     let mut args = Args::default();
     let value: toml::Value =
-        toml::from_str(&buffer).expect("could not parse config file");
+        toml::from_str(buffer).expect("could not parse config file");
 
     args.verbose = verbosity;
 
@@ -648,8 +648,7 @@ mod test {
     fn config_file_data_directory() {
         let config = r#"
 data-directory = "/foo/bar"
-"#
-                .to_string();
+"#;
         let args = parse_config_file(config, 4);
         let dir = Path::new("/foo/bar").to_path_buf();
 
@@ -658,7 +657,7 @@ data-directory = "/foo/bar"
 
     #[test]
     fn config_file_data_directory_default() {
-        let config = r#""#.to_string();
+        let config = r#""#;
         let args = parse_config_file(config, 4);
         let dir = Path::new("/tmp/cernan-data").to_path_buf();
 
@@ -669,8 +668,7 @@ data-directory = "/foo/bar"
     fn config_file_scripts_directory() {
         let config = r#"
 scripts-directory = "/foo/bar"
-"#
-                .to_string();
+"#;
         let args = parse_config_file(config, 4);
         let dir = Path::new("/foo/bar").to_path_buf();
 
@@ -679,7 +677,7 @@ scripts-directory = "/foo/bar"
 
     #[test]
     fn config_file_scripts_directory_default() {
-        let config = r#""#.to_string();
+        let config = r#""#;
         let args = parse_config_file(config, 4);
         let dir = Path::new("/tmp/cernan-scripts").to_path_buf();
 
@@ -716,8 +714,7 @@ scripts-directory = "/foo/bar"
   enabled = false
   ip = "127.0.0.1"
   port = 1973
-"#
-                .to_string();
+"#;
 
         let args = parse_config_file(config, 4);
 
@@ -738,8 +735,7 @@ scripts-directory = "/foo/bar"
 [sources]
   [sources.internal]
   forwards = ["sinks.console", "sinks.null"]
-"#
-                .to_string();
+"#;
 
         let args = parse_config_file(config, 4);
 
@@ -757,8 +753,7 @@ scripts-directory = "/foo/bar"
       host = "foo.example.com"
       port = 1972
       flush_interval = 120
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 
@@ -779,8 +774,7 @@ scripts-directory = "/foo/bar"
   port = 1024
   delete-gauges = true
   forwards = ["sinks.console", "sinks.null"]
-"#
-                .to_string();
+"#;
 
         let args = parse_config_file(config, 4);
 
@@ -809,8 +803,7 @@ scripts-directory = "/foo/bar"
   enabled = true
   port = 4048
   forwards = ["sinks.wavefront"]
-"#
-                .to_string();
+"#;
 
         let args = parse_config_file(config, 4);
 
@@ -838,8 +831,7 @@ scripts-directory = "/foo/bar"
   host = "localhost"
   port = 2003
   forwards = ["filters.collectd_scrub"]
-"#
-                .to_string();
+"#;
 
         let args = parse_config_file(config, 4);
 
@@ -866,8 +858,7 @@ scripts-directory = "/foo/bar"
   enabled = true
   port = 2004
   forwards = ["sinks.wavefront"]
-"#
-                .to_string();
+"#;
 
         let args = parse_config_file(config, 4);
 
@@ -894,8 +885,7 @@ scripts-directory = "/foo/bar"
       [filters.collectd_scrub]
       script = "cernan_bridge.lua"
       forwards = ["sinks.console"]
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 
@@ -918,8 +908,7 @@ scripts-directory = "/foo/bar"
       [filters.collectd_scrub]
       script = "cernan_bridge.lua"
       forwards = ["sinks.console"]
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 
@@ -942,8 +931,7 @@ scripts-directory = "/foo/bar"
       host = "example.com"
       bin_width = 9
       flush_interval = 15
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 
@@ -968,8 +956,7 @@ scripts-directory = "/foo/bar"
       max = 1.0
       min = 0.0
       median = 0.5
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 
@@ -995,8 +982,7 @@ scripts-directory = "/foo/bar"
       db = "postmates"
       flush_interval = 70
       secure = true
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 
@@ -1017,8 +1003,7 @@ scripts-directory = "/foo/bar"
       port = 3131
       host = "example.com"
       bin_width = 9
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 
@@ -1035,8 +1020,7 @@ scripts-directory = "/foo/bar"
     [sinks]
       [sinks.console]
       bin_width = 9
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 
@@ -1051,8 +1035,7 @@ scripts-directory = "/foo/bar"
         let config = r#"
     [sinks]
       [sinks.null]
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 
@@ -1073,8 +1056,7 @@ scripts-directory = "/foo/bar"
       delivery_stream = "stream_two"
       batch_size = 800
       region = "us-east-1"
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 
@@ -1101,8 +1083,7 @@ scripts-directory = "/foo/bar"
       [sources.files.foo_bar_txt]
       path = "/foo/bar.txt"
       forwards = ["sink.blech"]
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 
@@ -1127,8 +1108,7 @@ scripts-directory = "/foo/bar"
       [sources.files.bar_txt]
       path = "/bar.txt"
       forwards = ["sink.bar.blech"]
-    "#
-                .to_string();
+    "#;
 
         let args = parse_config_file(config, 4);
 

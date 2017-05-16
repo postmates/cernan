@@ -115,9 +115,7 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         for (key, value) in meta.drain() {
                             metric = metric.overlay_tag(key, value);
                         }
-                        util::send("native",
-                                   &mut chans,
-                                   metric::Event::new_telemetry(metric));
+                        util::send(&mut chans, metric::Event::new_telemetry(metric));
                     }
                     for mut line in pyld.take_lines().into_iter() {
                         let path: String = line.take_path();
@@ -132,9 +130,7 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         for (key, value) in meta.drain() {
                             logline = logline.overlay_tag(key, value);
                         }
-                        util::send("native",
-                                   &mut chans,
-                                   metric::Event::new_log(logline));
+                        util::send(&mut chans, metric::Event::new_log(logline));
 
                     }
                 }

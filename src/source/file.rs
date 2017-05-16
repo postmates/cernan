@@ -19,15 +19,15 @@ use util::send;
 
 type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<SeaHasher>>;
 
-/// 'FileServer' is a Source which cooperatively schedules reads over files,
-/// converting the lines of said files into LogLine structures. As FileServer is
-/// intended to be useful across multiple operating systems with POSIX
-/// filesystem semantics FileServer must poll for changes. That is, no event
+/// `FileServer` is a Source which cooperatively schedules reads over files,
+/// converting the lines of said files into LogLine structures. As `FileServer`
+/// is intended to be useful across multiple operating systems with POSIX
+/// filesystem semantics `FileServer` must poll for changes. That is, no event
 /// notification is used by FileServer.
 ///
-/// FileServer is configured on a path to watch. The files do _not_ need to
-/// exist at cernan startup. FileServer will discover new files which match its
-/// path in at most 60 seconds.
+/// `FileServer` is configured on a path to watch. The files do _not_ need to
+/// exist at cernan startup. `FileServer` will discover new files which match
+/// its path in at most 60 seconds.
 pub struct FileServer {
     chans: util::Channel,
     path: PathBuf,
@@ -38,7 +38,7 @@ pub struct FileServer {
 /// The configuration struct for 'FileServer'.
 #[derive(Debug, Deserialize)]
 pub struct FileServerConfig {
-    /// The path that FileServer will watch. Globs are allowed and FileServer
+    /// The path that `FileServer` will watch. Globs are allowed and FileServer
     /// will watch multiple files.
     pub path: Option<PathBuf>,
     /// The maximum number of lines to read from a file before switching to a
@@ -46,7 +46,7 @@ pub struct FileServerConfig {
     pub max_read_lines: usize,
     /// The default tags to apply to each discovered LogLine.
     pub tags: metric::TagMap,
-    /// The forwards which FileServer will obey.
+    /// The forwards which `FileServer` will obey.
     pub forwards: Vec<String>,
     /// The configured name of FileServer.
     pub config_path: Option<String>,
@@ -82,7 +82,7 @@ impl FileServer {
 /// the file has been rolled over, as is common for logs.
 ///
 /// The 'FileWatcher' is expected to live for the lifetime of the file
-/// path. FileServer is responsible for clearing away FileWatchers which no
+/// path. `FileServer` is responsible for clearing away FileWatchers which no
 /// longer exist.
 struct FileWatcher {
     pub path: PathBuf,
@@ -92,11 +92,11 @@ struct FileWatcher {
 }
 
 impl FileWatcher {
-    /// Create a new FileWatcher
+    /// Create a new `FileWatcher`
     ///
-    /// The input path will be used by FileWatcher to prime its state machine. A
-    /// FileWatcher tracks _only one_ file. This function returns None if the
-    /// path does not exist or is not readable by cernan.
+    /// The input path will be used by `FileWatcher` to prime its state
+    /// machine. A `FileWatcher` tracks _only one_ file. This function returns
+    /// None if the path does not exist or is not readable by cernan.
     pub fn new(path: PathBuf) -> Option<FileWatcher> {
         match fs::File::open(&path) {
             Ok(f) => {
@@ -170,7 +170,7 @@ impl FileWatcher {
                     // pull the newline off the end and return the size of the
                     // buffer read without the newline.
                     self.offset += sz as u64;
-                    assert!(sz != 0);
+                    assert_ne!(sz, 0);
                     buffer.truncate(sz - 1);
                     return Ok(sz - 1);
                 }
@@ -192,13 +192,13 @@ impl FileWatcher {
     }
 }
 
-/// FileServer as Source
+/// `FileServer` as Source
 ///
-/// The 'run' of FileServer performs the cooperative scheduling of reads over
+/// The 'run' of `FileServer` performs the cooperative scheduling of reads over
 /// FileServer's configured files. Much care has been taking to make this
 /// scheduling 'fair', meaning busy files do not drown out quiet files or vice
 /// versa but there's no one perfect approach. Very fast files _will_ be lost if
-/// your system aggressively rolls log files. FileServer will keep a file
+/// your system aggressively rolls log files. `FileServer` will keep a file
 /// handler open but should your system move so quickly that a file disappears
 /// before cernan is able to open it the contents will be lost. This should be a
 /// rare occurence.
@@ -285,7 +285,7 @@ impl Source for FileServer {
                         }
                     }
                     for l in lines.drain(..) {
-                        send("file", &mut self.chans, metric::Event::new_log(l));
+                        send(&mut self.chans, metric::Event::new_log(l));
                     }
                 }
                 if start.elapsed() >= glob_delay {

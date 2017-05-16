@@ -291,7 +291,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         buf.push_str("} ");
         buf.push_str(&m.count().to_string());
         buf.push_str("\n");
-        res.write(buf.as_bytes())
+        res.write_all(buf.as_bytes())
             .expect("FAILED TO WRITE BUFFER INTO HTTP
     STREAMING RESPONSE");
         buf.clear();
@@ -316,7 +316,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
 fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
     let name: String = mem::replace(&mut metric.name, Default::default());
     let mut new_name: Vec<u8> = Vec::with_capacity(128);
-    for c in name.as_bytes().into_iter() {
+    for c in name.as_bytes() {
         match *c {
             b'a'...b'z' | b'A'...b'Z' | b'0'...b'9' | b':' | b'_' => new_name.push(*c),
             _ => new_name.push(b'_'),

@@ -85,9 +85,7 @@ fn handle_stream(mut chans: util::Channel,
                 if parse_graphite(&line, &mut res, basic_metric.clone()) {
                     report_telemetry("cernan.graphite.packet", 1.0);
                     for m in res.drain(..) {
-                        send("graphite",
-                             &mut chans,
-                             metric::Event::Telemetry(Arc::new(Some(m))));
+                        send(&mut chans, metric::Event::Telemetry(Arc::new(Some(m))));
                     }
                     line.clear();
                 } else {

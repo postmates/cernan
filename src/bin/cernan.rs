@@ -26,11 +26,8 @@ fn populate_forwards(sends: &mut util::Channel,
                      available_sends: &HashMap<String,
                                                hopper::Sender<metric::Event>>) {
     for fwd in forwards {
-        match top_level_forwards.as_mut() {
-            Some(tlf) => {
-                let _ = (*tlf).insert(fwd.clone());
-            }
-            None => {}
+        if let Some(tlf) = top_level_forwards.as_mut() {
+            let _ = (*tlf).insert(fwd.clone());
         }
         match available_sends.get(fwd) {
             Some(snd) => {
@@ -174,7 +171,7 @@ fn main() {
     // SOURCES
     //
     mem::replace(&mut args.native_server_config, None)
-        .map(|cfg_map| for (_, config) in cfg_map.into_iter() {
+        .map(|cfg_map| for (_, config) in cfg_map {
                  let mut native_server_send = Vec::new();
                  populate_forwards(&mut native_server_send,
                                    Some(&mut flush_sends),
@@ -199,31 +196,33 @@ fn main() {
                                          .run();
                              }));
 
-    mem::replace(&mut args.statsds, None)
-        .map(|cfg_map| for (_, config) in cfg_map.into_iter() {
-                 let mut statsd_sends = Vec::new();
-                 populate_forwards(&mut statsd_sends,
-                                   Some(&mut flush_sends),
-                                   &config.forwards,
-                                   &cfg_conf!(config),
-                                   &sends);
-                 joins.push(thread::spawn(move || {
-                cernan::source::Statsd::new(statsd_sends, config).run();
-            }));
-             });
+    mem::replace(&mut args.statsds, None).map(|cfg_map| for (_, config) in cfg_map {
+        let mut statsd_sends = Vec::new();
+        populate_forwards(&mut statsd_sends,
+                          Some(&mut flush_sends),
+                          &config.forwards,
+                          &cfg_conf!(config),
+                          &sends);
+        joins.push(thread::spawn(move || {
+                                     cernan::source::Statsd::new(statsd_sends, config)
+                                         .run();
+                                 }));
+    });
 
-    mem::replace(&mut args.graphites, None)
-        .map(|cfg_map| for (_, config) in cfg_map.into_iter() {
-                 let mut graphite_sends = Vec::new();
-                 populate_forwards(&mut graphite_sends,
-                                   Some(&mut flush_sends),
-                                   &config.forwards,
-                                   &cfg_conf!(config),
-                                   &sends);
-                 joins.push(thread::spawn(move || {
-                cernan::source::Graphite::new(graphite_sends, config).run();
-            }));
-             });
+    mem::replace(&mut args.graphites, None).map(|cfg_map| for (_, config) in
+        cfg_map {
+        let mut graphite_sends = Vec::new();
+        populate_forwards(&mut graphite_sends,
+                          Some(&mut flush_sends),
+                          &config.forwards,
+                          &cfg_conf!(config),
+                          &sends);
+        joins.push(thread::spawn(move || {
+                                     cernan::source::Graphite::new(graphite_sends,
+                                                                   config)
+                                             .run();
+                                 }));
+    });
 
     mem::replace(&mut args.files, None).map(|cfg| for config in cfg {
         let mut fp_sends = Vec::new();
@@ -242,7 +241,7 @@ fn main() {
     //
     joins.push(thread::spawn(move || {
         let mut flush_channels = Vec::new();
-        for destination in flush_sends.iter() {
+        for destination in &flush_sends {
             match sends.get(destination) {
                 Some(snd) => {
                     flush_channels.push(snd.clone());

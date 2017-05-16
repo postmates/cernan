@@ -52,7 +52,7 @@ impl Statsd {
 
 fn handle_udp(mut chans: util::Channel,
               tags: sync::Arc<metric::TagMap>,
-              socket: UdpSocket) {
+              socket: &UdpSocket) {
     let mut buf = [0; 8192];
     let mut metrics = Vec::new();
     let basic_metric = sync::Arc::new(Some(metric::Telemetry::default()
@@ -66,7 +66,7 @@ fn handle_udp(mut chans: util::Channel,
             Ok(val) => {
                 if parse_statsd(val, &mut metrics, basic_metric.clone()) {
                     for m in metrics.drain(..) {
-                        send("statsd", &mut chans, metric::Event::new_telemetry(m));
+                        send(&mut chans, metric::Event::new_telemetry(m));
                     }
                     report_telemetry("cernan.statsd.packet", 1.0);
                 } else {
@@ -96,7 +96,7 @@ impl Source for Statsd {
                     let tags = self.tags.clone();
                     info!("server started on {:?} {}", addr, self.port);
                     joins.push(thread::spawn(move || {
-                                                 handle_udp(chans, tags, listener)
+                                                 handle_udp(chans, tags, &listener)
                                              }));
                 }
             }

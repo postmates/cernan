@@ -74,9 +74,7 @@ impl Source for Internal {
                 attempts = attempts.saturating_sub(1);
                 if !self.chans.is_empty() {
                     telem = telem.overlay_tags_from_map(&self.tags);
-                    util::send("internal",
-                               &mut self.chans,
-                               metric::Event::new_telemetry(telem));
+                    util::send(&mut self.chans, metric::Event::new_telemetry(telem));
                 } else {
                     // do nothing, intentionally
                 }
