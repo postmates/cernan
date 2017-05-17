@@ -3,7 +3,8 @@ mod integration {
 
         extern crate cernan;
 
-        use self::cernan::filter::{Filter, ProgrammableFilter, ProgrammableFilterConfig};
+        use self::cernan::filter::{Filter, ProgrammableFilter,
+                                   ProgrammableFilterConfig};
         use self::cernan::metric;
         use std::path::PathBuf;
         use std::sync::Arc;
@@ -16,10 +17,10 @@ mod integration {
             script.push("identity.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.identity".to_string(),
+                config_path: Some("filters.identity".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -45,10 +46,10 @@ mod integration {
             script.push("clear_metrics.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.clear_metrics".to_string(),
+                config_path: Some("filters.clear_metrics".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -72,18 +73,19 @@ mod integration {
             script.push("clear_logs.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.clear_logs".to_string(),
+                config_path: Some("filters.clear_logs".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let log = metric::LogLine::new("clear_me",
-                                           "i am the very model of the modern major general")
-                    .overlay_tag("foo", "bar")
-                    .overlay_tag("bizz", "bazz");
+            let log =
+                metric::LogLine::new("clear_me",
+                                     "i am the very model of the modern major general")
+                        .overlay_tag("foo", "bar")
+                        .overlay_tag("bizz", "bazz");
             let event = metric::Event::new_log(log);
 
             let mut events: Vec<metric::Event> = Vec::new();
@@ -100,22 +102,24 @@ mod integration {
             script.push("remove_keys.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.remove_keys".to_string(),
+                config_path: Some("filters.remove_keys".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_log = metric::LogLine::new("identity",
-                                                "i am the very model of the modern major general")
-                    .overlay_tag("foo", "bar")
-                    .overlay_tag("bizz", "bazz");
-            let expected_log = metric::LogLine::new("identity",
-                                                    "i am the very model of the modern major \
+            let orig_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major general")
+                        .overlay_tag("foo", "bar")
+                        .overlay_tag("bizz", "bazz");
+            let expected_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major \
                                                      general")
-                    .overlay_tag("foo", "bar");
+                        .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -135,16 +139,16 @@ mod integration {
             script.push("remove_keys.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.remove_keys".to_string(),
+                config_path: Some("filters.remove_keys".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let expected_metric =
-                metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
+            let expected_metric = metric::Telemetry::new("identity", 12.0)
+                .overlay_tag("foo", "bar");
             let orig_metric = expected_metric.clone().overlay_tag("bizz", "bazz");
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
@@ -165,10 +169,10 @@ mod integration {
             script.push("insufficient_args.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.no_args_no_crash".to_string(),
+                config_path: Some("filters.no_args_no_crash".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -195,10 +199,10 @@ mod integration {
             script.push("missing_func.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.missing_func".to_string(),
+                config_path: Some("filters.missing_func".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -223,22 +227,24 @@ mod integration {
             script.push("demonstrate_require.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.demonstrate_require".to_string(),
+                config_path: Some("filters.demonstrate_require".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let expected_log = metric::LogLine::new("identity",
-                                                    "i am the very model of the modern major \
+            let expected_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major \
                                                      general")
-                    .overlay_tag("foo", "bar")
-                    .overlay_tag("bizz", "bazz");
-            let orig_log = metric::LogLine::new("identity",
-                                                "i am the very model of the modern major general")
-                    .overlay_tag("foo", "bar");
+                        .overlay_tag("foo", "bar")
+                        .overlay_tag("bizz", "bazz");
+            let orig_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major general")
+                        .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -258,22 +264,24 @@ mod integration {
             script.push("add_keys.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.add_keys".to_string(),
+                config_path: Some("filters.add_keys".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let expected_log = metric::LogLine::new("identity",
-                                                    "i am the very model of the modern major \
+            let expected_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major \
                                                      general")
-                    .overlay_tag("foo", "bar")
-                    .overlay_tag("bizz", "bazz");
-            let orig_log = metric::LogLine::new("identity",
-                                                "i am the very model of the modern major general")
-                    .overlay_tag("foo", "bar");
+                        .overlay_tag("foo", "bar")
+                        .overlay_tag("bizz", "bazz");
+            let orig_log =
+                metric::LogLine::new("identity",
+                                     "i am the very model of the modern major general")
+                        .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -293,15 +301,16 @@ mod integration {
             script.push("add_keys.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.add_keys".to_string(),
+                config_path: Some("filters.add_keys".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_metric = metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
+            let orig_metric =
+                metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
             let expected_metric = orig_metric.clone().overlay_tag("bizz", "bazz");
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
@@ -322,22 +331,29 @@ mod integration {
             script.push("keep_count.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.keep_count".to_string(),
+                config_path: Some("filters.keep_count".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let metric0 = metric::Event::new_telemetry(metric::Telemetry::new("identity", 12.0));
-            let metric1 = metric::Event::new_telemetry(metric::Telemetry::new("identity", 13.0));
-            let metric2 = metric::Event::new_telemetry(metric::Telemetry::new("identity", 14.0));
+            let metric0 = metric::Event::new_telemetry(metric::Telemetry::new("identity",
+                                                                              12.0));
+            let metric1 = metric::Event::new_telemetry(metric::Telemetry::new("identity",
+                                                                              13.0));
+            let metric2 = metric::Event::new_telemetry(metric::Telemetry::new("identity",
+                                                                              14.0));
 
-            let log0 = metric::Event::new_log(metric::LogLine::new("identity", "a log line"));
-            let log1 = metric::Event::new_log(metric::LogLine::new("identity", "another"));
-            let log2 = metric::Event::new_log(metric::LogLine::new("identity", "more"));
-            let log3 = metric::Event::new_log(metric::LogLine::new("identity", "less"));
+            let log0 = metric::Event::new_log(metric::LogLine::new("identity",
+                                                                   "a log line"));
+            let log1 = metric::Event::new_log(metric::LogLine::new("identity",
+                                                                   "another"));
+            let log2 = metric::Event::new_log(metric::LogLine::new("identity",
+                                                                   "more"));
+            let log3 = metric::Event::new_log(metric::LogLine::new("identity",
+                                                                   "less"));
 
             let flush1 = metric::Event::TimerFlush(1);
             let flush2 = metric::Event::TimerFlush(2);
@@ -403,10 +419,10 @@ mod integration {
             script.push("collectd_scrub.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.collectd_scrub".to_string(),
+                config_path: Some("filters.collectd_scrub".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -445,10 +461,10 @@ mod integration {
             script.push("collectd_scrub.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.collectd_scrub".to_string(),
+                config_path: Some("filters.collectd_scrub".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -486,10 +502,10 @@ mod integration {
             script.push("json_parse.lua");
 
             let config = ProgrammableFilterConfig {
-                scripts_directory: script_dir,
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.json_parse".to_string(),
+                config_path: Some("filters.json_parse".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);

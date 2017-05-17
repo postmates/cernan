@@ -33,7 +33,7 @@ impl Source for FlushTimer {
             // system boot.
             idx += 1;
             sleep(one_second);
-            send("flush", &mut self.chans, metric::Event::TimerFlush(idx));
+            send(&mut self.chans, metric::Event::TimerFlush(idx));
         }
     }
 }

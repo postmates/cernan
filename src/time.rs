@@ -10,7 +10,8 @@ lazy_static! {
 
 pub fn elapsed_ns(i: Instant) -> u64 {
     let elapsed = i.elapsed();
-    (elapsed.as_secs().saturating_mul(1_000_000_000)).saturating_add(elapsed.subsec_nanos() as u64)
+    (elapsed.as_secs().saturating_mul(1_000_000_000))
+        .saturating_add(elapsed.subsec_nanos() as u64)
 }
 
 pub fn now() -> i64 {

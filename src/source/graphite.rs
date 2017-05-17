@@ -19,23 +19,23 @@ pub struct Graphite {
     tags: Arc<metric::TagMap>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct GraphiteConfig {
     pub host: String,
     pub port: u16,
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
-    pub config_path: String,
+    pub config_path: Option<String>,
 }
 
 impl Default for GraphiteConfig {
     fn default() -> GraphiteConfig {
         GraphiteConfig {
-            host: String::from("localhost"),
+            host: "localhost".to_string(),
             port: 2003,
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
-            config_path: "sources.graphite".to_string(),
+            config_path: Some("sources.graphite".to_string()),
         }
     }
 }
@@ -63,13 +63,17 @@ fn handle_tcp(chans: util::Channel,
                                  stream.local_addr());
                           let tags = tags.clone();
                           let chans = chans.clone();
-                          thread::spawn(move || { handle_stream(chans, tags, stream); });
+                          thread::spawn(move || {
+                                            handle_stream(chans, tags, stream);
+                                        });
                       }
                   })
 }
 
 
-fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: TcpStream) {
+fn handle_stream(mut chans: util::Channel,
+                 tags: Arc<metric::TagMap>,
+                 stream: TcpStream) {
     thread::spawn(move || {
         let mut line = String::new();
         let mut res = Vec::new();
@@ -81,9 +85,7 @@ fn handle_stream(mut chans: util::Channel, tags: Arc<metric::TagMap>, stream: Tc
                 if parse_graphite(&line, &mut res, basic_metric.clone()) {
                     report_telemetry("cernan.graphite.packet", 1.0);
                     for m in res.drain(..) {
-                        send("graphite",
-                             &mut chans,
-                             metric::Event::Telemetry(Arc::new(Some(m))));
+                        send(&mut chans, metric::Event::Telemetry(Arc::new(Some(m))));
                     }
                     line.clear();
                 } else {
@@ -107,11 +109,14 @@ impl Source for Graphite {
             Ok(ips) => {
                 let ips: Vec<_> = ips.collect();
                 for addr in ips {
-                    let listener = TcpListener::bind(addr).expect("Unable to bind to TCP socket");
+                    let listener =
+                        TcpListener::bind(addr).expect("Unable to bind to TCP socket");
                     let chans = self.chans.clone();
                     let tags = self.tags.clone();
                     info!("server started on {:?} {}", addr, self.port);
-                    joins.push(thread::spawn(move || handle_tcp(chans, tags, listener)));
+                    joins.push(thread::spawn(move || {
+                                                 handle_tcp(chans, tags, listener)
+                                             }));
                 }
             }
             Err(e) => {

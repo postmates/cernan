@@ -20,12 +20,23 @@ pub struct Native {
     flush_interval: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct NativeConfig {
     pub port: u16,
     pub host: String,
-    pub config_path: String,
+    pub config_path: Option<String>,
     pub flush_interval: u64,
+}
+
+impl Default for NativeConfig {
+    fn default() -> Self {
+        NativeConfig {
+            port: 1972,
+            host: "localhost".to_string(),
+            config_path: None,
+            flush_interval: 60,
+        }
+    }
 }
 
 impl Native {
@@ -112,7 +123,9 @@ impl Sink for Native {
                     let method = match m.aggr_method {
                         metric::AggregationMethod::Sum => AggregationMethod::SUM,
                         metric::AggregationMethod::Set => AggregationMethod::SET,
-                        metric::AggregationMethod::Summarize => AggregationMethod::SUMMARIZE,
+                        metric::AggregationMethod::Summarize => {
+                            AggregationMethod::SUMMARIZE
+                        }
                     };
                     let persist = m.persist;
                     telem.set_persisted(persist);
@@ -141,7 +154,7 @@ impl Sink for Native {
                     //
                     // Learn how to consume bits of the metric without having to
                     // clone like crazy
-                    for (k, v) in l.tags.into_iter() {
+                    for (k, v) in &l.tags {
                         meta.insert(k.clone(), v.clone());
                     }
                     ll.set_metadata(meta);

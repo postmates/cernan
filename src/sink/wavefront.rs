@@ -20,15 +20,42 @@ pub struct Wavefront {
     flush_interval: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct WavefrontConfig {
     pub bin_width: i64,
     pub host: String,
     pub port: u16,
-    pub config_path: String,
+    pub config_path: Option<String>,
     pub percentiles: Vec<(String, f64)>,
     pub tags: TagMap,
     pub flush_interval: u64,
+}
+
+impl Default for WavefrontConfig {
+    fn default() -> WavefrontConfig {
+        let percentiles = vec![("min".to_string(), 0.0),
+                               ("max".to_string(), 1.0),
+                               ("2".to_string(), 0.02),
+                               ("9".to_string(), 0.09),
+                               ("25".to_string(), 0.25),
+                               ("50".to_string(), 0.5),
+                               ("75".to_string(), 0.75),
+                               ("90".to_string(), 0.90),
+                               ("91".to_string(), 0.91),
+                               ("95".to_string(), 0.95),
+                               ("98".to_string(), 0.98),
+                               ("99".to_string(), 0.99),
+                               ("999".to_string(), 0.999)];
+        WavefrontConfig {
+            bin_width: 1,
+            host: "localhost".to_string(),
+            port: 2878,
+            config_path: Some("sinks.wavefront".to_string()),
+            percentiles: percentiles,
+            tags: TagMap::default(),
+            flush_interval: 60,
+        }
+    }
 }
 
 #[inline]
@@ -82,7 +109,7 @@ impl Wavefront {
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let mut tag_buf = String::with_capacity(1_024);
-        for values in self.aggrs.into_iter() {
+        for values in &self.aggrs {
             for value in values {
                 match value.aggr_method {
                     AggregationMethod::Sum => {
@@ -92,7 +119,8 @@ impl Wavefront {
                         report_telemetry("cernan.sinks.wavefront.aggregation.set", 1.0)
                     }
                     AggregationMethod::Summarize => {
-                        report_telemetry("cernan.sinks.wavefront.aggregation.summarize", 1.0);
+                        report_telemetry("cernan.sinks.wavefront.aggregation.summarize",
+                                         1.0);
                         report_telemetry("cernan.sinks.wavefront.aggregation.\
                                           summarize.total_percentiles",
                                          self.percentiles.len() as f64);
@@ -106,7 +134,8 @@ impl Wavefront {
                             self.stats.push_str(get_from_cache(&mut value_cache, v));
                             self.stats.push_str(" ");
                             self.stats
-                                .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                                .push_str(get_from_cache(&mut time_cache,
+                                                         value.timestamp));
                             self.stats.push_str(" ");
                             fmt_tags(&value.tags, &mut tag_buf);
                             self.stats.push_str(&tag_buf);
@@ -117,8 +146,8 @@ impl Wavefront {
                     }
                     AggregationMethod::Summarize => {
                         fmt_tags(&value.tags, &mut tag_buf);
-                        for tup in self.percentiles.iter() {
-                            let ref stat: String = tup.0;
+                        for tup in &self.percentiles {
+                            let stat: &String = &tup.0;
                             let quant: f64 = tup.1;
                             self.stats.push_str(&value.name);
                             self.stats.push_str(".");
@@ -129,7 +158,8 @@ impl Wavefront {
                                                          value.query(quant).unwrap()));
                             self.stats.push_str(" ");
                             self.stats
-                                .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                                .push_str(get_from_cache(&mut time_cache,
+                                                         value.timestamp));
                             self.stats.push_str(" ");
                             self.stats.push_str(&tag_buf);
                             self.stats.push_str("\n");
@@ -138,11 +168,11 @@ impl Wavefront {
                         self.stats.push_str(&value.name);
                         self.stats.push_str(".count");
                         self.stats.push_str(" ");
-                        self.stats
-                            .push_str(get_from_cache(&mut count_cache, count));
+                        self.stats.push_str(get_from_cache(&mut count_cache, count));
                         self.stats.push_str(" ");
                         self.stats
-                            .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                            .push_str(get_from_cache(&mut time_cache,
+                                                     value.timestamp));
                         self.stats.push_str(" ");
                         self.stats.push_str(&tag_buf);
                         self.stats.push_str("\n");
@@ -151,11 +181,11 @@ impl Wavefront {
                         self.stats.push_str(&value.name);
                         self.stats.push_str(".mean");
                         self.stats.push_str(" ");
-                        self.stats
-                            .push_str(get_from_cache(&mut value_cache, mean));
+                        self.stats.push_str(get_from_cache(&mut value_cache, mean));
                         self.stats.push_str(" ");
                         self.stats
-                            .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                            .push_str(get_from_cache(&mut time_cache,
+                                                     value.timestamp));
                         self.stats.push_str(" ");
                         self.stats.push_str(&tag_buf);
                         self.stats.push_str("\n");
@@ -220,8 +250,7 @@ impl Sink for Wavefront {
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        self.aggrs
-            .add(sync::Arc::make_mut(&mut point).take().unwrap());
+        self.aggrs.add(sync::Arc::make_mut(&mut point).take().unwrap());
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
@@ -266,21 +295,15 @@ mod test {
             bin_width: 1,
             host: "127.0.0.1".to_string(),
             port: 1987,
-            config_path: "sinks.wavefront".to_string(),
+            config_path: Some("sinks.wavefront".to_string()),
             tags: tags.clone(),
             percentiles: percentiles,
             flush_interval: 60,
         };
         let mut wavefront = Wavefront::new(config);
-        let dt_0 = UTC.ymd(1990, 6, 12)
-            .and_hms_milli(9, 10, 11, 00)
-            .timestamp();
-        let dt_1 = UTC.ymd(1990, 6, 12)
-            .and_hms_milli(9, 10, 12, 00)
-            .timestamp();
-        let dt_2 = UTC.ymd(1990, 6, 12)
-            .and_hms_milli(9, 10, 13, 00)
-            .timestamp();
+        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
+        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
+        let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
         wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0)
                                             .timestamp(dt_0)
                                             .aggr_sum()

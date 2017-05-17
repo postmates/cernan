@@ -424,7 +424,9 @@ impl Telemetry {
 impl AddAssign for Value {
     fn add_assign(&mut self, rhs: Value) {
         match rhs.kind {
-            ValueKind::Single => self.insert(rhs.single.expect("EMPTY SINGLE ADD_ASSIGN")),
+            ValueKind::Single => {
+                self.insert(rhs.single.expect("EMPTY SINGLE ADD_ASSIGN"))
+            }
             ValueKind::Many => self.merge(rhs.many.expect("EMPTY MANY ADD_ASSIGN")),
         }
     }
@@ -532,7 +534,9 @@ impl Value {
 
     fn query(&self, query: f64) -> Option<(usize, f64)> {
         match self.kind {
-            ValueKind::Single => Some((1, self.single.expect("NOT SINGLE IN METRICVALUE QUERY"))),
+            ValueKind::Single => {
+                Some((1, self.single.expect("NOT SINGLE IN METRICVALUE QUERY")))
+            }
             ValueKind::Many => {
                 match self.many {
                     Some(ref ckms) => ckms.query(query),
@@ -572,10 +576,7 @@ mod tests {
 
     #[test]
     fn partial_ord_gauges() {
-        let mdg = Telemetry::new("l6", 0.7913855)
-            .aggr_set()
-            .persist()
-            .timestamp(47);
+        let mdg = Telemetry::new("l6", 0.7913855).aggr_set().persist().timestamp(47);
         let mg = Telemetry::new("l6", 0.9683).aggr_set().timestamp(47);
 
         assert_eq!(Some(cmp::Ordering::Equal), mg.partial_cmp(&mdg));
@@ -602,9 +603,8 @@ mod tests {
             let persist: bool = rng.gen();
             let time: i64 = rng.gen_range(0, 100);
             let time_ns: u64 = (time as u64) * 1_000_000_000;
-            let mut mb = Telemetry::new(name, val)
-                .timestamp(time)
-                .timestamp_ns(time_ns);
+            let mut mb =
+                Telemetry::new(name, val).timestamp(time).timestamp_ns(time_ns);
             mb = match kind {
                 AggregationMethod::Set => mb.aggr_set(),
                 AggregationMethod::Sum => mb.aggr_sum(),

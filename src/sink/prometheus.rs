@@ -20,12 +20,23 @@ pub struct Prometheus {
     http_srv: Listening,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct PrometheusConfig {
     pub bin_width: i64,
     pub host: String,
     pub port: u16,
-    pub config_path: String,
+    pub config_path: Option<String>,
+}
+
+impl Default for PrometheusConfig {
+    fn default() -> Self {
+        PrometheusConfig {
+            bin_width: 1,
+            host: "localhost".to_string(),
+            port: 8086,
+            config_path: None,
+        }
+    }
 }
 
 struct SenderHandler {
@@ -42,7 +53,7 @@ struct SenderHandler {
 ///   * We _never_ submit new points for an already reported bin.
 ///
 /// To help demonstrate this we have a special aggregation for Prometheus:
-/// PrometheusAggr. It's job is to encode these operations and allow us to
+/// `PrometheusAggr`. It's job is to encode these operations and allow us to
 /// establish the above invariants.
 #[derive(Clone, Debug)]
 struct PrometheusAggr {
@@ -59,7 +70,9 @@ struct PrometheusAggr {
     inner: Vec<metric::Telemetry>,
 }
 
-fn prometheus_cmp(l: &metric::Telemetry, r: &metric::Telemetry) -> Option<::std::cmp::Ordering> {
+fn prometheus_cmp(l: &metric::Telemetry,
+                  r: &metric::Telemetry)
+                  -> Option<::std::cmp::Ordering> {
     match l.name.partial_cmp(&r.name) {
         Some(::std::cmp::Ordering::Equal) => ::metric::tagmap::cmp(&l.tags, &r.tags),
         other => other,
@@ -73,8 +86,8 @@ impl PrometheusAggr {
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
         match self.inner
                   .binary_search_by(|probe| {
-                                        prometheus_cmp(probe, &telem).expect("could not compare")
-                                    }) {
+            prometheus_cmp(probe, &telem).expect("could not compare")
+        }) {
             Ok(idx) => Some(self.inner[idx].clone()),
             Err(_) => None,
         }
@@ -97,8 +110,8 @@ impl PrometheusAggr {
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
         match self.inner
                   .binary_search_by(|probe| {
-                                        prometheus_cmp(probe, &telem).expect("could not compare")
-                                    }) {
+            prometheus_cmp(probe, &telem).expect("could not compare")
+        }) {
             Ok(idx) => self.inner[idx] += telem,
             Err(idx) => self.inner.insert(idx, telem),
         }
@@ -193,9 +206,8 @@ impl Prometheus {
 fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
     res.headers_mut()
         .set_raw("content-type",
-                 vec!["application/vnd.google.protobuf; \
+                 vec![b"application/vnd.google.protobuf; \
                        proto=io.prometheus.client.MetricFamily; encoding=delimited"
-                              .as_bytes()
                               .to_vec()]);
     let mut res = res.start().unwrap();
     for m in aggrs.into_iter() {
@@ -233,8 +245,7 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
 
 fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
     res.headers_mut()
-        .set_raw("content-type",
-                 vec!["text/plain; version=0.0.4".as_bytes().to_vec()]);
+        .set_raw("content-type", vec![b"text/plain; version=0.0.4".to_vec()]);
     let mut buf = String::with_capacity(1024);
     let mut res = res.start().unwrap();
     for m in aggrs.into_iter() {
@@ -278,7 +289,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         buf.push_str("} ");
         buf.push_str(&m.count().to_string());
         buf.push_str("\n");
-        res.write(buf.as_bytes())
+        res.write_all(buf.as_bytes())
             .expect("FAILED TO WRITE BUFFER INTO HTTP
     STREAMING RESPONSE");
         buf.clear();
@@ -303,7 +314,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
 fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
     let name: String = mem::replace(&mut metric.name, Default::default());
     let mut new_name: Vec<u8> = Vec::with_capacity(128);
-    for c in name.as_bytes().into_iter() {
+    for c in name.as_bytes() {
         match *c {
             b'a'...b'z' | b'A'...b'Z' | b'0'...b'9' | b':' | b'_' => new_name.push(*c),
             _ => new_name.push(b'_'),
@@ -357,9 +368,8 @@ mod test {
     impl Rand for PrometheusAggr {
         fn rand<R: Rng>(rng: &mut R) -> PrometheusAggr {
             let total_inner_sz: usize = rng.gen_range(0, 256);
-            let mut inner: Vec<metric::Telemetry> = rng.gen_iter::<metric::Telemetry>()
-                .take(total_inner_sz)
-                .collect();
+            let mut inner: Vec<metric::Telemetry> =
+                rng.gen_iter::<metric::Telemetry>().take(total_inner_sz).collect();
             inner.sort_by(|a, b| prometheus_cmp(a, b).unwrap());
             PrometheusAggr { inner: inner }
         }
@@ -377,7 +387,9 @@ mod test {
     //   combined points
     #[test]
     fn test_recombine() {
-        fn inner(mut aggr: PrometheusAggr, recomb: Vec<metric::Telemetry>) -> TestResult {
+        fn inner(mut aggr: PrometheusAggr,
+                 recomb: Vec<metric::Telemetry>)
+                 -> TestResult {
             let cur_cnt = aggr.count();
             let recomb_len = recomb.len();
 
@@ -392,7 +404,8 @@ mod test {
         QuickCheck::new()
             .tests(1000)
             .max_tests(10000)
-            .quickcheck(inner as fn(PrometheusAggr, Vec<metric::Telemetry>) -> TestResult);
+            .quickcheck(inner as
+                        fn(PrometheusAggr, Vec<metric::Telemetry>) -> TestResult);
     }
 
     #[test]
@@ -430,7 +443,8 @@ mod test {
                 Some(other) => {
                     assert!(aggr.insert(telem.clone()));
                     assert_eq!(cur_cnt, aggr.count());
-                    let new_t = aggr.find_match(&telem).expect("could not find in test");
+                    let new_t =
+                        aggr.find_match(&telem).expect("could not find in test");
                     assert_eq!(other.count() + 1, new_t.count());
                 }
                 None => return TestResult::discard(),

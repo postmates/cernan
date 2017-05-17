@@ -6,7 +6,8 @@ mod benches {
         extern crate cernan;
 
 
-        use self::cernan::filter::{Filter, ProgrammableFilter, ProgrammableFilterConfig};
+        use self::cernan::filter::{Filter, ProgrammableFilter,
+                                   ProgrammableFilterConfig};
         use self::cernan::metric;
         use self::test::Bencher;
         use std::path::PathBuf;
@@ -14,12 +15,15 @@ mod benches {
         #[bench]
         fn bench_collectd_extraction(b: &mut Bencher) {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let mut script_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             script.push("resources/tests/scripts/collectd_scrub.lua");
+            script_dir.push("resources/tests/scripts/");
 
             let config = ProgrammableFilterConfig {
-                script: script,
+                scripts_directory: Some(script_dir),
+                script: Some(script),
                 forwards: Vec::new(),
-                config_path: "filters.collectd_scrub".to_string(),
+                config_path: Some("filters.collectd_scrub".to_string()),
                 tags: Default::default(),
             };
             let mut cs = ProgrammableFilter::new(config);
@@ -30,7 +34,8 @@ mod benches {
             b.iter(|| {
                        let metric = metric::Telemetry::new(orig, 12.0);
                        let event = metric::Event::new_telemetry(metric);
-                       let res = cs.process(event);
+                       let mut events = Vec::new();
+                       let res = cs.process(event, &mut events);
                        assert!(res.is_ok());
                    });
         }

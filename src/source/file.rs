@@ -19,15 +19,15 @@ use util::send;
 
 type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<SeaHasher>>;
 
-/// 'FileServer' is a Source which cooperatively schedules reads over files,
-/// converting the lines of said files into LogLine structures. As FileServer is
-/// intended to be useful across multiple operating systems with POSIX
-/// filesystem semantics FileServer must poll for changes. That is, no event
-/// notification is used by FileServer.
+/// `FileServer` is a Source which cooperatively schedules reads over files,
+/// converting the lines of said files into `LogLine` structures. As
+/// `FileServer` is intended to be useful across multiple operating systems with
+/// POSIX filesystem semantics `FileServer` must poll for changes. That is, no
+/// event notification is used by `FileServer`.
 ///
-/// FileServer is configured on a path to watch. The files do _not_ need to
-/// exist at cernan startup. FileServer will discover new files which match its
-/// path in at most 60 seconds.
+/// `FileServer` is configured on a path to watch. The files do _not_ need to
+/// exist at cernan startup. `FileServer` will discover new files which match
+/// its path in at most 60 seconds.
 pub struct FileServer {
     chans: util::Channel,
     path: PathBuf,
@@ -35,21 +35,33 @@ pub struct FileServer {
     tags: metric::TagMap,
 }
 
-/// The configuration struct for 'FileServer'.
-#[derive(Debug)]
+/// The configuration struct for `FileServer`.
+#[derive(Debug, Deserialize)]
 pub struct FileServerConfig {
-    /// The path that FileServer will watch. Globs are allowed and FileServer
-    /// will watch multiple files.
-    pub path: PathBuf,
+    /// The path that `FileServer` will watch. Globs are allowed and
+    /// `FileServer` will watch multiple files.
+    pub path: Option<PathBuf>,
     /// The maximum number of lines to read from a file before switching to a
     /// new file.
     pub max_read_lines: usize,
     /// The default tags to apply to each discovered LogLine.
     pub tags: metric::TagMap,
-    /// The forwards which FileServer will obey.
+    /// The forwards which `FileServer` will obey.
     pub forwards: Vec<String>,
     /// The configured name of FileServer.
-    pub config_path: String,
+    pub config_path: Option<String>,
+}
+
+impl Default for FileServerConfig {
+    fn default() -> Self {
+        FileServerConfig {
+            path: None,
+            max_read_lines: 10_000,
+            tags: metric::TagMap::default(),
+            forwards: Vec::default(),
+            config_path: None,
+        }
+    }
 }
 
 impl FileServer {
@@ -58,19 +70,19 @@ impl FileServer {
     pub fn new(chans: util::Channel, config: FileServerConfig) -> FileServer {
         FileServer {
             chans: chans,
-            path: config.path,
+            path: config.path.expect("must specify a 'path' for FileServer"),
             tags: config.tags,
             max_read_lines: config.max_read_lines,
         }
     }
 }
 
-/// The 'FileWatcher' struct defines the polling based state machine which reads
+/// The `FileWatcher` struct defines the polling based state machine which reads
 /// from a file path, transparently updating the underlying file descriptor when
 /// the file has been rolled over, as is common for logs.
 ///
-/// The 'FileWatcher' is expected to live for the lifetime of the file
-/// path. FileServer is responsible for clearing away FileWatchers which no
+/// The `FileWatcher` is expected to live for the lifetime of the file
+/// path. `FileServer` is responsible for clearing away `FileWatchers` which no
 /// longer exist.
 struct FileWatcher {
     pub path: PathBuf,
@@ -80,11 +92,11 @@ struct FileWatcher {
 }
 
 impl FileWatcher {
-    /// Create a new FileWatcher
+    /// Create a new `FileWatcher`
     ///
-    /// The input path will be used by FileWatcher to prime its state machine. A
-    /// FileWatcher tracks _only one_ file. This function returns None if the
-    /// path does not exist or is not readable by cernan.
+    /// The input path will be used by `FileWatcher` to prime its state
+    /// machine. A `FileWatcher` tracks _only one_ file. This function returns
+    /// None if the path does not exist or is not readable by cernan.
     pub fn new(path: PathBuf) -> Option<FileWatcher> {
         match fs::File::open(&path) {
             Ok(f) => {
@@ -137,10 +149,7 @@ impl FileWatcher {
         // we are based on lines because when we seek back to reset the inner
         // buffer of BufReader will get dumped.
         assert!(self.offset <=
-                self.reader
-                    .get_ref()
-                    .seek(io::SeekFrom::Current(0))
-                    .unwrap());
+                self.reader.get_ref().seek(io::SeekFrom::Current(0)).unwrap());
         let mut attempts = 0;
         while attempts < 3 {
             time::delay(attempts);
@@ -151,9 +160,8 @@ impl FileWatcher {
                     // potentially reset from metadata and, if no, go ahead and
                     // back up to the last known good offset.
                     if !self.reset_from_md() {
-                        let seek: bool = self.reader
-                            .seek(io::SeekFrom::Start(self.offset))
-                            .is_ok();
+                        let seek: bool =
+                            self.reader.seek(io::SeekFrom::Start(self.offset)).is_ok();
                         assert!(seek);
                     }
                 }
@@ -162,7 +170,7 @@ impl FileWatcher {
                     // pull the newline off the end and return the size of the
                     // buffer read without the newline.
                     self.offset += sz as u64;
-                    assert!(sz != 0);
+                    assert_ne!(sz, 0);
                     buffer.truncate(sz - 1);
                     return Ok(sz - 1);
                 }
@@ -180,17 +188,17 @@ impl FileWatcher {
         // time. We'll signal this with TimedOut -- which might also come from
         // BufReader -- so it's hard for the caller to know where this came
         // from. Doesn't seem to be a pain in practice.
-        return Err(io::Error::new(io::ErrorKind::TimedOut, "read_line hit max delay"));
+        Err(io::Error::new(io::ErrorKind::TimedOut, "read_line hit max delay"))
     }
 }
 
-/// FileServer as Source
+/// `FileServer` as Source
 ///
-/// The 'run' of FileServer performs the cooperative scheduling of reads over
-/// FileServer's configured files. Much care has been taking to make this
+/// The 'run' of `FileServer` performs the cooperative scheduling of reads over
+/// `FileServer`'s configured files. Much care has been taking to make this
 /// scheduling 'fair', meaning busy files do not drown out quiet files or vice
 /// versa but there's no one perfect approach. Very fast files _will_ be lost if
-/// your system aggressively rolls log files. FileServer will keep a file
+/// your system aggressively rolls log files. `FileServer` will keep a file
 /// handler open but should your system move so quickly that a file disappears
 /// before cernan is able to open it the contents will be lost. This should be a
 /// rare occurence.
@@ -222,7 +230,7 @@ impl Source for FileServer {
         loop {
             // glob poll
             for entry in glob(self.path.to_str().expect("no ability to glob"))
-                .expect("Failed to read glob pattern") {
+                    .expect("Failed to read glob pattern") {
                 match entry {
                     Ok(path) => {
                         let entry = fp_map.entry(path.clone());
@@ -254,14 +262,12 @@ impl Source for FileServer {
                                 if sz > 0 {
                                     lines_read += 1;
                                     buffer.pop();
-                                    let path_name =
-                                        file.path.to_str().expect("could not make path_name");
+                                    let path_name = file.path.to_str().expect("could not make path_name");
                                     report_telemetry(format!("cernan.sources.file.{}.lines_read",
                                                              path_name),
                                                      1.0);
                                     trace!("{} | {}", path_name, buffer);
-                                    lines.push(metric::LogLine::new(path_name, &buffer)
-                                                   .overlay_tags_from_map(&self.tags));
+                                    lines.push(metric::LogLine::new(path_name, &buffer).overlay_tags_from_map(&self.tags));
                                     buffer.clear();
                                     if lines_read > self.max_read_lines {
                                         break;
@@ -279,7 +285,7 @@ impl Source for FileServer {
                         }
                     }
                     for l in lines.drain(..) {
-                        send("file", &mut self.chans, metric::Event::new_log(l));
+                        send(&mut self.chans, metric::Event::new_log(l));
                     }
                 }
                 if start.elapsed() >= glob_delay {
@@ -323,7 +329,9 @@ mod test {
             let ln_sz = rng.gen_range(0, 256);
             let pause = rng.gen_range(1, 3);
             match i {
-                0...50 => FWAction::WriteLine(rng.gen_ascii_chars().take(ln_sz).collect()),
+                0...50 => {
+                    FWAction::WriteLine(rng.gen_ascii_chars().take(ln_sz).collect())
+                }
                 51...75 => FWAction::Pause(pause),
                 76...85 => FWAction::RotateFile,
                 86...95 => FWAction::DeleteFile,
@@ -338,7 +346,8 @@ mod test {
             let dir = tempdir::TempDir::new("file_watcher_qc").unwrap();
             let path = dir.path().join("a_file.log");
             let mut fp = fs::File::create(&path).expect("could not create");
-            let mut fw = FileWatcher::new(path.clone()).expect("must be able to create");
+            let mut fw =
+                FileWatcher::new(path.clone()).expect("must be able to create");
 
             let mut expected_read = Vec::new();
 
@@ -376,7 +385,8 @@ mod test {
                 while !expected_read.is_empty() {
                     match fw.read_line(&mut buf) {
                         Ok(sz) => {
-                            let exp = expected_read.pop().expect("must be a read here");
+                            let exp =
+                                expected_read.pop().expect("must be a read here");
                             assert_eq!(buf, *exp);
                             assert_eq!(sz, buf.len());
                             buf.clear();

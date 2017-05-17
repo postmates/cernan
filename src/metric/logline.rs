@@ -3,12 +3,12 @@ use time;
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct LogLine {
-    /// The time that this LogLine occupies, in the units of time::now()
+    /// The time that this `LogLine` occupies, in the units of time::now()
     pub time: i64,
-    /// The path that this LogLine originated from. May be a unix path or not,
+    /// The path that this `LogLine` originated from. May be a unix path or not,
     /// depending on origin.
     pub path: String,
-    /// The line read from the LogLine path
+    /// The line read from the `LogLine` path
     pub value: String,
     /// Fields that may have been parsed out of the value, a key/value structure
     pub fields: TagMap,
@@ -16,9 +16,9 @@ pub struct LogLine {
     pub tags: TagMap,
 }
 
-/// LogLine - a structure that represents a bit of text
+/// `LogLine` - a structure that represents a bit of text
 ///
-/// A LogLine is intended to hold a bit of text in its 'value' that may or may
+/// A `LogLine` is intended to hold a bit of text in its 'value' that may or may
 /// not be structured. The field 'fields' is available for
 impl LogLine {
     pub fn new<S>(path: S, value: S) -> LogLine

@@ -16,24 +16,24 @@ pub struct Statsd {
     tags: sync::Arc<metric::TagMap>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct StatsdConfig {
     pub host: String,
     pub port: u16,
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
-    pub config_path: String,
+    pub config_path: Option<String>,
     pub delete_gauges: bool,
 }
 
 impl Default for StatsdConfig {
     fn default() -> StatsdConfig {
         StatsdConfig {
-            host: String::from("localhost"),
+            host: "localhost".to_string(),
             port: 8125,
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
-            config_path: "sources.statsd".to_string(),
+            config_path: None,
             delete_gauges: false,
         }
     }
@@ -50,7 +50,9 @@ impl Statsd {
     }
 }
 
-fn handle_udp(mut chans: util::Channel, tags: sync::Arc<metric::TagMap>, socket: UdpSocket) {
+fn handle_udp(mut chans: util::Channel,
+              tags: sync::Arc<metric::TagMap>,
+              socket: &UdpSocket) {
     let mut buf = [0; 8192];
     let mut metrics = Vec::new();
     let basic_metric = sync::Arc::new(Some(metric::Telemetry::default()
@@ -64,7 +66,7 @@ fn handle_udp(mut chans: util::Channel, tags: sync::Arc<metric::TagMap>, socket:
             Ok(val) => {
                 if parse_statsd(val, &mut metrics, basic_metric.clone()) {
                     for m in metrics.drain(..) {
-                        send("statsd", &mut chans, metric::Event::new_telemetry(m));
+                        send(&mut chans, metric::Event::new_telemetry(m));
                     }
                     report_telemetry("cernan.statsd.packet", 1.0);
                 } else {
@@ -88,11 +90,14 @@ impl Source for Statsd {
             Ok(ips) => {
                 let ips: Vec<_> = ips.collect();
                 for addr in ips {
-                    let listener = UdpSocket::bind(addr).expect("Unable to bind to TCP socket");
+                    let listener =
+                        UdpSocket::bind(addr).expect("Unable to bind to TCP socket");
                     let chans = self.chans.clone();
                     let tags = self.tags.clone();
                     info!("server started on {:?} {}", addr, self.port);
-                    joins.push(thread::spawn(move || handle_udp(chans, tags, listener)));
+                    joins.push(thread::spawn(move || {
+                                                 handle_udp(chans, tags, &listener)
+                                             }));
                 }
             }
             Err(e) => {

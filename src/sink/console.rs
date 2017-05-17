@@ -19,7 +19,8 @@ impl Console {
     ///
     /// ```
     /// use cernan::sink::{Console, ConsoleConfig};
-    /// let config = ConsoleConfig { config_path: "sinks.console".to_string(),
+    /// let config = ConsoleConfig { config_path:
+    /// Some("sinks.console".to_string()),
     /// bin_width: 2, flush_interval: 60 };
     /// let c = Console::new(config);
     /// ```
@@ -34,14 +35,24 @@ impl Console {
 /// The configuration struct for Console. There's not a whole lot to configure
 /// here, independent of other sinks, but Console does do aggregations and that
 /// requires knowing what the user wants for `bin_width`.
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct ConsoleConfig {
     /// The sink's unique name in the routing topology.
-    pub config_path: String,
+    pub config_path: Option<String>,
     /// Sets the bin width for Console's underlying
     /// [bucket](../buckets/struct.Bucket.html).
     pub bin_width: i64,
     pub flush_interval: u64,
+}
+
+impl Default for ConsoleConfig {
+    fn default() -> ConsoleConfig {
+        ConsoleConfig {
+            bin_width: 1,
+            flush_interval: 60,
+            config_path: None,
+        }
+    }
 }
 
 impl ConsoleConfig {
@@ -57,7 +68,7 @@ impl ConsoleConfig {
     /// ```
     pub fn new(config_path: String, flush_interval: u64) -> ConsoleConfig {
         ConsoleConfig {
-            config_path: config_path,
+            config_path: Some(config_path),
             bin_width: 1,
             flush_interval: flush_interval,
         }
@@ -70,8 +81,7 @@ impl Sink for Console {
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        self.aggrs
-            .add(sync::Arc::make_mut(&mut point).take().unwrap());
+        self.aggrs.add(sync::Arc::make_mut(&mut point).take().unwrap());
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
@@ -89,7 +99,7 @@ impl Sink for Console {
         let mut sets = String::new();
         let mut summaries = String::new();
 
-        for values in self.aggrs.into_iter() {
+        for values in &self.aggrs {
             for value in values {
                 match value.aggr_method {
                     AggregationMethod::Sum => {

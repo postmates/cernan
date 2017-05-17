@@ -9,11 +9,11 @@ use std::sync;
 use time;
 use url::Url;
 
-/// The InfluxDB structure
+/// The `InfluxDB` structure
 ///
-/// InfluxDB is a time-series database with nanosecond accuracy. This structure
-/// holds all the information needed to communicate with it. See InfluxDBConfig
-/// for configurable parameters.
+/// `InfluxDB` is a time-series database with nanosecond accuracy. This
+/// structure holds all the information needed to communicate with it. See
+/// `InfluxDBConfig` for configurable parameters.
 pub struct InfluxDB {
     /// The store of Telemetry to be reported
     aggrs: Vec<Telemetry>,
@@ -25,11 +25,11 @@ pub struct InfluxDB {
     uri: Url,
 }
 
-/// InfluxDB configuration
+/// `InfluxDB` configuration
 ///
-/// The cernan InfluxDB integration is done by HTTP/S. The options present here
-/// assume that integration, as well as cernan inside-baseball.
-#[derive(Debug)]
+/// The cernan `InfluxDB` integration is done by HTTP/S. The options present
+/// here assume that integration, as well as cernan inside-baseball.
+#[derive(Debug, Deserialize)]
 pub struct InfluxDBConfig {
     /// If secure, use HTTPS. Else, HTTP.
     pub secure: bool,
@@ -41,11 +41,25 @@ pub struct InfluxDBConfig {
     /// The port of the host machine toward which to report.
     pub port: u16,
     /// The name of the influxdb sink in cernan.
-    pub config_path: String,
+    pub config_path: Option<String>,
     /// The default tags to apply to all telemetry flowing through the sink.
     pub tags: TagMap,
-    /// The interval, in seconds, on which the InfluxDB sink will report.
+    /// The interval, in seconds, on which the `InfluxDB` sink will report.
     pub flush_interval: u64,
+}
+
+impl Default for InfluxDBConfig {
+    fn default() -> Self {
+        InfluxDBConfig {
+            port: 8089,
+            secure: true,
+            host: "localhost".to_string(),
+            db: "cernan".to_string(),
+            config_path: None,
+            tags: Default::default(),
+            flush_interval: 60,
+        }
+    }
 }
 
 #[inline]
@@ -79,15 +93,14 @@ fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
 }
 
 impl InfluxDB {
-    /// Create a new InfluxDB given an InfluxDBConfig
+    /// Create a new `InfluxDB` given an InfluxDBConfig
     pub fn new(config: InfluxDBConfig) -> InfluxDB {
         let scheme = if config.secure { "https" } else { "http" };
         let uri = Url::parse(&format!("{}://{}:{}/write?db={}",
-                                      scheme,
-                                      config.host,
-                                      config.port,
-                                      config.db))
-                .ok()
+                                     scheme,
+                                     config.host,
+                                     config.port,
+                                     config.db))
                 .expect("malformed url");
 
         InfluxDB {
@@ -162,14 +175,19 @@ impl Sink for InfluxDB {
                     if resp.status.is_success() {
                         report_telemetry("cernan.sinks.influxdb.success", 1.0);
                         buffer.clear();
-                        self.delivery_attempts = self.delivery_attempts.saturating_sub(1);
+                        self.delivery_attempts = self.delivery_attempts
+                            .saturating_sub(1);
                         break;
                     } else if resp.status.is_client_error() {
-                        self.delivery_attempts = self.delivery_attempts.saturating_add(1);
-                        report_telemetry("cernan.sinks.influxdb.failure.client_error", 1.0);
+                        self.delivery_attempts = self.delivery_attempts
+                            .saturating_add(1);
+                        report_telemetry("cernan.sinks.influxdb.failure.client_error",
+                                         1.0);
                     } else if resp.status.is_server_error() {
-                        self.delivery_attempts = self.delivery_attempts.saturating_add(1);
-                        report_telemetry("cernan.sinks.influxdb.failure.server_error", 1.0);
+                        self.delivery_attempts = self.delivery_attempts
+                            .saturating_add(1);
+                        report_telemetry("cernan.sinks.influxdb.failure.server_error",
+                                         1.0);
                     }
                 }
             }
@@ -179,8 +197,7 @@ impl Sink for InfluxDB {
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        self.aggrs
-            .push(sync::Arc::make_mut(&mut point).take().unwrap());
+        self.aggrs.push(sync::Arc::make_mut(&mut point).take().unwrap());
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
@@ -215,7 +232,7 @@ mod test {
             host: "127.0.0.1".to_string(),
             secure: false,
             port: 1987,
-            config_path: "sinks.influxdb".to_string(),
+            config_path: Some("sinks.influxdb".to_string()),
             tags: tags.clone(),
             flush_interval: 60,
         };
@@ -224,58 +241,47 @@ mod test {
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00);
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00);
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0)
-                                           .timestamp_and_ns(dt_0.timestamp(),
-                                                             dt_0.timestamp_subsec_nanos())
+                                           .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_sum()
                                            .overlay_tags_from_map(&tags))));
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.counter", 2.0)
-                                           .timestamp_and_ns(dt_0.timestamp(),
-                                                             dt_0.timestamp_subsec_nanos())
+                                           .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_sum()
                                            .overlay_tags_from_map(&tags))));
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.counter", 3.0)
-                                           .timestamp_and_ns(dt_1.timestamp(),
-                                                             dt_1.timestamp_subsec_nanos())
+                                           .timestamp_and_ns(dt_1.timestamp(), dt_1.timestamp_subsec_nanos())
                                            .aggr_sum()
                                            .overlay_tags_from_map(&tags))));
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.gauge", 3.211)
-                                           .timestamp_and_ns(dt_0.timestamp(),
-                                                             dt_0.timestamp_subsec_nanos())
+                                           .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_set()
                                            .overlay_tags_from_map(&tags))));
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.gauge", 4.322)
-                                           .timestamp_and_ns(dt_1.timestamp(),
-                                                             dt_1.timestamp_subsec_nanos())
+                                           .timestamp_and_ns(dt_1.timestamp(), dt_1.timestamp_subsec_nanos())
                                            .aggr_set()
                                            .overlay_tags_from_map(&tags))));
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.gauge", 5.433)
-                                           .timestamp_and_ns(dt_2.timestamp(),
-                                                             dt_2.timestamp_subsec_nanos())
+                                           .timestamp_and_ns(dt_2.timestamp(), dt_2.timestamp_subsec_nanos())
                                            .aggr_set()
                                            .overlay_tags_from_map(&tags))));
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.timer", 12.101)
-                                           .timestamp_and_ns(dt_0.timestamp(),
-                                                             dt_0.timestamp_subsec_nanos())
+                                           .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_summarize()
                                            .overlay_tags_from_map(&tags))));
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.timer", 1.101)
-                                           .timestamp_and_ns(dt_0.timestamp(),
-                                                             dt_0.timestamp_subsec_nanos())
+                                           .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_summarize()
                                            .overlay_tags_from_map(&tags))));
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.timer", 3.101)
-                                           .timestamp_and_ns(dt_0.timestamp(),
-                                                             dt_0.timestamp_subsec_nanos())
+                                           .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_summarize()
                                            .overlay_tags_from_map(&tags))));
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.raw", 1.0)
-                                           .timestamp_and_ns(dt_0.timestamp(),
-                                                             dt_0.timestamp_subsec_nanos())
+                                           .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_set()
                                            .overlay_tags_from_map(&tags))));
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.raw", 2.0)
-                                           .timestamp_and_ns(dt_1.timestamp(),
-                                                             dt_1.timestamp_subsec_nanos())
+                                           .timestamp_and_ns(dt_1.timestamp(), dt_1.timestamp_subsec_nanos())
                                            .aggr_set()
                                            .overlay_tags_from_map(&tags))));
         let mut buffer = String::new();

@@ -1,7 +1,7 @@
 use std::cmp;
 use std::slice::Iter;
 
-#[derive(Clone,Debug,PartialEq,Serialize,Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TagMap<K, V> {
     inner: Vec<(K, V)>,
 }

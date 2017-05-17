@@ -32,11 +32,13 @@ pub fn parse_statsd(source: &str,
                 };
                 match (&src[offset..]).find('|') {
                     Some(pipe_idx) => {
-                        let val = match f64::from_str(&src[offset..(offset + pipe_idx)]) {
+                        let val = match f64::from_str(&src[offset..
+                                                       (offset + pipe_idx)]) {
                             Ok(f) => f,
                             Err(_) => return false,
                         };
-                        let mut metric = sync::Arc::make_mut(&mut metric.clone()).take().unwrap();
+                        let mut metric =
+                            sync::Arc::make_mut(&mut metric.clone()).take().unwrap();
                         metric = metric.set_name(name);
                         metric = metric.set_value(val);
                         metric = metric.timestamp(time::now());
@@ -48,60 +50,70 @@ pub fn parse_statsd(source: &str,
                         if offset >= len {
                             return false;
                         };
-                        metric = match (&src[offset..]).find('@') {
-                            Some(sample_idx) => {
-                                match &src[offset..(offset + sample_idx)] {
-                                    "g|" | "g" => {
-                                        let sample = match f64::from_str(&src[(offset + sample_idx +
-                                                                           1)..]) {
-                                            Ok(f) => f,
-                                            Err(_) => return false,
-                                        };
-                                        metric.persist = true;
-                                        metric = if signed {
-                                            metric.aggr_sum()
-                                        } else {
-                                            metric.aggr_set()
-                                        };
-                                        metric.set_value(val * (1.0 / sample))
-                                    }
-                                    "c|" | "c" => {
-                                        let sample = match f64::from_str(&src[(offset + sample_idx +
-                                                                           1)..]) {
-                                            Ok(f) => f,
-                                            Err(_) => return false,
-                                        };
-                                        metric = metric.aggr_sum().ephemeral();
-                                        metric.set_value(val * (1.0 / sample))
-                                    }
-                                    "ms" | "ms|" | "h" | "h|" => {
-                                        let sample = match f64::from_str(&src[(offset + sample_idx +
-                                                                           1)..]) {
-                                            Ok(f) => f,
-                                            Err(_) => return false,
-                                        };
-                                        metric = metric.aggr_summarize().ephemeral();
-                                        metric.set_value(val * (1.0 / sample))
-                                    }
-                                    _ => return false,
-                                }
-                            }
-                            None => {
-                                match &src[offset..] {
-                                    "g" => {
-                                        metric.persist = true;
-                                        if signed {
-                                            metric.aggr_sum()
-                                        } else {
-                                            metric.aggr_set()
+                        metric =
+                            match (&src[offset..]).find('@') {
+                                Some(sample_idx) => {
+                                    match &src[offset..(offset + sample_idx)] {
+                                        "g|" | "g" => {
+                                            let sample =
+                                                match f64::from_str(&src[(offset +
+                                                                      sample_idx +
+                                                                      1)..]) {
+                                                    Ok(f) => f,
+                                                    Err(_) => return false,
+                                                };
+                                            metric.persist = true;
+                                            metric = if signed {
+                                                metric.aggr_sum()
+                                            } else {
+                                                metric.aggr_set()
+                                            };
+                                            metric.set_value(val * (1.0 / sample))
                                         }
+                                        "c|" | "c" => {
+                                            let sample =
+                                                match f64::from_str(&src[(offset +
+                                                                      sample_idx +
+                                                                      1)..]) {
+                                                    Ok(f) => f,
+                                                    Err(_) => return false,
+                                                };
+                                            metric = metric.aggr_sum().ephemeral();
+                                            metric.set_value(val * (1.0 / sample))
+                                        }
+                                        "ms" | "ms|" | "h" | "h|" => {
+                                            let sample =
+                                                match f64::from_str(&src[(offset +
+                                                                      sample_idx +
+                                                                      1)..]) {
+                                                    Ok(f) => f,
+                                                    Err(_) => return false,
+                                                };
+                                            metric =
+                                                metric.aggr_summarize().ephemeral();
+                                            metric.set_value(val * (1.0 / sample))
+                                        }
+                                        _ => return false,
                                     }
-                                    "ms" | "h" => metric.aggr_summarize().ephemeral(),
-                                    "c" => metric.aggr_sum().ephemeral(),
-                                    _ => return false,
                                 }
-                            }
-                        };
+                                None => {
+                                    match &src[offset..] {
+                                        "g" => {
+                                            metric.persist = true;
+                                            if signed {
+                                                metric.aggr_sum()
+                                            } else {
+                                                metric.aggr_set()
+                                            }
+                                        }
+                                        "ms" | "h" => {
+                                            metric.aggr_summarize().ephemeral()
+                                        }
+                                        "c" => metric.aggr_sum().ephemeral(),
+                                        _ => return false,
+                                    }
+                                }
+                            };
                         res.push(metric);
                     }
                     None => return false,
@@ -198,7 +210,9 @@ mod tests {
     impl Rand for StatsdPayload {
         fn rand<R: Rng>(rng: &mut R) -> StatsdPayload {
             let payload_len = rng.gen_range(1, 50);
-            StatsdPayload { lines: rng.gen_iter::<StatsdLine>().take(payload_len).collect() }
+            StatsdPayload {
+                lines: rng.gen_iter::<StatsdLine>().take(payload_len).collect(),
+            }
         }
     }
 
@@ -273,7 +287,8 @@ mod tests {
                     if sline.sampled {
                         assert!((sline.value * (1.0 / sline.sample_rate) -
                                  telem.value().unwrap())
-                                        .abs() < 0.0001);
+                                        .abs() <
+                                0.0001);
                     } else {
                         assert!((sline.value - telem.value().unwrap()).abs() < 0.0001);
                     }
@@ -287,11 +302,13 @@ mod tests {
                             assert_eq!(telem.persist, true);
                         }
                         StatsdAggregation::Timer => {
-                            assert_eq!(telem.aggr_method, AggregationMethod::Summarize);
+                            assert_eq!(telem.aggr_method,
+                                       AggregationMethod::Summarize);
                             assert_eq!(telem.persist, false);
                         }
                         StatsdAggregation::Histogram => {
-                            assert_eq!(telem.aggr_method, AggregationMethod::Summarize);
+                            assert_eq!(telem.aggr_method,
+                                       AggregationMethod::Summarize);
                             assert_eq!(telem.persist, false);
                         }
                     }
@@ -311,7 +328,9 @@ mod tests {
     fn test_counter() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let mut res = Vec::new();
-        assert!(parse_statsd("a.b:3.1|c\na-b:4|c|@0.1\na-b:5.2|c@0.2\n", &mut res, metric));
+        assert!(parse_statsd("a.b:3.1|c\na-b:4|c|@0.1\na-b:5.2|c@0.2\n",
+                             &mut res,
+                             metric));
         assert_eq!(res[0].aggr_method, AggregationMethod::Sum);
         assert_eq!(res[0].name, "a.b");
         assert_eq!(res[0].persist, false);

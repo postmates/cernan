@@ -18,13 +18,25 @@ pub struct NativeServer {
     tags: metric::TagMap,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct NativeServerConfig {
     pub ip: String,
     pub port: u16,
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
-    pub config_path: String,
+    pub config_path: Option<String>,
+}
+
+impl Default for NativeServerConfig {
+    fn default() -> Self {
+        NativeServerConfig {
+            ip: "0.0.0.0".to_string(),
+            port: 1972,
+            tags: metric::TagMap::default(),
+            forwards: Vec::default(),
+            config_path: None,
+        }
+    }
 }
 
 impl NativeServer {
@@ -51,7 +63,9 @@ fn handle_tcp(chans: util::Channel,
                                  stream.local_addr());
                           let tags = tags.clone();
                           let chans = chans.clone();
-                          thread::spawn(move || { handle_stream(chans, tags, stream); });
+                          thread::spawn(move || {
+                                            handle_stream(chans, tags, stream);
+                                        });
                       }
                   })
 }
@@ -101,7 +115,7 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         for (key, value) in meta.drain() {
                             metric = metric.overlay_tag(key, value);
                         }
-                        util::send("native", &mut chans, metric::Event::new_telemetry(metric));
+                        util::send(&mut chans, metric::Event::new_telemetry(metric));
                     }
                     for mut line in pyld.take_lines().into_iter() {
                         let path: String = line.take_path();
@@ -116,7 +130,7 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         for (key, value) in meta.drain() {
                             logline = logline.overlay_tag(key, value);
                         }
-                        util::send("native", &mut chans, metric::Event::new_log(logline));
+                        util::send(&mut chans, metric::Event::new_log(logline));
 
                     }
                 }
@@ -136,8 +150,7 @@ impl Source for NativeServer {
             .to_socket_addrs()
             .expect("unable to make socket addr")
             .collect();
-        let listener =
-            TcpListener::bind(srv.first().unwrap()).expect("Unable to bind to TCP socket");
+        let listener = TcpListener::bind(srv.first().unwrap()).expect("Unable to bind to TCP socket");
         let chans = self.chans.clone();
         let tags = self.tags.clone();
         info!("server started on {}:{}", self.ip, self.port);

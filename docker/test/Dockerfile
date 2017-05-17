@@ -7,7 +7,9 @@ ARG channel="stable"
 ENV PATH=/root/.cargo/bin:"$PATH"
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain "${channel}"
 
+RUN if [ $channel = "nightly" ]; then cargo install clippy && cargo install cargo-fuzz; fi
+
 # shrinky dink
 RUN apt-get remove -y cmake libcurl4-openssl-dev libelf-dev python && \
-    apt-get autoremove -y && \ 
+    apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*

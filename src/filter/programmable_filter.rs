@@ -24,7 +24,10 @@ fn idx(n: i64, top: usize) -> usize {
 }
 
 impl<'a> Payload<'a> {
-    fn from_metric(m: metric::Telemetry, tags: &'a metric::TagMap, path: &'a str) -> Payload<'a> {
+    fn from_metric(m: metric::Telemetry,
+                   tags: &'a metric::TagMap,
+                   path: &'a str)
+                   -> Payload<'a> {
         Payload {
             metrics: vec![Box::new(m)],
             logs: Vec::new(),
@@ -33,7 +36,10 @@ impl<'a> Payload<'a> {
         }
     }
 
-    fn from_log(l: metric::LogLine, tags: &'a metric::TagMap, path: &'a str) -> Payload<'a> {
+    fn from_log(l: metric::LogLine,
+                tags: &'a metric::TagMap,
+                path: &'a str)
+                -> Payload<'a> {
         Payload {
             metrics: Vec::new(),
             logs: vec![Box::new(l)],
@@ -227,7 +233,8 @@ impl<'a> Payload<'a> {
             Some(key) => {
                 match state.to_str(4).map(|v| v.to_owned()) {
                     Some(val) => {
-                        match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags).insert(key, val) {
+                        match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags)
+                                  .insert(key, val) {
                             Some(old_v) => {
                                 state.push_string(&old_v);
                             }
@@ -321,7 +328,8 @@ impl<'a> Payload<'a> {
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => {
-                match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags).remove(&key) {
+                match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags)
+                          .remove(&key) {
                     Some(old_v) => {
                         state.push_string(&old_v);
                     }
@@ -406,13 +414,25 @@ pub struct ProgrammableFilter {
     last_flush_idx: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ProgrammableFilterConfig {
-    pub scripts_directory: PathBuf,
-    pub script: PathBuf,
+    pub scripts_directory: Option<PathBuf>,
+    pub script: Option<PathBuf>,
     pub forwards: Vec<String>,
-    pub config_path: String,
+    pub config_path: Option<String>,
     pub tags: metric::TagMap,
+}
+
+impl Default for ProgrammableFilterConfig {
+    fn default() -> Self {
+        ProgrammableFilterConfig {
+            scripts_directory: None,
+            script: None,
+            forwards: Vec::default(),
+            config_path: None,
+            tags: metric::TagMap::default(),
+        }
+    }
 }
 
 impl ProgrammableFilter {
@@ -424,6 +444,7 @@ impl ProgrammableFilter {
         let mut path = String::new();
         path.push_str(config
                           .scripts_directory
+                          .expect("must have a specified scripts_directory")
                           .to_str()
                           .expect("must have valid unicode scripts_directory"));
         path.push_str("/?.lua");
@@ -435,7 +456,8 @@ impl ProgrammableFilter {
         state.set_fns(&PAYLOAD_LIB, 0);
         state.set_global("payload");
 
-        let script_path = &config.script.to_str().unwrap();
+        let script = &config.script.expect("must have a specified scripts config");
+        let script_path = script.to_str().unwrap();
         match state.load_file(script_path) {
             ThreadStatus::Ok => trace!("was able to load script at {}", script_path),
             ThreadStatus::SyntaxError => {
@@ -467,7 +489,7 @@ impl ProgrammableFilter {
 
         ProgrammableFilter {
             state: state,
-            path: config.config_path,
+            path: config.config_path.expect("must have a config_path for ProgrammableFilter"),
             global_tags: config.tags,
             last_flush_idx: 0,
         }
@@ -488,13 +510,16 @@ impl filter::Filter for ProgrammableFilter {
                                                                       self.path),
                                                               1.0)
                             .aggr_sum();
-                    let fail = metric::Event::Telemetry(sync::Arc::new(Some(filter_telem)));
-                    return Err(filter::FilterError::NoSuchFunction("process_metric", fail));
+                    let fail =
+                        metric::Event::Telemetry(sync::Arc::new(Some(filter_telem)));
+                    return Err(filter::FilterError::NoSuchFunction("process_metric",
+                                                                   fail));
                 }
 
-                let mut pyld = Payload::from_metric(sync::Arc::make_mut(&mut m).take().unwrap(),
-                                                    &self.global_tags,
-                                                    self.path.as_str());
+                let mut pyld =
+                    Payload::from_metric(sync::Arc::make_mut(&mut m).take().unwrap(),
+                                         &self.global_tags,
+                                         self.path.as_str());
                 unsafe {
                     self.state.push_light_userdata::<Payload>(&mut pyld);
                 }
@@ -511,16 +536,16 @@ impl filter::Filter for ProgrammableFilter {
                 }
                 Ok(())
             }
-            metric::Event::TimerFlush(flush_idx) if self.last_flush_idx >= flush_idx => Ok(()),
+            metric::Event::TimerFlush(flush_idx) if self.last_flush_idx >=
+                                                    flush_idx => Ok(()),
             metric::Event::TimerFlush(flush_idx) => {
                 self.state.get_global("tick");
                 if !self.state.is_fn(-1) {
-                    let fail =
-                        metric::Event::new_telemetry(metric::Telemetry::new(format!("cernan.filter.\
+                    let fail = metric::Event::new_telemetry(metric::Telemetry::new(format!("cernan.filter.\
                                                                                   {}.tick.failure",
-                                                                                    self.path),
-                                                                            1.0)
-                                                             .aggr_sum());
+                                                                                           self.path),
+                                                                                   1.0)
+                                                                    .aggr_sum());
                     return Err(filter::FilterError::NoSuchFunction("tick", fail));
                 }
 
@@ -546,19 +571,20 @@ impl filter::Filter for ProgrammableFilter {
             metric::Event::Log(mut l) => {
                 self.state.get_global("process_log");
                 if !self.state.is_fn(-1) {
-                    let fail =
-                        metric::Event::new_telemetry(metric::Telemetry::new(format!("cernan.filter.\
+                    let fail = metric::Event::new_telemetry(metric::Telemetry::new(format!("cernan.filter.\
                                                                                   {}.process_log.\
                                                                                   failure",
-                                                                                    self.path),
-                                                                            1.0)
-                                                             .aggr_sum());
-                    return Err(filter::FilterError::NoSuchFunction("process_log", fail));
+                                                                                           self.path),
+                                                                                   1.0)
+                                                                    .aggr_sum());
+                    return Err(filter::FilterError::NoSuchFunction("process_log",
+                                                                   fail));
                 }
 
-                let mut pyld = Payload::from_log(sync::Arc::make_mut(&mut l).take().unwrap(),
-                                                 &self.global_tags,
-                                                 self.path.as_str());
+                let mut pyld =
+                    Payload::from_log(sync::Arc::make_mut(&mut l).take().unwrap(),
+                                      &self.global_tags,
+                                      self.path.as_str());
                 unsafe {
                     self.state.push_light_userdata::<Payload>(&mut pyld);
                 }
