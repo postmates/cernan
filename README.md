@@ -58,9 +58,6 @@ by one. So:
 * `-vvv` -- error, warning, info, debug
 * `-vvvv` -- error, warning, info, debug, trace
 
-The `--config` flag allows for more fine grained control of cernan via the
-config file.
-
 # License 
 
 cernan is copyright © 2017 Postmates, Inc and released to the public under the
