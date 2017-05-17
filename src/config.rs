@@ -108,6 +108,7 @@ pub fn parse_args() -> Args {
                  .long("config")
                  .short("C")
                  .value_name("config")
+                 .required(true)
                  .help("The config file to feed in.")
                  .takes_value(true))
         .arg(Arg::with_name("verbose")
@@ -122,28 +123,17 @@ pub fn parse_args() -> Args {
         0
     };
 
-    match args.value_of("config-file") {
-        // We read from a configuration file
-        Some(filename) => {
-            let mut fp = match File::open(filename) {
-                Err(e) => panic!("Could not open file {} with error {}", filename, e),
-                Ok(fp) => fp,
-            };
+    if let Some(filename) = args.value_of("config-file") {
+        let mut fp = match File::open(filename) {
+            Err(e) => panic!("Could not open file {} with error {}", filename, e),
+            Ok(fp) => fp,
+        };
 
-            let mut buffer = String::new();
-            fp.read_to_string(&mut buffer).unwrap();
-            parse_config_file(&buffer, verb)
-        }
-        // We read from CLI arguments
-        None => {
-            Args {
-                data_directory: Path::new("/tmp/cernan-data").to_path_buf(),
-                scripts_directory: Path::new("/tmp/cernan-scripts").to_path_buf(),
-                verbose: verb,
-                // wavefront: Some(WavefrontConfig::default()),
-                ..Default::default()
-            }
-        }
+        let mut buffer = String::new();
+        fp.read_to_string(&mut buffer).unwrap();
+        parse_config_file(&buffer, verb)
+    } else {
+        unreachable!();
     }
 }
 

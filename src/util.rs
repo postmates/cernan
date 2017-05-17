@@ -4,7 +4,7 @@ use metric;
 pub type Channel = Vec<hopper::Sender<metric::Event>>;
 
 pub fn send(chans: &mut Channel, event: metric::Event) {
-    let max = chans.len() - 1;
+    let max: usize = chans.len().saturating_sub(1);
     if max == 0 {
         chans[0].send(event)
     } else {
