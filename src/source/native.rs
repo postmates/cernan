@@ -156,6 +156,6 @@ impl Source for NativeServer {
         info!("server started on {}:{}", self.ip, self.port);
         let jh = thread::spawn(move || handle_tcp(chans, tags, listener));
 
-        jh.join().expect("Uh oh, child thread paniced!");
+        jh.join().expect("Uh oh, child thread panicked!");
     }
 }
