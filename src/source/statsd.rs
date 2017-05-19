@@ -111,7 +111,7 @@ impl Source for Statsd {
             // TODO Having sub-threads panic will not cause a bubble-up if that
             // thread is not the currently examined one. We're going to have to have
             // some manner of sub-thread communication going on.
-            jh.join().expect("Uh oh, child thread paniced!");
+            jh.join().expect("Uh oh, child thread panicked!");
         }
     }
 }
