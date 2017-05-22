@@ -57,7 +57,33 @@ impl Internal {
 pub fn report_telemetry<S>(name: S, value: f64) -> ()
     where S: Into<String>
 {
-    Q.lock().unwrap().push_back(metric::Telemetry::new(name, value).aggr_sum());
+    report_full_telemetry(name, value, None, None);
+}
+
+/// Push telemetry into the Internal queue
+///
+/// Given a name, value, possible aggregation and possible metadata construct a
+/// Telemetry with said aggregation and push into Internal's queue. This queue
+/// will then be drained into operator configured forwards.
+pub fn report_full_telemetry<S>(name: S,
+                                value: f64,
+                                aggr: Option<metric::AggregationMethod>,
+                                metadata: Option<Vec<(&str, &str)>>)
+                                -> ()
+    where S: Into<String>
+{
+    let mut telem = metric::Telemetry::new(name, value);
+    telem = match aggr {
+        Some(metric::AggregationMethod::Sum) |
+        None => telem.aggr_sum(),
+        Some(metric::AggregationMethod::Set) => telem.aggr_set(),
+        Some(metric::AggregationMethod::Summarize) => telem.aggr_summarize(),
+    };
+    telem = metadata
+        .unwrap_or(vec![])
+        .iter()
+        .fold(telem, |acc, &(k, v)| acc.overlay_tag(k, v));
+    Q.lock().unwrap().push_back(telem);
 }
 
 /// Internal as Source
