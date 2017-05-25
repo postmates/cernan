@@ -12,7 +12,7 @@ use serde_json;
 use serde_json::Map;
 use serde_json::value::Value;
 use sink::{Sink, Valve};
-use source::report_telemetry;
+use source::report_full_telemetry;
 use std::sync;
 use uuid::Uuid;
 
@@ -106,19 +106,26 @@ impl Sink for Firehose {
                         debug!("Wrote {} records to delivery stream {}",
                                prbi.records.len(),
                                prbi.delivery_stream_name);
-                        report_telemetry(format!("cernan.sinks.firehose.{}.records.delivery",
-                                                 prbi.delivery_stream_name),
-                                         1.0);
-                        report_telemetry(format!("cernan.sinks.firehose.{}.records.\
-                                                  total_delivered",
-                                                 prbi.delivery_stream_name),
-                                         prbi.records.len() as f64);
+                        report_full_telemetry("cernan.sinks.firehose.records.delivery",
+                                              1.0,
+                                              None,
+                                              Some(vec![("delivery_stream_name",
+                                                         prbi.delivery_stream_name
+                                                             .as_str())]));
+                        report_full_telemetry("cernan.sinks.firehose.records.total_delivered",
+                                              prbi.records.len() as f64,
+                                              None,
+                                              Some(vec![("delivery_stream_name",
+                                                         prbi.delivery_stream_name
+                                                             .as_str())]));
                         let failed_put_count = prbo.failed_put_count;
                         if failed_put_count > 0 {
-                            report_telemetry(format!("cernan.sinks.firehose.{}.records.\
-                                                      total_failed",
-                                                     prbi.delivery_stream_name),
-                                             failed_put_count as f64);
+                            report_full_telemetry("cernan.sinks.firehose.records.total_failed",
+                                                  failed_put_count as f64,
+                                                  None,
+                                                  Some(vec![("delivery_stream_name",
+                                                        prbi.delivery_stream_name
+                                                            .as_str())]));
                             error!("Failed to write {} put records", failed_put_count);
                         }
                         break;
@@ -132,61 +139,76 @@ impl Sink for Firehose {
                             // the payload being wonky. This is an optimization for
                             // the future.
                             ResourceNotFound(rnf_err) => {
-                                report_telemetry(format!("cernan.sinks.firehose.{}.error.\
-                                                          resource_not_found",
-                                                         prbi.delivery_stream_name),
-                                                 1.0);
+                                report_full_telemetry("cernan.sinks.firehose.error.resource_not_found",
+                                                 1.0,
+                                                 None,
+                                                 Some(vec![("delivery_stream_name",
+                                                        prbi.delivery_stream_name
+                                                            .as_str())]));
                                 error!("Unable to write to resource, not found: {}",
                                        rnf_err);
                                 break;
                             }
                             InvalidArgument(ia_err) => {
-                                report_telemetry(format!("cernan.sinks.firehose.{}.error.\
-                                                          invalid_argument",
-                                                         prbi.delivery_stream_name),
-                                                 1.0);
+                                report_full_telemetry("cernan.sinks.firehose.error.invalid_argument",
+                                                 1.0,
+                                                 None,
+                                                 Some(vec![("delivery_stream_name",
+                                                        prbi.delivery_stream_name
+                                                            .as_str())]));
                                 error!("Unable to write, invalid argument: {}",
                                        ia_err);
                                 break;
                             }
                             HttpDispatch(hd_err) => {
-                                report_telemetry(format!("cernan.sinks.firehose.{}.error.\
-                                                          http_dispatch",
-                                                         prbi.delivery_stream_name),
-                                                 1.0);
+                                report_full_telemetry("cernan.sinks.firehose.error.http_dispatch",
+                                                 1.0,
+                                                 None,
+                                                 Some(vec![("delivery_stream_name",
+                                                        prbi.delivery_stream_name
+                                                            .as_str())]));
                                 error!("Unable to write, http dispatch: {}", hd_err);
                                 break;
                             }
                             Validation(v_err) => {
-                                report_telemetry(format!("cernan.sinks.firehose.{}.error.\
-                                                          validation",
-                                                         prbi.delivery_stream_name),
-                                                 1.0);
+                                report_full_telemetry("cernan.sinks.firehose.error.validation",
+                                                 1.0,
+                                                 None,
+                                                 Some(vec![("delivery_stream_name",
+                                                        prbi.delivery_stream_name
+                                                            .as_str())]));
                                 error!("Unable to write, validation failure: {}",
                                        v_err);
                                 break;
                             }
                             Unknown(u_err) => {
-                                report_telemetry(format!("cernan.sinks.firehose.{}.error.unknown",
-                                                         prbi.delivery_stream_name),
-                                                 1.0);
+                                report_full_telemetry("cernan.sinks.firehose.error.unknown",
+                                                 1.0,
+                                                 None,
+                                                 Some(vec![("delivery_stream_name",
+                                                        prbi.delivery_stream_name
+                                                            .as_str())]));
                                 error!("Unable to write, unknown failure: {}", u_err);
                                 break;
                             }
                             // The following errors are recoverable, potentially.
                             Credentials(c_err) => {
-                                report_telemetry(format!("cernan.sinks.firehose.{}.error.\
-                                                          credentials",
-                                                         prbi.delivery_stream_name),
-                                                 1.0);
+                                report_full_telemetry("cernan.sinks.firehose.error.credentials",
+                                                 1.0,
+                                                 None,
+                                                 Some(vec![("delivery_stream_name",
+                                                        prbi.delivery_stream_name
+                                                            .as_str())]));
                                 error!("Unable to write, credential failure: {}",
                                        c_err);
                             }
                             ServiceUnavailable(su_err) => {
-                                report_telemetry(format!("cernan.sinks.firehose.{}.error.\
-                                                          service_unavailable",
-                                                         prbi.delivery_stream_name),
-                                                 1.0);
+                                report_full_telemetry("cernan.sinks.firehose.error.service_unavailable",
+                                                 1.0,
+                                                 None,
+                                                 Some(vec![("delivery_stream_name",
+                                                        prbi.delivery_stream_name
+                                                            .as_str())]));
                                 error!("Service unavailable, will retry: {}", su_err);
                             }
                         }
