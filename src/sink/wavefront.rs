@@ -303,7 +303,7 @@ mod test {
             percentiles: percentiles,
             flush_interval: 60,
         };
-        let mut wavefront = Wavefront::new(config);
+        let mut wavefront = Wavefront::new(config).unwrap();
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
