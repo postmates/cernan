@@ -89,16 +89,19 @@ fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
 }
 
 impl Wavefront {
-    pub fn new(config: WavefrontConfig) -> Wavefront {
-        Wavefront {
-            host: config.host,
-            port: config.port,
-            aggrs: Buckets::new(config.bin_width),
-            delivery_attempts: 0,
-            percentiles: config.percentiles,
-            stats: String::with_capacity(8_192),
-            flush_interval: config.flush_interval,
+    pub fn new(config: WavefrontConfig) -> Result<Wavefront, String> {
+        if config.host == "" {
+            return Err("Host can not be empty".to_string());
         }
+        Ok(Wavefront {
+               host: config.host,
+               port: config.port,
+               aggrs: Buckets::new(config.bin_width),
+               delivery_attempts: 0,
+               percentiles: config.percentiles,
+               stats: String::with_capacity(8_192),
+               flush_interval: config.flush_interval,
+           })
     }
 
     /// Convert the buckets into a String that
@@ -300,7 +303,7 @@ mod test {
             percentiles: percentiles,
             flush_interval: 60,
         };
-        let mut wavefront = Wavefront::new(config);
+        let mut wavefront = Wavefront::new(config).unwrap();
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();

@@ -105,8 +105,16 @@ fn main() {
             .unwrap();
         sends.insert(config_path.clone(), wf_send);
         joins.push(thread::spawn(move || {
-                                     cernan::sink::Wavefront::new(config).run(wf_recv);
-                                 }));
+            match cernan::sink::Wavefront::new(config) {
+                Ok(mut w) => {
+                    w.run(wf_recv);
+                }
+                Err(e) => {
+                    error!("Configuration error for Wavefront: {}", e);
+                    process::exit(1);
+                }
+            }
+        }));
     }
     if let Some(config) = mem::replace(&mut args.prometheus, None) {
         let config_path = cfg_conf!(config);
