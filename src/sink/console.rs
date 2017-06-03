@@ -1,5 +1,8 @@
 use buckets::Buckets;
 use chrono;
+use chrono::datetime::DateTime;
+use chrono::naive::datetime::NaiveDateTime;
+use chrono::offset::utc::UTC;
 use metric::{AggregationMethod, LogLine, Telemetry};
 use sink::{Sink, Valve};
 use std::sync;
@@ -9,6 +12,7 @@ use std::sync;
 /// print each `flush-interval` to stdout.
 pub struct Console {
     aggrs: Buckets,
+    buffer: Vec<LogLine>,
     flush_interval: u64,
 }
 
@@ -27,6 +31,7 @@ impl Console {
     pub fn new(config: ConsoleConfig) -> Console {
         Console {
             aggrs: Buckets::new(config.bin_width),
+            buffer: Vec::new(),
             flush_interval: config.flush_interval,
         }
     }
@@ -84,8 +89,9 @@ impl Sink for Console {
         self.aggrs.add(sync::Arc::make_mut(&mut point).take().unwrap());
     }
 
-    fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
-        // drop the line, intentionally
+    fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
+        let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
+        self.buffer.append(&mut vec![line]);
     }
 
     fn flush_interval(&self) -> Option<u64> {
@@ -93,6 +99,12 @@ impl Sink for Console {
     }
 
     fn flush(&mut self) {
+        println!("Flushing lines: {}", chrono::UTC::now().to_rfc3339());
+        for line in self.buffer.iter() {
+            println!("{} {}: {}", format_time(line.time), line.path, line.value);
+        }
+        self.buffer.clear();
+
         println!("Flushing metrics: {}", chrono::UTC::now().to_rfc3339());
 
         let mut sums = String::new();
@@ -159,4 +171,11 @@ impl Sink for Console {
 
         self.aggrs.reset();
     }
+}
+
+#[inline]
+fn format_time(time: i64) -> String {
+    let naive_time = NaiveDateTime::from_timestamp(time, 0);
+    let utc_time: DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
+    format!("{}", utc_time.format("%Y-%m-%dT%H:%M:%S%.3fZ"))
 }
