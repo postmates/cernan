@@ -89,16 +89,19 @@ fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
 }
 
 impl Wavefront {
-    pub fn new(config: WavefrontConfig) -> Wavefront {
-        Wavefront {
-            host: config.host,
-            port: config.port,
-            aggrs: Buckets::new(config.bin_width),
-            delivery_attempts: 0,
-            percentiles: config.percentiles,
-            stats: String::with_capacity(8_192),
-            flush_interval: config.flush_interval,
+    pub fn new(config: WavefrontConfig) -> Result<Wavefront, String> {
+        if config.host == "" {
+            return Err("Host can not be empty".to_string());
         }
+        Ok(Wavefront {
+               host: config.host,
+               port: config.port,
+               aggrs: Buckets::new(config.bin_width),
+               delivery_attempts: 0,
+               percentiles: config.percentiles,
+               stats: String::with_capacity(8_192),
+               flush_interval: config.flush_interval,
+           })
     }
 
     /// Convert the buckets into a String that
