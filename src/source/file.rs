@@ -302,13 +302,10 @@ impl Source for FileServer {
 
 #[cfg(test)]
 mod test {
-    extern crate quickcheck;
-    extern crate rand;
     extern crate tempdir;
 
-    use self::quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
-    use self::rand::{Rand, Rng};
     use super::*;
+    use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use std::fs;
 
     // actions that apply to a single FileWatcher
@@ -322,19 +319,15 @@ mod test {
     }
 
     impl Arbitrary for FWAction {
-        fn arbitrary<G: Gen>(g: &mut G) -> FWAction {
-            g.gen()
-        }
-    }
-
-    impl Rand for FWAction {
-        fn rand<R: Rng>(rng: &mut R) -> FWAction {
-            let i: usize = rng.gen_range(0, 100);
-            let ln_sz = rng.gen_range(0, 256);
-            let pause = rng.gen_range(1, 3);
+        fn arbitrary<G>(g: &mut G) -> FWAction
+            where G: Gen
+        {
+            let i: usize = g.gen_range(0, 100);
+            let ln_sz = g.gen_range(0, 256);
+            let pause = g.gen_range(1, 3);
             match i {
                 0...50 => {
-                    FWAction::WriteLine(rng.gen_ascii_chars().take(ln_sz).collect())
+                    FWAction::WriteLine(g.gen_ascii_chars().take(ln_sz).collect())
                 }
                 51...75 => FWAction::Pause(pause),
                 76...85 => FWAction::RotateFile,

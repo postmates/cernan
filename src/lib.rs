@@ -30,7 +30,6 @@ extern crate libc;
 extern crate lua;
 extern crate protobuf;
 extern crate quantiles;
-extern crate rand;
 extern crate rusoto_core;
 extern crate rusoto_firehose;
 extern crate seahash;
@@ -48,6 +47,9 @@ extern crate lazy_static;
 
 #[macro_use]
 extern crate serde_derive;
+
+#[cfg(test)]
+extern crate quickcheck;
 
 pub mod sink;
 pub mod buckets;

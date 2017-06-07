@@ -127,13 +127,9 @@ pub fn parse_statsd(source: &str,
 
 #[cfg(test)]
 mod tests {
-    extern crate rand;
-    extern crate quickcheck;
-
-    use self::quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
-    use self::rand::{Rand, Rng};
     use super::*;
     use metric::{AggregationMethod, Telemetry};
+    use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use std::sync;
 
     #[derive(Clone, Debug)]
@@ -145,14 +141,10 @@ mod tests {
     }
 
     impl Arbitrary for StatsdAggregation {
-        fn arbitrary<G: Gen>(g: &mut G) -> StatsdAggregation {
-            g.gen()
-        }
-    }
-
-    impl Rand for StatsdAggregation {
-        fn rand<R: Rng>(rng: &mut R) -> StatsdAggregation {
-            let i: usize = rng.gen_range(0, 4);
+        fn arbitrary<G>(g: &mut G) -> Self
+            where G: Gen
+        {
+            let i: usize = g.gen_range(0, 4);
             match i {
                 0 => StatsdAggregation::Gauge,
                 1 => StatsdAggregation::Counter,
@@ -173,17 +165,19 @@ mod tests {
         aggregation: StatsdAggregation,
     }
 
-    impl Rand for StatsdLine {
-        fn rand<R: Rng>(rng: &mut R) -> StatsdLine {
-            let name_len = rng.gen_range(1, 256);
-            let val: f64 = rng.gen();
-            let sampled: bool = rng.gen();
-            let sample_bar: bool = rng.gen();
-            let sample_rate: f64 = rng.gen();
-            let newline_terminated: bool = rng.gen();
-            let aggregation: StatsdAggregation = rng.gen();
+    impl Arbitrary for StatsdLine {
+        fn arbitrary<G>(g: &mut G) -> Self
+            where G: Gen
+        {
+            let name_len = g.gen_range(1, 256);
+            let val: f64 = g.gen();
+            let sampled: bool = g.gen();
+            let sample_bar: bool = g.gen();
+            let sample_rate: f64 = g.gen();
+            let newline_terminated: bool = g.gen();
+            let aggregation = StatsdAggregation::arbitrary(g);
 
-            let tmp: String = rng.gen_ascii_chars().take(name_len).collect();
+            let tmp: String = g.gen_ascii_chars().take(name_len).collect();
             StatsdLine {
                 name: tmp,
                 value: val,
@@ -196,29 +190,16 @@ mod tests {
         }
     }
 
-    impl Arbitrary for StatsdLine {
-        fn arbitrary<G: Gen>(g: &mut G) -> StatsdLine {
-            g.gen()
-        }
-    }
-
     #[derive(Clone, Debug)]
     struct StatsdPayload {
         lines: Vec<StatsdLine>,
     }
 
-    impl Rand for StatsdPayload {
-        fn rand<R: Rng>(rng: &mut R) -> StatsdPayload {
-            let payload_len = rng.gen_range(1, 50);
-            StatsdPayload {
-                lines: rng.gen_iter::<StatsdLine>().take(payload_len).collect(),
-            }
-        }
-    }
-
     impl Arbitrary for StatsdPayload {
-        fn arbitrary<G: Gen>(g: &mut G) -> StatsdPayload {
-            g.gen()
+        fn arbitrary<G>(g: &mut G) -> Self
+            where G: Gen
+        {
+            StatsdPayload { lines: Arbitrary::arbitrary(g) }
         }
     }
 
@@ -226,6 +207,9 @@ mod tests {
         let mut pyld_buf = String::with_capacity(1_024);
 
         let max = pyld.lines.len();
+        if max == 0 {
+            return "".to_string();
+        }
         assert!(max != 0);
         for line in &pyld.lines[0..max - 1] {
             pyld_buf.push_str(&line.name.replace(":", "."));
@@ -276,6 +260,9 @@ mod tests {
     #[test]
     fn test_parse_qc() {
         fn inner(pyld: StatsdPayload) -> TestResult {
+            if pyld.lines.is_empty() {
+                return TestResult::discard();
+            }
             let lines = payload_to_str(&pyld);
             let metric = sync::Arc::new(Some(Telemetry::default()));
             let mut res = Vec::new();
@@ -319,8 +306,8 @@ mod tests {
             }
         }
         QuickCheck::new()
-            .tests(10000)
-            .max_tests(100000)
+            .tests(1000)
+            .max_tests(10000)
             .quickcheck(inner as fn(StatsdPayload) -> TestResult);
     }
 

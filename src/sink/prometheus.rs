@@ -357,27 +357,17 @@ impl Sink for Prometheus {
 
 #[cfg(test)]
 mod test {
-    extern crate quickcheck;
-    extern crate rand;
-
-    use self::quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
-    use self::rand::{Rand, Rng};
     use super::*;
     use metric;
-
-    impl Rand for PrometheusAggr {
-        fn rand<R: Rng>(rng: &mut R) -> PrometheusAggr {
-            let total_inner_sz: usize = rng.gen_range(0, 256);
-            let mut inner: Vec<metric::Telemetry> =
-                rng.gen_iter::<metric::Telemetry>().take(total_inner_sz).collect();
-            inner.sort_by(|a, b| prometheus_cmp(a, b).unwrap());
-            PrometheusAggr { inner: inner }
-        }
-    }
+    use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
 
     impl Arbitrary for PrometheusAggr {
-        fn arbitrary<G: Gen>(g: &mut G) -> PrometheusAggr {
-            g.gen()
+        fn arbitrary<G>(g: &mut G) -> Self
+            where G: Gen
+        {
+            let mut inner: Vec<metric::Telemetry> = Arbitrary::arbitrary(g);
+            inner.sort_by(|a, b| prometheus_cmp(a, b).unwrap());
+            PrometheusAggr { inner: inner }
         }
     }
 
