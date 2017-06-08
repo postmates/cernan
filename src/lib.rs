@@ -39,6 +39,10 @@ extern crate toml;
 extern crate uuid;
 extern crate url;
 
+extern crate elastic;
+#[macro_use]
+extern crate elastic_derive;
+
 #[macro_use]
 extern crate log;
 

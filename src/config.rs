@@ -17,6 +17,7 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 use filter::ProgrammableFilterConfig;
 
 use sink::ConsoleConfig;
+use sink::ElasticsearchConfig;
 use sink::FirehoseConfig;
 use sink::InfluxDBConfig;
 use sink::NativeConfig;
@@ -62,6 +63,7 @@ pub struct Args {
     pub influxdb: Option<InfluxDBConfig>,
     pub native_sink_config: Option<NativeConfig>,
     pub prometheus: Option<PrometheusConfig>,
+    pub elasticsearch: Option<ElasticsearchConfig>,
     pub firehosen: Option<Vec<FirehoseConfig>>,
     // sources
     pub files: Option<Vec<FileServerConfig>>,
@@ -88,6 +90,7 @@ impl Default for Args {
             influxdb: None,
             prometheus: None,
             native_sink_config: None,
+            elasticsearch: None,
             firehosen: None,
             // sources
             statsds: None,
@@ -139,15 +142,16 @@ pub fn parse_args() -> Args {
 
 pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     let mut args = Args::default();
-    let value: toml::Value = toml::from_str(buffer).expect("could not parse config file");
+    let value: toml::Value =
+        toml::from_str(buffer).expect("could not parse config file");
 
     args.verbose = verbosity;
 
     args.data_directory = value
         .get("data-directory")
         .map(|s| {
-                 let s = s.as_str()
-                     .expect("data-directory value must be valid string");
+                 let s =
+                     s.as_str().expect("data-directory value must be valid string");
                  Path::new(s).to_path_buf()
              })
         .unwrap_or(args.data_directory);
@@ -155,8 +159,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     args.scripts_directory = value
         .get("scripts-directory")
         .map(|s| {
-                 let s = s.as_str()
-                     .expect("scripts-directory value must be valid string");
+                 let s =
+                     s.as_str().expect("scripts-directory value must be valid string");
                  Path::new(s).to_path_buf()
              })
         .unwrap_or(args.scripts_directory);
@@ -184,7 +188,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     args.filters = value
         .get("filters")
         .map(|fltr| {
-            let mut filters: HashMap<String, ProgrammableFilterConfig> = HashMap::new();
+            let mut filters: HashMap<String, ProgrammableFilterConfig> =
+                HashMap::new();
             for (name, tbl) in fltr.as_table().unwrap().iter() {
                 match tbl.get("script") {
                     Some(pth) => {
@@ -221,9 +226,12 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     if let Some(sinks) = value.get("sinks") {
         let sinks = sinks.as_table().expect("sinks must be in table format");
 
-        args.null = sinks
-            .get("null")
-            .map(|_| NullConfig { config_path: "sinks.null".to_string() });
+        args.null = sinks.get("null").map(|_| {
+                                              NullConfig {
+                                                  config_path: "sinks.null"
+                                                      .to_string(),
+                                              }
+                                          });
 
         args.console = sinks
             .get("console")
@@ -354,10 +362,10 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                 res.port = snk.get("port")
                     .map(|p| {
-                             p.as_integer()
+                        p.as_integer()
                                  .expect("could not parse sinks.prometheus.port") as
                              u16
-                         })
+                    })
                     .unwrap_or(res.port);
 
                 res.host = snk.get("host")
@@ -370,10 +378,50 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                 res.bin_width = snk.get("bin_width")
                     .map(|bw| {
-                             bw.as_integer()
+                        bw.as_integer()
                                  .expect("could not parse sinks.prometheus.bin_width")
-                         })
+                    })
                     .unwrap_or(res.bin_width);
+
+                res
+            });
+
+        args.elasticsearch = sinks
+            .get("elasticsearch")
+            .map(|snk| {
+                let mut res = ElasticsearchConfig::default();
+                res.config_path = Some("sinks.elasticsearch".to_string());
+
+                res.port = snk.get("port")
+                    .map(|p| {
+                        p.as_integer()
+                                 .expect("could not parse sinks.elasticsearch.port") as
+                             usize
+                    })
+                    .unwrap_or(res.port);
+
+                res.host = snk.get("host")
+                    .map(|p| {
+                             p.as_str()
+                                 .expect("could not parse sinks.elasticsearch.host")
+                                 .to_string()
+                         })
+                    .unwrap_or(res.host);
+
+                res.secure = snk.get("secure")
+                    .map(|bw| {
+                        bw.as_bool()
+                                 .expect("could not parse sinks.elasticsearch.secure")
+                    })
+                    .unwrap_or(res.secure);
+
+                res.flush_interval = snk.get("flush_interval")
+                    .map(|fi| {
+                             fi.as_integer()
+                                 .expect("could not parse sinks.elasticsearch.flush_interval") as
+                             u64
+                         })
+                    .unwrap_or(args.flush_interval);
 
                 res
             });
@@ -622,11 +670,18 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         res.config_path = Some(format!("sources.native.{}", name));
 
                         res.port = tbl.get("port")
-                            .map(|p| p.as_integer().expect("could not parse native port") as u16)
+                            .map(|p| {
+                                p.as_integer().expect("could not parse native port") as
+                                u16
+                            })
                             .unwrap_or(res.port);
 
                         res.ip = tbl.get("ip")
-                            .map(|p| p.as_str().expect("could not parse native ip").to_string())
+                            .map(|p| {
+                                     p.as_str()
+                                         .expect("could not parse native ip")
+                                         .to_string()
+                                 })
                             .unwrap_or(res.ip);
 
                         res.forwards = tbl.get("forwards")
@@ -644,7 +699,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                         assert!(res.config_path.is_some());
 
-                        native_server_config.insert(format!("sources.native.{}", name), res);
+                        native_server_config.insert(format!("sources.native.{}",
+                                                            name),
+                                                    res);
                     }
                 }
                 native_server_config
@@ -914,7 +971,8 @@ scripts-directory = "/foo/bar"
         assert!(args.filters.is_some());
         let filters = args.filters.unwrap();
 
-        let config0: &ProgrammableFilterConfig = filters.get("filters.collectd_scrub").unwrap();
+        let config0: &ProgrammableFilterConfig =
+            filters.get("filters.collectd_scrub").unwrap();
         let script = config0.script.clone();
         assert_eq!(script.unwrap().to_str().unwrap(),
                    "/tmp/cernan-scripts/cernan_bridge.lua");
@@ -936,7 +994,8 @@ scripts-directory = "/foo/bar"
         assert!(args.filters.is_some());
         let filters = args.filters.unwrap();
 
-        let config0: &ProgrammableFilterConfig = filters.get("filters.collectd_scrub").unwrap();
+        let config0: &ProgrammableFilterConfig =
+            filters.get("filters.collectd_scrub").unwrap();
         let script = config0.script.clone();
         assert_eq!(script.unwrap().to_str().unwrap(), "data/cernan_bridge.lua");
         assert_eq!(config0.forwards, vec!["sinks.console"]);
