@@ -91,28 +91,35 @@ impl Elasticsearch {
                                       _)) => {
                 self.put_index(idx.clone()).and(self.put_doc(idx, doc)).map(|_| ())
             }
-            // Something went wrong: panic
-            Err(e) => Err(e),
+            // Something went wrong, who knows what
+            Err(e) => {
+                debug!("error: {}", e);
+                Err(e)
+            }
         }
     }
 
     fn put_index(&mut self,
                  idx: String)
                  -> Result<CommandResponse, elastic::error::Error> {
-        self.client
+        let res = self.client
             .create_index(index(idx.clone()))
             .send()
-            .and(self.client.put_mapping::<Payload>(index(idx)).send())
+            .and(self.client.put_mapping::<Payload>(index(idx)).send());
+        report_telemetry("sinks.elasticsearch.put_index", 1.0);
+        res
     }
 
     fn put_doc(&mut self,
                idx: String,
                doc: Payload)
                -> Result<IndexResponse, elastic::error::Error> {
-        self.client
+        let res = self.client
             .index_document(index(idx), id(doc.uuid.clone()), doc)
             .params(|p| p.url_param("refresh", true))
-            .send()
+            .send();
+        report_telemetry("sinks.elasticsearch.put_doc", 1.0);
+        res
     }
 }
 
@@ -135,8 +142,11 @@ impl Sink for Elasticsearch {
 
             let index = idx(&self.index_prefix, m.time);
             match self.ensure_indexed(index, doc) {
-                Ok(()) => {}
+                Ok(()) => {
+                    report_telemetry("sinks.elasticsearch.success", 1.0);
+                }
                 Err(err) => {
+                    report_telemetry("sinks.elasticsearch.failure", 1.0);
                     debug!("Failed to create index, error: {}", err);
                     self.buffer.push_back(m);
                     attempts += 1;
