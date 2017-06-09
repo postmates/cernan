@@ -13,7 +13,7 @@ use std::sync;
 use time;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, ElasticType)]
+#[derive(Debug, Serialize, Deserialize, ElasticType)]
 struct Payload {
     uuid: String,
     path: String,
@@ -24,6 +24,7 @@ struct Payload {
 #[derive(Debug, Clone)]
 pub struct ElasticsearchConfig {
     pub config_path: Option<String>,
+    pub index_prefix: String,
     pub secure: bool, // whether http or https
     pub host: String,
     pub port: usize,
@@ -36,6 +37,7 @@ impl Default for ElasticsearchConfig {
             config_path: Some("sinks.elasticsearch".to_string()),
             secure: false,
             host: "127.0.0.1".to_string(),
+            index_prefix: "".to_string(),
             port: 9200,
             flush_interval: 10,
         }
@@ -45,6 +47,7 @@ impl Default for ElasticsearchConfig {
 pub struct Elasticsearch {
     buffer: VecDeque<LogLine>,
     client: Client,
+    index_prefix: String,
     flush_interval: u64,
 }
 
@@ -58,6 +61,7 @@ impl Elasticsearch {
         Elasticsearch {
             buffer: VecDeque::new(),
             client: client,
+            index_prefix: config.index_prefix,
             flush_interval: config.flush_interval,
         }
     }
@@ -79,7 +83,7 @@ impl Sink for Elasticsearch {
             };
 
             match self.client
-                      .index_document(index(idx(m.time)),
+                      .index_document(index(idx(&self.index_prefix, m.time)),
                                       id(doc.uuid.clone()),
                                       doc)
                       .send() {
@@ -87,6 +91,7 @@ impl Sink for Elasticsearch {
                     attempts = attempts.saturating_sub(1);
                     report_telemetry("sinks.elasticsearch.index_document.success",
                                      1.0);
+                    debug!("Wrote one record into Elasticsearch");
                 }
                 Err(err) => {
                     report_telemetry("sinks.elasticsearch.index_document.failure",
@@ -137,8 +142,8 @@ fn format_time(time: i64) -> String {
 }
 
 #[inline]
-fn idx(time: i64) -> String {
+fn idx(prefix: &str, time: i64) -> String {
     let naive_time = NaiveDateTime::from_timestamp(time, 0);
     let utc_time: DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
-    format!("{}", utc_time.format("%Y-%m-%d"))
+    format!("{}-{}", prefix, utc_time.format("%Y-%m-%d"))
 }

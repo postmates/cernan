@@ -408,6 +408,14 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                          })
                     .unwrap_or(res.host);
 
+                res.index_prefix = snk.get("index-prefix")
+                    .map(|p| {
+                             p.as_str()
+                                 .expect("could not parse sinks.elasticsearch.index-prefix")
+                                 .to_string()
+                         })
+                    .unwrap_or(res.index_prefix);
+                
                 res.secure = snk.get("secure")
                     .map(|bw| {
                              bw.as_bool()
