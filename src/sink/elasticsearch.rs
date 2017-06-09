@@ -84,11 +84,37 @@ impl Sink for Elasticsearch {
             };
             trace!("PAYLOAD: {:?}", doc);
 
-            match self.client
-                      .index_document(index(idx(&self.index_prefix, m.time)),
-                                      id(doc.uuid.clone()),
-                                      doc)
-                      .send() {
+            let index = index(idx(&self.index_prefix, m.time));
+
+            match self.client.create_index(index.clone()).send() {
+                Ok(_) => {}
+                Err(err) => {
+                    debug!("Failed to create index, error: {}", err);
+                    self.buffer.push_back(m);
+                    attempts += 1;
+                    time::delay(attempts);
+                    if attempts > 10 {
+                        break;
+                    }
+                    continue;
+                }
+            }
+
+            match self.client.put_mapping::<Payload>(index.clone()).send() {
+                Ok(_) => {}
+                Err(err) => {
+                    debug!("Failed to put_mapping, error: {}", err);
+                    self.buffer.push_back(m);
+                    attempts += 1;
+                    time::delay(attempts);
+                    if attempts > 10 {
+                        break;
+                    }
+                    continue;
+                }
+            }
+
+            match self.client.index_document(index, id(doc.uuid.clone()), doc).send() {
                 Ok(_) => {
                     attempts = attempts.saturating_sub(1);
                     report_telemetry("sinks.elasticsearch.index_document.success",
@@ -112,6 +138,7 @@ impl Sink for Elasticsearch {
                     if attempts > 10 {
                         break;
                     }
+                    continue;
                 }
             }
         }
