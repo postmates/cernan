@@ -2,6 +2,7 @@ use chrono::datetime::DateTime;
 use chrono::naive::datetime::NaiveDateTime;
 use chrono::offset::utc::UTC;
 
+use elastic;
 use elastic::prelude::*;
 
 use metric::{LogLine, Telemetry};
@@ -65,6 +66,54 @@ impl Elasticsearch {
             flush_interval: config.flush_interval,
         }
     }
+
+    fn ensure_indexed(&mut self,
+                      idx: String,
+                      doc: Payload)
+                      -> Result<(), elastic::error::Error> {
+        use elastic::error;
+        let get_res = self.client
+            .get_document::<Payload>(index(idx.clone()), id(doc.uuid.clone()))
+            .send();
+
+        match get_res {
+            // The doc was found: no need to index
+            Ok(GetResponse { source: Some(_), .. }) => {
+                report_telemetry("sinks.elasticsearch.success.doc_existed", 1.0);
+                Ok(())
+            }
+            // The index exists, but the doc wasn't found: map and index
+            Ok(_) => self.put_doc(idx.clone(), doc).map(|_| ()),
+            // No index: create it, then map and index
+            Err(error::Error(error::ErrorKind::Api(error::ApiError::IndexNotFound {
+                                                         ..
+                                                     }),
+                                      _)) => {
+                self.put_index(idx.clone()).and(self.put_doc(idx, doc)).map(|_| ())
+            }
+            // Something went wrong: panic
+            Err(e) => Err(e),
+        }
+    }
+
+    fn put_index(&mut self,
+                 idx: String)
+                 -> Result<CommandResponse, elastic::error::Error> {
+        self.client
+            .create_index(index(idx.clone()))
+            .send()
+            .and(self.client.put_mapping::<Payload>(index(idx)).send())
+    }
+
+    fn put_doc(&mut self,
+               idx: String,
+               doc: Payload)
+               -> Result<IndexResponse, elastic::error::Error> {
+        self.client
+            .index_document(index(idx), id(doc.uuid.clone()), doc)
+            .params(|p| p.url_param("refresh", true))
+            .send()
+    }
 }
 
 impl Sink for Elasticsearch {
@@ -84,54 +133,11 @@ impl Sink for Elasticsearch {
             };
             trace!("PAYLOAD: {:?}", doc);
 
-            let index = index(idx(&self.index_prefix, m.time));
-
-            match self.client.create_index(index.clone()).send() {
-                Ok(_) => {}
+            let index = idx(&self.index_prefix, m.time);
+            match self.ensure_indexed(index, doc) {
+                Ok(()) => {}
                 Err(err) => {
                     debug!("Failed to create index, error: {}", err);
-                    self.buffer.push_back(m);
-                    attempts += 1;
-                    time::delay(attempts);
-                    if attempts > 10 {
-                        break;
-                    }
-                    continue;
-                }
-            }
-
-            match self.client.put_mapping::<Payload>(index.clone()).send() {
-                Ok(_) => {}
-                Err(err) => {
-                    debug!("Failed to put_mapping, error: {}", err);
-                    self.buffer.push_back(m);
-                    attempts += 1;
-                    time::delay(attempts);
-                    if attempts > 10 {
-                        break;
-                    }
-                    continue;
-                }
-            }
-
-            match self.client.index_document(index, id(doc.uuid.clone()), doc).send() {
-                Ok(_) => {
-                    attempts = attempts.saturating_sub(1);
-                    report_telemetry("sinks.elasticsearch.index_document.success",
-                                     1.0);
-                    debug!("Wrote one record into Elasticsearch");
-                }
-                Err(err) => {
-                    report_telemetry("sinks.elasticsearch.index_document.failure",
-                                     1.0);
-                    debug!("Failed to write record into Elasticsearch {}", err);
-                    // Unfortunately the errors that we get out of our
-                    // client library are not structured. We _can_
-                    // parse them but the responses will depend on the
-                    // underlying Elasticsearch.
-                    //
-                    // We're going to _hope_ that the error is
-                    // recoverable and swing back around again.
                     self.buffer.push_back(m);
                     attempts += 1;
                     time::delay(attempts);
@@ -150,7 +156,6 @@ impl Sink for Elasticsearch {
 
     fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
         let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
-        trace!("delivered line: {:?}", line);
         self.buffer.push_back(line);
     }
 
