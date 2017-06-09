@@ -112,7 +112,6 @@ impl Sink for Elasticsearch {
                     }
                 }
             }
-            self.buffer.clear();
         }
     }
 
