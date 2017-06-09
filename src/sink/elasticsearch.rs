@@ -74,6 +74,7 @@ impl Sink for Elasticsearch {
 
     fn flush(&mut self) {
         let mut attempts: u32 = 0;
+        trace!("buffer len: {:?}", self.buffer.len());
         while let Some(m) = self.buffer.pop_front() {
             let doc = Payload {
                 uuid: Uuid::new_v4().hyphenated().to_string(),
@@ -81,6 +82,7 @@ impl Sink for Elasticsearch {
                 payload: m.value.clone(),
                 timestamp: format_time(m.time),
             };
+            trace!("PAYLOAD: {:?}", doc);
 
             match self.client
                       .index_document(index(idx(&self.index_prefix, m.time)),
