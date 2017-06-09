@@ -123,6 +123,7 @@ impl Sink for Elasticsearch {
 
     fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
         let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
+        trace!("delivered line: {:?}", line);
         self.buffer.push_back(line);
     }
 
