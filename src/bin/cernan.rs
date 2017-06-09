@@ -146,6 +146,17 @@ fn main() {
                                  }));
     }
 
+    if let Some(config) = mem::replace(&mut args.elasticsearch, None) {
+        let config_path = cfg_conf!(config);
+        let (cernan_send, cernan_recv) =
+            hopper::channel(&config_path, &args.data_directory).unwrap();
+        sends.insert(config_path.clone(), cernan_send);
+        joins.push(thread::spawn(move || {
+                                     cernan::sink::Elasticsearch::new(config)
+                                         .run(cernan_recv);
+                                 }));
+    }
+
     if let Some(cfgs) = mem::replace(&mut args.firehosen, None) {
         for config in cfgs {
             let config_path = cfg_conf!(config);

@@ -10,6 +10,7 @@ use sink::{Sink, Valve};
 use source::report_telemetry;
 use std::sync;
 use uuid::Uuid;
+use time;
 use std::collections::vec_deque::VecDeque;
 
 #[derive(Serialize, Deserialize, ElasticType)]
@@ -49,7 +50,7 @@ pub struct Elasticsearch {
 
 impl Elasticsearch {
     pub fn new(config: ElasticsearchConfig) -> Elasticsearch {
-        let proto = if config.secure { "http" } else { "https" };
+        let proto = if config.secure { "https" } else { "http" };
         let params = RequestParams::new(format!("{}://{}:{}", proto, config.host, config.port));
         let client = Client::new(params).unwrap();
 
@@ -67,6 +68,7 @@ impl Sink for Elasticsearch {
     }
 
     fn flush(&mut self) {
+        let mut attempts: u32 = 0;
         while let Some(m) = self.buffer.pop_front() {
             let doc = Payload {
                 uuid: Uuid::new_v4().hyphenated().to_string(),
@@ -74,30 +76,35 @@ impl Sink for Elasticsearch {
                 payload: m.value.clone(),
                 timestamp: format_time(m.time),
             };
-
-            // TODO can't unwrap here, must back off ect
+            
             match self.client
-                      .index_document(index(idx(m.time)), id(doc.uuid.clone()), doc)
-                      .send() {
-                          Ok(_) => {
-                              report_telemetry("sinks.elasticsearch.index_document.success", 1.0);
-                          }, 
-                          Err(err) => {
-                              report_telemetry("sinks.elasticsearch.index_document.failure", 1.0);
-                              debug!("Failed to write record into Elasticsearch {}", 
-                                     err);
-                              // Unfortunately the errors that we get out of our
-                              // client library are not structured. We _can_
-                              // parse them but the responses will depend on the
-                              // underlying Elasticsearch.
-                              //
-                              // We're going to _hope_ that the error is
-                              // recoverable and swing back around again.
-                              self.buffer.push_back(m);
-                          }
-            }
+                .index_document(index(idx(m.time)), id(doc.uuid.clone()), doc)
+                .send() {
+                    Ok(_) => {
+                        attempts = attempts.saturating_sub(1);
+                        report_telemetry("sinks.elasticsearch.index_document.success", 1.0);
+                    }, 
+                    Err(err) => {
+                        report_telemetry("sinks.elasticsearch.index_document.failure", 1.0);
+                        debug!("Failed to write record into Elasticsearch {}", 
+                               err);
+                        // Unfortunately the errors that we get out of our
+                        // client library are not structured. We _can_
+                        // parse them but the responses will depend on the
+                        // underlying Elasticsearch.
+                        //
+                        // We're going to _hope_ that the error is
+                        // recoverable and swing back around again.
+                        self.buffer.push_back(m);
+                        attempts += 1;
+                        time::delay(attempts);
+                        if attempts > 10 {
+                            break;
+                        }
+                    }
+                }
+            self.buffer.clear();
         }
-        self.buffer.clear();
     }
 
     fn deliver(&mut self, _: sync::Arc<Option<Telemetry>>) -> () {

@@ -394,10 +394,10 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                 res.port = snk.get("port")
                     .map(|p| {
-                        p.as_integer()
+                             p.as_integer()
                                  .expect("could not parse sinks.elasticsearch.port") as
                              usize
-                    })
+                         })
                     .unwrap_or(res.port);
 
                 res.host = snk.get("host")
@@ -410,15 +410,15 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                 res.secure = snk.get("secure")
                     .map(|bw| {
-                        bw.as_bool()
+                             bw.as_bool()
                                  .expect("could not parse sinks.elasticsearch.secure")
-                    })
+                         })
                     .unwrap_or(res.secure);
 
                 res.flush_interval = snk.get("flush_interval")
                     .map(|fi| {
                              fi.as_integer()
-                                 .expect("could not parse sinks.elasticsearch.flush_interval") as
+                                 .expect("could not parse sinks.elasticsearch.flush_interval",) as
                              u64
                          })
                     .unwrap_or(args.flush_interval);
