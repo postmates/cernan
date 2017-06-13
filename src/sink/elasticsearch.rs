@@ -85,17 +85,13 @@ impl Elasticsearch {
             // The index exists, but the doc wasn't found: map and index
             Ok(_) => self.put_doc(idx.clone(), doc).map(|_| ()),
             // No index: create it, then map and index
-            Err(error::Error(error::ErrorKind::Api(error::ApiError::IndexNotFound {
-                                                         ..
-                                                     }),
-                                      _)) => {
-                self.put_index(idx.clone()).and(self.put_doc(idx, doc)).map(|_| ())
+            Err(error::Error(error::ErrorKind::Api(error::ApiError::IndexNotFound { .. }), _)) => {
+                self.put_index(idx.clone())
+                    .and(self.put_doc(idx, doc))
+                    .map(|_| ())
             }
             // Something went wrong, who knows what
-            Err(e) => {
-                debug!("error: {}", e);
-                Err(e)
-            }
+            Err(e) => Err(e),
         }
     }
 
@@ -130,7 +126,6 @@ impl Sink for Elasticsearch {
 
     fn flush(&mut self) {
         let mut attempts: u32 = 0;
-        trace!("buffer len: {:?}", self.buffer.len());
         while let Some(m) = self.buffer.pop_front() {
             let doc = Payload {
                 uuid: Uuid::new_v4().hyphenated().to_string(),
@@ -138,7 +133,6 @@ impl Sink for Elasticsearch {
                 payload: m.value.clone(),
                 timestamp: format_time(m.time),
             };
-            trace!("PAYLOAD: {:?}", doc);
 
             let index = idx(&self.index_prefix, m.time);
             match self.ensure_indexed(index, doc) {
