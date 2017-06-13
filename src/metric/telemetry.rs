@@ -549,12 +549,8 @@ impl Value {
 
 #[cfg(test)]
 mod tests {
-    extern crate rand;
-    extern crate quickcheck;
-
-    use self::quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
-    use self::rand::{Rand, Rng};
     use metric::{AggregationMethod, Event, Telemetry};
+    use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use std::cmp;
     use std::sync::Arc;
 
@@ -583,9 +579,11 @@ mod tests {
         assert_eq!(Some(cmp::Ordering::Equal), mdg.partial_cmp(&mg));
     }
 
-    impl Rand for AggregationMethod {
-        fn rand<R: Rng>(rng: &mut R) -> AggregationMethod {
-            let i: usize = rng.gen_range(0, 3);
+    impl Arbitrary for AggregationMethod {
+        fn arbitrary<G>(g: &mut G) -> Self
+            where G: Gen
+        {
+            let i: usize = g.gen_range(0, 3);
             match i {
                 0 => AggregationMethod::Sum,
                 1 => AggregationMethod::Set,
@@ -594,14 +592,16 @@ mod tests {
         }
     }
 
-    impl Rand for Telemetry {
-        fn rand<R: Rng>(rng: &mut R) -> Telemetry {
-            let name_len = rng.gen_range(0, 64);
-            let name: String = rng.gen_iter::<char>().take(name_len).collect();
-            let val: f64 = rng.gen();
-            let kind: AggregationMethod = rng.gen();
-            let persist: bool = rng.gen();
-            let time: i64 = rng.gen_range(0, 100);
+    impl Arbitrary for Telemetry {
+        fn arbitrary<G>(g: &mut G) -> Self
+            where G: Gen
+        {
+            let name_len = g.gen_range(0, 64);
+            let name: String = g.gen_iter::<char>().take(name_len).collect();
+            let val: f64 = g.gen();
+            let kind: AggregationMethod = AggregationMethod::arbitrary(g);
+            let persist: bool = g.gen();
+            let time: i64 = g.gen_range(0, 100);
             let time_ns: u64 = (time as u64) * 1_000_000_000;
             let mut mb =
                 Telemetry::new(name, val).timestamp(time).timestamp_ns(time_ns);
@@ -614,31 +614,15 @@ mod tests {
         }
     }
 
-    impl Rand for Event {
-        fn rand<R: Rng>(rng: &mut R) -> Event {
-            let i: usize = rng.gen();
-            match i % 3 {
-                0 => Event::TimerFlush(rng.gen()),
-                _ => Event::Telemetry(Arc::new(Some(rng.gen()))),
-            }
-        }
-    }
-
-    impl Arbitrary for AggregationMethod {
-        fn arbitrary<G: Gen>(g: &mut G) -> AggregationMethod {
-            g.gen()
-        }
-    }
-
-    impl Arbitrary for Telemetry {
-        fn arbitrary<G: Gen>(g: &mut G) -> Telemetry {
-            g.gen()
-        }
-    }
-
     impl Arbitrary for Event {
-        fn arbitrary<G: Gen>(g: &mut G) -> Event {
-            g.gen()
+        fn arbitrary<G>(g: &mut G) -> Self
+            where G: Gen
+        {
+            let i: usize = g.gen();
+            match i % 3 {
+                0 => Event::TimerFlush(g.gen()),
+                _ => Event::Telemetry(Arc::new(Some(Arbitrary::arbitrary(g)))),
+            }
         }
     }
 
