@@ -834,6 +834,30 @@ scripts-directory = "/foo/bar"
     }
 
     #[test]
+    fn config_elasticsearch_sink() {
+        let config = r#"
+[sinks]
+  [sinks.elasticsearch]
+  port = 1234
+  host = "example.com"
+  index-prefix = "prefix-"
+  secure = true
+  flush_interval = 2020
+"#;
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.elasticsearch.is_some());
+        let es = args.elasticsearch.unwrap();
+
+        assert_eq!(es.port, 1234);
+        assert_eq!(es.host, "example.com");
+        assert_eq!(es.index_prefix, "prefix-");
+        assert_eq!(es.secure, true);
+        assert_eq!(es.flush_interval, 2020);
+    }
+
+    #[test]
     fn config_native_sink_config_distinct_host_sinks_style() {
         let config = r#"
     [sinks]
