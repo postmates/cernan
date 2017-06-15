@@ -12,12 +12,10 @@ RUN apk add --no-cache --update \
   update-ca-certificates && \
   rm -rf /var/cache/apk/*
 
-ARG DIST_ROOT="target/bindir"
-
-COPY ${DIST_ROOT}/confd /etc/confd
-COPY ${DIST_ROOT}/entrypoint.sh /entrypoint.sh
-COPY ${DIST_ROOT}/confd-bin /usr/bin/confd
-COPY ${DIST_ROOT}/cernan /usr/bin/cernan
+COPY docker/release/confd /etc/confd
+COPY docker/release/entrypoint.sh /entrypoint.sh
+COPY target/bindir/confd-bin /usr/bin/confd
+COPY target/release/cernan /usr/bin/cernan
 
 ENV STATSD_PORT 8125
 
