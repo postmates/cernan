@@ -16,8 +16,10 @@ mod wavefront;
 mod native;
 mod influxdb;
 mod prometheus;
+mod elasticsearch;
 
 pub use self::console::{Console, ConsoleConfig};
+pub use self::elasticsearch::{Elasticsearch, ElasticsearchConfig};
 pub use self::firehose::{Firehose, FirehoseConfig};
 pub use self::influxdb::{InfluxDB, InfluxDBConfig};
 pub use self::native::{Native, NativeConfig};
