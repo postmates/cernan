@@ -176,7 +176,9 @@ impl Sink for Elasticsearch {
 fn format_time(time: i64) -> String {
     let naive_time = NaiveDateTime::from_timestamp(time, 0);
     let utc_time: DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
-    format!("{}", utc_time.format("%Y-%m-%dT%H:%M:%S%.3fZ"))
+    let mut ts_ms: usize = (utc_time.timestamp() as usize) * 1000;
+    ts_ms = ts_ms.saturating_add(utc_time.timestamp_subsec_millis() as usize);
+    format!("{}", ts_ms)
 }
 
 #[inline]
