@@ -39,6 +39,8 @@ extern crate toml;
 extern crate uuid;
 extern crate url;
 
+extern crate elastic_types_derive;
+extern crate elastic_types;
 extern crate elastic;
 #[macro_use]
 extern crate elastic_derive;
