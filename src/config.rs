@@ -410,9 +410,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                 res.index_prefix = snk.get("index-prefix")
                     .map(|p| {
-                             p.as_str()
+                        Some(p.as_str()
                                  .expect("could not parse sinks.elasticsearch.index-prefix")
-                                 .to_string()
+                                 .to_string())
                          })
                     .unwrap_or(res.index_prefix);
                 
@@ -852,7 +852,7 @@ scripts-directory = "/foo/bar"
 
         assert_eq!(es.port, 1234);
         assert_eq!(es.host, "example.com");
-        assert_eq!(es.index_prefix, "prefix-");
+        assert_eq!(es.index_prefix, Some("prefix-".into()));
         assert_eq!(es.secure, true);
         assert_eq!(es.flush_interval, 2020);
     }
