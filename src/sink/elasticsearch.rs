@@ -4,6 +4,7 @@ use chrono::offset::utc::UTC;
 
 use elastic;
 use elastic::prelude::*;
+use elastic_types::date::{Date, DefaultDateFormat};
 
 use metric::{LogLine, Telemetry};
 
@@ -14,12 +15,12 @@ use std::sync;
 use time;
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, ElasticType)]
+#[derive(Debug, Deserialize, Serialize, ElasticType)]
 struct Payload {
     uuid: String,
     path: String,
     payload: String,
-    timestamp: String,
+    timestamp: Date<DefaultDateFormat>,
 }
 
 #[derive(Debug, Clone)]
@@ -174,10 +175,10 @@ impl Sink for Elasticsearch {
 }
 
 #[inline]
-fn format_time(time: i64) -> String {
+fn format_time(time: i64) -> Date<BasicDateTime> {
     let naive_time = NaiveDateTime::from_timestamp(time, 0);
     let utc_time: DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
-    format!("{}", utc_time.format("%Y-%m-%dT%H:%M:%S%.3fZ"))
+    Date::new(utc_time)
 }
 
 #[inline]
