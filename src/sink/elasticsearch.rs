@@ -79,7 +79,8 @@ impl Elasticsearch {
         match get_res {
             // The doc was found: no need to index
             Ok(GetResponse { source: Some(_), .. }) => {
-                report_telemetry("sinks.elasticsearch.success.doc_existed", 1.0);
+                report_telemetry("cernan.sinks.elasticsearch.success.doc_existed",
+                                 1.0);
                 Ok(())
             }
             // The index exists, but the doc wasn't found: map and index
@@ -102,7 +103,7 @@ impl Elasticsearch {
             .create_index(index(idx.clone()))
             .send()
             .and(self.client.put_mapping::<Payload>(index(idx)).send());
-        report_telemetry("sinks.elasticsearch.put_index", 1.0);
+        report_telemetry("cernan.sinks.elasticsearch.put_index", 1.0);
         res
     }
 
@@ -114,7 +115,7 @@ impl Elasticsearch {
             .index_document(index(idx), id(doc.uuid.clone()), doc)
             .params(|p| p.url_param("refresh", true))
             .send();
-        report_telemetry("sinks.elasticsearch.put_doc", 1.0);
+        report_telemetry("cernan.sinks.elasticsearch.put_doc", 1.0);
         res
     }
 }
@@ -137,10 +138,10 @@ impl Sink for Elasticsearch {
             let index = idx(&self.index_prefix, m.time);
             match self.ensure_indexed(index, doc) {
                 Ok(()) => {
-                    report_telemetry("sinks.elasticsearch.success", 1.0);
+                    report_telemetry("cernan.sinks.elasticsearch.success", 1.0);
                 }
                 Err(err) => {
-                    report_telemetry("sinks.elasticsearch.failure", 1.0);
+                    report_telemetry("cernan.sinks.elasticsearch.failure", 1.0);
                     debug!("Failed to create index, error: {}", err);
                     self.buffer.push_back(m);
                     attempts += 1;
