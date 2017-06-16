@@ -25,7 +25,7 @@ struct Payload {
 #[derive(Debug, Clone)]
 pub struct ElasticsearchConfig {
     pub config_path: Option<String>,
-    pub index_prefix: String,
+    pub index_prefix: Option<String>,
     pub secure: bool, // whether http or https
     pub host: String,
     pub port: usize,
@@ -38,7 +38,7 @@ impl Default for ElasticsearchConfig {
             config_path: Some("sinks.elasticsearch".to_string()),
             secure: false,
             host: "127.0.0.1".to_string(),
-            index_prefix: "".to_string(),
+            index_prefix: None,
             port: 9200,
             flush_interval: 10,
         }
@@ -48,7 +48,7 @@ impl Default for ElasticsearchConfig {
 pub struct Elasticsearch {
     buffer: VecDeque<LogLine>,
     client: Client,
-    index_prefix: String,
+    index_prefix: Option<String>,
     flush_interval: u64,
 }
 
@@ -180,8 +180,11 @@ fn format_time(time: i64) -> String {
 }
 
 #[inline]
-fn idx(prefix: &str, time: i64) -> String {
+fn idx(prefix: &Option<String>, time: i64) -> String {
     let naive_time = NaiveDateTime::from_timestamp(time, 0);
     let utc_time: DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
-    format!("{}-{}", prefix, utc_time.format("%Y-%m-%d"))
+    match prefix {
+        &Some(ref p) => format!("{}-{}", p, utc_time.format("%Y-%m-%d")),
+        &None => format!("{}", utc_time.format("%Y-%m-%d")),
+    }
 }
