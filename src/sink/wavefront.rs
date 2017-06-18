@@ -313,52 +313,53 @@ mod test {
             tags: tags.clone(),
             percentiles: percentiles,
             flush_interval: 60,
+            telemetry_error: 0.001,
         };
         let mut wavefront = Wavefront::new(config).unwrap();
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_sum()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", 2.0)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", 2.0, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_sum()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", 3.0)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", 3.0, 0.001)
                                             .timestamp(dt_1)
                                             .aggr_sum()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 3.211)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 3.211, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_set()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 4.322)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 4.322, 0.001)
                                             .timestamp(dt_1)
                                             .aggr_set()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 5.433)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 5.433, 0.001)
                                             .timestamp(dt_2)
                                             .aggr_set()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 12.101)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 12.101, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_summarize()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 1.101)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 1.101, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_summarize()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 3.101)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 3.101, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_summarize()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 1.0)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 1.0, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_set()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 2.0)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 2.0, 0.001)
                                             .timestamp(dt_1)
                                             .aggr_set()
                                             .overlay_tags_from_map(&tags))));

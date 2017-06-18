@@ -108,7 +108,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,AggregationMethod};
     ///
-    /// let m = Telemetry::new("foo", 1.1);
+    /// let m = Telemetry::new("foo", 1.1, 0.001);
     ///
     /// assert_eq!(m.aggr_method, AggregationMethod::Summarize);
     /// assert_eq!(m.name, "foo");
@@ -141,7 +141,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new("foo", 1.1, 0.001);
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -169,7 +169,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,TagMap};
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new("foo", 1.1, 0.001);
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -203,7 +203,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,TagMap};
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new("foo", 1.1, 0.001);
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -238,7 +238,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).set_value(10.10);
+    /// let m = Telemetry::new("foo", 1.1, 0.001).set_value(10.10);
     ///
     /// assert_eq!(m.value(), Some(10.10));
     /// ```
@@ -307,7 +307,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_set();
+    /// let m = Telemetry::new("foo", 1.1, 0.001).timestamp(10101).aggr_set();
     /// assert!(m.is_set());
     /// ```
     pub fn aggr_set(mut self) -> Telemetry {
@@ -329,7 +329,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_sum();
+    /// let m = Telemetry::new("foo", 1.1, 0.001).timestamp(10101).aggr_sum();
     /// assert!(m.is_sum());
     /// ```
     pub fn aggr_sum(mut self) -> Telemetry {
@@ -352,7 +352,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_summarize();
+    /// let m = Telemetry::new("foo", 1.1, 0.001).timestamp(10101).aggr_summarize();
     /// assert!(m.is_summarize());
     /// ```
     pub fn aggr_summarize(mut self) -> Telemetry {
@@ -375,7 +375,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101);
+    /// let m = Telemetry::new("foo", 1.1, 0.001).timestamp(10101);
     ///
     /// assert_eq!(10101, m.timestamp);
     /// ```
@@ -562,24 +562,24 @@ mod tests {
 
     #[test]
     fn partial_ord_equal() {
-        let mc = Telemetry::new("l6", 0.7913855).aggr_sum().timestamp(47);
-        let mg = Telemetry::new("l6", 0.9683).aggr_set().timestamp(47);
+        let mc = Telemetry::new("l6", 0.7913855, 0.001).aggr_sum().timestamp(47);
+        let mg = Telemetry::new("l6", 0.9683, 0.001).aggr_set().timestamp(47);
 
         assert_eq!(Some(cmp::Ordering::Equal), mc.partial_cmp(&mg));
     }
 
     #[test]
     fn partial_ord_distinct() {
-        let mc = Telemetry::new("l6", 0.7913855).aggr_sum().timestamp(7);
-        let mg = Telemetry::new("l6", 0.9683).aggr_set().timestamp(47);
+        let mc = Telemetry::new("l6", 0.7913855, 0.001).aggr_sum().timestamp(7);
+        let mg = Telemetry::new("l6", 0.9683, 0.001).aggr_set().timestamp(47);
 
         assert_eq!(Some(cmp::Ordering::Less), mc.partial_cmp(&mg));
     }
 
     #[test]
     fn partial_ord_gauges() {
-        let mdg = Telemetry::new("l6", 0.7913855).aggr_set().persist().timestamp(47);
-        let mg = Telemetry::new("l6", 0.9683).aggr_set().timestamp(47);
+        let mdg = Telemetry::new("l6", 0.7913855, 0.001).aggr_set().persist().timestamp(47);
+        let mg = Telemetry::new("l6", 0.9683, 0.001).aggr_set().timestamp(47);
 
         assert_eq!(Some(cmp::Ordering::Equal), mg.partial_cmp(&mdg));
         assert_eq!(Some(cmp::Ordering::Equal), mdg.partial_cmp(&mg));
@@ -610,7 +610,7 @@ mod tests {
             let time: i64 = g.gen_range(0, 100);
             let time_ns: u64 = (time as u64) * 1_000_000_000;
             let mut mb =
-                Telemetry::new(name, val).timestamp(time).timestamp_ns(time_ns);
+                Telemetry::new(name, val, 0.001).timestamp(time).timestamp_ns(time_ns);
             mb = match kind {
                 AggregationMethod::Set => mb.aggr_set(),
                 AggregationMethod::Sum => mb.aggr_sum(),
@@ -655,8 +655,8 @@ mod tests {
     #[test]
     fn test_metric_add_assign() {
         fn inner(lhs: f64, rhs: f64, kind: AggregationMethod) -> TestResult {
-            let mut mlhs = Telemetry::new("foo", lhs);
-            let mut mrhs = Telemetry::new("foo", rhs);
+            let mut mlhs = Telemetry::new("foo", lhs, 0.001);
+            let mut mrhs = Telemetry::new("foo", rhs, 0.001);
             mlhs = match kind {
                 AggregationMethod::Sum => mlhs.aggr_sum(),
                 AggregationMethod::Set => mlhs.aggr_set(),
@@ -690,7 +690,7 @@ mod tests {
 
     #[test]
     fn test_negative_timer() {
-        let m = Telemetry::new("timer", -1.0).aggr_summarize();
+        let m = Telemetry::new("timer", -1.0, 0.001).aggr_summarize();
 
         assert_eq!(m.aggr_method, AggregationMethod::Summarize);
         assert_eq!(m.query(1.0), Some(-1.0));
@@ -699,7 +699,7 @@ mod tests {
 
     #[test]
     fn test_postive_delta_gauge() {
-        let m = Telemetry::new("dgauge", 1.0).persist().aggr_set();
+        let m = Telemetry::new("dgauge", 1.0, 0.001).persist().aggr_set();
 
         assert_eq!(m.aggr_method, AggregationMethod::Set);
         assert_eq!(m.value(), Some(1.0));

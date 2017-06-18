@@ -354,7 +354,7 @@ mod test {
             let path = dir.path().join("a_file.log");
             let mut fp = fs::File::create(&path).expect("could not create");
             let mut fw =
-                FileWatcher::new(path.clone()).expect("must be able to create");
+                FileWatcher::new(path.clone(), 0.001).expect("must be able to create");
 
             let mut expected_read = Vec::new();
 

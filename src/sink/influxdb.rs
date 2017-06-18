@@ -246,52 +246,53 @@ mod test {
             config_path: Some("sinks.influxdb".to_string()),
             tags: tags.clone(),
             flush_interval: 60,
+            telemetry_error: 0.001,
         };
         let mut influxdb = InfluxDB::new(config);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00);
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00);
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00);
-        influxdb.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0)
+        influxdb.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0, 0.001)
                                            .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_sum()
                                            .overlay_tags_from_map(&tags))));
-        influxdb.deliver(Arc::new(Some(Telemetry::new("test.counter", 2.0)
+        influxdb.deliver(Arc::new(Some(Telemetry::new("test.counter", 2.0, 0.001)
                                            .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_sum()
                                            .overlay_tags_from_map(&tags))));
-        influxdb.deliver(Arc::new(Some(Telemetry::new("test.counter", 3.0)
+        influxdb.deliver(Arc::new(Some(Telemetry::new("test.counter", 3.0, 0.001)
                                            .timestamp_and_ns(dt_1.timestamp(), dt_1.timestamp_subsec_nanos())
                                            .aggr_sum()
                                            .overlay_tags_from_map(&tags))));
-        influxdb.deliver(Arc::new(Some(Telemetry::new("test.gauge", 3.211)
+        influxdb.deliver(Arc::new(Some(Telemetry::new("test.gauge", 3.211, 0.001)
                                            .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_set()
                                            .overlay_tags_from_map(&tags))));
-        influxdb.deliver(Arc::new(Some(Telemetry::new("test.gauge", 4.322)
+        influxdb.deliver(Arc::new(Some(Telemetry::new("test.gauge", 4.322, 0.001)
                                            .timestamp_and_ns(dt_1.timestamp(), dt_1.timestamp_subsec_nanos())
                                            .aggr_set()
                                            .overlay_tags_from_map(&tags))));
-        influxdb.deliver(Arc::new(Some(Telemetry::new("test.gauge", 5.433)
+        influxdb.deliver(Arc::new(Some(Telemetry::new("test.gauge", 5.433, 0.001)
                                            .timestamp_and_ns(dt_2.timestamp(), dt_2.timestamp_subsec_nanos())
                                            .aggr_set()
                                            .overlay_tags_from_map(&tags))));
-        influxdb.deliver(Arc::new(Some(Telemetry::new("test.timer", 12.101)
+        influxdb.deliver(Arc::new(Some(Telemetry::new("test.timer", 12.101, 0.001)
                                            .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_summarize()
                                            .overlay_tags_from_map(&tags))));
-        influxdb.deliver(Arc::new(Some(Telemetry::new("test.timer", 1.101)
+        influxdb.deliver(Arc::new(Some(Telemetry::new("test.timer", 1.101, 0.001)
                                            .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_summarize()
                                            .overlay_tags_from_map(&tags))));
-        influxdb.deliver(Arc::new(Some(Telemetry::new("test.timer", 3.101)
+        influxdb.deliver(Arc::new(Some(Telemetry::new("test.timer", 3.101, 0.001)
                                            .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_summarize()
                                            .overlay_tags_from_map(&tags))));
-        influxdb.deliver(Arc::new(Some(Telemetry::new("test.raw", 1.0)
+        influxdb.deliver(Arc::new(Some(Telemetry::new("test.raw", 1.0, 0.001)
                                            .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_set()
                                            .overlay_tags_from_map(&tags))));
-        influxdb.deliver(Arc::new(Some(Telemetry::new("test.raw", 2.0)
+        influxdb.deliver(Arc::new(Some(Telemetry::new("test.raw", 2.0, 0.001)
                                            .timestamp_and_ns(dt_1.timestamp(), dt_1.timestamp_subsec_nanos())
                                            .aggr_set()
                                            .overlay_tags_from_map(&tags))));
