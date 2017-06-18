@@ -14,6 +14,8 @@ use toml;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
+const DEFAULT_TELEMETRY_ERROR: f64 = 0.001;
+
 use filter::ProgrammableFilterConfig;
 
 use sink::ConsoleConfig;
@@ -52,6 +54,7 @@ pub struct Args {
     pub data_directory: PathBuf,
     pub scripts_directory: PathBuf,
     pub flush_interval: u64,
+    pub telemetry_error: f64,
     pub verbose: u64,
     pub version: String,
     // filters
@@ -79,6 +82,7 @@ impl Default for Args {
             data_directory: default_data_directory(),
             scripts_directory: default_scripts_directory(),
             flush_interval: 60,
+            telemetry_error: DEFAULT_TELEMETRY_ERROR,
             version: default_version(),
             verbose: 0,
             // filters
@@ -169,6 +173,11 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
         .get("flush-interval")
         .map(|fi| fi.as_integer().expect("could not parse flush-interval") as u64)
         .unwrap_or(args.flush_interval);
+
+    args.telemetry_error = value
+        .get("telemetry-error")
+        .map(|fi| fi.as_float().expect("could not parse telemetry-error"))
+        .unwrap_or(args.telemetry_error);
 
     let global_tags: TagMap = match value.get("tags") {
         Some(tbl) => {
@@ -415,7 +424,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                                  .to_string())
                          })
                     .unwrap_or(res.index_prefix);
-                
+
                 res.secure = snk.get("secure")
                     .map(|bw| {
                              bw.as_bool()
@@ -770,6 +779,38 @@ data-directory = "/foo/bar"
         let dir = Path::new("/tmp/cernan-data").to_path_buf();
 
         assert_eq!(args.data_directory, dir);
+    }
+
+    #[test]
+    fn config_file_flush_interval() {
+        let config = r#"flush-interval = 20"#;
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.flush_interval, 20);
+    }
+
+    #[test]
+    fn config_file_flush_interval_default() {
+        let config = r#""#;
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.flush_interval, 60);
+    }
+
+    #[test]
+    fn config_file_telemetry_error() {
+        let config = r#"telemetry-error = 0.002"#;
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.telemetry_error, 0.002);
+    }
+
+    #[test]
+    fn config_file_telemetry_error_default() {
+        let config = r#""#;
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.telemetry_error, 0.001);
     }
 
     #[test]
