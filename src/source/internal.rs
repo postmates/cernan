@@ -28,6 +28,7 @@ pub struct InternalConfig {
     /// The default tags to apply to each Telemetry that comes through the
     /// queue.
     pub tags: metric::TagMap,
+    pub telemetry_error: f64,
 }
 
 impl Default for InternalConfig {
@@ -36,6 +37,7 @@ impl Default for InternalConfig {
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
             config_path: Some("sources.internal".to_string()),
+            telemetry_error: 0.001,
         }
     }
 }
@@ -54,10 +56,10 @@ impl Internal {
 /// Given a name and value, construct a Telemetry with Sum aggregation and push
 /// into Internal's queue. This queue will then be drained into operator
 /// configured forwards.
-pub fn report_telemetry<S>(name: S, value: f64) -> ()
+pub fn report_telemetry<S>(name: S, value: f64, error: f64) -> ()
     where S: Into<String>
 {
-    report_full_telemetry(name, value, None, None);
+    report_full_telemetry(name, value, error, None, None);
 }
 
 /// Push telemetry into the Internal queue
@@ -67,12 +69,13 @@ pub fn report_telemetry<S>(name: S, value: f64) -> ()
 /// will then be drained into operator configured forwards.
 pub fn report_full_telemetry<S>(name: S,
                                 value: f64,
+                                error: f64,
                                 aggr: Option<metric::AggregationMethod>,
                                 metadata: Option<Vec<(&str, &str)>>)
                                 -> ()
     where S: Into<String>
 {
-    let mut telem = metric::Telemetry::new(name, value);
+    let mut telem = metric::Telemetry::new(name, value, error);
     telem = match aggr {
         Some(metric::AggregationMethod::Sum) |
         None => telem.aggr_sum(),

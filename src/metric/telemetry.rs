@@ -16,6 +16,7 @@ pub struct Telemetry {
     pub tags: sync::Arc<TagMap>,
     pub timestamp: i64, // seconds, see #166
     pub timestamp_ns: u64,
+    pub error: f64,
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
@@ -29,6 +30,7 @@ pub struct Value {
     kind: ValueKind,
     single: Option<f64>,
     many: Option<CKMS<f64>>,
+    error: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Hash)]
@@ -80,14 +82,16 @@ impl PartialOrd for Telemetry {
 
 impl Default for Telemetry {
     fn default() -> Telemetry {
+        let default_error = 0.001;
         Telemetry {
             name: String::from(""),
-            value: Value::new(Default::default()),
+            value: Value::new(Default::default(), default_error),
             persist: false,
             aggr_method: AggregationMethod::Summarize,
             tags: sync::Arc::new(TagMap::default()),
             timestamp: time::now(),
             timestamp_ns: time::now_ns(),
+            error: default_error,
         }
     }
 }
@@ -110,10 +114,10 @@ impl Telemetry {
     /// assert_eq!(m.name, "foo");
     /// assert_eq!(m.value(), Some(1.1));
     /// ```
-    pub fn new<S>(name: S, value: f64) -> Telemetry
+    pub fn new<S>(name: S, value: f64, error: f64) -> Telemetry
         where S: Into<String>
     {
-        let val = Value::new(value);
+        let val = Value::new(value, error);
         Telemetry {
             aggr_method: AggregationMethod::Summarize,
             name: name.into(),
@@ -122,6 +126,7 @@ impl Telemetry {
             timestamp_ns: time::now_ns(),
             value: val,
             persist: false,
+            error: error,
         }
     }
 
@@ -238,7 +243,7 @@ impl Telemetry {
     /// assert_eq!(m.value(), Some(10.10));
     /// ```
     pub fn set_value(mut self, value: f64) -> Telemetry {
-        self.value = Value::new(value);
+        self.value = Value::new(value, self.error);
         self
     }
 
@@ -433,11 +438,12 @@ impl AddAssign for Value {
 }
 
 impl Value {
-    fn new(value: f64) -> Value {
+    fn new(value: f64, error: f64) -> Value {
         Value {
             kind: ValueKind::Single,
             single: Some(value),
             many: None,
+            error: error
         }
     }
 
@@ -451,7 +457,7 @@ impl Value {
     fn insert(&mut self, value: f64) -> () {
         match self.kind {
             ValueKind::Single => {
-                let mut ckms = CKMS::new(0.001);
+                let mut ckms = CKMS::new(self.error);
                 ckms.insert(self.single.expect("NOT SINGLE IN METRICVALUE INSERT"));
                 ckms.insert(value);
                 self.many = Some(ckms);

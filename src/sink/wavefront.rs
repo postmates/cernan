@@ -18,6 +18,7 @@ pub struct Wavefront {
     percentiles: Vec<(String, f64)>,
     pub stats: String,
     flush_interval: u64,
+    pub telemetry_error: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +30,7 @@ pub struct WavefrontConfig {
     pub percentiles: Vec<(String, f64)>,
     pub tags: TagMap,
     pub flush_interval: u64,
+    pub telemetry_error: f64,
 }
 
 impl Default for WavefrontConfig {
@@ -54,6 +56,7 @@ impl Default for WavefrontConfig {
             percentiles: percentiles,
             tags: TagMap::default(),
             flush_interval: 60,
+            telemetry_error: 0.001,
         }
     }
 }
@@ -101,6 +104,7 @@ impl Wavefront {
                percentiles: config.percentiles,
                stats: String::with_capacity(8_192),
                flush_interval: config.flush_interval,
+               telemetry_error: config.telemetry_error,
            })
     }
 
@@ -116,17 +120,23 @@ impl Wavefront {
             for value in values {
                 match value.aggr_method {
                     AggregationMethod::Sum => {
-                        report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
+                        report_telemetry("cernan.sinks.wavefront.aggregation.sum",
+                                         1.0,
+                                         self.telemetry_error)
                     }
                     AggregationMethod::Set => {
-                        report_telemetry("cernan.sinks.wavefront.aggregation.set", 1.0)
+                        report_telemetry("cernan.sinks.wavefront.aggregation.set",
+                                         1.0,
+                                         self.telemetry_error)
                     }
                     AggregationMethod::Summarize => {
                         report_telemetry("cernan.sinks.wavefront.aggregation.summarize",
-                                         1.0);
+                                         1.0,
+                                         self.telemetry_error);
                         report_telemetry("cernan.sinks.wavefront.aggregation.\
                                           summarize.total_percentiles",
-                                         self.percentiles.len() as f64);
+                                         self.percentiles.len() as f64,
+                                         self.telemetry_error);
                     }
                 };
                 match value.aggr_method {
@@ -209,7 +219,8 @@ impl Sink for Wavefront {
     fn flush(&mut self) {
         loop {
             report_telemetry("cernan.sinks.wavefront.delivery_attempts",
-                             self.delivery_attempts as f64);
+                             self.delivery_attempts as f64,
+                             self.telemetry_error);
             if self.delivery_attempts > 0 {
                 debug!("delivery attempts: {}", self.delivery_attempts);
             }

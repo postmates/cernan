@@ -21,6 +21,7 @@ pub struct InfluxDB {
     /// across flushes to avoid stampeding between flushes.
     delivery_attempts: u32,
     flush_interval: u64,
+    telemetry_error: f64,
     client: Client,
     uri: Url,
 }
@@ -46,6 +47,9 @@ pub struct InfluxDBConfig {
     pub tags: TagMap,
     /// The interval, in seconds, on which the `InfluxDB` sink will report.
     pub flush_interval: u64,
+    /// Telemetry is reported with some approximation, this is an error
+    /// of this approximation, check the `quantiles` library docs
+    pub telemetry_error: f64,
 }
 
 impl Default for InfluxDBConfig {
@@ -58,6 +62,7 @@ impl Default for InfluxDBConfig {
             config_path: None,
             tags: Default::default(),
             flush_interval: 60,
+            telemetry_error: 0.001,
         }
     }
 }
@@ -107,6 +112,7 @@ impl InfluxDB {
             aggrs: Vec::with_capacity(4048),
             delivery_attempts: 0,
             flush_interval: config.flush_interval,
+            telemetry_error: config.telemetry_error,
             client: Client::new(),
             uri: uri,
         }
@@ -160,7 +166,8 @@ impl Sink for InfluxDB {
             // happens to succeed may succeed against a degraded system; we
             // should not assume full health.
             report_telemetry("cernan.sinks.influxdb.delivery_attempts",
-                             self.delivery_attempts as f64);
+                             self.delivery_attempts as f64,
+                             self.telemetry_error);
             time::delay(self.delivery_attempts);
 
             match self.client
@@ -173,7 +180,9 @@ impl Sink for InfluxDB {
                     // https://docs.influxdata.com/influxdb/v1.
                     // 2/guides/writing_data/#http-response-summary
                     if resp.status.is_success() {
-                        report_telemetry("cernan.sinks.influxdb.success", 1.0);
+                        report_telemetry("cernan.sinks.influxdb.success",
+                                         1.0,
+                                         self.telemetry_error);
                         buffer.clear();
                         self.delivery_attempts = self.delivery_attempts
                             .saturating_sub(1);
@@ -182,12 +191,14 @@ impl Sink for InfluxDB {
                         self.delivery_attempts = self.delivery_attempts
                             .saturating_add(1);
                         report_telemetry("cernan.sinks.influxdb.failure.client_error",
-                                         1.0);
+                                         1.0,
+                                         self.telemetry_error);
                     } else if resp.status.is_server_error() {
                         self.delivery_attempts = self.delivery_attempts
                             .saturating_add(1);
                         report_telemetry("cernan.sinks.influxdb.failure.server_error",
-                                         1.0);
+                                         1.0,
+                                         self.telemetry_error);
                     }
                 }
             }

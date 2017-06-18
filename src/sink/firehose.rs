@@ -24,6 +24,7 @@ pub struct FirehoseConfig {
     pub region: Option<Region>,
     pub config_path: Option<String>,
     pub flush_interval: u64,
+    pub telemetry_error: f64,
 }
 
 impl Default for FirehoseConfig {
@@ -34,6 +35,7 @@ impl Default for FirehoseConfig {
             region: None,
             config_path: None,
             flush_interval: 60,
+            telemetry_error: 0.001,
         }
     }
 }
@@ -44,6 +46,7 @@ pub struct Firehose {
     region: Region,
     batch_size: usize,
     flush_interval: u64,
+    telemetry_error: f64,
 }
 
 impl Firehose {
@@ -55,6 +58,7 @@ impl Firehose {
             region: config.region.expect("region cannot be None"),
             batch_size: config.batch_size,
             flush_interval: config.flush_interval,
+            telemetry_error: config.telemetry_error,
         }
     }
 }
@@ -109,12 +113,14 @@ impl Sink for Firehose {
                                prbi.delivery_stream_name);
                         report_full_telemetry("cernan.sinks.firehose.records.delivery",
                                               1.0,
+                                              self.telemetry_error,
                                               None,
                                               Some(vec![("delivery_stream_name",
                                                          prbi.delivery_stream_name
                                                              .as_str())]));
                         report_full_telemetry("cernan.sinks.firehose.records.total_delivered",
                                               prbi.records.len() as f64,
+                                              self.telemetry_error,
                                               None,
                                               Some(vec![("delivery_stream_name",
                                                          prbi.delivery_stream_name
@@ -123,6 +129,7 @@ impl Sink for Firehose {
                         if failed_put_count > 0 {
                             report_full_telemetry("cernan.sinks.firehose.records.total_failed",
                                                   failed_put_count as f64,
+                                                  self.telemetry_error,
                                                   None,
                                                   Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -142,6 +149,7 @@ impl Sink for Firehose {
                             ResourceNotFound(rnf_err) => {
                                 report_full_telemetry("cernan.sinks.firehose.error.resource_not_found",
                                                  1.0,
+                                                 self.telemetry_error,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -153,6 +161,7 @@ impl Sink for Firehose {
                             InvalidArgument(ia_err) => {
                                 report_full_telemetry("cernan.sinks.firehose.error.invalid_argument",
                                                  1.0,
+                                                 self.telemetry_error,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -164,6 +173,7 @@ impl Sink for Firehose {
                             HttpDispatch(hd_err) => {
                                 report_full_telemetry("cernan.sinks.firehose.error.http_dispatch",
                                                  1.0,
+                                                 self.telemetry_error,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -174,6 +184,7 @@ impl Sink for Firehose {
                             Validation(v_err) => {
                                 report_full_telemetry("cernan.sinks.firehose.error.validation",
                                                  1.0,
+                                                 self.telemetry_error,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -185,6 +196,7 @@ impl Sink for Firehose {
                             Unknown(u_err) => {
                                 report_full_telemetry("cernan.sinks.firehose.error.unknown",
                                                  1.0,
+                                                 self.telemetry_error,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -196,6 +208,7 @@ impl Sink for Firehose {
                             Credentials(c_err) => {
                                 report_full_telemetry("cernan.sinks.firehose.error.credentials",
                                                  1.0,
+                                                 self.telemetry_error,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -206,6 +219,7 @@ impl Sink for Firehose {
                             ServiceUnavailable(su_err) => {
                                 report_full_telemetry("cernan.sinks.firehose.error.service_unavailable",
                                                  1.0,
+                                                 self.telemetry_error,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name

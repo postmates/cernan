@@ -221,6 +221,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             forwards: fwds,
                             config_path: Some(config_path.clone()),
                             tags: global_tags.clone(),
+                            telemetry_error: args.telemetry_error,
                         };
                         filters.insert(config_path, config);
                     }
@@ -358,6 +359,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                          })
                     .unwrap_or(args.flush_interval);
 
+                res.telemetry_error = args.telemetry_error;
+
                 res.tags = global_tags.clone();
 
                 res
@@ -391,6 +394,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                                  .expect("could not parse sinks.prometheus.bin_width")
                     })
                     .unwrap_or(res.bin_width);
+
+                res.telemetry_error = args.telemetry_error;
 
                 res
             });
@@ -439,6 +444,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                              u64
                          })
                     .unwrap_or(args.flush_interval);
+
+                res.telemetry_error = args.telemetry_error;
 
                 res
             });
@@ -619,6 +626,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                         res.tags = global_tags.clone();
 
+                        res.telemetry_error = args.telemetry_error;
+
                         assert!(res.config_path.is_some());
                         assert!(!res.forwards.is_empty());
 
@@ -665,6 +674,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             .unwrap_or(res.forwards);
 
                         res.tags = global_tags.clone();
+
+                        res.telemetry_error = args.telemetry_error;
 
                         assert!(res.config_path.is_some());
                         assert!(!res.forwards.is_empty());
@@ -744,6 +755,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     .unwrap_or(res.forwards);
 
                 res.tags = global_tags.clone();
+
+                res.telemetry_error = args.telemetry_error;
 
                 res
             })
