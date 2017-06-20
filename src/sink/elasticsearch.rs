@@ -21,6 +21,26 @@ struct Payload {
     path: String,
     payload: String,
     timestamp: Date<DefaultDateFormat>,
+    metadata: Vec<Metadata>,
+}
+
+#[derive(Debug, Deserialize, Serialize, ElasticType)]
+#[elastic(mapping="MetadataTypeMapping")]
+struct Metadata {
+    key: String,
+    value: String,
+}
+
+#[derive(Default)]
+pub struct MetadataTypeMapping;
+impl DocumentMapping for MetadataTypeMapping {
+    fn name() -> &'static str {
+        "metadata"
+    }
+
+    fn data_type() -> &'static str {
+        NESTED_DATATYPE
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -129,11 +149,26 @@ impl Sink for Elasticsearch {
     fn flush(&mut self) {
         let mut attempts: u32 = 0;
         while let Some(m) = self.buffer.pop_front() {
+            let mut metadata = Vec::new();
+            for &(ref k, ref v) in m.tags.iter() {
+                metadata.push(Metadata {
+                                  key: k.clone(),
+                                  value: v.clone(),
+                              });
+            }
+            for &(ref k, ref v) in m.fields.iter() {
+                metadata.push(Metadata {
+                                  key: k.clone(),
+                                  value: v.clone(),
+                              });
+            }
+
             let doc = Payload {
                 uuid: Uuid::new_v4().hyphenated().to_string(),
                 path: m.path.clone(),
                 payload: m.value.clone(),
                 timestamp: format_time(m.time),
+                metadata: metadata,
             };
 
             let index = idx(&self.index_prefix, m.time);
