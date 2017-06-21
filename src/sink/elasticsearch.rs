@@ -160,10 +160,10 @@ impl Sink for Elasticsearch {
 }
 
 #[inline]
-fn format_time(time: i64) -> Date<BasicDateTime> {
+fn format_time(time: i64) -> String {
     let naive_time = NaiveDateTime::from_timestamp(time, 0);
     let utc_time: DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
-    Date::new(utc_time)
+    format!("{}", utc_time.format("%+"))
 }
 
 #[inline]
