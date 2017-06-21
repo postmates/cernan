@@ -534,6 +534,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             fl.path = Some(Path::new(pth.as_str().unwrap()).to_path_buf());
                             fl.config_path = Some(format!("sources.files.{}", pth));
 
+                            fl.tags = global_tags.clone();
+
                             fl.forwards = tbl.get("forwards")
                                 .map(|fwd| {
                                          fwd.as_array()
