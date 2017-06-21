@@ -58,6 +58,7 @@ impl Elasticsearch {
     }
 
     fn bulk_body(&self, mut buffer: &mut String) -> () {
+        assert!(!self.buffer.is_empty());
         use serde_json::{Value, to_string};
         for m in self.buffer.iter() {
             let uuid = Uuid::new_v4().hyphenated().to_string();
