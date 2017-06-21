@@ -1,47 +1,16 @@
 use chrono::datetime::DateTime;
 use chrono::naive::datetime::NaiveDateTime;
 use chrono::offset::utc::UTC;
-
-use elastic;
+use elastic::error::Result;
 use elastic::prelude::*;
-use elastic_types::date::{Date, DefaultDateFormat};
 
 use metric::{LogLine, Telemetry};
 
 use sink::{Sink, Valve};
 use source::report_telemetry;
-use std::collections::vec_deque::VecDeque;
 use std::sync;
 use time;
 use uuid::Uuid;
-
-#[derive(Debug, Deserialize, Serialize, ElasticType)]
-struct Payload {
-    uuid: String,
-    path: String,
-    payload: String,
-    timestamp: Date<DefaultDateFormat>,
-    metadata: Vec<Metadata>,
-}
-
-#[derive(Debug, Deserialize, Serialize, ElasticType)]
-#[elastic(mapping="MetadataTypeMapping")]
-struct Metadata {
-    key: String,
-    value: String,
-}
-
-#[derive(Default)]
-pub struct MetadataTypeMapping;
-impl DocumentMapping for MetadataTypeMapping {
-    fn name() -> &'static str {
-        "metadata"
-    }
-
-    fn data_type() -> &'static str {
-        NESTED_DATATYPE
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct ElasticsearchConfig {
@@ -67,7 +36,7 @@ impl Default for ElasticsearchConfig {
 }
 
 pub struct Elasticsearch {
-    buffer: VecDeque<LogLine>,
+    buffer: Vec<LogLine>,
     client: Client,
     index_prefix: Option<String>,
     flush_interval: u64,
@@ -81,63 +50,42 @@ impl Elasticsearch {
         let client = Client::new(params).unwrap();
 
         Elasticsearch {
-            buffer: VecDeque::new(),
+            buffer: Vec::new(),
             client: client,
             index_prefix: config.index_prefix,
             flush_interval: config.flush_interval,
         }
     }
 
-    fn ensure_indexed(&mut self,
-                      idx: String,
-                      doc: Payload)
-                      -> Result<(), elastic::error::Error> {
-        use elastic::error;
-        let get_res = self.client
-            .get_document::<Payload>(index(idx.clone()), id(doc.uuid.clone()))
-            .send();
-
-        match get_res {
-            // The doc was found: no need to index
-            Ok(GetResponse { source: Some(_), .. }) => {
-                report_telemetry("cernan.sinks.elasticsearch.success.doc_existed",
-                                 1.0);
-                Ok(())
+    fn bulk_body(&self, mut buffer: &mut String) -> () {
+        use serde_json::{Value, to_string};
+        for m in self.buffer.iter() {
+            let uuid = Uuid::new_v4().hyphenated().to_string();
+            let header: Value = json!({
+                "index": {
+                    "_index" : idx(&self.index_prefix, m.time),
+                    "_type" : "payload",
+                    "_id" : uuid.clone(),
+                }
+            });
+            buffer.push_str(&to_string(&header).unwrap());
+            buffer.push('\n');
+            let mut payload: Value = json!({
+                "uuid": uuid,
+                "path": m.path.clone(),
+                "payload": m.value.clone(),
+                "timestamp": format_time(m.time),
+            });
+            let mut obj = payload.as_object_mut().unwrap();
+            for &(ref k, ref v) in m.tags.iter() {
+                obj.insert(k.clone(), Value::String(v.clone()));
             }
-            // The index exists, but the doc wasn't found: map and index
-            Ok(_) => self.put_doc(idx.clone(), doc).map(|_| ()),
-            // No index: create it, then map and index
-            Err(error::Error(error::ErrorKind::Api(error::ApiError::IndexNotFound { .. }), _)) => {
-                self.put_index(idx.clone())
-                    .and(self.put_doc(idx, doc))
-                    .map(|_| ())
+            for &(ref k, ref v) in m.fields.iter() {
+                obj.insert(k.clone(), Value::String(v.clone()));
             }
-            // Something went wrong, who knows what
-            Err(e) => Err(e),
+            buffer.push_str(&to_string(&obj).unwrap());
+            buffer.push('\n');
         }
-    }
-
-    fn put_index(&mut self,
-                 idx: String)
-                 -> Result<CommandResponse, elastic::error::Error> {
-        let res = self.client
-            .create_index(index(idx.clone()))
-            .send()
-            .and(self.client.put_mapping::<Payload>(index(idx)).send());
-        report_telemetry("cernan.sinks.elasticsearch.put_index", 1.0);
-        res
-    }
-
-    fn put_doc(&mut self,
-               idx: String,
-               doc: Payload)
-               -> Result<IndexResponse, elastic::error::Error> {
-        let res = self.client
-            .index_document(index(idx), id(doc.uuid.clone()), doc)
-            .params(|p| p.url_param("refresh", true))
-            .send();
-        report_telemetry("cernan.sinks.elasticsearch.put_doc", 1.0);
-        res
     }
 }
 
@@ -147,39 +95,41 @@ impl Sink for Elasticsearch {
     }
 
     fn flush(&mut self) {
+        if self.buffer.is_empty() {
+            return;
+        }
+
         let mut attempts: u32 = 0;
-        while let Some(m) = self.buffer.pop_front() {
-            let mut metadata = Vec::new();
-            for &(ref k, ref v) in m.tags.iter() {
-                metadata.push(Metadata {
-                                  key: k.clone(),
-                                  value: v.clone(),
-                              });
-            }
-            for &(ref k, ref v) in m.fields.iter() {
-                metadata.push(Metadata {
-                                  key: k.clone(),
-                                  value: v.clone(),
-                              });
-            }
+        loop {
+            let mut buffer = String::with_capacity(4048);
+            self.bulk_body(&mut buffer);
 
-            let doc = Payload {
-                uuid: Uuid::new_v4().hyphenated().to_string(),
-                path: m.path.clone(),
-                payload: m.value.clone(),
-                timestamp: format_time(m.time),
-                metadata: metadata,
-            };
+            let bulk_resp: Result<BulkResponse> = self.client
+                .request(BulkRequest::new(buffer))
+                .send()
+                .and_then(into_response);
 
-            let index = idx(&self.index_prefix, m.time);
-            match self.ensure_indexed(index, doc) {
-                Ok(()) => {
-                    report_telemetry("cernan.sinks.elasticsearch.success", 1.0);
+            match bulk_resp {
+                Ok(bulk) => {
+                    self.buffer.clear();
+                    report_telemetry("cernan.sinks.elasticsearch.records.delivery",
+                                     1.0);
+                    report_telemetry("cernan.sinks.elasticsearch.records.total_delivered",
+                                     bulk.items.ok.len() as f64);
+                    let failed_count = bulk.items.err.len();
+                    if failed_count > 0 {
+                        report_telemetry("cernan.sinks.elasticsearch.records.total_failed",
+                                         failed_count as f64);
+                        error!("Failed to write {} put records", failed_count);
+                    }
+                    return;
                 }
                 Err(err) => {
-                    report_telemetry("cernan.sinks.elasticsearch.failure", 1.0);
-                    debug!("Failed to create index, error: {}", err);
-                    self.buffer.push_back(m);
+                    report_telemetry("cernan.sinks.elasticsearch.error.attempts",
+                                     attempts as f64);
+                    report_telemetry("cernan.sinks.elasticsearch.error.reason.unknown",
+                                     1.0);
+                    error!("Unable to write, unknown failure: {}", err);
                     attempts += 1;
                     time::delay(attempts);
                     if attempts > 10 {
@@ -197,7 +147,7 @@ impl Sink for Elasticsearch {
 
     fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
         let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
-        self.buffer.push_back(line);
+        self.buffer.push(line);
     }
 
     fn valve_state(&self) -> Valve {

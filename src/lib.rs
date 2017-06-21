@@ -34,17 +34,14 @@ extern crate rusoto_core;
 extern crate rusoto_firehose;
 extern crate seahash;
 extern crate serde;
+#[macro_use]
 extern crate serde_json;
 extern crate toml;
 extern crate uuid;
 extern crate url;
 
-#[macro_use]
-extern crate elastic_types_derive;
 extern crate elastic_types;
 extern crate elastic;
-#[macro_use]
-extern crate elastic_derive;
 
 #[macro_use]
 extern crate log;
