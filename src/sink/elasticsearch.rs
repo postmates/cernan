@@ -103,7 +103,7 @@ impl Sink for Elasticsearch {
         loop {
             let mut buffer = String::with_capacity(4048);
             self.bulk_body(&mut buffer);
-
+            debug!("BODY: {}", buffer);
             let bulk_resp: Result<BulkResponse> = self.client
                 .request(BulkRequest::new(buffer))
                 .send()
