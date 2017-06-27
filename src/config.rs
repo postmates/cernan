@@ -316,6 +316,13 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                          })
                     .unwrap_or(args.flush_interval);
 
+                res.telemetry_error_bound = snk.get("telemetry_error_bound")
+                    .map(|fi| {
+                             fi.as_float()
+                                 .expect("could not parse sinks.wavefront.telemetry_error_bound")
+                         })
+                    .unwrap_or(args.telemetry_error_bound);
+
                 res.tags = global_tags.clone();
 
                 res
@@ -358,6 +365,12 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                              u64
                          })
                     .unwrap_or(args.flush_interval);
+
+                res.telemetry_error_bound = snk.get("telemetry_error_bound")
+                    .map(|fi| { fi.as_float()
+                                .expect("could not parse sinks.influxdb.telemetry_error_bound")
+                         })
+                    .unwrap_or(args.telemetry_error_bound);
 
                 res.telemetry_error_bound = args.telemetry_error_bound;
 
@@ -445,6 +458,12 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                          })
                     .unwrap_or(args.flush_interval);
 
+                res.telemetry_error_bound = snk.get("telemetry_error_bound")
+                    .map(|fi| { fi.as_float()
+                                .expect("could not parse sinks.elasticsearch.telemetry_error_bound")
+                         })
+                    .unwrap_or(args.telemetry_error_bound);
+
                 res.telemetry_error_bound = args.telemetry_error_bound;
 
                 res
@@ -502,6 +521,12 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                                  u64
                              })
                         .unwrap_or(args.flush_interval);
+
+                    res.telemetry_error_bound = tbl.get("telemetry_error_bound")
+                        .map(|fi| { fi.as_float()
+                                    .expect("could not parse sinks.firehose.telemetry_error_bound")
+                             })
+                        .unwrap_or(args.telemetry_error_bound);
 
                     res.batch_size = tbl.get("batch_size")
                         .map(|fi| {
