@@ -175,8 +175,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
         .unwrap_or(args.flush_interval);
 
     args.telemetry_error = value
-        .get("telemetry-error")
-        .map(|fi| fi.as_float().expect("could not parse telemetry-error"))
+        .get("telemetry-error-bound")
+        .map(|fi| fi.as_float().expect("could not parse telemetry-error-bound"))
         .unwrap_or(args.telemetry_error);
 
     let global_tags: TagMap = match value.get("tags") {
@@ -812,7 +812,7 @@ data-directory = "/foo/bar"
 
     #[test]
     fn config_file_telemetry_error() {
-        let config = r#"telemetry-error = 0.002"#;
+        let config = r#"telemetry-error-bound = 0.002"#;
         let args = parse_config_file(config, 4);
 
         assert_eq!(args.telemetry_error, 0.002);
