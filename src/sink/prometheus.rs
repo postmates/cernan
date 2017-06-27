@@ -4,7 +4,7 @@ use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protocols::prometheus::*;
 use sink::{Sink, Valve};
-use source::report_telemetry;
+use source::report_telemetry3;
 use std::io;
 use std::io::Write;
 use std::mem;
@@ -26,7 +26,7 @@ pub struct PrometheusConfig {
     pub host: String,
     pub port: u16,
     pub config_path: Option<String>,
-    pub telemetry_error: f64,
+    pub telemetry_error_bound: f64,
 }
 
 impl Default for PrometheusConfig {
@@ -36,14 +36,14 @@ impl Default for PrometheusConfig {
             host: "localhost".to_string(),
             port: 8086,
             config_path: None,
-            telemetry_error: 0.001,
+            telemetry_error_bound: 0.001,
         }
     }
 }
 
 struct SenderHandler {
     aggr: sync::Arc<Mutex<PrometheusAggr>>,
-    telemetry_error: f64,
+    telemetry_error_bound: f64,
 }
 
 /// The specialized aggr for Prometheus
@@ -151,12 +151,12 @@ impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
         let mut aggr = self.aggr.lock().unwrap();
         let reportable: Vec<metric::Telemetry> = aggr.reportable();
-        report_telemetry("cernan.sinks.prometheus.aggregation.reportable",
+        report_telemetry3("cernan.sinks.prometheus.aggregation.reportable",
                          reportable.len() as f64,
-                         self.telemetry_error);
-        report_telemetry("cernan.sinks.prometheus.aggregation.remaining",
+                         self.telemetry_error_bound);
+        report_telemetry3("cernan.sinks.prometheus.aggregation.remaining",
                          aggr.count() as f64,
-                         self.telemetry_error);
+                         self.telemetry_error_bound);
         // Typed hyper::mime is challenging to use. In particular, matching does
         // not seem to work like I expect and handling all other MIME cases in
         // the existing enum strikes me as a fool's errand, on account of there
@@ -179,20 +179,20 @@ impl Handler for SenderHandler {
             }
         }
         let res = if accept_proto {
-            report_telemetry("cernan.sinks.prometheus.write.binary",
+            report_telemetry3("cernan.sinks.prometheus.write.binary",
                              1.0,
-                             self.telemetry_error);
+                             self.telemetry_error_bound);
             write_binary(&reportable, res)
         } else {
-            report_telemetry("cernan.sinks.prometheus.write.text",
+            report_telemetry3("cernan.sinks.prometheus.write.text",
                              1.0,
-                             self.telemetry_error);
+                             self.telemetry_error_bound);
             write_text(&reportable, res)
         };
         if res.is_err() {
-            report_telemetry("cernan.sinks.prometheus.report_error",
+            report_telemetry3("cernan.sinks.prometheus.report_error",
                              1.0,
-                             self.telemetry_error);
+                             self.telemetry_error_bound);
             aggr.recombine(reportable);
         }
     }
@@ -207,7 +207,7 @@ impl Prometheus {
             .handle_threads(
                 SenderHandler {
                     aggr: srv_aggrs,
-                    telemetry_error: config.telemetry_error},
+                    telemetry_error_bound: config.telemetry_error_bound},
                 1)
             .unwrap();
 

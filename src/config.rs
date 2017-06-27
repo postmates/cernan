@@ -54,7 +54,7 @@ pub struct Args {
     pub data_directory: PathBuf,
     pub scripts_directory: PathBuf,
     pub flush_interval: u64,
-    pub telemetry_error: f64,
+    pub telemetry_error_bound: f64,
     pub verbose: u64,
     pub version: String,
     // filters
@@ -82,7 +82,7 @@ impl Default for Args {
             data_directory: default_data_directory(),
             scripts_directory: default_scripts_directory(),
             flush_interval: 60,
-            telemetry_error: DEFAULT_TELEMETRY_ERROR,
+            telemetry_error_bound: DEFAULT_TELEMETRY_ERROR,
             version: default_version(),
             verbose: 0,
             // filters
@@ -174,10 +174,10 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
         .map(|fi| fi.as_integer().expect("could not parse flush-interval") as u64)
         .unwrap_or(args.flush_interval);
 
-    args.telemetry_error = value
+    args.telemetry_error_bound = value
         .get("telemetry-error-bound")
         .map(|fi| fi.as_float().expect("could not parse telemetry-error-bound"))
-        .unwrap_or(args.telemetry_error);
+        .unwrap_or(args.telemetry_error_bound);
 
     let global_tags: TagMap = match value.get("tags") {
         Some(tbl) => {
@@ -221,7 +221,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             forwards: fwds,
                             config_path: Some(config_path.clone()),
                             tags: global_tags.clone(),
-                            telemetry_error: args.telemetry_error,
+                            telemetry_error_bound: args.telemetry_error_bound,
                         };
                         filters.insert(config_path, config);
                     }
@@ -359,7 +359,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                          })
                     .unwrap_or(args.flush_interval);
 
-                res.telemetry_error = args.telemetry_error;
+                res.telemetry_error_bound = args.telemetry_error_bound;
 
                 res.tags = global_tags.clone();
 
@@ -395,7 +395,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     })
                     .unwrap_or(res.bin_width);
 
-                res.telemetry_error = args.telemetry_error;
+                res.telemetry_error_bound = args.telemetry_error_bound;
 
                 res
             });
@@ -445,7 +445,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                          })
                     .unwrap_or(args.flush_interval);
 
-                res.telemetry_error = args.telemetry_error;
+                res.telemetry_error_bound = args.telemetry_error_bound;
 
                 res
             });
@@ -626,8 +626,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                         res.tags = global_tags.clone();
 
-                        res.telemetry_error = args.telemetry_error;
-
                         assert!(res.config_path.is_some());
                         assert!(!res.forwards.is_empty());
 
@@ -674,8 +672,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             .unwrap_or(res.forwards);
 
                         res.tags = global_tags.clone();
-
-                        res.telemetry_error = args.telemetry_error;
 
                         assert!(res.config_path.is_some());
                         assert!(!res.forwards.is_empty());
@@ -756,8 +752,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                 res.tags = global_tags.clone();
 
-                res.telemetry_error = args.telemetry_error;
-
                 res
             })
             .unwrap_or(args.internal);
@@ -811,19 +805,19 @@ data-directory = "/foo/bar"
     }
 
     #[test]
-    fn config_file_telemetry_error() {
+    fn config_file_telemetry_error_bound() {
         let config = r#"telemetry-error-bound = 0.002"#;
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.telemetry_error, 0.002);
+        assert_eq!(args.telemetry_error_bound, 0.002);
     }
 
     #[test]
-    fn config_file_telemetry_error_default() {
+    fn config_file_telemetry_error_bound_default() {
         let config = r#""#;
         let args = parse_config_file(config, 4);
 
-        assert_eq!(args.telemetry_error, 0.001);
+        assert_eq!(args.telemetry_error_bound, 0.001);
     }
 
     #[test]

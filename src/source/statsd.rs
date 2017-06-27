@@ -1,7 +1,7 @@
 use metric;
 use protocols::statsd::parse_statsd;
 use source::Source;
-use source::internal::report_telemetry;
+use source::internal::report_telemetry2;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::str;
 use std::sync;
@@ -14,7 +14,6 @@ pub struct Statsd {
     host: String,
     port: u16,
     tags: sync::Arc<metric::TagMap>,
-    telemetry_error: f64,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -25,7 +24,6 @@ pub struct StatsdConfig {
     pub forwards: Vec<String>,
     pub config_path: Option<String>,
     pub delete_gauges: bool,
-    pub telemetry_error: f64,
 }
 
 impl Default for StatsdConfig {
@@ -37,7 +35,6 @@ impl Default for StatsdConfig {
             forwards: Vec::new(),
             config_path: None,
             delete_gauges: false,
-            telemetry_error: 0.001,
         }
     }
 }
@@ -49,15 +46,13 @@ impl Statsd {
             host: config.host,
             port: config.port,
             tags: sync::Arc::new(config.tags),
-            telemetry_error: config.telemetry_error,
         }
     }
 }
 
 fn handle_udp(mut chans: util::Channel,
               tags: sync::Arc<metric::TagMap>,
-              socket: &UdpSocket,
-              telemetry_error: f64) {
+              socket: &UdpSocket) {
     let mut buf = [0; 8192];
     let mut metrics = Vec::new();
     let basic_metric = sync::Arc::new(Some(metric::Telemetry::default()
@@ -73,9 +68,9 @@ fn handle_udp(mut chans: util::Channel,
                     for m in metrics.drain(..) {
                         send(&mut chans, metric::Event::new_telemetry(m));
                     }
-                    report_telemetry("cernan.statsd.packet", 1.0, telemetry_error);
+                    report_telemetry2("cernan.statsd.packet", 1.0);
                 } else {
-                    report_telemetry("cernan.statsd.bad_packet", 1.0, telemetry_error);
+                    report_telemetry2("cernan.statsd.bad_packet", 1.0);
                     error!("BAD PACKET: {:?}", val);
                 }
             }
@@ -100,9 +95,8 @@ impl Source for Statsd {
                     let chans = self.chans.clone();
                     let tags = self.tags.clone();
                     info!("server started on {:?} {}", addr, self.port);
-                    let error = self.telemetry_error;
                     joins.push(thread::spawn(move || {
-                                                 handle_udp(chans, tags, &listener, error)
+                                                 handle_udp(chans, tags, &listener)
                                              }));
                 }
             }

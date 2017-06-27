@@ -2,7 +2,7 @@ use glob::glob;
 use metric;
 use seahash::SeaHasher;
 use source::Source;
-use source::internal::report_full_telemetry;
+use source::internal::report_telemetry5;
 use std::collections::HashMap;
 use std::fs;
 use std::hash::BuildHasherDefault;
@@ -16,6 +16,8 @@ use std::time::Instant;
 use time;
 use util;
 use util::send;
+
+const DEFAULT_TELEMETRY_ERROR_BOUND: f64 = 0.001;
 
 type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<SeaHasher>>;
 
@@ -33,7 +35,6 @@ pub struct FileServer {
     path: PathBuf,
     max_read_lines: usize,
     tags: metric::TagMap,
-    telemetry_error: f64,
 }
 
 /// The configuration struct for `FileServer`.
@@ -51,9 +52,6 @@ pub struct FileServerConfig {
     pub forwards: Vec<String>,
     /// The configured name of FileServer.
     pub config_path: Option<String>,
-    /// Telemetry is reported with some approximation, this is an error
-    /// of this approximation, check the `quantiles` library docs
-    pub telemetry_error: f64,
 }
 
 impl Default for FileServerConfig {
@@ -64,7 +62,6 @@ impl Default for FileServerConfig {
             tags: metric::TagMap::default(),
             forwards: Vec::default(),
             config_path: None,
-            telemetry_error: 0.001,
         }
     }
 }
@@ -78,7 +75,6 @@ impl FileServer {
             path: config.path.expect("must specify a 'path' for FileServer"),
             tags: config.tags,
             max_read_lines: config.max_read_lines,
-            telemetry_error: config.telemetry_error,
         }
     }
 }
@@ -95,7 +91,6 @@ struct FileWatcher {
     reader: io::BufReader<fs::File>,
     offset: u64,
     file_id: (u64, u64), // (dev, ino)
-    telemetry_error: f64,
 }
 
 impl FileWatcher {
@@ -104,7 +99,7 @@ impl FileWatcher {
     /// The input path will be used by `FileWatcher` to prime its state
     /// machine. A `FileWatcher` tracks _only one_ file. This function returns
     /// None if the path does not exist or is not readable by cernan.
-    pub fn new(path: PathBuf, telemetry_error: f64) -> Option<FileWatcher> {
+    pub fn new(path: PathBuf) -> Option<FileWatcher> {
         match fs::File::open(&path) {
             Ok(f) => {
                 let mut rdr = io::BufReader::new(f);
@@ -119,7 +114,6 @@ impl FileWatcher {
                          reader: rdr,
                          offset: offset,
                          file_id: (dev, ino),
-                         telemetry_error: telemetry_error,
                      })
             }
             Err(_) => None,
@@ -132,9 +126,9 @@ impl FileWatcher {
             let ino = metadata.ino();
 
             if (dev, ino) != self.file_id {
-                report_full_telemetry("cernan.sources.file.switch",
+                report_telemetry5("cernan.sources.file.switch",
                                  1.0,
-                                 self.telemetry_error,
+                                 DEFAULT_TELEMETRY_ERROR_BOUND,
                                  None,
                                  Some(vec![("file_path",
                                             &self.path.to_str().expect("could not make path"))]));
@@ -245,7 +239,7 @@ impl Source for FileServer {
                 match entry {
                     Ok(path) => {
                         let entry = fp_map.entry(path.clone());
-                        if let Some(fw) = FileWatcher::new(path, self.telemetry_error) {
+                        if let Some(fw) = FileWatcher::new(path) {
                             entry.or_insert(fw);
                         };
                     }
@@ -274,9 +268,9 @@ impl Source for FileServer {
                                     lines_read += 1;
                                     buffer.pop();
                                     let path_name = file.path.to_str().expect("could not make path_name");
-                                    report_full_telemetry("cernan.sources.file.lines_read",
+                                    report_telemetry5("cernan.sources.file.lines_read",
                                                           1.0,
-                                                          self.telemetry_error,
+                                                          DEFAULT_TELEMETRY_ERROR_BOUND,
                                                           None,
                                                           Some(vec![("file_path",
                                                                      path_name)]));
@@ -354,7 +348,7 @@ mod test {
             let path = dir.path().join("a_file.log");
             let mut fp = fs::File::create(&path).expect("could not create");
             let mut fw =
-                FileWatcher::new(path.clone(), 0.001).expect("must be able to create");
+                FileWatcher::new(path.clone()).expect("must be able to create");
 
             let mut expected_read = Vec::new();
 

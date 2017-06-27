@@ -90,10 +90,10 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let val = state.to_number(3);
-        let telemetry_error = 0.001; // TODO: make it configurable
+        let telemetry_error_bound = 0.001; // TODO: make it configurable
         match state.to_str(2) {
             Some(name) => {
-                let m = metric::Telemetry::new(name, val, telemetry_error)
+                let m = metric::Telemetry::new(name, val, telemetry_error_bound)
                     .overlay_tags_from_map((*pyld).global_tags);
                 (*pyld).metrics.push(Box::new(m));
             }
@@ -413,7 +413,7 @@ pub struct ProgrammableFilter {
     path: String,
     global_tags: metric::TagMap,
     last_flush_idx: u64,
-    telemetry_error: f64
+    telemetry_error_bound: f64
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -423,7 +423,7 @@ pub struct ProgrammableFilterConfig {
     pub forwards: Vec<String>,
     pub config_path: Option<String>,
     pub tags: metric::TagMap,
-    pub telemetry_error: f64,
+    pub telemetry_error_bound: f64,
 }
 
 impl Default for ProgrammableFilterConfig {
@@ -434,7 +434,7 @@ impl Default for ProgrammableFilterConfig {
             forwards: Vec::default(),
             config_path: None,
             tags: metric::TagMap::default(),
-            telemetry_error: 0.001,
+            telemetry_error_bound: 0.001,
         }
     }
 }
@@ -496,7 +496,7 @@ impl ProgrammableFilter {
             path: config.config_path.expect("must have a config_path for ProgrammableFilter"),
             global_tags: config.tags,
             last_flush_idx: 0,
-            telemetry_error: config.telemetry_error,
+            telemetry_error_bound: config.telemetry_error_bound,
         }
     }
 }
@@ -514,7 +514,7 @@ impl filter::Filter for ProgrammableFilter {
                                                                        process_metric.failure",
                                                                       self.path),
                                                               1.0,
-                                                              self.telemetry_error)
+                                                              self.telemetry_error_bound)
                             .aggr_sum();
                     let fail =
                         metric::Event::Telemetry(sync::Arc::new(Some(filter_telem)));
@@ -551,7 +551,7 @@ impl filter::Filter for ProgrammableFilter {
                                                                                   {}.tick.failure",
                                                                                            self.path),
                                                                                    1.0,
-                                                                                   self.telemetry_error)
+                                                                                   self.telemetry_error_bound)
                                                                     .aggr_sum());
                     return Err(filter::FilterError::NoSuchFunction("tick", fail));
                 }
@@ -583,7 +583,7 @@ impl filter::Filter for ProgrammableFilter {
                                                                                   failure",
                                                                                            self.path),
                                                                                    1.0,
-                                                                                   self.telemetry_error)
+                                                                                   self.telemetry_error_bound)
                                                                     .aggr_sum());
                     return Err(filter::FilterError::NoSuchFunction("process_log",
                                                                    fail));

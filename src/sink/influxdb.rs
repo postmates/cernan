@@ -2,7 +2,7 @@ use hyper::Client;
 use hyper::header;
 use metric::{LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
-use source::report_telemetry;
+use source::report_telemetry3;
 use std::cmp;
 use std::string;
 use std::sync;
@@ -21,7 +21,7 @@ pub struct InfluxDB {
     /// across flushes to avoid stampeding between flushes.
     delivery_attempts: u32,
     flush_interval: u64,
-    telemetry_error: f64,
+    telemetry_error_bound: f64,
     client: Client,
     uri: Url,
 }
@@ -49,7 +49,7 @@ pub struct InfluxDBConfig {
     pub flush_interval: u64,
     /// Telemetry is reported with some approximation, this is an error
     /// of this approximation, check the `quantiles` library docs
-    pub telemetry_error: f64,
+    pub telemetry_error_bound: f64,
 }
 
 impl Default for InfluxDBConfig {
@@ -62,7 +62,7 @@ impl Default for InfluxDBConfig {
             config_path: None,
             tags: Default::default(),
             flush_interval: 60,
-            telemetry_error: 0.001,
+            telemetry_error_bound: 0.001,
         }
     }
 }
@@ -112,7 +112,7 @@ impl InfluxDB {
             aggrs: Vec::with_capacity(4048),
             delivery_attempts: 0,
             flush_interval: config.flush_interval,
-            telemetry_error: config.telemetry_error,
+            telemetry_error_bound: config.telemetry_error_bound,
             client: Client::new(),
             uri: uri,
         }
@@ -165,9 +165,9 @@ impl Sink for InfluxDB {
             // delivery_attempts_0 waits. The idea is that a failure that
             // happens to succeed may succeed against a degraded system; we
             // should not assume full health.
-            report_telemetry("cernan.sinks.influxdb.delivery_attempts",
+            report_telemetry3("cernan.sinks.influxdb.delivery_attempts",
                              self.delivery_attempts as f64,
-                             self.telemetry_error);
+                             self.telemetry_error_bound);
             time::delay(self.delivery_attempts);
 
             match self.client
@@ -180,9 +180,9 @@ impl Sink for InfluxDB {
                     // https://docs.influxdata.com/influxdb/v1.
                     // 2/guides/writing_data/#http-response-summary
                     if resp.status.is_success() {
-                        report_telemetry("cernan.sinks.influxdb.success",
+                        report_telemetry3("cernan.sinks.influxdb.success",
                                          1.0,
-                                         self.telemetry_error);
+                                         self.telemetry_error_bound);
                         buffer.clear();
                         self.delivery_attempts = self.delivery_attempts
                             .saturating_sub(1);
@@ -190,15 +190,15 @@ impl Sink for InfluxDB {
                     } else if resp.status.is_client_error() {
                         self.delivery_attempts = self.delivery_attempts
                             .saturating_add(1);
-                        report_telemetry("cernan.sinks.influxdb.failure.client_error",
+                        report_telemetry3("cernan.sinks.influxdb.failure.client_error",
                                          1.0,
-                                         self.telemetry_error);
+                                         self.telemetry_error_bound);
                     } else if resp.status.is_server_error() {
                         self.delivery_attempts = self.delivery_attempts
                             .saturating_add(1);
-                        report_telemetry("cernan.sinks.influxdb.failure.server_error",
+                        report_telemetry3("cernan.sinks.influxdb.failure.server_error",
                                          1.0,
-                                         self.telemetry_error);
+                                         self.telemetry_error_bound);
                     }
                 }
             }
@@ -246,7 +246,7 @@ mod test {
             config_path: Some("sinks.influxdb".to_string()),
             tags: tags.clone(),
             flush_interval: 60,
-            telemetry_error: 0.001,
+            telemetry_error_bound: 0.001,
         };
         let mut influxdb = InfluxDB::new(config);
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00);

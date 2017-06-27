@@ -1,7 +1,7 @@
 use super::Source;
 use metric;
 use protocols::graphite::parse_graphite;
-use source::internal::report_telemetry;
+use source::internal::report_telemetry2;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
@@ -17,7 +17,6 @@ pub struct Graphite {
     host: String,
     port: u16,
     tags: Arc<metric::TagMap>,
-    telemetry_error: f64,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -27,7 +26,6 @@ pub struct GraphiteConfig {
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
     pub config_path: Option<String>,
-    pub telemetry_error: f64,
 }
 
 impl Default for GraphiteConfig {
@@ -38,7 +36,6 @@ impl Default for GraphiteConfig {
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
             config_path: Some("sources.graphite".to_string()),
-            telemetry_error: 0.001,
         }
     }
 }
@@ -50,26 +47,24 @@ impl Graphite {
             host: config.host,
             port: config.port,
             tags: Arc::new(config.tags),
-            telemetry_error: config.telemetry_error,
         }
     }
 }
 
 fn handle_tcp(chans: util::Channel,
               tags: Arc<metric::TagMap>,
-              listner: TcpListener,
-              telemetry_error: f64)
+              listner: TcpListener)
               -> thread::JoinHandle<()> {
     thread::spawn(move || for stream in listner.incoming() {
                       if let Ok(stream) = stream {
-                          report_telemetry("cernan.graphite.new_peer", 1.0, telemetry_error);
+                          report_telemetry2("cernan.graphite.new_peer", 1.0);
                           debug!("new peer at {:?} | local addr for peer {:?}",
                                  stream.peer_addr(),
                                  stream.local_addr());
                           let tags = tags.clone();
                           let chans = chans.clone();
                           thread::spawn(move || {
-                                            handle_stream(chans, tags, stream, telemetry_error);
+                                            handle_stream(chans, tags, stream);
                                         });
                       }
                   })
@@ -78,8 +73,7 @@ fn handle_tcp(chans: util::Channel,
 
 fn handle_stream(mut chans: util::Channel,
                  tags: Arc<metric::TagMap>,
-                 stream: TcpStream,
-                 telemetry_error: f64) {
+                 stream: TcpStream) {
     thread::spawn(move || {
         let mut line = String::new();
         let mut res = Vec::new();
@@ -89,13 +83,13 @@ fn handle_stream(mut chans: util::Channel,
         while let Some(len) = line_reader.read_line(&mut line).ok() {
             if len > 0 {
                 if parse_graphite(&line, &mut res, basic_metric.clone()) {
-                    report_telemetry("cernan.graphite.packet", 1.0, telemetry_error);
+                    report_telemetry2("cernan.graphite.packet", 1.0);
                     for m in res.drain(..) {
                         send(&mut chans, metric::Event::Telemetry(Arc::new(Some(m))));
                     }
                     line.clear();
                 } else {
-                    report_telemetry("cernan.graphite.bad_packet", 1.0, telemetry_error);
+                    report_telemetry2("cernan.graphite.bad_packet", 1.0);
                     error!("bad packet: {:?}", line);
                     line.clear();
                 }
@@ -120,9 +114,8 @@ impl Source for Graphite {
                     let chans = self.chans.clone();
                     let tags = self.tags.clone();
                     info!("server started on {:?} {}", addr, self.port);
-                    let error = self.telemetry_error;
                     joins.push(thread::spawn(move || {
-                                                 handle_tcp(chans, tags, listener, error)
+                                                 handle_tcp(chans, tags, listener)
                                              }));
                 }
             }

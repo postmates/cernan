@@ -5,6 +5,8 @@ use std::sync;
 use time;
 use util;
 
+const DEFAULT_TELEMETRY_ERROR_BOUND: f64 = 0.001;
+
 lazy_static! {
     static ref Q: sync::Mutex<VecDeque<metric::Telemetry>> = sync::Mutex::new(VecDeque::new());
 }
@@ -28,7 +30,6 @@ pub struct InternalConfig {
     /// The default tags to apply to each Telemetry that comes through the
     /// queue.
     pub tags: metric::TagMap,
-    pub telemetry_error: f64,
 }
 
 impl Default for InternalConfig {
@@ -37,7 +38,6 @@ impl Default for InternalConfig {
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
             config_path: Some("sources.internal".to_string()),
-            telemetry_error: 0.001,
         }
     }
 }
@@ -51,15 +51,16 @@ impl Internal {
     }
 }
 
-/// Push telemetry into the Internal queue
-///
-/// Given a name and value, construct a Telemetry with Sum aggregation and push
-/// into Internal's queue. This queue will then be drained into operator
-/// configured forwards.
-pub fn report_telemetry<S>(name: S, value: f64, error: f64) -> ()
+/// see comment for the report_telemetry5
+pub fn report_telemetry2<S>(name: S, value: f64) -> ()
     where S: Into<String>
 {
-    report_full_telemetry(name, value, error, None, None);
+    report_telemetry5(name, value, DEFAULT_TELEMETRY_ERROR_BOUND, None, None);
+}
+pub fn report_telemetry3<S>(name: S, value: f64, error: f64) -> ()
+    where S: Into<String>
+{
+    report_telemetry5(name, value, error, None, None);
 }
 
 /// Push telemetry into the Internal queue
@@ -67,7 +68,7 @@ pub fn report_telemetry<S>(name: S, value: f64, error: f64) -> ()
 /// Given a name, value, possible aggregation and possible metadata construct a
 /// Telemetry with said aggregation and push into Internal's queue. This queue
 /// will then be drained into operator configured forwards.
-pub fn report_full_telemetry<S>(name: S,
+pub fn report_telemetry5<S>(name: S,
                                 value: f64,
                                 error: f64,
                                 aggr: Option<metric::AggregationMethod>,

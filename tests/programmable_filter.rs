@@ -22,7 +22,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.identity".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -52,7 +52,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.clear_metrics".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -80,7 +80,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.clear_logs".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -110,7 +110,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.remove_keys".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -148,7 +148,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.remove_keys".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -179,7 +179,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.no_args_no_crash".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -210,7 +210,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.missing_func".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -239,7 +239,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.demonstrate_require".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -277,7 +277,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.add_keys".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -315,7 +315,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.add_keys".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -346,7 +346,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.keep_count".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -438,7 +438,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.collectd_scrub".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -481,7 +481,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.collectd_scrub".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -523,7 +523,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.json_parse".to_string()),
                 tags: Default::default(),
-                telemetry_error: 0.001,
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
