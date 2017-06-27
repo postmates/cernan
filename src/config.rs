@@ -918,6 +918,7 @@ scripts-directory = "/foo/bar"
   index-prefix = "prefix-"
   secure = true
   flush_interval = 2020
+  telemetry_error_bound = 0.002
 "#;
 
         let args = parse_config_file(config, 4);
@@ -930,6 +931,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(es.index_prefix, Some("prefix-".into()));
         assert_eq!(es.secure, true);
         assert_eq!(es.flush_interval, 2020);
+        assert_eq!(es.telemetry_error_bound, 0.002);
     }
 
     #[test]
@@ -1117,6 +1119,7 @@ scripts-directory = "/foo/bar"
       host = "example.com"
       bin_width = 9
       flush_interval = 15
+      telemetry_error_bound = 0.002
     "#;
 
         let args = parse_config_file(config, 4);
@@ -1127,6 +1130,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(wavefront.port, 3131);
         assert_eq!(wavefront.bin_width, 9);
         assert_eq!(wavefront.flush_interval, 15);
+        assert_eq!(wavefront.telemetry_error_bound, 0.002);
     }
 
     #[test]
@@ -1151,6 +1155,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(wavefront.host, String::from("example.com"));
         assert_eq!(wavefront.port, 3131);
         assert_eq!(wavefront.bin_width, 9);
+        assert_eq!(wavefront.telemetry_error_bound, 0.001);
 
         assert_eq!(wavefront.percentiles.len(), 3);
         assert_eq!(wavefront.percentiles[0], ("max".to_string(), 1.0));
@@ -1168,6 +1173,7 @@ scripts-directory = "/foo/bar"
       db = "postmates"
       flush_interval = 70
       secure = true
+      telemetry_error_bound = 0.003
     "#;
 
         let args = parse_config_file(config, 4);
@@ -1179,6 +1185,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(influxdb.port, 3131);
         assert_eq!(influxdb.flush_interval, 70);
         assert_eq!(influxdb.secure, true);
+        assert_eq!(influxdb.telemetry_error_bound, 0.003);
     }
 
     #[test]
@@ -1189,6 +1196,7 @@ scripts-directory = "/foo/bar"
       port = 3131
       host = "example.com"
       bin_width = 9
+      telemetry_error_bound = 0.005
     "#;
 
         let args = parse_config_file(config, 4);
@@ -1198,6 +1206,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(prometheus.host, String::from("example.com"));
         assert_eq!(prometheus.port, 3131);
         assert_eq!(prometheus.bin_width, 9);
+        assert_eq!(prometheus.telemetry_error_bound, 0.003);
     }
 
     #[test]
@@ -1237,6 +1246,7 @@ scripts-directory = "/foo/bar"
       batch_size = 20
       flush_interval = 15
       region = "us-west-2"
+      telemetry_error_bound = 0.006
 
       [sinks.firehose.stream_two]
       delivery_stream = "stream_two"
@@ -1253,11 +1263,13 @@ scripts-directory = "/foo/bar"
         assert_eq!(firehosen[0].batch_size, 20);
         assert_eq!(firehosen[0].region, Some(Region::UsWest2));
         assert_eq!(firehosen[0].flush_interval, 15);
+        assert_eq!(firehosen[0].telemetry_error_bound, 0.006);
 
         assert_eq!(firehosen[1].delivery_stream, Some("stream_two".to_string()));
         assert_eq!(firehosen[1].batch_size, 800);
         assert_eq!(firehosen[1].region, Some(Region::UsEast1));
         assert_eq!(firehosen[1].flush_interval, 60); // default
+        assert_eq!(firehosen[1].telemetry_error_bound, 0.001);
     }
 
     #[test]
