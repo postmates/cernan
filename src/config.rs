@@ -372,8 +372,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                          })
                     .unwrap_or(args.telemetry_error_bound);
 
-                res.telemetry_error_bound = args.telemetry_error_bound;
-
                 res.tags = global_tags.clone();
 
                 res
@@ -408,7 +406,12 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     })
                     .unwrap_or(res.bin_width);
 
-                res.telemetry_error_bound = args.telemetry_error_bound;
+                res.telemetry_error_bound = snk.get("telemetry_error_bound")
+                    .map(|fi| { fi.as_float()
+                                .expect("could not parse sinks.prometheus.telemetry_error_bound")
+                         })
+                    .unwrap_or(args.telemetry_error_bound);
+
 
                 res
             });
@@ -463,8 +466,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                                 .expect("could not parse sinks.elasticsearch.telemetry_error_bound")
                          })
                     .unwrap_or(args.telemetry_error_bound);
-
-                res.telemetry_error_bound = args.telemetry_error_bound;
 
                 res
             });
@@ -1206,7 +1207,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(prometheus.host, String::from("example.com"));
         assert_eq!(prometheus.port, 3131);
         assert_eq!(prometheus.bin_width, 9);
-        assert_eq!(prometheus.telemetry_error_bound, 0.003);
+        assert_eq!(prometheus.telemetry_error_bound, 0.005);
     }
 
     #[test]
