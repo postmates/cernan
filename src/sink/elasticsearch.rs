@@ -7,7 +7,7 @@ use elastic::prelude::*;
 use metric::{LogLine, Telemetry};
 
 use sink::{Sink, Valve};
-use source::report_telemetry;
+use source::report_telemetry3;
 use std::sync;
 use time;
 use uuid::Uuid;
@@ -20,6 +20,7 @@ pub struct ElasticsearchConfig {
     pub host: String,
     pub port: usize,
     pub flush_interval: u64,
+    pub telemetry_error_bound: f64,
 }
 
 impl Default for ElasticsearchConfig {
@@ -31,6 +32,7 @@ impl Default for ElasticsearchConfig {
             index_prefix: None,
             port: 9200,
             flush_interval: 10,
+            telemetry_error_bound: 0.001,
         }
     }
 }
@@ -40,6 +42,7 @@ pub struct Elasticsearch {
     client: Client,
     index_prefix: Option<String>,
     flush_interval: u64,
+    telemetry_error_bound: f64,
 }
 
 impl Elasticsearch {
@@ -54,6 +57,7 @@ impl Elasticsearch {
             client: client,
             index_prefix: config.index_prefix,
             flush_interval: config.flush_interval,
+            telemetry_error_bound: config.telemetry_error_bound,
         }
     }
 
@@ -113,23 +117,28 @@ impl Sink for Elasticsearch {
             match bulk_resp {
                 Ok(bulk) => {
                     self.buffer.clear();
-                    report_telemetry("cernan.sinks.elasticsearch.records.delivery",
-                                     1.0);
-                    report_telemetry("cernan.sinks.elasticsearch.records.total_delivered",
-                                     bulk.items.ok.len() as f64);
+                    report_telemetry3("cernan.sinks.elasticsearch.records.delivery",
+                                     1.0,
+                                     self.telemetry_error_bound);
+                    report_telemetry3("cernan.sinks.elasticsearch.records.total_delivered",
+                                     bulk.items.ok.len() as f64,
+                                     self.telemetry_error_bound);
                     let failed_count = bulk.items.err.len();
                     if failed_count > 0 {
-                        report_telemetry("cernan.sinks.elasticsearch.records.total_failed",
-                                         failed_count as f64);
+                        report_telemetry3("cernan.sinks.elasticsearch.records.total_failed",
+                                         failed_count as f64,
+                                         self.telemetry_error_bound);
                         error!("Failed to write {} put records", failed_count);
                     }
                     return;
                 }
                 Err(err) => {
-                    report_telemetry("cernan.sinks.elasticsearch.error.attempts",
-                                     attempts as f64);
-                    report_telemetry("cernan.sinks.elasticsearch.error.reason.unknown",
-                                     1.0);
+                    report_telemetry3("cernan.sinks.elasticsearch.error.attempts",
+                                     attempts as f64,
+                                     self.telemetry_error_bound);
+                    report_telemetry3("cernan.sinks.elasticsearch.error.reason.unknown",
+                                     1.0,
+                                     self.telemetry_error_bound);
                     error!("Unable to write, unknown failure: {}", err);
                     attempts += 1;
                     time::delay(attempts);

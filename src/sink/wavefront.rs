@@ -1,7 +1,7 @@
 use buckets::Buckets;
 use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
-use source::report_telemetry;
+use source::report_telemetry3;
 use std::cmp;
 use std::io::Write as IoWrite;
 use std::net::TcpStream;
@@ -18,6 +18,7 @@ pub struct Wavefront {
     percentiles: Vec<(String, f64)>,
     pub stats: String,
     flush_interval: u64,
+    pub telemetry_error_bound: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +30,7 @@ pub struct WavefrontConfig {
     pub percentiles: Vec<(String, f64)>,
     pub tags: TagMap,
     pub flush_interval: u64,
+    pub telemetry_error_bound: f64,
 }
 
 impl Default for WavefrontConfig {
@@ -54,6 +56,7 @@ impl Default for WavefrontConfig {
             percentiles: percentiles,
             tags: TagMap::default(),
             flush_interval: 60,
+            telemetry_error_bound: 0.001,
         }
     }
 }
@@ -101,6 +104,7 @@ impl Wavefront {
                percentiles: config.percentiles,
                stats: String::with_capacity(8_192),
                flush_interval: config.flush_interval,
+               telemetry_error_bound: config.telemetry_error_bound,
            })
     }
 
@@ -116,17 +120,23 @@ impl Wavefront {
             for value in values {
                 match value.aggr_method {
                     AggregationMethod::Sum => {
-                        report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
+                        report_telemetry3("cernan.sinks.wavefront.aggregation.sum",
+                                         1.0,
+                                         self.telemetry_error_bound)
                     }
                     AggregationMethod::Set => {
-                        report_telemetry("cernan.sinks.wavefront.aggregation.set", 1.0)
+                        report_telemetry3("cernan.sinks.wavefront.aggregation.set",
+                                         1.0,
+                                         self.telemetry_error_bound)
                     }
                     AggregationMethod::Summarize => {
-                        report_telemetry("cernan.sinks.wavefront.aggregation.summarize",
-                                         1.0);
-                        report_telemetry("cernan.sinks.wavefront.aggregation.\
+                        report_telemetry3("cernan.sinks.wavefront.aggregation.summarize",
+                                         1.0,
+                                         self.telemetry_error_bound);
+                        report_telemetry3("cernan.sinks.wavefront.aggregation.\
                                           summarize.total_percentiles",
-                                         self.percentiles.len() as f64);
+                                         self.percentiles.len() as f64,
+                                         self.telemetry_error_bound);
                     }
                 };
                 match value.aggr_method {
@@ -208,8 +218,9 @@ impl Sink for Wavefront {
 
     fn flush(&mut self) {
         loop {
-            report_telemetry("cernan.sinks.wavefront.delivery_attempts",
-                             self.delivery_attempts as f64);
+            report_telemetry3("cernan.sinks.wavefront.delivery_attempts",
+                             self.delivery_attempts as f64,
+                             self.telemetry_error_bound);
             if self.delivery_attempts > 0 {
                 debug!("delivery attempts: {}", self.delivery_attempts);
             }
@@ -302,52 +313,53 @@ mod test {
             tags: tags.clone(),
             percentiles: percentiles,
             flush_interval: 60,
+            telemetry_error_bound: 0.001,
         };
         let mut wavefront = Wavefront::new(config).unwrap();
         let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
         let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
         let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_sum()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", 2.0)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", 2.0, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_sum()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", 3.0)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", 3.0, 0.001)
                                             .timestamp(dt_1)
                                             .aggr_sum()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 3.211)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 3.211, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_set()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 4.322)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 4.322, 0.001)
                                             .timestamp(dt_1)
                                             .aggr_set()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 5.433)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 5.433, 0.001)
                                             .timestamp(dt_2)
                                             .aggr_set()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 12.101)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 12.101, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_summarize()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 1.101)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 1.101, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_summarize()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 3.101)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 3.101, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_summarize()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 1.0)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 1.0, 0.001)
                                             .timestamp(dt_0)
                                             .aggr_set()
                                             .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 2.0)
+        wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 2.0, 0.001)
                                             .timestamp(dt_1)
                                             .aggr_set()
                                             .overlay_tags_from_map(&tags))));

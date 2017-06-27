@@ -16,6 +16,7 @@ pub struct NativeServer {
     ip: String,
     port: u16,
     tags: metric::TagMap,
+    telemetry_error_bound: f64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -25,6 +26,7 @@ pub struct NativeServerConfig {
     pub tags: metric::TagMap,
     pub forwards: Vec<String>,
     pub config_path: Option<String>,
+    pub telemetry_error_bound: f64,
 }
 
 impl Default for NativeServerConfig {
@@ -35,6 +37,7 @@ impl Default for NativeServerConfig {
             tags: metric::TagMap::default(),
             forwards: Vec::default(),
             config_path: None,
+            telemetry_error_bound: 0.001,
         }
     }
 }
@@ -48,13 +51,15 @@ impl NativeServer {
             ip: config.ip,
             port: config.port,
             tags: config.tags,
+            telemetry_error_bound: config.telemetry_error_bound,
         }
     }
 }
 
 fn handle_tcp(chans: util::Channel,
               tags: metric::TagMap,
-              listner: TcpListener)
+              listner: TcpListener,
+              telemetry_error_bound: f64)
               -> thread::JoinHandle<()> {
     thread::spawn(move || for stream in listner.incoming() {
                       if let Ok(stream) = stream {
@@ -64,13 +69,16 @@ fn handle_tcp(chans: util::Channel,
                           let tags = tags.clone();
                           let chans = chans.clone();
                           thread::spawn(move || {
-                                            handle_stream(chans, tags, stream);
+                                            handle_stream(chans, tags, stream, telemetry_error_bound);
                                         });
                       }
                   })
 }
 
-fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStream) {
+fn handle_stream(mut chans: util::Channel,
+                 tags: metric::TagMap,
+                 stream: TcpStream,
+                 telemetry_error_bound: f64) {
     thread::spawn(move || {
         let mut reader = io::BufReader::new(stream);
         let mut buf = Vec::with_capacity(4000);
@@ -96,7 +104,7 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         if smpls.is_empty() {
                             continue;
                         }
-                        let mut metric = metric::Telemetry::new(name, smpls[0]);
+                        let mut metric = metric::Telemetry::new(name, smpls[0], telemetry_error_bound);
                         for smpl in &smpls[1..] {
                             metric = metric.insert_value(*smpl);
                         }
@@ -154,7 +162,8 @@ impl Source for NativeServer {
         let chans = self.chans.clone();
         let tags = self.tags.clone();
         info!("server started on {}:{}", self.ip, self.port);
-        let jh = thread::spawn(move || handle_tcp(chans, tags, listener));
+        let error = self.telemetry_error_bound;
+        let jh = thread::spawn(move || handle_tcp(chans, tags, listener, error));
 
         jh.join().expect("Uh oh, child thread panicked!");
     }

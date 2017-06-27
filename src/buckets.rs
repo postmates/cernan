@@ -83,7 +83,7 @@ impl Buckets {
     /// ```
     /// extern crate cernan;
     ///
-    /// let metric = cernan::metric::Telemetry::new("foo", 1.0).aggr_sum();
+    /// let metric = cernan::metric::Telemetry::new("foo", 1.0, 0.001).aggr_sum();
     /// let mut buckets = cernan::buckets::Buckets::default();
     ///
     /// assert_eq!(true, buckets.is_empty());
@@ -121,7 +121,7 @@ impl Buckets {
     /// ```
     /// extern crate cernan;
     ///
-    /// let metric = cernan::metric::Telemetry::new("foo", 1.0).aggr_sum();
+    /// let metric = cernan::metric::Telemetry::new("foo", 1.0, 0.001).aggr_sum();
     /// let mut bucket = cernan::buckets::Buckets::default();
     /// bucket.add(metric);
     /// ```
@@ -200,9 +200,9 @@ mod test {
         //  * an ephemeral SET|SUM will have its value inherited by a persist SET|SUM
         //  * an ephemeral SET|SUM will not inherit the value of a persist SET|SUM
         let bin_width = 1;
-        let m0 = Telemetry::new("lO", 1.0).timestamp(0).aggr_set().ephemeral();
-        let m1 = Telemetry::new("lO", 2.0).timestamp(1).aggr_sum().persist();
-        let m2 = Telemetry::new("lO", 0.0).timestamp(1).aggr_set().ephemeral();
+        let m0 = Telemetry::new("lO", 1.0, 0.001).timestamp(0).aggr_set().ephemeral();
+        let m1 = Telemetry::new("lO", 2.0, 0.001).timestamp(1).aggr_sum().persist();
+        let m2 = Telemetry::new("lO", 0.0, 0.001).timestamp(1).aggr_set().ephemeral();
 
         let mut bkt = Buckets::new(bin_width);
         bkt.add(m0);
@@ -237,9 +237,9 @@ mod test {
     #[test]
     fn raw_test_variable() {
         let bin_width = 66;
-        let m0 = Telemetry::new("lO", 0.807).timestamp(18).aggr_set();
-        let m4 = Telemetry::new("lO", 0.361).timestamp(75).aggr_set();
-        let m7 = Telemetry::new("lO", 0.291).timestamp(42).aggr_set();
+        let m0 = Telemetry::new("lO", 0.807, 0.001).timestamp(18).aggr_set();
+        let m4 = Telemetry::new("lO", 0.361, 0.001).timestamp(75).aggr_set();
+        let m7 = Telemetry::new("lO", 0.291, 0.001).timestamp(42).aggr_set();
 
         let mut bkt = Buckets::new(bin_width);
         bkt.add(m0);
@@ -256,9 +256,9 @@ mod test {
     #[test]
     fn test_gauge_small_bin_width() {
         let bin_width = 1;
-        let m0 = Telemetry::new("lO", 3.211).timestamp(645181811).aggr_set();
-        let m1 = Telemetry::new("lO", 4.322).timestamp(645181812).aggr_set();
-        let m2 = Telemetry::new("lO", 5.433).timestamp(645181813).aggr_set();
+        let m0 = Telemetry::new("lO", 3.211, 0.001).timestamp(645181811).aggr_set();
+        let m1 = Telemetry::new("lO", 4.322, 0.001).timestamp(645181812).aggr_set();
+        let m2 = Telemetry::new("lO", 5.433, 0.001).timestamp(645181813).aggr_set();
 
         let mut bkt = Buckets::new(bin_width);
         bkt.add(m0);
@@ -336,11 +336,11 @@ mod test {
     #[test]
     fn test_add_gauge_metric_distinct_tags() {
         let mut buckets = Buckets::default();
-        let m0 = Telemetry::new("some.metric", 1.0)
+        let m0 = Telemetry::new("some.metric", 1.0, 0.001)
             .aggr_set()
             .timestamp(10)
             .overlay_tag("foo", "bar");
-        let m1 = Telemetry::new("some.metric", 1.0)
+        let m1 = Telemetry::new("some.metric", 1.0, 0.001)
             .aggr_set()
             .timestamp(10)
             .overlay_tag("foo", "bingo");
@@ -358,7 +358,7 @@ mod test {
     #[test]
     fn test_add_counter_metric() {
         let mut buckets = Buckets::default();
-        let metric = Telemetry::new("some.metric", 1.0).aggr_sum();
+        let metric = Telemetry::new("some.metric", 1.0, 0.001).aggr_sum();
         buckets.add(metric.clone());
 
         let rmname = String::from("some.metric");
@@ -373,7 +373,7 @@ mod test {
     #[test]
     fn test_reset_add_counter_metric() {
         let mut buckets = Buckets::default();
-        let m0 = Telemetry::new("some.metric", 1.0).aggr_sum().timestamp(101);
+        let m0 = Telemetry::new("some.metric", 1.0, 0.001).aggr_sum().timestamp(101);
         let m1 = m0.clone();
 
         buckets.add(m0);
@@ -399,9 +399,9 @@ mod test {
         let dt_2 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 13, 0).timestamp();
 
         let name = String::from("some.metric");
-        let m0 = Telemetry::new("some.metric", 1.0).timestamp(dt_0).aggr_summarize();
-        let m1 = Telemetry::new("some.metric", 2.0).timestamp(dt_1).aggr_summarize();
-        let m2 = Telemetry::new("some.metric", 3.0).timestamp(dt_2).aggr_summarize();
+        let m0 = Telemetry::new("some.metric", 1.0, 0.001).timestamp(dt_0).aggr_summarize();
+        let m1 = Telemetry::new("some.metric", 2.0, 0.001).timestamp(dt_1).aggr_summarize();
+        let m2 = Telemetry::new("some.metric", 3.0, 0.001).timestamp(dt_2).aggr_summarize();
 
         buckets.add(m0.clone());
         buckets.add(m1.clone());
@@ -432,7 +432,7 @@ mod test {
     #[test]
     fn test_add_histogram_metric_reset() {
         let mut buckets = Buckets::default();
-        let metric = Telemetry::new("some.metric", 1.0).aggr_summarize();
+        let metric = Telemetry::new("some.metric", 1.0, 0.001).aggr_summarize();
         buckets.add(metric.clone());
 
         buckets.reset();
@@ -442,7 +442,7 @@ mod test {
     #[test]
     fn test_add_timer_metric_reset() {
         let mut buckets = Buckets::default();
-        let metric = Telemetry::new("some.metric", 1.0).aggr_summarize();
+        let metric = Telemetry::new("some.metric", 1.0, 0.001).aggr_summarize();
         buckets.add(metric.clone());
 
         buckets.reset();
@@ -453,7 +453,7 @@ mod test {
     fn test_add_gauge_metric() {
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Telemetry::new("some.metric", 11.5).aggr_set();
+        let metric = Telemetry::new("some.metric", 11.5, 0.001).aggr_set();
         buckets.add(metric);
         assert_eq!(Some(11.5), buckets.get(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.count());
@@ -467,10 +467,10 @@ mod test {
         // require this explicit reset, only the +/- on the metric value.
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Telemetry::new("some.metric", 100.0).timestamp(0).aggr_set();
+        let metric = Telemetry::new("some.metric", 100.0, 0.001).timestamp(0).aggr_set();
         buckets.add(metric);
         let delta_metric =
-            Telemetry::new("some.metric", -11.5).timestamp(0).aggr_sum().persist();
+            Telemetry::new("some.metric", -11.5, 0.001).timestamp(0).aggr_sum().persist();
         buckets.add(delta_metric);
         assert_eq!(Some(88.5), buckets.get(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.count());
@@ -482,11 +482,11 @@ mod test {
     fn test_reset_add_delta_gauge_metric() {
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Telemetry::new("some.metric", 100.0).aggr_set();
+        let metric = Telemetry::new("some.metric", 100.0, 0.001).aggr_set();
         buckets.add(metric);
-        let delta_metric = Telemetry::new("some.metric", -11.5).aggr_sum().persist();
+        let delta_metric = Telemetry::new("some.metric", -11.5, 0.001).aggr_sum().persist();
         buckets.add(delta_metric);
-        let reset_metric = Telemetry::new("some.metric", 2007.3).aggr_set();
+        let reset_metric = Telemetry::new("some.metric", 2007.3, 0.001).aggr_set();
         buckets.add(reset_metric);
         assert_eq!(Some(2007.3), buckets.get(&rmname).unwrap()[0].value());
         assert_eq!(1, buckets.count());
@@ -496,16 +496,16 @@ mod test {
     fn test_add_timer_metric() {
         let mut buckets = Buckets::default();
         let rmname = String::from("some.metric");
-        let metric = Telemetry::new("some.metric", 11.5).aggr_sum();
+        let metric = Telemetry::new("some.metric", 11.5, 0.001).aggr_sum();
         buckets.add(metric);
         assert_eq!(Some(11.5),
                    buckets.get(&rmname).expect("hwhap")[0].query(0.0));
 
-        let metric_two = Telemetry::new("some.metric", 99.5).aggr_sum();
+        let metric_two = Telemetry::new("some.metric", 99.5, 0.001).aggr_sum();
         buckets.add(metric_two);
 
         let romname = String::from("other.metric");
-        let metric_three = Telemetry::new("other.metric", 811.5).aggr_sum();
+        let metric_three = Telemetry::new("other.metric", 811.5, 0.001).aggr_sum();
         buckets.add(metric_three);
         assert_eq!(Some(811.5),
                    buckets.get(&romname).expect("hwhap")[0].query(0.0));
@@ -517,10 +517,10 @@ mod test {
         let dt_0 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 0, 0).timestamp();
         let dt_1 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 1, 0).timestamp();
 
-        buckets.add(Telemetry::new("some.metric", 1.0).timestamp(dt_0).aggr_set());
-        buckets.add(Telemetry::new("some.metric", 2.0).timestamp(dt_0).aggr_set());
-        buckets.add(Telemetry::new("some.metric", 3.0).timestamp(dt_0).aggr_set());
-        buckets.add(Telemetry::new("some.metric", 4.0).timestamp(dt_1).aggr_set());
+        buckets.add(Telemetry::new("some.metric", 1.0, 0.001).timestamp(dt_0).aggr_set());
+        buckets.add(Telemetry::new("some.metric", 2.0, 0.001).timestamp(dt_0).aggr_set());
+        buckets.add(Telemetry::new("some.metric", 3.0, 0.001).timestamp(dt_0).aggr_set());
+        buckets.add(Telemetry::new("some.metric", 4.0, 0.001).timestamp(dt_1).aggr_set());
 
         let mname = String::from("some.metric");
         let metrics = buckets.get(&mname).unwrap();
@@ -628,8 +628,8 @@ mod test {
     fn test_gauge_insertion() {
         let mut buckets = Buckets::default();
 
-        let m0 = Telemetry::new("test.gauge_0", 1.0).aggr_set();
-        let m1 = Telemetry::new("test.gauge_1", 1.0).aggr_set();
+        let m0 = Telemetry::new("test.gauge_0", 1.0, 0.001).aggr_set();
+        let m1 = Telemetry::new("test.gauge_1", 1.0, 0.001).aggr_set();
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
@@ -641,8 +641,8 @@ mod test {
     fn test_counter_insertion() {
         let mut buckets = Buckets::default();
 
-        let m0 = Telemetry::new("test.counter_0", 1.0).aggr_sum();
-        let m1 = Telemetry::new("test.counter_1", 1.0).aggr_sum();
+        let m0 = Telemetry::new("test.counter_0", 1.0, 0.001).aggr_sum();
+        let m1 = Telemetry::new("test.counter_1", 1.0, 0.001).aggr_sum();
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 

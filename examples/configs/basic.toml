@@ -3,6 +3,8 @@ scripts-directory = "examples/scripts/"
 
 flush-interval = 5
 
+telemetry-error-bound = 0.005
+
 [tags]
 source = "cernan"
 

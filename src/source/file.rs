@@ -2,7 +2,7 @@ use glob::glob;
 use metric;
 use seahash::SeaHasher;
 use source::Source;
-use source::internal::report_full_telemetry;
+use source::internal::report_telemetry5;
 use std::collections::HashMap;
 use std::fs;
 use std::hash::BuildHasherDefault;
@@ -16,6 +16,8 @@ use std::time::Instant;
 use time;
 use util;
 use util::send;
+
+const DEFAULT_TELEMETRY_ERROR_BOUND: f64 = 0.001;
 
 type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<SeaHasher>>;
 
@@ -124,8 +126,9 @@ impl FileWatcher {
             let ino = metadata.ino();
 
             if (dev, ino) != self.file_id {
-                report_full_telemetry("cernan.sources.file.switch",
+                report_telemetry5("cernan.sources.file.switch",
                                  1.0,
+                                 DEFAULT_TELEMETRY_ERROR_BOUND,
                                  None,
                                  Some(vec![("file_path",
                                             &self.path.to_str().expect("could not make path"))]));
@@ -265,8 +268,9 @@ impl Source for FileServer {
                                     lines_read += 1;
                                     buffer.pop();
                                     let path_name = file.path.to_str().expect("could not make path_name");
-                                    report_full_telemetry("cernan.sources.file.lines_read",
+                                    report_telemetry5("cernan.sources.file.lines_read",
                                                           1.0,
+                                                          DEFAULT_TELEMETRY_ERROR_BOUND,
                                                           None,
                                                           Some(vec![("file_path",
                                                                      path_name)]));

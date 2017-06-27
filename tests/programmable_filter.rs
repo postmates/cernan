@@ -22,10 +22,11 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.identity".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let metric = metric::Telemetry::new("identity", 12.0)
+            let metric = metric::Telemetry::new("identity", 12.0, 0.001)
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
             let event = metric::Event::new_telemetry(metric);
@@ -51,10 +52,11 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.clear_metrics".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let metric = metric::Telemetry::new("clear_me", 12.0)
+            let metric = metric::Telemetry::new("clear_me", 12.0, 0.001)
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
             let event = metric::Event::new_telemetry(metric);
@@ -78,6 +80,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.clear_logs".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -107,6 +110,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.remove_keys".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -144,10 +148,11 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.remove_keys".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let expected_metric = metric::Telemetry::new("identity", 12.0)
+            let expected_metric = metric::Telemetry::new("identity", 12.0, 0.001)
                 .overlay_tag("foo", "bar");
             let orig_metric = expected_metric.clone().overlay_tag("bizz", "bazz");
             let orig_event = metric::Event::new_telemetry(orig_metric);
@@ -174,10 +179,11 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.no_args_no_crash".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_metric = metric::Telemetry::new("identity", 12.0)
+            let orig_metric = metric::Telemetry::new("identity", 12.0, 0.001)
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
 
@@ -204,10 +210,11 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.missing_func".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_metric = metric::Telemetry::new("identity", 12.0)
+            let orig_metric = metric::Telemetry::new("identity", 12.0, 0.001)
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
 
@@ -232,6 +239,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.demonstrate_require".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -269,6 +277,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.add_keys".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -306,11 +315,12 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.add_keys".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
             let orig_metric =
-                metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
+                metric::Telemetry::new("identity", 12.0, 0.001).overlay_tag("foo", "bar");
             let expected_metric = orig_metric.clone().overlay_tag("bizz", "bazz");
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
@@ -336,15 +346,19 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.keep_count".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
             let metric0 = metric::Event::new_telemetry(metric::Telemetry::new("identity",
-                                                                              12.0));
+                                                                              12.0,
+                                                                              0.001));
             let metric1 = metric::Event::new_telemetry(metric::Telemetry::new("identity",
-                                                                              13.0));
+                                                                              13.0,
+                                                                              0.001));
             let metric2 = metric::Event::new_telemetry(metric::Telemetry::new("identity",
-                                                                              14.0));
+                                                                              14.0,
+                                                                              0.001));
 
             let log0 = metric::Event::new_log(metric::LogLine::new("identity",
                                                                    "a log line"));
@@ -424,6 +438,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.collectd_scrub".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
@@ -431,7 +446,7 @@ mod integration {
                         protocol_counter-TCPFastOpenActive";
             let expected = "collectd.protocols-TcpExt.protocol_counter-TCPFastOpenActive";
 
-            let metric = metric::Telemetry::new(orig, 12.0);
+            let metric = metric::Telemetry::new(orig, 12.0, 0.001);
             let event = metric::Event::new_telemetry(metric);
 
             let mut events = Vec::new();
@@ -466,13 +481,14 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.collectd_scrub".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 
             let orig = "totally_fine.interface-lo.if_errors.tx 0 1478751126";
             let expected = "totally_fine.interface-lo.if_errors.tx 0 1478751126";
 
-            let metric = metric::Telemetry::new(orig, 12.0);
+            let metric = metric::Telemetry::new(orig, 12.0, 0.001);
             let event = metric::Event::new_telemetry(metric);
 
             let mut events = Vec::new();
@@ -507,6 +523,7 @@ mod integration {
                 forwards: Vec::new(),
                 config_path: Some("filters.json_parse".to_string()),
                 tags: Default::default(),
+                telemetry_error_bound: 0.001,
             };
             let mut cs = ProgrammableFilter::new(config);
 

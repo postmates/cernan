@@ -1,7 +1,7 @@
 use super::Source;
 use metric;
 use protocols::graphite::parse_graphite;
-use source::internal::report_telemetry;
+use source::internal::report_telemetry2;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
@@ -57,7 +57,7 @@ fn handle_tcp(chans: util::Channel,
               -> thread::JoinHandle<()> {
     thread::spawn(move || for stream in listner.incoming() {
                       if let Ok(stream) = stream {
-                          report_telemetry("cernan.graphite.new_peer", 1.0);
+                          report_telemetry2("cernan.graphite.new_peer", 1.0);
                           debug!("new peer at {:?} | local addr for peer {:?}",
                                  stream.peer_addr(),
                                  stream.local_addr());
@@ -83,13 +83,13 @@ fn handle_stream(mut chans: util::Channel,
         while let Some(len) = line_reader.read_line(&mut line).ok() {
             if len > 0 {
                 if parse_graphite(&line, &mut res, basic_metric.clone()) {
-                    report_telemetry("cernan.graphite.packet", 1.0);
+                    report_telemetry2("cernan.graphite.packet", 1.0);
                     for m in res.drain(..) {
                         send(&mut chans, metric::Event::Telemetry(Arc::new(Some(m))));
                     }
                     line.clear();
                 } else {
-                    report_telemetry("cernan.graphite.bad_packet", 1.0);
+                    report_telemetry2("cernan.graphite.bad_packet", 1.0);
                     error!("bad packet: {:?}", line);
                     line.clear();
                 }

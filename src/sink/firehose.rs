@@ -13,7 +13,7 @@ use serde_json;
 use serde_json::Map;
 use serde_json::value::Value;
 use sink::{Sink, Valve};
-use source::report_full_telemetry;
+use source::report_telemetry5;
 use std::sync;
 use uuid::Uuid;
 
@@ -24,6 +24,7 @@ pub struct FirehoseConfig {
     pub region: Option<Region>,
     pub config_path: Option<String>,
     pub flush_interval: u64,
+    pub telemetry_error_bound: f64,
 }
 
 impl Default for FirehoseConfig {
@@ -34,6 +35,7 @@ impl Default for FirehoseConfig {
             region: None,
             config_path: None,
             flush_interval: 60,
+            telemetry_error_bound: 0.001,
         }
     }
 }
@@ -44,6 +46,7 @@ pub struct Firehose {
     region: Region,
     batch_size: usize,
     flush_interval: u64,
+    telemetry_error_bound: f64,
 }
 
 impl Firehose {
@@ -55,6 +58,7 @@ impl Firehose {
             region: config.region.expect("region cannot be None"),
             batch_size: config.batch_size,
             flush_interval: config.flush_interval,
+            telemetry_error_bound: config.telemetry_error_bound,
         }
     }
 }
@@ -107,22 +111,25 @@ impl Sink for Firehose {
                         debug!("Wrote {} records to delivery stream {}",
                                prbi.records.len(),
                                prbi.delivery_stream_name);
-                        report_full_telemetry("cernan.sinks.firehose.records.delivery",
+                        report_telemetry5("cernan.sinks.firehose.records.delivery",
                                               1.0,
+                                              self.telemetry_error_bound,
                                               None,
                                               Some(vec![("delivery_stream_name",
                                                          prbi.delivery_stream_name
                                                              .as_str())]));
-                        report_full_telemetry("cernan.sinks.firehose.records.total_delivered",
+                        report_telemetry5("cernan.sinks.firehose.records.total_delivered",
                                               prbi.records.len() as f64,
+                                              self.telemetry_error_bound,
                                               None,
                                               Some(vec![("delivery_stream_name",
                                                          prbi.delivery_stream_name
                                                              .as_str())]));
                         let failed_put_count = prbo.failed_put_count;
                         if failed_put_count > 0 {
-                            report_full_telemetry("cernan.sinks.firehose.records.total_failed",
+                            report_telemetry5("cernan.sinks.firehose.records.total_failed",
                                                   failed_put_count as f64,
+                                                  self.telemetry_error_bound,
                                                   None,
                                                   Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -140,8 +147,9 @@ impl Sink for Firehose {
                             // the payload being wonky. This is an optimization for
                             // the future.
                             ResourceNotFound(rnf_err) => {
-                                report_full_telemetry("cernan.sinks.firehose.error.resource_not_found",
+                                report_telemetry5("cernan.sinks.firehose.error.resource_not_found",
                                                  1.0,
+                                                 self.telemetry_error_bound,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -151,8 +159,9 @@ impl Sink for Firehose {
                                 break;
                             }
                             InvalidArgument(ia_err) => {
-                                report_full_telemetry("cernan.sinks.firehose.error.invalid_argument",
+                                report_telemetry5("cernan.sinks.firehose.error.invalid_argument",
                                                  1.0,
+                                                 self.telemetry_error_bound,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -162,8 +171,9 @@ impl Sink for Firehose {
                                 break;
                             }
                             HttpDispatch(hd_err) => {
-                                report_full_telemetry("cernan.sinks.firehose.error.http_dispatch",
+                                report_telemetry5("cernan.sinks.firehose.error.http_dispatch",
                                                  1.0,
+                                                 self.telemetry_error_bound,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -172,8 +182,9 @@ impl Sink for Firehose {
                                 break;
                             }
                             Validation(v_err) => {
-                                report_full_telemetry("cernan.sinks.firehose.error.validation",
+                                report_telemetry5("cernan.sinks.firehose.error.validation",
                                                  1.0,
+                                                 self.telemetry_error_bound,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -183,8 +194,9 @@ impl Sink for Firehose {
                                 break;
                             }
                             Unknown(u_err) => {
-                                report_full_telemetry("cernan.sinks.firehose.error.unknown",
+                                report_telemetry5("cernan.sinks.firehose.error.unknown",
                                                  1.0,
+                                                 self.telemetry_error_bound,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -194,8 +206,9 @@ impl Sink for Firehose {
                             }
                             // The following errors are recoverable, potentially.
                             Credentials(c_err) => {
-                                report_full_telemetry("cernan.sinks.firehose.error.credentials",
+                                report_telemetry5("cernan.sinks.firehose.error.credentials",
                                                  1.0,
+                                                 self.telemetry_error_bound,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name
@@ -204,8 +217,9 @@ impl Sink for Firehose {
                                        c_err);
                             }
                             ServiceUnavailable(su_err) => {
-                                report_full_telemetry("cernan.sinks.firehose.error.service_unavailable",
+                                report_telemetry5("cernan.sinks.firehose.error.service_unavailable",
                                                  1.0,
+                                                 self.telemetry_error_bound,
                                                  None,
                                                  Some(vec![("delivery_stream_name",
                                                         prbi.delivery_stream_name

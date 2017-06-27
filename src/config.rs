@@ -14,6 +14,8 @@ use toml;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
+const DEFAULT_TELEMETRY_ERROR: f64 = 0.001;
+
 use filter::ProgrammableFilterConfig;
 
 use sink::ConsoleConfig;
@@ -52,6 +54,7 @@ pub struct Args {
     pub data_directory: PathBuf,
     pub scripts_directory: PathBuf,
     pub flush_interval: u64,
+    pub telemetry_error_bound: f64,
     pub verbose: u64,
     pub version: String,
     // filters
@@ -79,6 +82,7 @@ impl Default for Args {
             data_directory: default_data_directory(),
             scripts_directory: default_scripts_directory(),
             flush_interval: 60,
+            telemetry_error_bound: DEFAULT_TELEMETRY_ERROR,
             version: default_version(),
             verbose: 0,
             // filters
@@ -170,6 +174,11 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
         .map(|fi| fi.as_integer().expect("could not parse flush-interval") as u64)
         .unwrap_or(args.flush_interval);
 
+    args.telemetry_error_bound = value
+        .get("telemetry-error-bound")
+        .map(|fi| fi.as_float().expect("could not parse telemetry-error-bound"))
+        .unwrap_or(args.telemetry_error_bound);
+
     let global_tags: TagMap = match value.get("tags") {
         Some(tbl) => {
             let mut tags = TagMap::default();
@@ -212,6 +221,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             forwards: fwds,
                             config_path: Some(config_path.clone()),
                             tags: global_tags.clone(),
+                            telemetry_error_bound: args.telemetry_error_bound,
                         };
                         filters.insert(config_path, config);
                     }
@@ -306,6 +316,13 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                          })
                     .unwrap_or(args.flush_interval);
 
+                res.telemetry_error_bound = snk.get("telemetry_error_bound")
+                    .map(|fi| {
+                             fi.as_float()
+                                 .expect("could not parse sinks.wavefront.telemetry_error_bound")
+                         })
+                    .unwrap_or(args.telemetry_error_bound);
+
                 res.tags = global_tags.clone();
 
                 res
@@ -349,6 +366,12 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                          })
                     .unwrap_or(args.flush_interval);
 
+                res.telemetry_error_bound = snk.get("telemetry_error_bound")
+                    .map(|fi| { fi.as_float()
+                                .expect("could not parse sinks.influxdb.telemetry_error_bound")
+                         })
+                    .unwrap_or(args.telemetry_error_bound);
+
                 res.tags = global_tags.clone();
 
                 res
@@ -383,6 +406,13 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     })
                     .unwrap_or(res.bin_width);
 
+                res.telemetry_error_bound = snk.get("telemetry_error_bound")
+                    .map(|fi| { fi.as_float()
+                                .expect("could not parse sinks.prometheus.telemetry_error_bound")
+                         })
+                    .unwrap_or(args.telemetry_error_bound);
+
+
                 res
             });
 
@@ -415,7 +445,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                                  .to_string())
                          })
                     .unwrap_or(res.index_prefix);
-                
+
                 res.secure = snk.get("secure")
                     .map(|bw| {
                              bw.as_bool()
@@ -430,6 +460,12 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                              u64
                          })
                     .unwrap_or(args.flush_interval);
+
+                res.telemetry_error_bound = snk.get("telemetry_error_bound")
+                    .map(|fi| { fi.as_float()
+                                .expect("could not parse sinks.elasticsearch.telemetry_error_bound")
+                         })
+                    .unwrap_or(args.telemetry_error_bound);
 
                 res
             });
@@ -486,6 +522,12 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                                  u64
                              })
                         .unwrap_or(args.flush_interval);
+
+                    res.telemetry_error_bound = tbl.get("telemetry_error_bound")
+                        .map(|fi| { fi.as_float()
+                                    .expect("could not parse sinks.firehose.telemetry_error_bound")
+                             })
+                        .unwrap_or(args.telemetry_error_bound);
 
                     res.batch_size = tbl.get("batch_size")
                         .map(|fi| {
@@ -773,6 +815,38 @@ data-directory = "/foo/bar"
     }
 
     #[test]
+    fn config_file_flush_interval() {
+        let config = r#"flush-interval = 20"#;
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.flush_interval, 20);
+    }
+
+    #[test]
+    fn config_file_flush_interval_default() {
+        let config = r#""#;
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.flush_interval, 60);
+    }
+
+    #[test]
+    fn config_file_telemetry_error_bound() {
+        let config = r#"telemetry-error-bound = 0.002"#;
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.telemetry_error_bound, 0.002);
+    }
+
+    #[test]
+    fn config_file_telemetry_error_bound_default() {
+        let config = r#""#;
+        let args = parse_config_file(config, 4);
+
+        assert_eq!(args.telemetry_error_bound, 0.001);
+    }
+
+    #[test]
     fn config_file_scripts_directory() {
         let config = r#"
 scripts-directory = "/foo/bar"
@@ -845,6 +919,7 @@ scripts-directory = "/foo/bar"
   index-prefix = "prefix-"
   secure = true
   flush_interval = 2020
+  telemetry_error_bound = 0.002
 "#;
 
         let args = parse_config_file(config, 4);
@@ -857,6 +932,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(es.index_prefix, Some("prefix-".into()));
         assert_eq!(es.secure, true);
         assert_eq!(es.flush_interval, 2020);
+        assert_eq!(es.telemetry_error_bound, 0.002);
     }
 
     #[test]
@@ -1044,6 +1120,7 @@ scripts-directory = "/foo/bar"
       host = "example.com"
       bin_width = 9
       flush_interval = 15
+      telemetry_error_bound = 0.002
     "#;
 
         let args = parse_config_file(config, 4);
@@ -1054,6 +1131,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(wavefront.port, 3131);
         assert_eq!(wavefront.bin_width, 9);
         assert_eq!(wavefront.flush_interval, 15);
+        assert_eq!(wavefront.telemetry_error_bound, 0.002);
     }
 
     #[test]
@@ -1078,6 +1156,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(wavefront.host, String::from("example.com"));
         assert_eq!(wavefront.port, 3131);
         assert_eq!(wavefront.bin_width, 9);
+        assert_eq!(wavefront.telemetry_error_bound, 0.001);
 
         assert_eq!(wavefront.percentiles.len(), 3);
         assert_eq!(wavefront.percentiles[0], ("max".to_string(), 1.0));
@@ -1095,6 +1174,7 @@ scripts-directory = "/foo/bar"
       db = "postmates"
       flush_interval = 70
       secure = true
+      telemetry_error_bound = 0.003
     "#;
 
         let args = parse_config_file(config, 4);
@@ -1106,6 +1186,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(influxdb.port, 3131);
         assert_eq!(influxdb.flush_interval, 70);
         assert_eq!(influxdb.secure, true);
+        assert_eq!(influxdb.telemetry_error_bound, 0.003);
     }
 
     #[test]
@@ -1116,6 +1197,7 @@ scripts-directory = "/foo/bar"
       port = 3131
       host = "example.com"
       bin_width = 9
+      telemetry_error_bound = 0.005
     "#;
 
         let args = parse_config_file(config, 4);
@@ -1125,6 +1207,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(prometheus.host, String::from("example.com"));
         assert_eq!(prometheus.port, 3131);
         assert_eq!(prometheus.bin_width, 9);
+        assert_eq!(prometheus.telemetry_error_bound, 0.005);
     }
 
     #[test]
@@ -1164,6 +1247,7 @@ scripts-directory = "/foo/bar"
       batch_size = 20
       flush_interval = 15
       region = "us-west-2"
+      telemetry_error_bound = 0.006
 
       [sinks.firehose.stream_two]
       delivery_stream = "stream_two"
@@ -1180,11 +1264,13 @@ scripts-directory = "/foo/bar"
         assert_eq!(firehosen[0].batch_size, 20);
         assert_eq!(firehosen[0].region, Some(Region::UsWest2));
         assert_eq!(firehosen[0].flush_interval, 15);
+        assert_eq!(firehosen[0].telemetry_error_bound, 0.006);
 
         assert_eq!(firehosen[1].delivery_stream, Some("stream_two".to_string()));
         assert_eq!(firehosen[1].batch_size, 800);
         assert_eq!(firehosen[1].region, Some(Region::UsEast1));
         assert_eq!(firehosen[1].flush_interval, 60); // default
+        assert_eq!(firehosen[1].telemetry_error_bound, 0.001);
     }
 
     #[test]

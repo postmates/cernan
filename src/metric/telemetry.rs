@@ -16,6 +16,7 @@ pub struct Telemetry {
     pub tags: sync::Arc<TagMap>,
     pub timestamp: i64, // seconds, see #166
     pub timestamp_ns: u64,
+    pub error_bound: f64,
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
@@ -29,6 +30,7 @@ pub struct Value {
     kind: ValueKind,
     single: Option<f64>,
     many: Option<CKMS<f64>>,
+    error_bound: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Hash)]
@@ -80,14 +82,16 @@ impl PartialOrd for Telemetry {
 
 impl Default for Telemetry {
     fn default() -> Telemetry {
+        let default_error_bound = 0.001;
         Telemetry {
             name: String::from(""),
-            value: Value::new(Default::default()),
+            value: Value::new(Default::default(), default_error_bound),
             persist: false,
             aggr_method: AggregationMethod::Summarize,
             tags: sync::Arc::new(TagMap::default()),
             timestamp: time::now(),
             timestamp_ns: time::now_ns(),
+            error_bound: default_error_bound,
         }
     }
 }
@@ -104,16 +108,16 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,AggregationMethod};
     ///
-    /// let m = Telemetry::new("foo", 1.1);
+    /// let m = Telemetry::new("foo", 1.1, 0.001);
     ///
     /// assert_eq!(m.aggr_method, AggregationMethod::Summarize);
     /// assert_eq!(m.name, "foo");
     /// assert_eq!(m.value(), Some(1.1));
     /// ```
-    pub fn new<S>(name: S, value: f64) -> Telemetry
+    pub fn new<S>(name: S, value: f64, error_bound: f64) -> Telemetry
         where S: Into<String>
     {
-        let val = Value::new(value);
+        let val = Value::new(value, error_bound);
         Telemetry {
             aggr_method: AggregationMethod::Summarize,
             name: name.into(),
@@ -122,6 +126,7 @@ impl Telemetry {
             timestamp_ns: time::now_ns(),
             value: val,
             persist: false,
+            error_bound: error_bound,
         }
     }
 
@@ -136,7 +141,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new("foo", 1.1, 0.001);
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -164,7 +169,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,TagMap};
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new("foo", 1.1, 0.001);
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -198,7 +203,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,TagMap};
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new("foo", 1.1, 0.001);
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -233,12 +238,12 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).set_value(10.10);
+    /// let m = Telemetry::new("foo", 1.1, 0.001).set_value(10.10);
     ///
     /// assert_eq!(m.value(), Some(10.10));
     /// ```
     pub fn set_value(mut self, value: f64) -> Telemetry {
-        self.value = Value::new(value);
+        self.value = Value::new(value, self.error_bound);
         self
     }
 
@@ -302,7 +307,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_set();
+    /// let m = Telemetry::new("foo", 1.1, 0.001).timestamp(10101).aggr_set();
     /// assert!(m.is_set());
     /// ```
     pub fn aggr_set(mut self) -> Telemetry {
@@ -324,7 +329,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_sum();
+    /// let m = Telemetry::new("foo", 1.1, 0.001).timestamp(10101).aggr_sum();
     /// assert!(m.is_sum());
     /// ```
     pub fn aggr_sum(mut self) -> Telemetry {
@@ -347,7 +352,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_summarize();
+    /// let m = Telemetry::new("foo", 1.1, 0.001).timestamp(10101).aggr_summarize();
     /// assert!(m.is_summarize());
     /// ```
     pub fn aggr_summarize(mut self) -> Telemetry {
@@ -370,7 +375,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101);
+    /// let m = Telemetry::new("foo", 1.1, 0.001).timestamp(10101);
     ///
     /// assert_eq!(10101, m.timestamp);
     /// ```
@@ -433,11 +438,12 @@ impl AddAssign for Value {
 }
 
 impl Value {
-    fn new(value: f64) -> Value {
+    fn new(value: f64, error_bound: f64) -> Value {
         Value {
             kind: ValueKind::Single,
             single: Some(value),
             many: None,
+            error_bound: error_bound
         }
     }
 
@@ -451,7 +457,7 @@ impl Value {
     fn insert(&mut self, value: f64) -> () {
         match self.kind {
             ValueKind::Single => {
-                let mut ckms = CKMS::new(0.001);
+                let mut ckms = CKMS::new(self.error_bound);
                 ckms.insert(self.single.expect("NOT SINGLE IN METRICVALUE INSERT"));
                 ckms.insert(value);
                 self.many = Some(ckms);
@@ -556,24 +562,24 @@ mod tests {
 
     #[test]
     fn partial_ord_equal() {
-        let mc = Telemetry::new("l6", 0.7913855).aggr_sum().timestamp(47);
-        let mg = Telemetry::new("l6", 0.9683).aggr_set().timestamp(47);
+        let mc = Telemetry::new("l6", 0.7913855, 0.001).aggr_sum().timestamp(47);
+        let mg = Telemetry::new("l6", 0.9683, 0.001).aggr_set().timestamp(47);
 
         assert_eq!(Some(cmp::Ordering::Equal), mc.partial_cmp(&mg));
     }
 
     #[test]
     fn partial_ord_distinct() {
-        let mc = Telemetry::new("l6", 0.7913855).aggr_sum().timestamp(7);
-        let mg = Telemetry::new("l6", 0.9683).aggr_set().timestamp(47);
+        let mc = Telemetry::new("l6", 0.7913855, 0.001).aggr_sum().timestamp(7);
+        let mg = Telemetry::new("l6", 0.9683, 0.001).aggr_set().timestamp(47);
 
         assert_eq!(Some(cmp::Ordering::Less), mc.partial_cmp(&mg));
     }
 
     #[test]
     fn partial_ord_gauges() {
-        let mdg = Telemetry::new("l6", 0.7913855).aggr_set().persist().timestamp(47);
-        let mg = Telemetry::new("l6", 0.9683).aggr_set().timestamp(47);
+        let mdg = Telemetry::new("l6", 0.7913855, 0.001).aggr_set().persist().timestamp(47);
+        let mg = Telemetry::new("l6", 0.9683, 0.001).aggr_set().timestamp(47);
 
         assert_eq!(Some(cmp::Ordering::Equal), mg.partial_cmp(&mdg));
         assert_eq!(Some(cmp::Ordering::Equal), mdg.partial_cmp(&mg));
@@ -604,7 +610,7 @@ mod tests {
             let time: i64 = g.gen_range(0, 100);
             let time_ns: u64 = (time as u64) * 1_000_000_000;
             let mut mb =
-                Telemetry::new(name, val).timestamp(time).timestamp_ns(time_ns);
+                Telemetry::new(name, val, 0.001).timestamp(time).timestamp_ns(time_ns);
             mb = match kind {
                 AggregationMethod::Set => mb.aggr_set(),
                 AggregationMethod::Sum => mb.aggr_sum(),
@@ -649,8 +655,8 @@ mod tests {
     #[test]
     fn test_metric_add_assign() {
         fn inner(lhs: f64, rhs: f64, kind: AggregationMethod) -> TestResult {
-            let mut mlhs = Telemetry::new("foo", lhs);
-            let mut mrhs = Telemetry::new("foo", rhs);
+            let mut mlhs = Telemetry::new("foo", lhs, 0.001);
+            let mut mrhs = Telemetry::new("foo", rhs, 0.001);
             mlhs = match kind {
                 AggregationMethod::Sum => mlhs.aggr_sum(),
                 AggregationMethod::Set => mlhs.aggr_set(),
@@ -684,7 +690,7 @@ mod tests {
 
     #[test]
     fn test_negative_timer() {
-        let m = Telemetry::new("timer", -1.0).aggr_summarize();
+        let m = Telemetry::new("timer", -1.0, 0.001).aggr_summarize();
 
         assert_eq!(m.aggr_method, AggregationMethod::Summarize);
         assert_eq!(m.query(1.0), Some(-1.0));
@@ -693,7 +699,7 @@ mod tests {
 
     #[test]
     fn test_postive_delta_gauge() {
-        let m = Telemetry::new("dgauge", 1.0).persist().aggr_set();
+        let m = Telemetry::new("dgauge", 1.0, 0.001).persist().aggr_set();
 
         assert_eq!(m.aggr_method, AggregationMethod::Set);
         assert_eq!(m.value(), Some(1.0));

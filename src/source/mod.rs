@@ -8,8 +8,8 @@ mod statsd;
 pub use self::file::{FileServer, FileServerConfig};
 pub use self::flush::FlushTimer;
 pub use self::graphite::{Graphite, GraphiteConfig};
-pub use self::internal::{Internal, InternalConfig, report_full_telemetry,
-                         report_telemetry};
+pub use self::internal::{Internal, InternalConfig,
+                         report_telemetry2, report_telemetry3, report_telemetry5};
 pub use self::native::{NativeServer, NativeServerConfig};
 pub use self::statsd::{Statsd, StatsdConfig};
 
