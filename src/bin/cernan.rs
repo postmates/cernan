@@ -12,7 +12,7 @@ use cernan::sink::FirehoseConfig;
 use cernan::sink::Sink;
 use cernan::source::Source;
 use cernan::util;
-use chrono::UTC;
+use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::process;
@@ -65,7 +65,7 @@ fn main() {
                     out.finish(format_args!("[{}][{}][{}][{}] {}",
                                             record.location().module_path(),
                                             record.location().line(),
-                                            UTC::now().to_rfc3339(),
+                                            Utc::now().to_rfc3339(),
                                             record.level(),
                                             message))
                 })

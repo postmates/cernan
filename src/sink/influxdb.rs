@@ -218,7 +218,7 @@ mod test {
     extern crate quickcheck;
 
     use super::*;
-    use chrono::{TimeZone, UTC};
+    use chrono::{TimeZone, Utc};
     use metric::{TagMap, Telemetry};
     use sink::Sink;
     use std::sync::Arc;
@@ -237,9 +237,9 @@ mod test {
             flush_interval: 60,
         };
         let mut influxdb = InfluxDB::new(config);
-        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00);
-        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00);
-        let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00);
+        let dt_0 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00);
+        let dt_1 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00);
+        let dt_2 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00);
         influxdb.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0)
                                            .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
                                            .aggr_sum()

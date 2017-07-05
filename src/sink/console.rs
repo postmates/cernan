@@ -1,8 +1,7 @@
 use buckets::Buckets;
-use chrono;
-use chrono::datetime::DateTime;
-use chrono::naive::datetime::NaiveDateTime;
-use chrono::offset::utc::UTC;
+use chrono::DateTime;
+use chrono::naive::NaiveDateTime;
+use chrono::offset::Utc;
 use metric::{AggregationMethod, LogLine, Telemetry};
 use sink::{Sink, Valve};
 use std::sync;
@@ -99,13 +98,13 @@ impl Sink for Console {
     }
 
     fn flush(&mut self) {
-        println!("Flushing lines: {}", chrono::UTC::now().to_rfc3339());
+        println!("Flushing lines: {}", Utc::now().to_rfc3339());
         for line in self.buffer.iter() {
             println!("{} {}: {}", format_time(line.time), line.path, line.value);
         }
         self.buffer.clear();
 
-        println!("Flushing metrics: {}", chrono::UTC::now().to_rfc3339());
+        println!("Flushing metrics: {}", Utc::now().to_rfc3339());
 
         let mut sums = String::new();
         let mut sets = String::new();
@@ -176,6 +175,6 @@ impl Sink for Console {
 #[inline]
 fn format_time(time: i64) -> String {
     let naive_time = NaiveDateTime::from_timestamp(time, 0);
-    let utc_time: DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
+    let utc_time: DateTime<Utc> = DateTime::from_utc(naive_time, Utc);
     format!("{}", utc_time.format("%Y-%m-%dT%H:%M:%S%.3fZ"))
 }

@@ -1,6 +1,6 @@
-use chrono::datetime::DateTime;
-use chrono::naive::datetime::NaiveDateTime;
-use chrono::offset::utc::UTC;
+use chrono::DateTime;
+use chrono::naive::NaiveDateTime;
+use chrono::offset::Utc;
 use elastic::error::Result;
 use elastic::prelude::*;
 
@@ -163,14 +163,14 @@ impl Sink for Elasticsearch {
 #[inline]
 fn format_time(time: i64) -> String {
     let naive_time = NaiveDateTime::from_timestamp(time, 0);
-    let utc_time: DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
+    let utc_time: DateTime<Utc> = DateTime::from_utc(naive_time, Utc);
     format!("{}", utc_time.format("%+"))
 }
 
 #[inline]
 fn idx(prefix: &Option<String>, time: i64) -> String {
     let naive_time = NaiveDateTime::from_timestamp(time, 0);
-    let utc_time: DateTime<UTC> = DateTime::from_utc(naive_time, UTC);
+    let utc_time: DateTime<Utc> = DateTime::from_utc(naive_time, Utc);
     match prefix {
         &Some(ref p) => format!("{}-{}", p, utc_time.format("%Y-%m-%d")),
         &None => format!("{}", utc_time.format("%Y-%m-%d")),

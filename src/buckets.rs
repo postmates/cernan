@@ -179,7 +179,7 @@ mod test {
 
     use self::quickcheck::{QuickCheck, TestResult};
     use super::*;
-    use chrono::{TimeZone, UTC};
+    use chrono::{TimeZone, Utc};
     use metric::Telemetry;
     use quantiles::ckms::CKMS;
     use std::cmp::Ordering;
@@ -394,9 +394,9 @@ mod test {
     fn test_true_histogram() {
         let mut buckets = Buckets::default();
 
-        let dt_0 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 11, 0).timestamp();
-        let dt_1 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 12, 0).timestamp();
-        let dt_2 = UTC.ymd(1996, 10, 7).and_hms_milli(10, 11, 13, 0).timestamp();
+        let dt_0 = Utc.ymd(1996, 10, 7).and_hms_milli(10, 11, 11, 0).timestamp();
+        let dt_1 = Utc.ymd(1996, 10, 7).and_hms_milli(10, 11, 12, 0).timestamp();
+        let dt_2 = Utc.ymd(1996, 10, 7).and_hms_milli(10, 11, 13, 0).timestamp();
 
         let name = String::from("some.metric");
         let m0 = Telemetry::new("some.metric", 1.0).timestamp(dt_0).aggr_summarize();
@@ -514,8 +514,8 @@ mod test {
     #[test]
     fn test_raws_store_one_point_per_second() {
         let mut buckets = Buckets::default();
-        let dt_0 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 0, 0).timestamp();
-        let dt_1 = UTC.ymd(2016, 9, 13).and_hms_milli(11, 30, 1, 0).timestamp();
+        let dt_0 = Utc.ymd(2016, 9, 13).and_hms_milli(11, 30, 0, 0).timestamp();
+        let dt_1 = Utc.ymd(2016, 9, 13).and_hms_milli(11, 30, 1, 0).timestamp();
 
         buckets.add(Telemetry::new("some.metric", 1.0).timestamp(dt_0).aggr_set());
         buckets.add(Telemetry::new("some.metric", 2.0).timestamp(dt_0).aggr_set());
