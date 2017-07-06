@@ -7,7 +7,7 @@ license = "MIT"
 name = "cernan"
 readme = "README.md"
 repository = "https://github.com/postmates/cernan"
-version = "0.6.2"
+version = "0.6.3-pre"
 
 [[bin]]
 name = "cernan"
@@ -15,11 +15,11 @@ doc = false
 
 [dependencies]
 byteorder = "1.0"
-chrono = "0.3"
+chrono = "0.4"
 clap = "2.20.5"
 fern = "0.4"
-elastic = "0.12"
-elastic_types = "0.17"
+elastic = "0.13"
+elastic_types = "0.19"
 glob = "0.2.11"
 hopper = "0.3"
 hyper = "0.10"

@@ -272,7 +272,7 @@ impl Sink for Wavefront {
 #[cfg(test)]
 mod test {
     use super::*;
-    use chrono::{TimeZone, UTC};
+    use chrono::{TimeZone, Utc};
     use metric::{TagMap, Telemetry};
     use sink::Sink;
     use std::sync::Arc;
@@ -304,9 +304,9 @@ mod test {
             flush_interval: 60,
         };
         let mut wavefront = Wavefront::new(config).unwrap();
-        let dt_0 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
-        let dt_1 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
-        let dt_2 = UTC.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
+        let dt_0 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
+        let dt_1 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
+        let dt_2 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
         wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0)
                                             .timestamp(dt_0)
                                             .aggr_sum()

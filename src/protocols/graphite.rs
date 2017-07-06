@@ -40,7 +40,7 @@ pub fn parse_graphite(source: &str,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone, UTC};
+    use chrono::{TimeZone, Utc};
     use metric::{AggregationMethod, Telemetry};
     use std::sync;
 
@@ -54,31 +54,31 @@ mod tests {
         assert_eq!(res[0].aggr_method, AggregationMethod::Set);
         assert_eq!(res[0].name, "fst");
         assert_eq!(res[0].value(), Some(1.0));
-        assert_eq!(res[0].timestamp, UTC.timestamp(101, 0).timestamp());
+        assert_eq!(res[0].timestamp, Utc.timestamp(101, 0).timestamp());
 
         assert_eq!(res[1].aggr_method, AggregationMethod::Set);
         assert_eq!(res[1].name, "snd");
         assert_eq!(res[1].value(), Some(-2.0));
-        assert_eq!(res[1].timestamp, UTC.timestamp(202, 0).timestamp());
+        assert_eq!(res[1].timestamp, Utc.timestamp(202, 0).timestamp());
 
         assert_eq!(res[2].aggr_method, AggregationMethod::Set);
         assert_eq!(res[2].name, "thr");
         assert_eq!(res[2].value(), Some(3.0));
-        assert_eq!(res[2].timestamp, UTC.timestamp(303, 0).timestamp());
+        assert_eq!(res[2].timestamp, Utc.timestamp(303, 0).timestamp());
 
         assert_eq!(res[3].aggr_method, AggregationMethod::Set);
         assert_eq!(res[3].name, "fth@fth");
         assert_eq!(res[3].value(), Some(4.0));
-        assert_eq!(res[3].timestamp, UTC.timestamp(404, 0).timestamp());
+        assert_eq!(res[3].timestamp, Utc.timestamp(404, 0).timestamp());
 
         assert_eq!(res[4].aggr_method, AggregationMethod::Set);
         assert_eq!(res[4].name, "fv%fv");
         assert_eq!(res[4].value(), Some(5.0));
-        assert_eq!(res[4].timestamp, UTC.timestamp(505, 0).timestamp());
+        assert_eq!(res[4].timestamp, Utc.timestamp(505, 0).timestamp());
 
         assert_eq!(res[5].aggr_method, AggregationMethod::Set);
         assert_eq!(res[5].name, "s-th");
         assert_eq!(res[5].value(), Some(6.0));
-        assert_eq!(res[5].timestamp, UTC.timestamp(606, 0).timestamp());
+        assert_eq!(res[5].timestamp, Utc.timestamp(606, 0).timestamp());
     }
 }
