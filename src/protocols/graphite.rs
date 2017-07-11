@@ -2,10 +2,11 @@ use metric::Telemetry;
 use std::str::FromStr;
 use std::sync;
 
-pub fn parse_graphite(source: &str,
-                      res: &mut Vec<Telemetry>,
-                      metric: sync::Arc<Option<Telemetry>>)
-                      -> bool {
+pub fn parse_graphite(
+    source: &str,
+    res: &mut Vec<Telemetry>,
+    metric: sync::Arc<Option<Telemetry>>,
+) -> bool {
     let mut iter = source.split_whitespace();
     while let Some(name) = iter.next() {
         match iter.next() {
@@ -22,11 +23,13 @@ pub fn parse_graphite(source: &str,
                         };
                         let metric =
                             sync::Arc::make_mut(&mut metric.clone()).take().unwrap();
-                        res.push(metric
-                                     .set_name(name)
-                                     .set_value(parsed_val)
-                                     .aggr_set()
-                                     .timestamp(parsed_time));
+                        res.push(
+                            metric
+                                .set_name(name)
+                                .set_value(parsed_val)
+                                .aggr_set()
+                                .timestamp(parsed_time),
+                        );
                     }
                     None => return false,
                 }

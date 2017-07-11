@@ -33,19 +33,21 @@ pub struct WavefrontConfig {
 
 impl Default for WavefrontConfig {
     fn default() -> WavefrontConfig {
-        let percentiles = vec![("min".to_string(), 0.0),
-                               ("max".to_string(), 1.0),
-                               ("2".to_string(), 0.02),
-                               ("9".to_string(), 0.09),
-                               ("25".to_string(), 0.25),
-                               ("50".to_string(), 0.5),
-                               ("75".to_string(), 0.75),
-                               ("90".to_string(), 0.90),
-                               ("91".to_string(), 0.91),
-                               ("95".to_string(), 0.95),
-                               ("98".to_string(), 0.98),
-                               ("99".to_string(), 0.99),
-                               ("999".to_string(), 0.999)];
+        let percentiles = vec![
+            ("min".to_string(), 0.0),
+            ("max".to_string(), 1.0),
+            ("2".to_string(), 0.02),
+            ("9".to_string(), 0.09),
+            ("25".to_string(), 0.25),
+            ("50".to_string(), 0.5),
+            ("75".to_string(), 0.75),
+            ("90".to_string(), 0.90),
+            ("91".to_string(), 0.91),
+            ("95".to_string(), 0.95),
+            ("98".to_string(), 0.98),
+            ("99".to_string(), 0.99),
+            ("999".to_string(), 0.999),
+        ];
         WavefrontConfig {
             bin_width: 1,
             host: "localhost".to_string(),
@@ -76,7 +78,8 @@ fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
 
 #[inline]
 fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
-    where T: cmp::PartialOrd + string::ToString + Copy
+where
+    T: cmp::PartialOrd + string::ToString + Copy,
 {
     match cache.binary_search_by(|probe| probe.0.partial_cmp(&val).unwrap()) {
         Ok(idx) => &cache[idx].1,
@@ -94,14 +97,14 @@ impl Wavefront {
             return Err("Host can not be empty".to_string());
         }
         Ok(Wavefront {
-               host: config.host,
-               port: config.port,
-               aggrs: Buckets::new(config.bin_width),
-               delivery_attempts: 0,
-               percentiles: config.percentiles,
-               stats: String::with_capacity(8_192),
-               flush_interval: config.flush_interval,
-           })
+            host: config.host,
+            port: config.port,
+            aggrs: Buckets::new(config.bin_width),
+            delivery_attempts: 0,
+            percentiles: config.percentiles,
+            stats: String::with_capacity(8_192),
+            flush_interval: config.flush_interval,
+        })
     }
 
     /// Convert the buckets into a String that
@@ -122,11 +125,15 @@ impl Wavefront {
                         report_telemetry("cernan.sinks.wavefront.aggregation.set", 1.0)
                     }
                     AggregationMethod::Summarize => {
-                        report_telemetry("cernan.sinks.wavefront.aggregation.summarize",
-                                         1.0);
-                        report_telemetry("cernan.sinks.wavefront.aggregation.\
-                                          summarize.total_percentiles",
-                                         self.percentiles.len() as f64);
+                        report_telemetry(
+                            "cernan.sinks.wavefront.aggregation.summarize",
+                            1.0,
+                        );
+                        report_telemetry(
+                            "cernan.sinks.wavefront.aggregation.\
+                             summarize.total_percentiles",
+                            self.percentiles.len() as f64,
+                        );
                     }
                 };
                 match value.aggr_method {
@@ -136,9 +143,9 @@ impl Wavefront {
                             self.stats.push_str(" ");
                             self.stats.push_str(get_from_cache(&mut value_cache, v));
                             self.stats.push_str(" ");
-                            self.stats
-                                .push_str(get_from_cache(&mut time_cache,
-                                                         value.timestamp));
+                            self.stats.push_str(
+                                get_from_cache(&mut time_cache, value.timestamp),
+                            );
                             self.stats.push_str(" ");
                             fmt_tags(&value.tags, &mut tag_buf);
                             self.stats.push_str(&tag_buf);
@@ -156,13 +163,14 @@ impl Wavefront {
                             self.stats.push_str(".");
                             self.stats.push_str(stat);
                             self.stats.push_str(" ");
-                            self.stats
-                                .push_str(get_from_cache(&mut value_cache,
-                                                         value.query(quant).unwrap()));
+                            self.stats.push_str(get_from_cache(
+                                &mut value_cache,
+                                value.query(quant).unwrap(),
+                            ));
                             self.stats.push_str(" ");
-                            self.stats
-                                .push_str(get_from_cache(&mut time_cache,
-                                                         value.timestamp));
+                            self.stats.push_str(
+                                get_from_cache(&mut time_cache, value.timestamp),
+                            );
                             self.stats.push_str(" ");
                             self.stats.push_str(&tag_buf);
                             self.stats.push_str("\n");
@@ -208,8 +216,10 @@ impl Sink for Wavefront {
 
     fn flush(&mut self) {
         loop {
-            report_telemetry("cernan.sinks.wavefront.delivery_attempts",
-                             self.delivery_attempts as f64);
+            report_telemetry(
+                "cernan.sinks.wavefront.delivery_attempts",
+                self.delivery_attempts as f64,
+            );
             if self.delivery_attempts > 0 {
                 debug!("delivery attempts: {}", self.delivery_attempts);
             }
@@ -228,25 +238,29 @@ impl Sink for Wavefront {
                                     self.delivery_attempts = 0;
                                     return;
                                 } else {
-                                    self.delivery_attempts = self.delivery_attempts
-                                        .saturating_add(1);
+                                    self.delivery_attempts =
+                                        self.delivery_attempts.saturating_add(1);
                                 }
                             }
                             Err(e) => {
-                                info!("Unable to connect to proxy at {} using addr {} with error \
-                                       {}",
-                                      self.host,
-                                      ip,
-                                      e)
+                                info!(
+                                    "Unable to connect to proxy at {} using addr {} with error \
+                                     {}",
+                                    self.host,
+                                    ip,
+                                    e
+                                )
                             }
                         }
                         time::delay(self.delivery_attempts);
                     }
                 }
                 Err(e) => {
-                    info!("Unable to perform DNS lookup on host {} with error {}",
-                          self.host,
-                          e);
+                    info!(
+                        "Unable to perform DNS lookup on host {} with error {}",
+                        self.host,
+                        e
+                    );
                 }
             }
         }
@@ -281,19 +295,21 @@ mod test {
     fn test_format_wavefront() {
         let mut tags = TagMap::default();
         tags.insert("source".into(), "test-src".into());
-        let percentiles = vec![("min".to_string(), 0.0),
-                               ("max".to_string(), 1.0),
-                               ("2".to_string(), 0.02),
-                               ("9".to_string(), 0.09),
-                               ("25".to_string(), 0.25),
-                               ("50".to_string(), 0.5),
-                               ("75".to_string(), 0.75),
-                               ("90".to_string(), 0.90),
-                               ("91".to_string(), 0.91),
-                               ("95".to_string(), 0.95),
-                               ("98".to_string(), 0.98),
-                               ("99".to_string(), 0.99),
-                               ("999".to_string(), 0.999)];
+        let percentiles = vec![
+            ("min".to_string(), 0.0),
+            ("max".to_string(), 1.0),
+            ("2".to_string(), 0.02),
+            ("9".to_string(), 0.09),
+            ("25".to_string(), 0.25),
+            ("50".to_string(), 0.5),
+            ("75".to_string(), 0.75),
+            ("90".to_string(), 0.90),
+            ("91".to_string(), 0.91),
+            ("95".to_string(), 0.95),
+            ("98".to_string(), 0.98),
+            ("99".to_string(), 0.99),
+            ("999".to_string(), 0.999),
+        ];
         let config = WavefrontConfig {
             bin_width: 1,
             host: "127.0.0.1".to_string(),
@@ -307,50 +323,72 @@ mod test {
         let dt_0 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
         let dt_1 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
         let dt_2 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", -1.0)
-                                            .timestamp(dt_0)
-                                            .aggr_sum()
-                                            .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", 2.0)
-                                            .timestamp(dt_0)
-                                            .aggr_sum()
-                                            .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.counter", 3.0)
-                                            .timestamp(dt_1)
-                                            .aggr_sum()
-                                            .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 3.211)
-                                            .timestamp(dt_0)
-                                            .aggr_set()
-                                            .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 4.322)
-                                            .timestamp(dt_1)
-                                            .aggr_set()
-                                            .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.gauge", 5.433)
-                                            .timestamp(dt_2)
-                                            .aggr_set()
-                                            .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 12.101)
-                                            .timestamp(dt_0)
-                                            .aggr_summarize()
-                                            .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 1.101)
-                                            .timestamp(dt_0)
-                                            .aggr_summarize()
-                                            .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.timer", 3.101)
-                                            .timestamp(dt_0)
-                                            .aggr_summarize()
-                                            .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 1.0)
-                                            .timestamp(dt_0)
-                                            .aggr_set()
-                                            .overlay_tags_from_map(&tags))));
-        wavefront.deliver(Arc::new(Some(Telemetry::new("test.raw", 2.0)
-                                            .timestamp(dt_1)
-                                            .aggr_set()
-                                            .overlay_tags_from_map(&tags))));
+        wavefront.deliver(Arc::new(Some(
+            Telemetry::new("test.counter", -1.0)
+                .timestamp(dt_0)
+                .aggr_sum()
+                .overlay_tags_from_map(&tags),
+        )));
+        wavefront.deliver(Arc::new(Some(
+            Telemetry::new("test.counter", 2.0)
+                .timestamp(dt_0)
+                .aggr_sum()
+                .overlay_tags_from_map(&tags),
+        )));
+        wavefront.deliver(Arc::new(Some(
+            Telemetry::new("test.counter", 3.0)
+                .timestamp(dt_1)
+                .aggr_sum()
+                .overlay_tags_from_map(&tags),
+        )));
+        wavefront.deliver(Arc::new(Some(
+            Telemetry::new("test.gauge", 3.211)
+                .timestamp(dt_0)
+                .aggr_set()
+                .overlay_tags_from_map(&tags),
+        )));
+        wavefront.deliver(Arc::new(Some(
+            Telemetry::new("test.gauge", 4.322)
+                .timestamp(dt_1)
+                .aggr_set()
+                .overlay_tags_from_map(&tags),
+        )));
+        wavefront.deliver(Arc::new(Some(
+            Telemetry::new("test.gauge", 5.433)
+                .timestamp(dt_2)
+                .aggr_set()
+                .overlay_tags_from_map(&tags),
+        )));
+        wavefront.deliver(Arc::new(Some(
+            Telemetry::new("test.timer", 12.101)
+                .timestamp(dt_0)
+                .aggr_summarize()
+                .overlay_tags_from_map(&tags),
+        )));
+        wavefront.deliver(Arc::new(Some(
+            Telemetry::new("test.timer", 1.101)
+                .timestamp(dt_0)
+                .aggr_summarize()
+                .overlay_tags_from_map(&tags),
+        )));
+        wavefront.deliver(Arc::new(Some(
+            Telemetry::new("test.timer", 3.101)
+                .timestamp(dt_0)
+                .aggr_summarize()
+                .overlay_tags_from_map(&tags),
+        )));
+        wavefront.deliver(Arc::new(Some(
+            Telemetry::new("test.raw", 1.0)
+                .timestamp(dt_0)
+                .aggr_set()
+                .overlay_tags_from_map(&tags),
+        )));
+        wavefront.deliver(Arc::new(Some(
+            Telemetry::new("test.raw", 2.0)
+                .timestamp(dt_1)
+                .aggr_set()
+                .overlay_tags_from_map(&tags),
+        )));
         wavefront.format_stats(dt_2);
         let lines: Vec<&str> = wavefront.stats.lines().collect();
 
@@ -374,7 +412,11 @@ mod test {
         assert!(lines.contains(&"test.timer.99 12.101 645181811 source=test-src"));
         assert!(lines.contains(&"test.timer.999 12.101 645181811 source=test-src"));
         assert!(lines.contains(&"test.timer.count 3 645181811 source=test-src"));
-        assert!(lines.contains(&"test.timer.mean 5.434333333333334 645181811 source=test-src"));
+        assert!(
+            lines.contains(
+                &"test.timer.mean 5.434333333333334 645181811 source=test-src"
+            )
+        );
         assert!(lines.contains(&"test.raw 1 645181811 source=test-src"));
     }
 }

@@ -13,10 +13,11 @@ use time;
 /// p
 /// Multiple metrics can be sent in a single UDP packet
 /// separated by newlines.
-pub fn parse_statsd(source: &str,
-                    res: &mut Vec<metric::Telemetry>,
-                    metric: sync::Arc<Option<metric::Telemetry>>)
-                    -> bool {
+pub fn parse_statsd(
+    source: &str,
+    res: &mut Vec<metric::Telemetry>,
+    metric: sync::Arc<Option<metric::Telemetry>>,
+) -> bool {
     for src in source.lines() {
         let mut offset = 0;
         let len = src.len();
@@ -32,11 +33,11 @@ pub fn parse_statsd(source: &str,
                 };
                 match (&src[offset..]).find('|') {
                     Some(pipe_idx) => {
-                        let val = match f64::from_str(&src[offset..
-                                                       (offset + pipe_idx)]) {
-                            Ok(f) => f,
-                            Err(_) => return false,
-                        };
+                        let val =
+                            match f64::from_str(&src[offset..(offset + pipe_idx)]) {
+                                Ok(f) => f,
+                                Err(_) => return false,
+                            };
                         let mut metric =
                             sync::Arc::make_mut(&mut metric.clone()).take().unwrap();
                         metric = metric.set_name(name);
@@ -50,70 +51,63 @@ pub fn parse_statsd(source: &str,
                         if offset >= len {
                             return false;
                         };
-                        metric =
-                            match (&src[offset..]).find('@') {
-                                Some(sample_idx) => {
-                                    match &src[offset..(offset + sample_idx)] {
-                                        "g|" | "g" => {
-                                            let sample =
-                                                match f64::from_str(&src[(offset +
-                                                                      sample_idx +
-                                                                      1)..]) {
-                                                    Ok(f) => f,
-                                                    Err(_) => return false,
-                                                };
-                                            metric.persist = true;
-                                            metric = if signed {
-                                                metric.aggr_sum()
-                                            } else {
-                                                metric.aggr_set()
-                                            };
-                                            metric.set_value(val * (1.0 / sample))
-                                        }
-                                        "c|" | "c" => {
-                                            let sample =
-                                                match f64::from_str(&src[(offset +
-                                                                      sample_idx +
-                                                                      1)..]) {
-                                                    Ok(f) => f,
-                                                    Err(_) => return false,
-                                                };
-                                            metric = metric.aggr_sum().ephemeral();
-                                            metric.set_value(val * (1.0 / sample))
-                                        }
-                                        "ms" | "ms|" | "h" | "h|" => {
-                                            let sample =
-                                                match f64::from_str(&src[(offset +
-                                                                      sample_idx +
-                                                                      1)..]) {
-                                                    Ok(f) => f,
-                                                    Err(_) => return false,
-                                                };
-                                            metric =
-                                                metric.aggr_summarize().ephemeral();
-                                            metric.set_value(val * (1.0 / sample))
-                                        }
-                                        _ => return false,
+                        metric = match (&src[offset..]).find('@') {
+                            Some(sample_idx) => {
+                                match &src[offset..(offset + sample_idx)] {
+                                    "g|" | "g" => {
+                                        let sample = match f64::from_str(
+                                            &src[(offset + sample_idx + 1)..],
+                                        ) {
+                                            Ok(f) => f,
+                                            Err(_) => return false,
+                                        };
+                                        metric.persist = true;
+                                        metric = if signed {
+                                            metric.aggr_sum()
+                                        } else {
+                                            metric.aggr_set()
+                                        };
+                                        metric.set_value(val * (1.0 / sample))
                                     }
-                                }
-                                None => {
-                                    match &src[offset..] {
-                                        "g" => {
-                                            metric.persist = true;
-                                            if signed {
-                                                metric.aggr_sum()
-                                            } else {
-                                                metric.aggr_set()
-                                            }
-                                        }
-                                        "ms" | "h" => {
-                                            metric.aggr_summarize().ephemeral()
-                                        }
-                                        "c" => metric.aggr_sum().ephemeral(),
-                                        _ => return false,
+                                    "c|" | "c" => {
+                                        let sample = match f64::from_str(
+                                            &src[(offset + sample_idx + 1)..],
+                                        ) {
+                                            Ok(f) => f,
+                                            Err(_) => return false,
+                                        };
+                                        metric = metric.aggr_sum().ephemeral();
+                                        metric.set_value(val * (1.0 / sample))
                                     }
+                                    "ms" | "ms|" | "h" | "h|" => {
+                                        let sample = match f64::from_str(
+                                            &src[(offset + sample_idx + 1)..],
+                                        ) {
+                                            Ok(f) => f,
+                                            Err(_) => return false,
+                                        };
+                                        metric = metric.aggr_summarize().ephemeral();
+                                        metric.set_value(val * (1.0 / sample))
+                                    }
+                                    _ => return false,
                                 }
-                            };
+                            }
+                            None => {
+                                match &src[offset..] {
+                                    "g" => {
+                                        metric.persist = true;
+                                        if signed {
+                                            metric.aggr_sum()
+                                        } else {
+                                            metric.aggr_set()
+                                        }
+                                    }
+                                    "ms" | "h" => metric.aggr_summarize().ephemeral(),
+                                    "c" => metric.aggr_sum().ephemeral(),
+                                    _ => return false,
+                                }
+                            }
+                        };
                         res.push(metric);
                     }
                     None => return false,
@@ -142,7 +136,8 @@ mod tests {
 
     impl Arbitrary for StatsdAggregation {
         fn arbitrary<G>(g: &mut G) -> Self
-            where G: Gen
+        where
+            G: Gen,
         {
             let i: usize = g.gen_range(0, 4);
             match i {
@@ -167,7 +162,8 @@ mod tests {
 
     impl Arbitrary for StatsdLine {
         fn arbitrary<G>(g: &mut G) -> Self
-            where G: Gen
+        where
+            G: Gen,
         {
             let name_len = g.gen_range(1, 256);
             let val: f64 = g.gen();
@@ -197,9 +193,12 @@ mod tests {
 
     impl Arbitrary for StatsdPayload {
         fn arbitrary<G>(g: &mut G) -> Self
-            where G: Gen
+        where
+            G: Gen,
         {
-            StatsdPayload { lines: Arbitrary::arbitrary(g) }
+            StatsdPayload {
+                lines: Arbitrary::arbitrary(g),
+            }
         }
     }
 
@@ -272,10 +271,11 @@ mod tests {
                 for (sline, telem) in pyld.lines.iter().zip(res.iter()) {
                     assert_eq!(sline.name, telem.name);
                     if sline.sampled {
-                        assert!((sline.value * (1.0 / sline.sample_rate) -
+                        assert!(
+                            (sline.value * (1.0 / sline.sample_rate) -
                                  telem.value().unwrap())
-                                        .abs() <
-                                0.0001);
+                                .abs() < 0.0001
+                        );
                     } else {
                         assert!((sline.value - telem.value().unwrap()).abs() < 0.0001);
                     }
@@ -289,13 +289,17 @@ mod tests {
                             assert_eq!(telem.persist, true);
                         }
                         StatsdAggregation::Timer => {
-                            assert_eq!(telem.aggr_method,
-                                       AggregationMethod::Summarize);
+                            assert_eq!(
+                                telem.aggr_method,
+                                AggregationMethod::Summarize
+                            );
                             assert_eq!(telem.persist, false);
                         }
                         StatsdAggregation::Histogram => {
-                            assert_eq!(telem.aggr_method,
-                                       AggregationMethod::Summarize);
+                            assert_eq!(
+                                telem.aggr_method,
+                                AggregationMethod::Summarize
+                            );
                             assert_eq!(telem.persist, false);
                         }
                     }
@@ -315,9 +319,11 @@ mod tests {
     fn test_counter() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let mut res = Vec::new();
-        assert!(parse_statsd("a.b:3.1|c\na-b:4|c|@0.1\na-b:5.2|c@0.2\n",
-                             &mut res,
-                             metric));
+        assert!(parse_statsd(
+            "a.b:3.1|c\na-b:4|c|@0.1\na-b:5.2|c@0.2\n",
+            &mut res,
+            metric
+        ));
         assert_eq!(res[0].aggr_method, AggregationMethod::Sum);
         assert_eq!(res[0].name, "a.b");
         assert_eq!(res[0].persist, false);
@@ -372,9 +378,11 @@ mod tests {
     fn test_metric_sample_gauge() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let mut res = Vec::new();
-        assert!(parse_statsd("foo:1|g|@+0.22\nbar:101|g|@2\nbaz:2|g@0.2\nqux:4|g@0.1",
-                             &mut res,
-                             metric));
+        assert!(parse_statsd(
+            "foo:1|g|@+0.22\nbar:101|g|@2\nbaz:2|g@0.2\nqux:4|g@0.1",
+            &mut res,
+            metric
+        ));
         //                              0         A     F
         assert_eq!(res[0].aggr_method, AggregationMethod::Set);
         assert_eq!(res[0].name, "foo");
@@ -481,13 +489,15 @@ mod tests {
 
     #[test]
     fn test_metric_invalid() {
-        let invalid = vec!["",
-                           "metric",
-                           "metric|11:",
-                           "metric|12",
-                           "metric:13|",
-                           ":|@",
-                           ":1.0|c"];
+        let invalid = vec![
+            "",
+            "metric",
+            "metric|11:",
+            "metric|12",
+            "metric:13|",
+            ":|@",
+            ":1.0|c",
+        ];
         let metric = sync::Arc::new(Some(Telemetry::default()));
         for input in invalid.iter() {
             assert!(!parse_statsd(*input, &mut Vec::new(), metric.clone()));

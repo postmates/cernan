@@ -127,9 +127,7 @@ impl Buckets {
     /// ```
     pub fn add(&mut self, value: Telemetry) {
         let mut hsh = match self.keys
-                  .binary_search_by(|probe| {
-                                        probe.partial_cmp(&value.name).unwrap()
-                                    }) {
+            .binary_search_by(|probe| probe.partial_cmp(&value.name).unwrap()) {
             Ok(hsh_idx) => self.values.index_mut(hsh_idx),
             Err(hsh_idx) => {
                 self.keys.insert(hsh_idx, value.name.to_owned());
@@ -307,25 +305,30 @@ mod test {
                     let mut found_one = false;
                     for m in &mp {
                         if (m.name == v.name) && (&m.aggr_method == kind) &&
-                           within(bin_width, m.timestamp, time) {
+                            within(bin_width, m.timestamp, time)
+                        {
                             assert_eq!(Ordering::Equal, m.within(bin_width, v));
                             found_one = true;
-                            debug_assert!(v.value() == m.value(),
-                                          "{:?} != {:?} |::|::| MODEL: {:?} |::|::|
+                            debug_assert!(
+                                v.value() == m.value(),
+                                "{:?} != {:?} |::|::| MODEL: {:?} |::|::|
     SUT: {:?}",
-                                          v.value(),
-                                          m.value(),
-                                          mp,
-                                          ms);
+                                v.value(),
+                                m.value(),
+                                mp,
+                                ms
+                            );
                         }
                     }
-                    debug_assert!(found_one,
-                                  "DID NOT FIND ONE FOR {:?} |::|::| MODEL: {:?}
+                    debug_assert!(
+                        found_one,
+                        "DID NOT FIND ONE FOR {:?} |::|::| MODEL: {:?}
     |::|::| SUT: \
                                    {:?}",
-                                  v,
-                                  mp,
-                                  ms);
+                        v,
+                        mp,
+                        ms
+                    );
                 }
             }
             TestResult::passed()
@@ -498,8 +501,10 @@ mod test {
         let rmname = String::from("some.metric");
         let metric = Telemetry::new("some.metric", 11.5).aggr_sum();
         buckets.add(metric);
-        assert_eq!(Some(11.5),
-                   buckets.get(&rmname).expect("hwhap")[0].query(0.0));
+        assert_eq!(
+            Some(11.5),
+            buckets.get(&rmname).expect("hwhap")[0].query(0.0)
+        );
 
         let metric_two = Telemetry::new("some.metric", 99.5).aggr_sum();
         buckets.add(metric_two);
@@ -507,8 +512,10 @@ mod test {
         let romname = String::from("other.metric");
         let metric_three = Telemetry::new("other.metric", 811.5).aggr_sum();
         buckets.add(metric_three);
-        assert_eq!(Some(811.5),
-                   buckets.get(&romname).expect("hwhap")[0].query(0.0));
+        assert_eq!(
+            Some(811.5),
+            buckets.get(&romname).expect("hwhap")[0].query(0.0)
+        );
     }
 
     #[test]
@@ -517,10 +524,18 @@ mod test {
         let dt_0 = Utc.ymd(2016, 9, 13).and_hms_milli(11, 30, 0, 0).timestamp();
         let dt_1 = Utc.ymd(2016, 9, 13).and_hms_milli(11, 30, 1, 0).timestamp();
 
-        buckets.add(Telemetry::new("some.metric", 1.0).timestamp(dt_0).aggr_set());
-        buckets.add(Telemetry::new("some.metric", 2.0).timestamp(dt_0).aggr_set());
-        buckets.add(Telemetry::new("some.metric", 3.0).timestamp(dt_0).aggr_set());
-        buckets.add(Telemetry::new("some.metric", 4.0).timestamp(dt_1).aggr_set());
+        buckets.add(
+            Telemetry::new("some.metric", 1.0).timestamp(dt_0).aggr_set(),
+        );
+        buckets.add(
+            Telemetry::new("some.metric", 2.0).timestamp(dt_0).aggr_set(),
+        );
+        buckets.add(
+            Telemetry::new("some.metric", 3.0).timestamp(dt_0).aggr_set(),
+        );
+        buckets.add(
+            Telemetry::new("some.metric", 4.0).timestamp(dt_1).aggr_set(),
+        );
 
         let mname = String::from("some.metric");
         let metrics = buckets.get(&mname).unwrap();
@@ -542,14 +557,13 @@ mod test {
                 bucket.add(m);
             }
 
-            let cnts: HashSet<String> = ms.iter()
-                .fold(HashSet::default(), |mut acc, ref m| {
+            let cnts: HashSet<String> =
+                ms.iter().fold(HashSet::default(), |mut acc, ref m| {
                     acc.insert(m.name.clone());
                     acc
                 });
-            let b_cnts: HashSet<String> = bucket
-                .into_iter()
-                .fold(HashSet::default(), |mut acc, v| {
+            let b_cnts: HashSet<String> =
+                bucket.into_iter().fold(HashSet::default(), |mut acc, v| {
                     acc.insert(v[0].name.clone());
                     acc
                 });
@@ -688,23 +702,33 @@ mod test {
                     let l_ckms = c_v.1.clone();
                     let r_ckms = v[i].ckms();
 
-                    assert!((l_ckms.sum().unwrap() - r_ckms.sum().unwrap()).abs() <
-                            0.0001);
-                    assert!((l_ckms.cma().unwrap() - r_ckms.cma().unwrap()).abs() <
-                            0.0001);
+                    assert!(
+                        (l_ckms.sum().unwrap() - r_ckms.sum().unwrap()).abs() < 0.0001
+                    );
+                    assert!(
+                        (l_ckms.cma().unwrap() - r_ckms.cma().unwrap()).abs() < 0.0001
+                    );
                     assert_eq!(l_ckms.count(), r_ckms.count());
-                    assert!((l_ckms.query(0.5).unwrap().1 -
+                    assert!(
+                        (l_ckms.query(0.5).unwrap().1 -
                              r_ckms.query(0.5).unwrap().1)
-                                    .abs() < 0.0001);
-                    assert!((l_ckms.query(0.75).unwrap().1 -
+                            .abs() < 0.0001
+                    );
+                    assert!(
+                        (l_ckms.query(0.75).unwrap().1 -
                              r_ckms.query(0.75).unwrap().1)
-                                    .abs() < 0.0001);
-                    assert!((l_ckms.query(0.99).unwrap().1 -
+                            .abs() < 0.0001
+                    );
+                    assert!(
+                        (l_ckms.query(0.99).unwrap().1 -
                              r_ckms.query(0.99).unwrap().1)
-                                    .abs() < 0.0001);
-                    assert!((l_ckms.query(0.999).unwrap().1 -
+                            .abs() < 0.0001
+                    );
+                    assert!(
+                        (l_ckms.query(0.999).unwrap().1 -
                              r_ckms.query(0.999).unwrap().1)
-                                    .abs() < 0.0001);
+                            .abs() < 0.0001
+                    );
                 }
             }
 

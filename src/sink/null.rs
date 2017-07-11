@@ -17,7 +17,9 @@ pub struct NullConfig {
 
 impl NullConfig {
     pub fn new(config_path: String) -> NullConfig {
-        NullConfig { config_path: config_path }
+        NullConfig {
+            config_path: config_path,
+        }
     }
 }
 

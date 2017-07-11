@@ -7,8 +7,9 @@ pub struct TagMap<K, V> {
 }
 
 pub struct TagMapIterator<'a, K, V>
-    where V: 'a,
-          K: 'a
+where
+    V: 'a,
+    K: 'a,
 {
     tagmap: &'a TagMap<K, V>,
     index: usize,
@@ -41,7 +42,8 @@ impl<'a, K, V> Iterator for TagMapIterator<'a, K, V> {
 }
 
 impl<K, V> TagMap<K, V>
-    where K: cmp::Ord
+where
+    K: cmp::Ord,
 {
     pub fn iter(&self) -> Iter<(K, V)> {
         self.inner.iter()
@@ -66,8 +68,9 @@ impl<K, V> TagMap<K, V>
     }
 
     pub fn merge(&mut self, other: &TagMap<K, V>)
-        where K: Clone,
-              V: Clone
+    where
+        K: Clone,
+        V: Clone,
     {
         for &(ref key, ref val) in &other.inner {
             match self.inner.binary_search_by(|probe| probe.0.cmp(key)) {
@@ -100,13 +103,16 @@ impl<K, V> TagMap<K, V>
 
 impl<K, V> Default for TagMap<K, V> {
     fn default() -> TagMap<K, V> {
-        TagMap { inner: Vec::with_capacity(15) }
+        TagMap {
+            inner: Vec::with_capacity(15),
+        }
     }
 }
 
 pub fn cmp<K, V>(left: &TagMap<K, V>, right: &TagMap<K, V>) -> Option<cmp::Ordering>
-    where K: cmp::Ord,
-          V: cmp::Ord
+where
+    K: cmp::Ord,
+    V: cmp::Ord,
 {
     if left.len() != right.len() {
         left.len().partial_cmp(&right.len())

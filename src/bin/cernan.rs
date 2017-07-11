@@ -19,12 +19,13 @@ use std::process;
 use std::str;
 use std::thread;
 
-fn populate_forwards(sends: &mut util::Channel,
-                     mut top_level_forwards: Option<&mut HashSet<String>>,
-                     forwards: &[String],
-                     config_path: &str,
-                     available_sends: &HashMap<String,
-                                               hopper::Sender<metric::Event>>) {
+fn populate_forwards(
+    sends: &mut util::Channel,
+    mut top_level_forwards: Option<&mut HashSet<String>>,
+    forwards: &[String],
+    config_path: &str,
+    available_sends: &HashMap<String, hopper::Sender<metric::Event>>,
+) {
     for fwd in forwards {
         if let Some(tlf) = top_level_forwards.as_mut() {
             let _ = (*tlf).insert(fwd.clone());
@@ -34,9 +35,11 @@ fn populate_forwards(sends: &mut util::Channel,
                 sends.push(snd.clone());
             }
             None => {
-                error!("Unable to fulfill configured forward: {} => {}",
-                       config_path,
-                       fwd);
+                error!(
+                    "Unable to fulfill configured forward: {} => {}",
+                    config_path,
+                    fwd
+                );
                 process::exit(0);
             }
         }
@@ -62,13 +65,15 @@ fn main() {
 
     fern::Dispatch::new()
         .format(|out, message, record| {
-                    out.finish(format_args!("[{}][{}][{}][{}] {}",
-                                            record.location().module_path(),
-                                            record.location().line(),
-                                            Utc::now().to_rfc3339(),
-                                            record.level(),
-                                            message))
-                })
+            out.finish(format_args!(
+                "[{}][{}][{}][{}] {}",
+                record.location().module_path(),
+                record.location().line(),
+                Utc::now().to_rfc3339(),
+                record.level(),
+                message
+            ))
+        })
         .level(level)
         .chain(std::io::stdout())
         .apply()
@@ -85,9 +90,9 @@ fn main() {
         let (null_send, null_recv) =
             hopper::channel(&config.config_path, &args.data_directory).unwrap();
         sends.insert(config.config_path.clone(), null_send);
-        joins.push(thread::spawn(move || {
-                                     cernan::sink::Null::new(config).run(null_recv);
-                                 }));
+        joins.push(thread::spawn(
+            move || { cernan::sink::Null::new(config).run(null_recv); },
+        ));
     }
     if let Some(config) = mem::replace(&mut args.console, None) {
         let config_path = cfg_conf!(config);
@@ -95,17 +100,16 @@ fn main() {
             hopper::channel(&config_path, &args.data_directory).unwrap();
         sends.insert(config_path.clone(), console_send);
         joins.push(thread::spawn(move || {
-                                     cernan::sink::Console::new(config)
-                                         .run(console_recv);
-                                 }));
+            cernan::sink::Console::new(config).run(console_recv);
+        }));
     }
     if let Some(config) = mem::replace(&mut args.wavefront, None) {
         let config_path = cfg_conf!(config);
-        let (wf_send, wf_recv) = hopper::channel(&config_path, &args.data_directory)
-            .unwrap();
+        let (wf_send, wf_recv) =
+            hopper::channel(&config_path, &args.data_directory).unwrap();
         sends.insert(config_path.clone(), wf_send);
-        joins.push(thread::spawn(move || {
-            match cernan::sink::Wavefront::new(config) {
+        joins.push(thread::spawn(
+            move || match cernan::sink::Wavefront::new(config) {
                 Ok(mut w) => {
                     w.run(wf_recv);
                 }
@@ -113,8 +117,8 @@ fn main() {
                     error!("Configuration error for Wavefront: {}", e);
                     process::exit(1);
                 }
-            }
-        }));
+            },
+        ));
     }
     if let Some(config) = mem::replace(&mut args.prometheus, None) {
         let config_path = cfg_conf!(config);
@@ -122,18 +126,17 @@ fn main() {
             hopper::channel(&config_path, &args.data_directory).unwrap();
         sends.insert(config_path.clone(), prometheus_send);
         joins.push(thread::spawn(move || {
-                                     cernan::sink::Prometheus::new(config)
-                                         .run(prometheus_recv);
-                                 }));
+            cernan::sink::Prometheus::new(config).run(prometheus_recv);
+        }));
     }
     if let Some(config) = mem::replace(&mut args.influxdb, None) {
         let config_path = cfg_conf!(config);
-        let (flx_send, flx_recv) = hopper::channel(&config_path, &args.data_directory)
-            .unwrap();
+        let (flx_send, flx_recv) =
+            hopper::channel(&config_path, &args.data_directory).unwrap();
         sends.insert(config_path.clone(), flx_send);
         joins.push(thread::spawn(move || {
-                                     cernan::sink::InfluxDB::new(config).run(flx_recv);
-                                 }));
+            cernan::sink::InfluxDB::new(config).run(flx_recv);
+        }));
     }
     if let Some(config) = mem::replace(&mut args.native_sink_config, None) {
         let config_path = cfg_conf!(config);
@@ -141,9 +144,8 @@ fn main() {
             hopper::channel(&config_path, &args.data_directory).unwrap();
         sends.insert(config_path.clone(), cernan_send);
         joins.push(thread::spawn(move || {
-                                     cernan::sink::Native::new(config)
-                                         .run(cernan_recv);
-                                 }));
+            cernan::sink::Native::new(config).run(cernan_recv);
+        }));
     }
 
     if let Some(config) = mem::replace(&mut args.elasticsearch, None) {
@@ -152,9 +154,8 @@ fn main() {
             hopper::channel(&config_path, &args.data_directory).unwrap();
         sends.insert(config_path.clone(), cernan_send);
         joins.push(thread::spawn(move || {
-                                     cernan::sink::Elasticsearch::new(config)
-                                         .run(cernan_recv);
-                                 }));
+            cernan::sink::Elasticsearch::new(config).run(cernan_recv);
+        }));
     }
 
     if let Some(cfgs) = mem::replace(&mut args.firehosen, None) {
@@ -165,95 +166,108 @@ fn main() {
                 hopper::channel(&config_path, &args.data_directory).unwrap();
             sends.insert(config_path.clone(), firehose_send);
             joins.push(thread::spawn(move || {
-                                         cernan::sink::Firehose::new(f)
-                                             .run(firehose_recv);
-                                     }));
+                cernan::sink::Firehose::new(f).run(firehose_recv);
+            }));
         }
     }
 
     // // FILTERS
     // //
-    mem::replace(&mut args.filters, None).map(|cfg_map| for config in cfg_map.values() {
-        let c: ProgrammableFilterConfig = (*config).clone();
-        let config_path = cfg_conf!(config);
-        let (flt_send, flt_recv) = hopper::channel(&config_path, &args.data_directory).unwrap();
-        sends.insert(config_path.clone(), flt_send);
-        let mut downstream_sends = Vec::new();
-        populate_forwards(&mut downstream_sends,
-                          None,
-                          &config.forwards,
-                          &config.config_path.clone().expect("[INTERNAL ERROR] no config_path"),
-                          &sends);
-        joins.push(thread::spawn(move || { cernan::filter::ProgrammableFilter::new(c).run(flt_recv, downstream_sends); }));
-    });
+    mem::replace(&mut args.filters, None).map(
+        |cfg_map| for config in cfg_map.values() {
+            let c: ProgrammableFilterConfig = (*config).clone();
+            let config_path = cfg_conf!(config);
+            let (flt_send, flt_recv) =
+                hopper::channel(&config_path, &args.data_directory).unwrap();
+            sends.insert(config_path.clone(), flt_send);
+            let mut downstream_sends = Vec::new();
+            populate_forwards(
+                &mut downstream_sends,
+                None,
+                &config.forwards,
+                &config.config_path.clone().expect("[INTERNAL ERROR] no config_path"),
+                &sends,
+            );
+            joins.push(thread::spawn(move || {
+                cernan::filter::ProgrammableFilter::new(c)
+                    .run(flt_recv, downstream_sends);
+            }));
+        },
+    );
 
     // SOURCES
     //
-    mem::replace(&mut args.native_server_config, None)
-        .map(|cfg_map| for (_, config) in cfg_map {
-                 let mut native_server_send = Vec::new();
-                 populate_forwards(&mut native_server_send,
-                                   Some(&mut flush_sends),
-                                   &config.forwards,
-                                   &cfg_conf!(config),
-                                   &sends);
-                 joins.push(thread::spawn(move || {
+    mem::replace(&mut args.native_server_config, None).map(
+        |cfg_map| for (_, config) in cfg_map {
+            let mut native_server_send = Vec::new();
+            populate_forwards(
+                &mut native_server_send,
+                Some(&mut flush_sends),
+                &config.forwards,
+                &cfg_conf!(config),
+                &sends,
+            );
+            joins.push(thread::spawn(move || {
                 cernan::source::NativeServer::new(native_server_send, config).run();
             }))
-             });
+        },
+    );
 
     let internal_config = args.internal;
     let mut internal_send = Vec::new();
-    populate_forwards(&mut internal_send,
-                      Some(&mut flush_sends),
-                      &internal_config.forwards,
-                      &cfg_conf!(internal_config),
-                      &sends);
+    populate_forwards(
+        &mut internal_send,
+        Some(&mut flush_sends),
+        &internal_config.forwards,
+        &cfg_conf!(internal_config),
+        &sends,
+    );
     joins.push(thread::spawn(move || {
-                                 cernan::source::Internal::new(internal_send,
-                                                               internal_config)
-                                         .run();
-                             }));
+        cernan::source::Internal::new(internal_send, internal_config).run();
+    }));
 
     mem::replace(&mut args.statsds, None).map(|cfg_map| for (_, config) in cfg_map {
         let mut statsd_sends = Vec::new();
-        populate_forwards(&mut statsd_sends,
-                          Some(&mut flush_sends),
-                          &config.forwards,
-                          &cfg_conf!(config),
-                          &sends);
+        populate_forwards(
+            &mut statsd_sends,
+            Some(&mut flush_sends),
+            &config.forwards,
+            &cfg_conf!(config),
+            &sends,
+        );
         joins.push(thread::spawn(move || {
-                                     cernan::source::Statsd::new(statsd_sends, config)
-                                         .run();
-                                 }));
+            cernan::source::Statsd::new(statsd_sends, config).run();
+        }));
     });
 
-    mem::replace(&mut args.graphites, None).map(|cfg_map| for (_, config) in
-        cfg_map {
-        let mut graphite_sends = Vec::new();
-        populate_forwards(&mut graphite_sends,
-                          Some(&mut flush_sends),
-                          &config.forwards,
-                          &cfg_conf!(config),
-                          &sends);
-        joins.push(thread::spawn(move || {
-                                     cernan::source::Graphite::new(graphite_sends,
-                                                                   config)
-                                             .run();
-                                 }));
-    });
+    mem::replace(&mut args.graphites, None).map(
+        |cfg_map| for (_, config) in cfg_map {
+            let mut graphite_sends = Vec::new();
+            populate_forwards(
+                &mut graphite_sends,
+                Some(&mut flush_sends),
+                &config.forwards,
+                &cfg_conf!(config),
+                &sends,
+            );
+            joins.push(thread::spawn(move || {
+                cernan::source::Graphite::new(graphite_sends, config).run();
+            }));
+        },
+    );
 
     mem::replace(&mut args.files, None).map(|cfg| for config in cfg {
         let mut fp_sends = Vec::new();
-        populate_forwards(&mut fp_sends,
-                          Some(&mut flush_sends),
-                          &config.forwards,
-                          &cfg_conf!(config),
-                          &sends);
+        populate_forwards(
+            &mut fp_sends,
+            Some(&mut flush_sends),
+            &config.forwards,
+            &cfg_conf!(config),
+            &sends,
+        );
         joins.push(thread::spawn(move || {
-                                     cernan::source::FileServer::new(fp_sends, config)
-                                         .run();
-                                 }));
+            cernan::source::FileServer::new(fp_sends, config).run();
+        }));
     });
 
     // BACKGROUND
@@ -266,8 +280,10 @@ fn main() {
                     flush_channels.push(snd.clone());
                 }
                 None => {
-                    error!("Unable to fulfill configured top-level flush to {}",
-                           destination);
+                    error!(
+                        "Unable to fulfill configured top-level flush to {}",
+                        destination
+                    );
                     process::exit(0);
                 }
             }

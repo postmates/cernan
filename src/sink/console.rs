@@ -139,12 +139,14 @@ impl Sink for Console {
                     }
                     AggregationMethod::Summarize => {
                         let mut tgt = &mut summaries;
-                        for tup in &[("min", 0.0),
-                                     ("max", 1.0),
-                                     ("50", 0.5),
-                                     ("90", 0.90),
-                                     ("99", 0.99),
-                                     ("999", 0.999)] {
+                        for tup in &[
+                            ("min", 0.0),
+                            ("max", 1.0),
+                            ("50", 0.5),
+                            ("90", 0.90),
+                            ("99", 0.99),
+                            ("999", 0.999),
+                        ] {
                             let stat: &str = tup.0;
                             let quant: f64 = tup.1;
                             if let Some(f) = value.query(quant) {

@@ -15,10 +15,10 @@ fn bench_single_timer(b: &mut Bencher) {
     let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
 
     b.iter(|| {
-               let mut bucket = buckets::Buckets::default();
+        let mut bucket = buckets::Buckets::default();
 
-               bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
-           });
+        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+    });
 }
 
 #[bench]
@@ -44,7 +44,9 @@ fn bench_single_timer_rand_100(b: &mut Bencher) {
 
         for _ in 0..100 {
             let i: usize = rng.gen_range(0, 100);
-            bucket.add(Telemetry::new("a", i as f64).timestamp(dt_0).aggr_summarize());
+            bucket.add(
+                Telemetry::new("a", i as f64).timestamp(dt_0).aggr_summarize(),
+            );
         }
     });
 }
@@ -80,10 +82,10 @@ fn bench_single_histogram(b: &mut Bencher) {
     let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
 
     b.iter(|| {
-               let mut bucket = buckets::Buckets::default();
+        let mut bucket = buckets::Buckets::default();
 
-               bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
-           });
+        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+    });
 }
 
 #[bench]
@@ -151,10 +153,10 @@ fn bench_single_counter(b: &mut Bencher) {
     let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
 
     b.iter(|| {
-               let mut bucket = buckets::Buckets::default();
+        let mut bucket = buckets::Buckets::default();
 
-               bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_sum());
-           });
+        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_sum());
+    });
 }
 
 #[bench]
@@ -182,8 +184,8 @@ fn bench_single_gauge(b: &mut Bencher) {
     let dt_0 = UTC.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
 
     b.iter(|| {
-               let mut bucket = buckets::Buckets::default();
+        let mut bucket = buckets::Buckets::default();
 
-               bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_set());
-           });
+        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_set());
+    });
 }

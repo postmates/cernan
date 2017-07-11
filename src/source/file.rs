@@ -108,11 +108,11 @@ impl FileWatcher {
                 let ino = metadata.ino();
 
                 Some(FileWatcher {
-                         path: path,
-                         reader: rdr,
-                         offset: offset,
-                         file_id: (dev, ino),
-                     })
+                    path: path,
+                    reader: rdr,
+                    offset: offset,
+                    file_id: (dev, ino),
+                })
             }
             Err(_) => None,
         }
@@ -124,11 +124,17 @@ impl FileWatcher {
             let ino = metadata.ino();
 
             if (dev, ino) != self.file_id {
-                report_full_telemetry("cernan.sources.file.switch",
-                                 1.0,
-                                 None,
-                                 Some(vec![("file_path",
-                                            &self.path.to_str().expect("could not make path"))]));
+                report_full_telemetry(
+                    "cernan.sources.file.switch",
+                    1.0,
+                    None,
+                    Some(vec![
+                        (
+                            "file_path",
+                            &self.path.to_str().expect("could not make path"),
+                        ),
+                    ]),
+                );
                 if let Ok(f) = fs::File::open(&self.path) {
                     self.file_id = (dev, ino);
                     self.reader = io::BufReader::new(f);
@@ -150,8 +156,10 @@ impl FileWatcher {
         // way ahead of our current offset but we need to track where we _know_
         // we are based on lines because when we seek back to reset the inner
         // buffer of BufReader will get dumped.
-        assert!(self.offset <=
-                self.reader.get_ref().seek(io::SeekFrom::Current(0)).unwrap());
+        assert!(
+            self.offset <=
+                self.reader.get_ref().seek(io::SeekFrom::Current(0)).unwrap()
+        );
         let mut attempts = 0;
         while attempts < 3 {
             time::delay(attempts);
@@ -190,7 +198,10 @@ impl FileWatcher {
         // time. We'll signal this with TimedOut -- which might also come from
         // BufReader -- so it's hard for the caller to know where this came
         // from. Doesn't seem to be a pain in practice.
-        Err(io::Error::new(io::ErrorKind::TimedOut, "read_line hit max delay"))
+        Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "read_line hit max delay",
+        ))
     }
 }
 
@@ -232,7 +243,8 @@ impl Source for FileServer {
         loop {
             // glob poll
             for entry in glob(self.path.to_str().expect("no ability to glob"))
-                    .expect("Failed to read glob pattern") {
+                .expect("Failed to read glob pattern")
+            {
                 match entry {
                     Ok(path) => {
                         let entry = fp_map.entry(path.clone());
@@ -264,14 +276,20 @@ impl Source for FileServer {
                                 if sz > 0 {
                                     lines_read += 1;
                                     buffer.pop();
-                                    let path_name = file.path.to_str().expect("could not make path_name");
-                                    report_full_telemetry("cernan.sources.file.lines_read",
-                                                          1.0,
-                                                          None,
-                                                          Some(vec![("file_path",
-                                                                     path_name)]));
+                                    let path_name = file.path
+                                        .to_str()
+                                        .expect("could not make path_name");
+                                    report_full_telemetry(
+                                        "cernan.sources.file.lines_read",
+                                        1.0,
+                                        None,
+                                        Some(vec![("file_path", path_name)]),
+                                    );
                                     trace!("{} | {}", path_name, buffer);
-                                    lines.push(metric::LogLine::new(path_name, &buffer).overlay_tags_from_map(&self.tags));
+                                    lines.push(
+                                        metric::LogLine::new(path_name, &buffer)
+                                            .overlay_tags_from_map(&self.tags),
+                                    );
                                     buffer.clear();
                                     if lines_read > self.max_read_lines {
                                         break;
@@ -320,7 +338,8 @@ mod test {
 
     impl Arbitrary for FWAction {
         fn arbitrary<G>(g: &mut G) -> FWAction
-            where G: Gen
+        where
+            G: Gen,
         {
             let i: usize = g.gen_range(0, 100);
             let ln_sz = g.gen_range(0, 256);

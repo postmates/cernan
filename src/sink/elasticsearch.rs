@@ -113,23 +113,33 @@ impl Sink for Elasticsearch {
             match bulk_resp {
                 Ok(bulk) => {
                     self.buffer.clear();
-                    report_telemetry("cernan.sinks.elasticsearch.records.delivery",
-                                     1.0);
-                    report_telemetry("cernan.sinks.elasticsearch.records.total_delivered",
-                                     bulk.items.ok.len() as f64);
+                    report_telemetry(
+                        "cernan.sinks.elasticsearch.records.delivery",
+                        1.0,
+                    );
+                    report_telemetry(
+                        "cernan.sinks.elasticsearch.records.total_delivered",
+                        bulk.items.ok.len() as f64,
+                    );
                     let failed_count = bulk.items.err.len();
                     if failed_count > 0 {
-                        report_telemetry("cernan.sinks.elasticsearch.records.total_failed",
-                                         failed_count as f64);
+                        report_telemetry(
+                            "cernan.sinks.elasticsearch.records.total_failed",
+                            failed_count as f64,
+                        );
                         error!("Failed to write {} put records", failed_count);
                     }
                     return;
                 }
                 Err(err) => {
-                    report_telemetry("cernan.sinks.elasticsearch.error.attempts",
-                                     attempts as f64);
-                    report_telemetry("cernan.sinks.elasticsearch.error.reason.unknown",
-                                     1.0);
+                    report_telemetry(
+                        "cernan.sinks.elasticsearch.error.attempts",
+                        attempts as f64,
+                    );
+                    report_telemetry(
+                        "cernan.sinks.elasticsearch.error.reason.unknown",
+                        1.0,
+                    );
                     error!("Unable to write, unknown failure: {}", err);
                     attempts += 1;
                     time::delay(attempts);

@@ -50,13 +50,16 @@ impl Statsd {
     }
 }
 
-fn handle_udp(mut chans: util::Channel,
-              tags: sync::Arc<metric::TagMap>,
-              socket: &UdpSocket) {
+fn handle_udp(
+    mut chans: util::Channel,
+    tags: sync::Arc<metric::TagMap>,
+    socket: &UdpSocket,
+) {
     let mut buf = [0; 8192];
     let mut metrics = Vec::new();
-    let basic_metric = sync::Arc::new(Some(metric::Telemetry::default()
-                                               .overlay_tags_from_map(&tags)));
+    let basic_metric = sync::Arc::new(Some(
+        metric::Telemetry::default().overlay_tags_from_map(&tags),
+    ));
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
             Ok(r) => r,
@@ -95,15 +98,17 @@ impl Source for Statsd {
                     let chans = self.chans.clone();
                     let tags = self.tags.clone();
                     info!("server started on {:?} {}", addr, self.port);
-                    joins.push(thread::spawn(move || {
-                                                 handle_udp(chans, tags, &listener)
-                                             }));
+                    joins.push(
+                        thread::spawn(move || handle_udp(chans, tags, &listener)),
+                    );
                 }
             }
             Err(e) => {
-                info!("Unable to perform DNS lookup on host {} with error {}",
-                      self.host,
-                      e);
+                info!(
+                    "Unable to perform DNS lookup on host {} with error {}",
+                    self.host,
+                    e
+                );
             }
         }
 

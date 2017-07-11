@@ -51,16 +51,18 @@ impl AddAssign for Telemetry {
 
 impl fmt::Debug for Telemetry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "Telemetry {{ aggr_method: {:#?}, name: {}, timestamp: {}, \
-                timestamp_ns: {}, persist: {}, tags: {:?}, value: {:?} }}",
-               self.aggr_method,
-               self.name,
-               self.timestamp,
-               self.timestamp_ns,
-               self.persist,
-               self.tags,
-               self.value())
+        write!(
+            f,
+            "Telemetry {{ aggr_method: {:#?}, name: {}, timestamp: {}, \
+             timestamp_ns: {}, persist: {}, tags: {:?}, value: {:?} }}",
+            self.aggr_method,
+            self.name,
+            self.timestamp,
+            self.timestamp_ns,
+            self.persist,
+            self.tags,
+            self.value()
+        )
     }
 }
 
@@ -111,7 +113,8 @@ impl Telemetry {
     /// assert_eq!(m.value(), Some(1.1));
     /// ```
     pub fn new<S>(name: S, value: f64) -> Telemetry
-        where S: Into<String>
+    where
+        S: Into<String>,
     {
         let val = Value::new(value);
         Telemetry {
@@ -147,7 +150,8 @@ impl Telemetry {
     /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
     /// ```
     pub fn overlay_tag<S>(mut self, key: S, val: S) -> Telemetry
-        where S: Into<String>
+    where
+        S: Into<String>,
     {
         sync::Arc::make_mut(&mut self.tags).insert(key.into(), val.into());
         self
@@ -243,7 +247,8 @@ impl Telemetry {
     }
 
     pub fn set_name<S>(mut self, name: S) -> Telemetry
-        where S: Into<String>
+    where
+        S: Into<String>,
     {
         self.name = name.into();
         self
@@ -581,7 +586,8 @@ mod tests {
 
     impl Arbitrary for AggregationMethod {
         fn arbitrary<G>(g: &mut G) -> Self
-            where G: Gen
+        where
+            G: Gen,
         {
             let i: usize = g.gen_range(0, 3);
             match i {
@@ -594,7 +600,8 @@ mod tests {
 
     impl Arbitrary for Telemetry {
         fn arbitrary<G>(g: &mut G) -> Self
-            where G: Gen
+        where
+            G: Gen,
         {
             let name_len = g.gen_range(0, 64);
             let name: String = g.gen_iter::<char>().take(name_len).collect();
@@ -610,13 +617,18 @@ mod tests {
                 AggregationMethod::Sum => mb.aggr_sum(),
                 AggregationMethod::Summarize => mb.aggr_summarize(),
             };
-            if persist { mb.persist() } else { mb }
+            if persist {
+                mb.persist()
+            } else {
+                mb
+            }
         }
     }
 
     impl Arbitrary for Event {
         fn arbitrary<G>(g: &mut G) -> Self
-            where G: Gen
+        where
+            G: Gen,
         {
             let i: usize = g.gen();
             match i % 3 {

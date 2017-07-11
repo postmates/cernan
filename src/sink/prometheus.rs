@@ -70,9 +70,10 @@ struct PrometheusAggr {
     inner: Vec<metric::Telemetry>,
 }
 
-fn prometheus_cmp(l: &metric::Telemetry,
-                  r: &metric::Telemetry)
-                  -> Option<::std::cmp::Ordering> {
+fn prometheus_cmp(
+    l: &metric::Telemetry,
+    r: &metric::Telemetry,
+) -> Option<::std::cmp::Ordering> {
     match l.name.partial_cmp(&r.name) {
         Some(::std::cmp::Ordering::Equal) => ::metric::tagmap::cmp(&l.tags, &r.tags),
         other => other,
@@ -84,8 +85,7 @@ impl PrometheusAggr {
     /// Telemetry
     #[cfg(test)]
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
-        match self.inner
-                  .binary_search_by(|probe| {
+        match self.inner.binary_search_by(|probe| {
             prometheus_cmp(probe, &telem).expect("could not compare")
         }) {
             Ok(idx) => Some(self.inner[idx].clone()),
@@ -108,8 +108,7 @@ impl PrometheusAggr {
     /// PrometheusAggr. Timestamps are _not_ respected. Distinctions between
     /// Telemetry of the same name are only made if their tagmaps are distinct.
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
-        match self.inner
-                  .binary_search_by(|probe| {
+        match self.inner.binary_search_by(|probe| {
             prometheus_cmp(probe, &telem).expect("could not compare")
         }) {
             Ok(idx) => self.inner[idx] += telem,
@@ -140,7 +139,9 @@ impl PrometheusAggr {
 
 impl Default for PrometheusAggr {
     fn default() -> PrometheusAggr {
-        PrometheusAggr { inner: Default::default() }
+        PrometheusAggr {
+            inner: Default::default(),
+        }
     }
 }
 
@@ -148,10 +149,14 @@ impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
         let mut aggr = self.aggr.lock().unwrap();
         let reportable: Vec<metric::Telemetry> = aggr.reportable();
-        report_telemetry("cernan.sinks.prometheus.aggregation.reportable",
-                         reportable.len() as f64);
-        report_telemetry("cernan.sinks.prometheus.aggregation.remaining",
-                         aggr.count() as f64);
+        report_telemetry(
+            "cernan.sinks.prometheus.aggregation.reportable",
+            reportable.len() as f64,
+        );
+        report_telemetry(
+            "cernan.sinks.prometheus.aggregation.remaining",
+            aggr.count() as f64,
+        );
         // Typed hyper::mime is challenging to use. In particular, matching does
         // not seem to work like I expect and handling all other MIME cases in
         // the existing enum strikes me as a fool's errand, on account of there
@@ -204,11 +209,14 @@ impl Prometheus {
 }
 
 fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
-    res.headers_mut()
-        .set_raw("content-type",
-                 vec![b"application/vnd.google.protobuf; \
+    res.headers_mut().set_raw(
+        "content-type",
+        vec![
+            b"application/vnd.google.protobuf; \
                        proto=io.prometheus.client.MetricFamily; encoding=delimited"
-                              .to_vec()]);
+                .to_vec(),
+        ],
+    );
     let mut res = res.start().unwrap();
     for m in aggrs.into_iter() {
         let mut metric_family = MetricFamily::new();
@@ -289,9 +297,10 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         buf.push_str("} ");
         buf.push_str(&m.count().to_string());
         buf.push_str("\n");
-        res.write_all(buf.as_bytes())
-            .expect("FAILED TO WRITE BUFFER INTO HTTP
-    STREAMING RESPONSE");
+        res.write_all(buf.as_bytes()).expect(
+            "FAILED TO WRITE BUFFER INTO HTTP
+    STREAMING RESPONSE",
+        );
         buf.clear();
     }
     res.end()
@@ -321,7 +330,9 @@ fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
         }
     }
     metric
-        .set_name(String::from_utf8(new_name).expect("wait, we bungled the conversion"))
+        .set_name(
+            String::from_utf8(new_name).expect("wait, we bungled the conversion"),
+        )
         .aggr_summarize()
 }
 
@@ -363,7 +374,8 @@ mod test {
 
     impl Arbitrary for PrometheusAggr {
         fn arbitrary<G>(g: &mut G) -> Self
-            where G: Gen
+        where
+            G: Gen,
         {
             let mut inner: Vec<metric::Telemetry> = Arbitrary::arbitrary(g);
             inner.sort_by(|a, b| prometheus_cmp(a, b).unwrap());
@@ -377,9 +389,10 @@ mod test {
     //   combined points
     #[test]
     fn test_recombine() {
-        fn inner(mut aggr: PrometheusAggr,
-                 recomb: Vec<metric::Telemetry>)
-                 -> TestResult {
+        fn inner(
+            mut aggr: PrometheusAggr,
+            recomb: Vec<metric::Telemetry>,
+        ) -> TestResult {
             let cur_cnt = aggr.count();
             let recomb_len = recomb.len();
 
@@ -391,11 +404,9 @@ mod test {
             assert!(lower <= aggr.count() || aggr.count() <= upper);
             TestResult::passed()
         }
-        QuickCheck::new()
-            .tests(1000)
-            .max_tests(10000)
-            .quickcheck(inner as
-                        fn(PrometheusAggr, Vec<metric::Telemetry>) -> TestResult);
+        QuickCheck::new().tests(1000).max_tests(10000).quickcheck(
+            inner as fn(PrometheusAggr, Vec<metric::Telemetry>) -> TestResult,
+        );
     }
 
     #[test]

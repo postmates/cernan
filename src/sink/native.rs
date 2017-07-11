@@ -190,20 +190,24 @@ impl Sink for Native {
                             }
                         }
                         Err(e) => {
-                            info!("Unable to connect to proxy at {} using addr {}
+                            info!(
+                                "Unable to connect to proxy at {} using addr {}
         with \
                                    error {}",
-                                  self.host,
-                                  ip,
-                                  e)
+                                self.host,
+                                ip,
+                                e
+                            )
                         }
                     }
                 }
             }
             Err(e) => {
-                info!("Unable to perform DNS lookup on host {} with error {}",
-                      self.host,
-                      e);
+                info!(
+                    "Unable to perform DNS lookup on host {} with error {}",
+                    self.host,
+                    e
+                );
             }
         }
     }

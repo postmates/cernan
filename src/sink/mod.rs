@@ -55,7 +55,8 @@ pub trait Sink {
                                 Event::TimerFlush(idx) => {
                                     if idx > last_flush_idx {
                                         if let Some(flush_interval) =
-                                            self.flush_interval() {
+                                            self.flush_interval()
+                                        {
                                             if idx % flush_interval == 0 {
                                                 self.flush();
                                             }

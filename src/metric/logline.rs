@@ -22,7 +22,8 @@ pub struct LogLine {
 /// not be structured. The field 'fields' is available for
 impl LogLine {
     pub fn new<S>(path: S, value: S) -> LogLine
-        where S: Into<String>
+    where
+        S: Into<String>,
     {
         LogLine {
             path: path.into(),
@@ -59,7 +60,8 @@ impl LogLine {
     /// _into_ the payload where tags will be associated metadata that define
     /// groups of related LogLines.
     pub fn insert_field<S>(mut self, key: S, val: S) -> LogLine
-        where S: Into<String>
+    where
+        S: Into<String>,
     {
         self.fields.insert(key.into(), val.into());
         self
@@ -70,7 +72,8 @@ impl LogLine {
     /// This function inserts a new key and value into the LogLine's tags. If
     /// the key was already present the old value is replaced.
     pub fn overlay_tag<S>(mut self, key: S, val: S) -> LogLine
-        where S: Into<String>
+    where
+        S: Into<String>,
     {
         self.tags.insert(key.into(), val.into());
         self
