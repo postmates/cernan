@@ -415,14 +415,13 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 })
                 .unwrap_or(res.secure);
 
-            res.flush_interval =
-                snk.get("flush_interval")
-                    .map(|fi| {
-                        fi.as_integer().expect(
+            res.flush_interval = snk.get("flush_interval")
+                .map(|fi| {
+                    fi.as_integer().expect(
                             "could not parse sinks.elasticsearch.flush_interval",
                         ) as u64
-                    })
-                    .unwrap_or(args.flush_interval);
+                })
+                .unwrap_or(args.flush_interval);
 
             res
         });

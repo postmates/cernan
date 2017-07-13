@@ -3,6 +3,9 @@ use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
 use source::report_telemetry;
 use std::cmp;
+use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::io::Write as IoWrite;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
@@ -14,10 +17,19 @@ pub struct Wavefront {
     host: String,
     port: u16,
     aggrs: Buckets,
+    bin_width: i64,
+    seen_telemetry: HashSet<u64>, // hash of Telemetry.name + Telemetry.tags
     delivery_attempts: u32,
     percentiles: Vec<(String, f64)>,
     pub stats: String,
     flush_interval: u64,
+}
+
+fn calculate_hash(t: &Telemetry) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.name.hash(&mut s);
+    t.tags.hash(&mut s);
+    s.finish()
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +88,11 @@ fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
     }
 }
 
+// pub struct PaddedTelemIter<I: Iterator> {
+//     iter: I,
+
+// }
+
 #[inline]
 fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
 where
@@ -100,6 +117,8 @@ impl Wavefront {
             host: config.host,
             port: config.port,
             aggrs: Buckets::new(config.bin_width),
+            bin_width: config.bin_width,
+            seen_telemetry: HashSet::new(),
             delivery_attempts: 0,
             percentiles: config.percentiles,
             stats: String::with_capacity(8_192),
@@ -115,94 +134,90 @@ impl Wavefront {
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let mut tag_buf = String::with_capacity(1_024);
-        for values in &self.aggrs {
-            for value in values {
-                match value.aggr_method {
-                    AggregationMethod::Sum => {
-                        report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
-                    }
-                    AggregationMethod::Set => {
-                        report_telemetry("cernan.sinks.wavefront.aggregation.set", 1.0)
-                    }
-                    AggregationMethod::Summarize => {
-                        report_telemetry(
-                            "cernan.sinks.wavefront.aggregation.summarize",
-                            1.0,
-                        );
-                        report_telemetry(
-                            "cernan.sinks.wavefront.aggregation.\
-                             summarize.total_percentiles",
-                            self.percentiles.len() as f64,
-                        );
-                    }
-                };
-                match value.aggr_method {
-                    AggregationMethod::Sum | AggregationMethod::Set => {
-                        if let Some(v) = value.value() {
-                            self.stats.push_str(&value.name);
-                            self.stats.push_str(" ");
-                            self.stats.push_str(get_from_cache(&mut value_cache, v));
-                            self.stats.push_str(" ");
-                            self.stats.push_str(
+        for value in self.aggrs.iter() {
+            match value.aggr_method {
+                AggregationMethod::Sum => {
+                    report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
+                }
+                AggregationMethod::Set => {
+                    report_telemetry("cernan.sinks.wavefront.aggregation.set", 1.0)
+                }
+                AggregationMethod::Summarize => {
+                    report_telemetry(
+                        "cernan.sinks.wavefront.aggregation.summarize",
+                        1.0,
+                    );
+                    report_telemetry(
+                        "cernan.sinks.wavefront.aggregation.\
+                         summarize.total_percentiles",
+                        self.percentiles.len() as f64,
+                    );
+                }
+            };
+            match value.aggr_method {
+                AggregationMethod::Sum | AggregationMethod::Set => {
+                    if let Some(v) = value.value() {
+                        self.stats.push_str(&value.name);
+                        self.stats.push_str(" ");
+                        self.stats.push_str(get_from_cache(&mut value_cache, v));
+                        self.stats.push_str(" ");
+                        self.stats.push_str(
                                 get_from_cache(&mut time_cache, value.timestamp),
                             );
-                            self.stats.push_str(" ");
-                            fmt_tags(&value.tags, &mut tag_buf);
-                            self.stats.push_str(&tag_buf);
-                            self.stats.push_str("\n");
-
-                            tag_buf.clear();
-                        }
-                    }
-                    AggregationMethod::Summarize => {
+                        self.stats.push_str(" ");
                         fmt_tags(&value.tags, &mut tag_buf);
-                        for tup in &self.percentiles {
-                            let stat: &String = &tup.0;
-                            let quant: f64 = tup.1;
-                            self.stats.push_str(&value.name);
-                            self.stats.push_str(".");
-                            self.stats.push_str(stat);
-                            self.stats.push_str(" ");
-                            self.stats.push_str(get_from_cache(
-                                &mut value_cache,
-                                value.query(quant).unwrap(),
-                            ));
-                            self.stats.push_str(" ");
-                            self.stats.push_str(
-                                get_from_cache(&mut time_cache, value.timestamp),
-                            );
-                            self.stats.push_str(" ");
-                            self.stats.push_str(&tag_buf);
-                            self.stats.push_str("\n");
-                        }
-                        let count = value.count();
-                        self.stats.push_str(&value.name);
-                        self.stats.push_str(".count");
-                        self.stats.push_str(" ");
-                        self.stats.push_str(get_from_cache(&mut count_cache, count));
-                        self.stats.push_str(" ");
-                        self.stats
-                            .push_str(get_from_cache(&mut time_cache,
-                                                     value.timestamp));
-                        self.stats.push_str(" ");
-                        self.stats.push_str(&tag_buf);
-                        self.stats.push_str("\n");
-
-                        let mean = value.mean();
-                        self.stats.push_str(&value.name);
-                        self.stats.push_str(".mean");
-                        self.stats.push_str(" ");
-                        self.stats.push_str(get_from_cache(&mut value_cache, mean));
-                        self.stats.push_str(" ");
-                        self.stats
-                            .push_str(get_from_cache(&mut time_cache,
-                                                     value.timestamp));
-                        self.stats.push_str(" ");
                         self.stats.push_str(&tag_buf);
                         self.stats.push_str("\n");
 
                         tag_buf.clear();
                     }
+                }
+                AggregationMethod::Summarize => {
+                    fmt_tags(&value.tags, &mut tag_buf);
+                    for tup in &self.percentiles {
+                        let stat: &String = &tup.0;
+                        let quant: f64 = tup.1;
+                        self.stats.push_str(&value.name);
+                        self.stats.push_str(".");
+                        self.stats.push_str(stat);
+                        self.stats.push_str(" ");
+                        self.stats.push_str(get_from_cache(
+                            &mut value_cache,
+                            value.query(quant).unwrap(),
+                        ));
+                        self.stats.push_str(" ");
+                        self.stats.push_str(
+                                get_from_cache(&mut time_cache, value.timestamp),
+                            );
+                        self.stats.push_str(" ");
+                        self.stats.push_str(&tag_buf);
+                        self.stats.push_str("\n");
+                    }
+                    let count = value.count();
+                    self.stats.push_str(&value.name);
+                    self.stats.push_str(".count");
+                    self.stats.push_str(" ");
+                    self.stats.push_str(get_from_cache(&mut count_cache, count));
+                    self.stats.push_str(" ");
+                    self.stats
+                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                    self.stats.push_str(" ");
+                    self.stats.push_str(&tag_buf);
+                    self.stats.push_str("\n");
+
+                    let mean = value.mean();
+                    self.stats.push_str(&value.name);
+                    self.stats.push_str(".mean");
+                    self.stats.push_str(" ");
+                    self.stats.push_str(get_from_cache(&mut value_cache, mean));
+                    self.stats.push_str(" ");
+                    self.stats
+                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                    self.stats.push_str(" ");
+                    self.stats.push_str(&tag_buf);
+                    self.stats.push_str("\n");
+
+                    tag_buf.clear();
                 }
             }
         }
@@ -267,7 +282,9 @@ impl Sink for Wavefront {
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        self.aggrs.add(sync::Arc::make_mut(&mut point).take().unwrap());
+        let telem: Telemetry = sync::Arc::make_mut(&mut point).take().unwrap();
+        self.seen_telemetry.insert(calculate_hash(&telem));
+        self.aggrs.add(telem);
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {

@@ -110,54 +110,52 @@ impl Sink for Console {
         let mut sets = String::new();
         let mut summaries = String::new();
 
-        for values in &self.aggrs {
-            for value in values {
-                match value.aggr_method {
-                    AggregationMethod::Sum => {
-                        let mut tgt = &mut sums;
-                        if let Some(f) = value.value() {
+        for value in self.aggrs.iter() {
+            match value.aggr_method {
+                AggregationMethod::Sum => {
+                    let mut tgt = &mut sums;
+                    if let Some(f) = value.value() {
+                        tgt.push_str("    ");
+                        tgt.push_str(&value.name);
+                        tgt.push_str("(");
+                        tgt.push_str(&value.timestamp.to_string());
+                        tgt.push_str("): ");
+                        tgt.push_str(&f.to_string());
+                        tgt.push_str("\n");
+                    }
+                }
+                AggregationMethod::Set => {
+                    let mut tgt = &mut sets;
+                    if let Some(f) = value.value() {
+                        tgt.push_str("    ");
+                        tgt.push_str(&value.name);
+                        tgt.push_str("(");
+                        tgt.push_str(&value.timestamp.to_string());
+                        tgt.push_str("): ");
+                        tgt.push_str(&f.to_string());
+                        tgt.push_str("\n");
+                    }
+                }
+                AggregationMethod::Summarize => {
+                    let mut tgt = &mut summaries;
+                    for tup in &[
+                        ("min", 0.0),
+                        ("max", 1.0),
+                        ("50", 0.5),
+                        ("90", 0.90),
+                        ("99", 0.99),
+                        ("999", 0.999),
+                    ] {
+                        let stat: &str = tup.0;
+                        let quant: f64 = tup.1;
+                        if let Some(f) = value.query(quant) {
                             tgt.push_str("    ");
                             tgt.push_str(&value.name);
-                            tgt.push_str("(");
-                            tgt.push_str(&value.timestamp.to_string());
-                            tgt.push_str("): ");
+                            tgt.push_str(": ");
+                            tgt.push_str(stat);
+                            tgt.push_str(" ");
                             tgt.push_str(&f.to_string());
                             tgt.push_str("\n");
-                        }
-                    }
-                    AggregationMethod::Set => {
-                        let mut tgt = &mut sets;
-                        if let Some(f) = value.value() {
-                            tgt.push_str("    ");
-                            tgt.push_str(&value.name);
-                            tgt.push_str("(");
-                            tgt.push_str(&value.timestamp.to_string());
-                            tgt.push_str("): ");
-                            tgt.push_str(&f.to_string());
-                            tgt.push_str("\n");
-                        }
-                    }
-                    AggregationMethod::Summarize => {
-                        let mut tgt = &mut summaries;
-                        for tup in &[
-                            ("min", 0.0),
-                            ("max", 1.0),
-                            ("50", 0.5),
-                            ("90", 0.90),
-                            ("99", 0.99),
-                            ("999", 0.999),
-                        ] {
-                            let stat: &str = tup.0;
-                            let quant: f64 = tup.1;
-                            if let Some(f) = value.query(quant) {
-                                tgt.push_str("    ");
-                                tgt.push_str(&value.name);
-                                tgt.push_str(": ");
-                                tgt.push_str(stat);
-                                tgt.push_str(" ");
-                                tgt.push_str(&f.to_string());
-                                tgt.push_str("\n");
-                            }
                         }
                     }
                 }

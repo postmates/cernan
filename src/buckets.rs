@@ -4,7 +4,8 @@
 //! each set of metrics received by clients.
 
 use metric::Telemetry;
-use std::iter::Iterator;
+use std::iter::{IntoIterator, Iterator};
+use std::mem;
 use std::ops::{Index, IndexMut};
 use time;
 
@@ -39,33 +40,77 @@ impl Default for Buckets {
     }
 }
 
-pub struct BucketsIterator<'a> {
+pub struct Iter<'a> {
     buckets: &'a Buckets,
-    index: usize,
+    key_index: usize,
+    value_index: Option<usize>,
 }
 
-impl<'a> IntoIterator for &'a Buckets {
-    type Item = &'a [Telemetry];
-    type IntoIter = BucketsIterator<'a>;
-    fn into_iter(self) -> Self::IntoIter {
-        BucketsIterator {
-            buckets: self,
-            index: 0,
+impl<'a> Iterator for Iter<'a> {
+    type Item = &'a Telemetry;
+    fn next(&mut self) -> Option<&'a Telemetry> {
+        if let Some(value_index) = self.value_index {
+            let v = &self.buckets.values[self.key_index][value_index];
+            self.value_index = Some(value_index + 1);
+            Some(v)
+        } else {
+            let result = if self.key_index < self.buckets.keys.len() {
+                let v = &self.buckets.values[self.key_index][0];
+                Some(v)
+            } else {
+                None
+            };
+            self.value_index = Some(1);
+            self.key_index += 1;
+            result
         }
     }
 }
 
-impl<'a> Iterator for BucketsIterator<'a> {
-    type Item = &'a [Telemetry];
-    fn next(&mut self) -> Option<&'a [Telemetry]> {
-        let result = if self.index < self.buckets.keys.len() {
-            let v = &self.buckets.values[self.index][..];
+pub struct IntoIter {
+    buckets: Buckets,
+    key_index: usize,
+    value_index: Option<usize>,
+}
+
+impl IntoIterator for Buckets {
+    type Item = Telemetry;
+    type IntoIter = IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            buckets: self,
+            key_index: 0,
+            value_index: None,
+        }
+    }
+}
+
+impl Iterator for IntoIter {
+    type Item = Telemetry;
+
+    fn next(&mut self) -> Option<Telemetry> {
+        if let Some(value_index) = self.value_index {
+            let v = mem::replace(
+                &mut self.buckets.values[self.key_index][value_index],
+                Default::default(),
+            );
+            self.value_index = Some(value_index + 1);
             Some(v)
         } else {
-            None
-        };
-        self.index += 1;
-        result
+            let result = if self.key_index < self.buckets.keys.len() {
+                let v = mem::replace(
+                    &mut self.buckets.values[self.key_index][0],
+                    Default::default(),
+                );
+                Some(v)
+            } else {
+                None
+            };
+            self.value_index = Some(1);
+            self.key_index += 1;
+            result
+        }
     }
 }
 
@@ -166,6 +211,14 @@ impl Buckets {
 
     pub fn len(&self) -> usize {
         self.keys.len()
+    }
+
+    pub fn iter(&mut self) -> Iter {
+        Iter {
+            buckets: self,
+            key_index: 0,
+            value_index: None,
+        }
     }
 }
 
