@@ -17,7 +17,6 @@ pub struct Wavefront {
     host: String,
     port: u16,
     aggrs: Buckets,
-    bin_width: i64,
     seen_telemetry: HashSet<u64>, // hash of Telemetry.name + Telemetry.tags
     delivery_attempts: u32,
     percentiles: Vec<(String, f64)>,
@@ -88,10 +87,73 @@ fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
     }
 }
 
-// pub struct PaddedTelemIter<I: Iterator> {
-//     iter: I,
+pub fn padding<'a, I: Iterator<Item = &'a Telemetry>>(xs: I) -> Padding<'a, I> {
+    Padding {
+        orig: xs,
+        emit_q: Vec::new(),
+    }
+}
 
-// }
+pub struct Padding<'a, I> {
+    orig: I,
+    emit_q: Vec<&'a Telemetry>,
+}
+
+impl<'a, I> Iterator for Padding<'a, I>
+where
+    I: Iterator<Item = &'a Telemetry>,
+{
+    type Item = I::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(x) = self.emit_q.pop() {
+            return Some(x);
+        }
+        match (self.orig.next(), self.orig.next()) {
+            (Some(ref x), Some(ref y)) => {
+                if (*x).hash() == (*y).hash() {
+                    match (x.timestamp - y.timestamp).abs() {
+                        1 => {
+                            self.emit_q.push(y);
+                            return Some(x);
+                        }
+                        2 => {
+                            self.emit_q.push(&x.clone().timestamp(x.timestamp + 1).set_value(0.0));
+                            self.emit_q.push(y);
+                            return Some(x);
+                        }
+                        _ => {
+                            self.emit_q.push(&x.clone().timestamp(x.timestamp + 1).set_value(0.0));
+                            self.emit_q.push(&y.clone().timestamp(y.timestamp - 1).set_value(0.0));
+                            self.emit_q.push(y);
+                            return Some(x);
+                        }                            
+                    }
+                } else {
+                    self.emit_q.push(y);
+                    return Some(x);
+                }
+            }
+            (Some(x), None) => {
+                // end of sequence
+                return Some(x);
+            }
+            (None, _) => {
+                return None;
+            }
+        }
+    }
+}
+
+pub trait MyIterExt<'a>: Sized {
+    fn padding(self) -> Padding<'a, Self>;
+}
+
+impl<'a, I: Iterator<Item = &'a Telemetry>> MyIterExt<'a> for I {
+    fn padding(self) -> Padding<'a, Self> {
+        padding(self)
+    }
+}
 
 #[inline]
 fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
@@ -117,7 +179,6 @@ impl Wavefront {
             host: config.host,
             port: config.port,
             aggrs: Buckets::new(config.bin_width),
-            bin_width: config.bin_width,
             seen_telemetry: HashSet::new(),
             delivery_attempts: 0,
             percentiles: config.percentiles,
@@ -134,7 +195,7 @@ impl Wavefront {
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let mut tag_buf = String::with_capacity(1_024);
-        for value in self.aggrs.iter() {
+        for value in padding(self.aggrs.iter()) {
             match value.aggr_method {
                 AggregationMethod::Sum => {
                     report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)

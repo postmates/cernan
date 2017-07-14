@@ -2,7 +2,9 @@ use metric::TagMap;
 use metric::tagmap::cmp;
 use quantiles::ckms::CKMS;
 use std::cmp;
+use std::collections::hash_map::DefaultHasher;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::ops::AddAssign;
 use std::sync;
 use time;
@@ -16,6 +18,13 @@ pub struct Telemetry {
     pub tags: sync::Arc<TagMap>,
     pub timestamp: i64, // seconds, see #166
     pub timestamp_ns: u64,
+}
+
+impl Hash for Telemetry {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.tags.hash(state);
+    }
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
@@ -285,6 +294,13 @@ impl Telemetry {
             }
             other => other.unwrap(),
         }
+    }
+
+    pub fn hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.name.hash(&mut hasher);
+        self.tags.hash(&mut hasher);
+        hasher.finish()
     }
 
     pub fn persist(mut self) -> Telemetry {
