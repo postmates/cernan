@@ -90,27 +90,27 @@ impl Iterator for IntoIter {
     type Item = Telemetry;
 
     fn next(&mut self) -> Option<Telemetry> {
-        if let Some(value_index) = self.value_index {
-            let v = mem::replace(
-                &mut self.buckets.values[self.key_index][value_index],
-                Default::default(),
-            );
-            self.value_index = Some(value_index + 1);
-            Some(v)
-        } else {
-            let result = if self.key_index < self.buckets.keys.len() {
-                let v = mem::replace(
-                    &mut self.buckets.values[self.key_index][0],
-                    Default::default(),
-                );
-                Some(v)
+        while self.key_index < self.buckets.keys.len() {
+            if let Some(value_index) = self.value_index {
+                if value_index < self.buckets.values[self.key_index].len() {
+                    let v = mem::replace(
+                        &mut self.buckets.values[self.key_index][value_index],
+                        Default::default(),
+                    );
+                    self.value_index = Some(value_index + 1);
+                    return Some(v);
+                } else {
+                    self.value_index = None;
+                    self.key_index += 1;
+                }
             } else {
-                None
-            };
-            self.value_index = Some(1);
-            self.key_index += 1;
-            result
+                let v = mem::replace(&mut self.buckets.values[self.key_index][0],
+                                     Default::default());
+                self.value_index = Some(1);
+                return Some(v);
+            }
         }
+        return None
     }
 }
 
@@ -351,38 +351,36 @@ mod test {
                 }
             }
 
-            for vs in bucket.into_iter() {
-                for v in vs {
-                    let ref kind = v.aggr_method;
-                    let time = v.timestamp;
-                    let mut found_one = false;
-                    for m in &mp {
-                        if (m.name == v.name) && (&m.aggr_method == kind) &&
-                            within(bin_width, m.timestamp, time)
-                        {
-                            assert_eq!(Ordering::Equal, m.within(bin_width, v));
-                            found_one = true;
-                            debug_assert!(
-                                v.value() == m.value(),
-                                "{:?} != {:?} |::|::| MODEL: {:?} |::|::|
+            for v in bucket.into_iter() {
+                let ref kind = v.aggr_method;
+                let time = v.timestamp;
+                let mut found_one = false;
+                for m in &mp {
+                    if (m.name == v.name) && (&m.aggr_method == kind) &&
+                        within(bin_width, m.timestamp, time)
+                    {
+                        assert_eq!(Ordering::Equal, m.within(bin_width, &v));
+                        found_one = true;
+                        debug_assert!(
+                            v.value() == m.value(),
+                            "{:?} != {:?} |::|::| MODEL: {:?} |::|::|
     SUT: {:?}",
-                                v.value(),
-                                m.value(),
-                                mp,
-                                ms
-                            );
-                        }
+                            v.value(),
+                            m.value(),
+                            mp,
+                            ms
+                        );
                     }
-                    debug_assert!(
-                        found_one,
-                        "DID NOT FIND ONE FOR {:?} |::|::| MODEL: {:?}
+                }
+                debug_assert!(
+                    found_one,
+                    "DID NOT FIND ONE FOR {:?} |::|::| MODEL: {:?}
     |::|::| SUT: \
                                    {:?}",
-                        v,
-                        mp,
-                        ms
-                    );
-                }
+                    v,
+                    mp,
+                    ms
+                );
             }
             TestResult::passed()
         }
@@ -617,7 +615,7 @@ mod test {
                 });
             let b_cnts: HashSet<String> =
                 bucket.into_iter().fold(HashSet::default(), |mut acc, v| {
-                    acc.insert(v[0].name.clone());
+                    acc.insert(v.name.clone());
                     acc
                 });
             assert_eq!(cnts, b_cnts);
@@ -742,46 +740,56 @@ mod test {
                     }
                 }
             }
+            let len_cnts = cnts.values().fold(0, |acc, ref x| acc + x.len());
 
-            for vals in bucket.into_iter() {
-                let mut v: Vec<Telemetry> = vals.to_vec();
-                v.sort_by_key(|ref m| m.timestamp);
+            assert_eq!(len_cnts, bucket.count());
 
-                let ref cnts_v = *cnts.get(&v[0].name).unwrap();
-                assert_eq!(cnts_v.len(), v.len());
+            for val in bucket.into_iter() {
+                if let Some(c_vs) = cnts.get(&val.name) {
+                    match c_vs.binary_search_by_key(
+                        &val.timestamp,
+                        |&(c_ts, _)| c_ts,
+                    ) {
+                        Ok(idx) => {
+                            let c_v = &c_vs[idx];
 
-                for (i, c_v) in cnts_v.iter().enumerate() {
-                    assert_eq!(c_v.0, v[i].timestamp);
-                    let l_ckms = c_v.1.clone();
-                    let r_ckms = v[i].ckms();
+                            let l_ckms = c_v.1.clone();
+                            let r_ckms = val.ckms();
+                            assert!(
+                                (l_ckms.sum().unwrap() - r_ckms.sum().unwrap())
+                                    .abs() < 0.0001
+                            );
+                            assert!(
+                                (l_ckms.cma().unwrap() - r_ckms.cma().unwrap())
+                                    .abs() < 0.0001
+                            );
+                            assert_eq!(l_ckms.count(), r_ckms.count());
+                            assert!(
+                                (l_ckms.query(0.5).unwrap().1 -
+                                     r_ckms.query(0.5).unwrap().1)
+                                    .abs() < 0.0001
+                            );
+                            assert!(
+                                (l_ckms.query(0.75).unwrap().1 -
+                                     r_ckms.query(0.75).unwrap().1)
+                                    .abs() < 0.0001
+                            );
+                            assert!(
+                                (l_ckms.query(0.99).unwrap().1 -
+                                     r_ckms.query(0.99).unwrap().1)
+                                    .abs() < 0.0001
+                            );
+                            assert!(
+                                (l_ckms.query(0.999).unwrap().1 -
+                                     r_ckms.query(0.999).unwrap().1)
+                                    .abs() < 0.0001
+                            );
+                        }
+                        Err(_) => return TestResult::failed(),
+                    }
 
-                    assert!(
-                        (l_ckms.sum().unwrap() - r_ckms.sum().unwrap()).abs() < 0.0001
-                    );
-                    assert!(
-                        (l_ckms.cma().unwrap() - r_ckms.cma().unwrap()).abs() < 0.0001
-                    );
-                    assert_eq!(l_ckms.count(), r_ckms.count());
-                    assert!(
-                        (l_ckms.query(0.5).unwrap().1 -
-                             r_ckms.query(0.5).unwrap().1)
-                            .abs() < 0.0001
-                    );
-                    assert!(
-                        (l_ckms.query(0.75).unwrap().1 -
-                             r_ckms.query(0.75).unwrap().1)
-                            .abs() < 0.0001
-                    );
-                    assert!(
-                        (l_ckms.query(0.99).unwrap().1 -
-                             r_ckms.query(0.99).unwrap().1)
-                            .abs() < 0.0001
-                    );
-                    assert!(
-                        (l_ckms.query(0.999).unwrap().1 -
-                             r_ckms.query(0.999).unwrap().1)
-                            .abs() < 0.0001
-                    );
+                } else {
+                    return TestResult::failed();
                 }
             }
 

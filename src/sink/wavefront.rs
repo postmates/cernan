@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::Write as IoWrite;
+use std::mem;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::string;
@@ -87,21 +88,21 @@ fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
     }
 }
 
-pub fn padding<'a, I: Iterator<Item = &'a Telemetry>>(xs: I) -> Padding<'a, I> {
+pub fn padding<I: Iterator<Item = Telemetry>>(xs: I) -> Padding<I> {
     Padding {
         orig: xs,
         emit_q: Vec::new(),
     }
 }
 
-pub struct Padding<'a, I> {
+pub struct Padding<I> {
     orig: I,
-    emit_q: Vec<&'a Telemetry>,
+    emit_q: Vec<Telemetry>,
 }
 
-impl<'a, I> Iterator for Padding<'a, I>
+impl<I> Iterator for Padding<I>
 where
-    I: Iterator<Item = &'a Telemetry>,
+    I: Iterator<Item = Telemetry>,
 {
     type Item = I::Item;
 
@@ -110,21 +111,27 @@ where
             return Some(x);
         }
         match (self.orig.next(), self.orig.next()) {
-            (Some(ref x), Some(ref y)) => {
-                if (*x).hash() == (*y).hash() {
+            (Some(x), Some(y)) => {
+                if x.hash() == y.hash() {
                     match (x.timestamp - y.timestamp).abs() {
                         1 => {
                             self.emit_q.push(y);
                             return Some(x);
                         }
                         2 => {
-                            self.emit_q.push(&x.clone().timestamp(x.timestamp + 1).set_value(0.0));
+                            self.emit_q.push(
+                                x.clone().timestamp(x.timestamp + 1).set_value(0.0),
+                            );
                             self.emit_q.push(y);
                             return Some(x);
                         }
                         _ => {
-                            self.emit_q.push(&x.clone().timestamp(x.timestamp + 1).set_value(0.0));
-                            self.emit_q.push(&y.clone().timestamp(y.timestamp - 1).set_value(0.0));
+                            self.emit_q.push(
+                                x.clone().timestamp(x.timestamp + 1).set_value(0.0),
+                            );
+                            self.emit_q.push(
+                                y.clone().timestamp(y.timestamp - 1).set_value(0.0),
+                            );
                             self.emit_q.push(y);
                             return Some(x);
                         }                            
@@ -145,12 +152,12 @@ where
     }
 }
 
-pub trait MyIterExt<'a>: Sized {
-    fn padding(self) -> Padding<'a, Self>;
+pub trait MyIterExt: Sized {
+    fn padding(self) -> Padding<Self>;
 }
 
-impl<'a, I: Iterator<Item = &'a Telemetry>> MyIterExt<'a> for I {
-    fn padding(self) -> Padding<'a, Self> {
+impl<I: Iterator<Item = Telemetry>> MyIterExt for I {
+    fn padding(self) -> Padding<Self> {
         padding(self)
     }
 }
@@ -195,7 +202,8 @@ impl Wavefront {
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let mut tag_buf = String::with_capacity(1_024);
-        for value in padding(self.aggrs.iter()) {
+        let aggrs = mem::replace(&mut self.aggrs, Buckets::default());
+        for value in padding(aggrs.into_iter()) {
             match value.aggr_method {
                 AggregationMethod::Sum => {
                     report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
@@ -291,6 +299,7 @@ impl Sink for Wavefront {
     }
 
     fn flush(&mut self) {
+        self.format_stats(time::now());
         loop {
             report_telemetry(
                 "cernan.sinks.wavefront.delivery_attempts",
@@ -306,10 +315,8 @@ impl Sink for Wavefront {
                     for ip in ips {
                         match TcpStream::connect(ip) {
                             Ok(mut stream) => {
-                                self.format_stats(time::now());
                                 let res = stream.write(self.stats.as_bytes());
                                 if res.is_ok() {
-                                    self.aggrs.reset();
                                     self.stats.clear();
                                     self.delivery_attempts = 0;
                                     return;
