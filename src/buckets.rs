@@ -226,9 +226,7 @@ impl Buckets {
 //
 #[cfg(test)]
 mod test {
-    extern crate quickcheck;
-
-    use self::quickcheck::{QuickCheck, TestResult};
+    use quickcheck::{QuickCheck, TestResult};
     use super::*;
     use chrono::{TimeZone, Utc};
     use metric::Telemetry;

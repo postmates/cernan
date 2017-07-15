@@ -17,6 +17,7 @@ use time;
 pub struct Wavefront {
     host: String,
     port: u16,
+    bin_width: i64,
     aggrs: Buckets,
     seen_telemetry: HashSet<u64>, // hash of Telemetry.name + Telemetry.tags
     delivery_attempts: u32,
@@ -88,15 +89,19 @@ fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
     }
 }
 
-pub fn padding<I: Iterator<Item = Telemetry>>(xs: I) -> Padding<I> {
+pub fn padding<I: Iterator<Item = Telemetry>>(xs: I, span: i64) -> Padding<I> {
     Padding {
+        span: span,
         orig: xs,
+        last_emit_ts: None,
         emit_q: Vec::new(),
     }
 }
 
 pub struct Padding<I> {
+    span: i64,
     orig: I,
+    last_emit_ts: Option<i64>,
     emit_q: Vec<Telemetry>,
 }
 
@@ -107,58 +112,74 @@ where
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
+        println!("{:?}", self.emit_q);
         if let Some(x) = self.emit_q.pop() {
+            self.last_emit_ts = Some(x.timestamp);
             return Some(x);
         }
         match (self.orig.next(), self.orig.next()) {
             (Some(x), Some(y)) => {
+                // self.last_emit_ts = None;
+                println!("x: {:?} || y: {:?}", x, y);
+                println!("x_hash: {:?} || y_hash: {:?}", x.hash(), y.hash());
                 if x.hash() == y.hash() {
-                    match (x.timestamp - y.timestamp).abs() {
-                        1 => {
-                            self.emit_q.push(y);
-                            return Some(x);
-                        }
-                        2 => {
-                            self.emit_q.push(
-                                x.clone().timestamp(x.timestamp + 1).set_value(0.0),
-                            );
+                    println!("span_comp: {:?}", (x.timestamp - y.timestamp).abs() / self.span);
+                    match (x.timestamp - y.timestamp).abs() / self.span {
+                        0 | 1 => {
                             self.emit_q.push(y);
                             return Some(x);
                         }
                         _ => {
+                            let sub_y = y.clone().timestamp(y.timestamp - 1).set_value(0.0);
+                            self.emit_q.push(y);
+                            self.emit_q.push(sub_y);
                             self.emit_q.push(
                                 x.clone().timestamp(x.timestamp + 1).set_value(0.0),
                             );
-                            self.emit_q.push(
-                                y.clone().timestamp(y.timestamp - 1).set_value(0.0),
-                            );
-                            self.emit_q.push(y);
                             return Some(x);
-                        }                            
+                        }
                     }
                 } else {
                     self.emit_q.push(y);
-                    return Some(x);
+                    if let Some(last_emit_ts) = self.last_emit_ts {
+                        match (x.timestamp - last_emit_ts).abs() / self.span {
+                            0 | 1 => { return Some(x) },
+                            _ => {
+                                let let_p = x.clone().timestamp(last_emit_ts + 1).set_value(0.0);
+                                let sub_x = x.clone().timestamp(x.timestamp - 1).set_value(0.0);
+                                self.emit_q.push(x);
+                                self.emit_q.push(sub_x);
+                                return Some(let_p);
+                            }
+                        }
+                    } else {
+                        return Some(x);
+                    }
                 }
             }
             (Some(x), None) => {
-                // end of sequence
-                return Some(x);
+                if let Some(last_emit_ts) = self.last_emit_ts {
+                    match (x.timestamp - last_emit_ts).abs() / self.span {
+                        0 | 1 => { return Some(x) },
+                        _ => {
+                            let let_p = x.clone().timestamp(last_emit_ts + 1).set_value(0.0);
+                            let sub_x = x.clone().timestamp(x.timestamp - 1).set_value(0.0);
+                            self.emit_q.push(x);
+                            self.emit_q.push(sub_x);
+                            return Some(let_p);
+                        }
+                    }
+                } else {
+                    // end of sequence
+                    println!("END OF SEQUENCE");
+                    return Some(x);
+                }
             }
             (None, _) => {
+                println!("FELL OFF THE WORLD");
                 return None;
             }
         }
-    }
-}
-
-pub trait MyIterExt: Sized {
-    fn padding(self) -> Padding<Self>;
-}
-
-impl<I: Iterator<Item = Telemetry>> MyIterExt for I {
-    fn padding(self) -> Padding<Self> {
-        padding(self)
     }
 }
 
@@ -185,6 +206,7 @@ impl Wavefront {
         Ok(Wavefront {
             host: config.host,
             port: config.port,
+            bin_width: config.bin_width,
             aggrs: Buckets::new(config.bin_width),
             seen_telemetry: HashSet::new(),
             delivery_attempts: 0,
@@ -203,7 +225,7 @@ impl Wavefront {
 
         let mut tag_buf = String::with_capacity(1_024);
         let aggrs = mem::replace(&mut self.aggrs, Buckets::default());
-        for value in padding(aggrs.into_iter()) {
+        for value in padding(aggrs.into_iter(), self.bin_width) {
             match value.aggr_method {
                 AggregationMethod::Sum => {
                     report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
@@ -370,11 +392,138 @@ impl Sink for Wavefront {
 
 #[cfg(test)]
 mod test {
+    use quickcheck::{QuickCheck, TestResult};
     use super::*;
     use chrono::{TimeZone, Utc};
     use metric::{TagMap, Telemetry};
     use sink::Sink;
     use std::sync::Arc;
+
+    #[test]
+    fn manual_test_no_unpadded_gaps() {
+        let bin_width = 1;
+        let mut bucket = Buckets::new(bin_width);
+
+        bucket.add(Telemetry::new("", 28.0).timestamp(28).aggr_sum());
+        bucket.add(Telemetry::new("", 19.0).timestamp(19).aggr_sum());
+        bucket.add(Telemetry::new("", 3.0).timestamp(3).aggr_sum());
+        bucket.add(Telemetry::new("", 57.0).timestamp(57).aggr_sum());
+
+        let mut padding = padding(bucket.into_iter(), bin_width);
+
+        {
+            let t = padding.next().unwrap();
+            assert_eq!(t.name, "");
+            assert_eq!(t.value(), Some(3.0));
+            assert_eq!(t.timestamp, 3);
+        }
+        {
+            let t = padding.next().unwrap();
+            assert_eq!(t.name, "");
+            assert_eq!(t.value(), Some(0.0));
+            assert_eq!(t.timestamp, 4);
+        }
+        {
+            let t = padding.next().unwrap();
+            assert_eq!(t.name, "");
+            assert_eq!(t.value(), Some(0.0));
+            assert_eq!(t.timestamp, 18);
+        }
+        {
+            let t = padding.next().unwrap();
+            assert_eq!(t.name, "");
+            assert_eq!(t.value(), Some(19.0));
+            assert_eq!(t.timestamp, 19);
+        }
+        {
+            let t = padding.next().unwrap();
+            assert_eq!(t.name, "");
+            assert_eq!(t.value(), Some(0.0));
+            assert_eq!(t.timestamp, 20);
+        }
+        {
+            let t = padding.next().unwrap();
+            assert_eq!(t.name, "");
+            assert_eq!(t.value(), Some(0.0));
+            assert_eq!(t.timestamp, 27);
+        }
+        {
+            let t = padding.next().unwrap();
+            assert_eq!(t.name, "");
+            assert_eq!(t.value(), Some(28.0));
+            assert_eq!(t.timestamp, 28);
+        }
+        {
+            let t = padding.next().unwrap();
+            assert_eq!(t.name, "");
+            assert_eq!(t.value(), Some(0.0));
+            assert_eq!(t.timestamp, 29);
+        }
+        {
+            let t = padding.next().unwrap();
+            assert_eq!(t.name, "");
+            assert_eq!(t.value(), Some(0.0));
+            assert_eq!(t.timestamp, 56);
+        }
+        {
+            let t = padding.next().unwrap();
+            assert_eq!(t.name, "");
+            assert_eq!(t.value(), Some(57.0));
+            assert_eq!(t.timestamp, 57);
+        }
+    }
+
+    #[test]
+    fn test_no_unpadded_gaps() {
+        fn inner(bin_width: u8, ms: Vec<Telemetry>) -> TestResult {
+            if bin_width == 0 {
+                return TestResult::discard();
+            }
+            // TODO
+            //
+            // The fact that I have to set a bucket here suggests that 'padding'
+            // might be sensible for inclusion as an interator on the
+            // Bucket. But! It doesn't have to be that way, if the
+            // Vec<Telemetry> is pre-prepped.
+            let mut bucket = Buckets::new(bin_width as i64);
+            for m in ms.clone() {
+                bucket.add(m);
+            }
+            let mut padding = padding(bucket.into_iter(), bin_width as i64).peekable();
+
+            while let Some(t) = padding.next() {
+                if let Some(next_t) = padding.peek() {
+                    // When we examine the next point in a series there are
+                    // three possibilities:
+                    //
+                    //  1. the points don't hash the same, so we move on
+                    //  2. the points do hash the same:
+                    //     a. if their timestamps are greater than one span
+                    //        apart then they are both zero
+                    //     b. if both points are non-zero they must not be
+                    //        more than one span apart
+                    if t.hash() == next_t.hash() {
+                        let span = (t.timestamp - next_t.timestamp).abs() / (bin_width as i64);
+                        // println!("{:?}\n{:?}", t, next_t);
+                        if span > 1 {
+                            assert_eq!(t.value(), Some(0.0));
+                            assert_eq!(next_t.value(), Some(0.0));
+                        }
+                        if (t.value() != Some(0.0)) && (next_t.value() != Some(0.0)) {
+                            assert!(span <= 1);
+                        }
+                    } else {
+                        continue
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(inner as fn(u8, Vec<Telemetry>) -> TestResult);
+    }
 
     #[test]
     fn test_format_wavefront() {

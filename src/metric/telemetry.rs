@@ -24,6 +24,7 @@ impl Hash for Telemetry {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
         self.tags.hash(state);
+        self.aggr_method.hash(state);
     }
 }
 
@@ -63,13 +64,10 @@ impl fmt::Debug for Telemetry {
         write!(
             f,
             "Telemetry {{ aggr_method: {:#?}, name: {}, timestamp: {}, \
-             timestamp_ns: {}, persist: {}, tags: {:?}, value: {:?} }}",
+             value: {:?} }}",
             self.aggr_method,
             self.name,
             self.timestamp,
-            self.timestamp_ns,
-            self.persist,
-            self.tags,
             self.value()
         )
     }
@@ -300,6 +298,7 @@ impl Telemetry {
         let mut hasher = DefaultHasher::new();
         self.name.hash(&mut hasher);
         self.tags.hash(&mut hasher);
+        self.aggr_method.hash(&mut hasher);
         hasher.finish()
     }
 
