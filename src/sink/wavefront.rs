@@ -3,9 +3,6 @@ use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
 use source::report_telemetry;
 use std::cmp;
-use std::collections::HashSet;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::io::Write as IoWrite;
 use std::mem;
 use std::net::TcpStream;
@@ -19,18 +16,10 @@ pub struct Wavefront {
     port: u16,
     bin_width: i64,
     aggrs: Buckets,
-    seen_telemetry: HashSet<u64>, // hash of Telemetry.name + Telemetry.tags
     delivery_attempts: u32,
     percentiles: Vec<(String, f64)>,
     pub stats: String,
     flush_interval: u64,
-}
-
-fn calculate_hash(t: &Telemetry) -> u64 {
-    let mut s = DefaultHasher::new();
-    t.name.hash(&mut s);
-    t.tags.hash(&mut s);
-    s.finish()
 }
 
 #[derive(Debug, Deserialize)]
@@ -207,7 +196,6 @@ impl Wavefront {
             port: config.port,
             bin_width: config.bin_width,
             aggrs: Buckets::new(config.bin_width),
-            seen_telemetry: HashSet::new(),
             delivery_attempts: 0,
             percentiles: config.percentiles,
             stats: String::with_capacity(8_192),
@@ -372,7 +360,6 @@ impl Sink for Wavefront {
 
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
         let telem: Telemetry = sync::Arc::make_mut(&mut point).take().unwrap();
-        self.seen_telemetry.insert(calculate_hash(&telem));
         self.aggrs.add(telem);
     }
 
