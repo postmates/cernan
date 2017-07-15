@@ -110,7 +110,6 @@ where
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
-        //println!("{:?}", self.emit_q);
         let next_x = if let Some(x) = self.emit_q.pop() {
             Some(x)
         } else {
@@ -123,10 +122,7 @@ where
         };
         match (next_x, next_y) {
             (Some(x), Some(y)) => {
-                //println!("x: {:?} || y: {:?}", x, y);
-                ////println!("x_hash: {:?} || y_hash: {:?}", x.hash(), y.hash());
                 if x.hash() == y.hash() {
-                    //println!("span_comp: {:?}", (x.timestamp - y.timestamp).abs() / self.span);
                     match (x.timestamp - y.timestamp).abs() / self.span {
                         0 | 1 => {
                             self.emit_q.push(y);
@@ -153,11 +149,9 @@ where
             }
             (Some(x), None) => {
                 // end of sequence
-                //println!("END OF SEQUENCE");
                 return Some(x);
             }
             (None, _) => {
-                //println!("FELL OFF THE WORLD");
                 return None;
             }
         }
@@ -381,80 +375,6 @@ mod test {
     use std::sync::Arc;
 
     #[test]
-    fn manual_test_no_unpadded_gaps() {
-        let bin_width = 1;
-        let mut bucket = Buckets::new(bin_width);
-
-        bucket.add(Telemetry::new("", 3.0).timestamp(3).aggr_sum());
-        bucket.add(Telemetry::new("", 19.0).timestamp(19).aggr_sum());
-        bucket.add(Telemetry::new("", 28.0).timestamp(28).aggr_sum());
-        bucket.add(Telemetry::new("", 57.0).timestamp(57).aggr_sum());
-
-        let mut padding = padding(bucket.into_iter(), bin_width);
-
-        {
-            let t = padding.next().unwrap();
-            assert_eq!(t.name, "");
-            assert_eq!(t.value(), Some(3.0));
-            assert_eq!(t.timestamp, 3);
-        }
-        {
-            let t = padding.next().unwrap();
-            assert_eq!(t.name, "");
-            assert_eq!(t.value(), Some(0.0));
-            assert_eq!(t.timestamp, 4);
-        }
-        {
-            let t = padding.next().unwrap();
-            assert_eq!(t.name, "");
-            assert_eq!(t.value(), Some(0.0));
-            assert_eq!(t.timestamp, 18);
-        }
-        {
-            let t = padding.next().unwrap();
-            assert_eq!(t.name, "");
-            assert_eq!(t.value(), Some(19.0));
-            assert_eq!(t.timestamp, 19);
-        }
-        {
-            let t = padding.next().unwrap();
-            assert_eq!(t.name, "");
-            assert_eq!(t.value(), Some(0.0));
-            assert_eq!(t.timestamp, 20);
-        }
-        {
-            let t = padding.next().unwrap();
-            assert_eq!(t.name, "");
-            assert_eq!(t.value(), Some(0.0));
-            assert_eq!(t.timestamp, 27);
-        }
-        {
-            let t = padding.next().unwrap();
-            assert_eq!(t.name, "");
-            assert_eq!(t.value(), Some(28.0));
-            assert_eq!(t.timestamp, 28);
-        }
-        {
-            let t = padding.next().unwrap();
-            assert_eq!(t.name, "");
-            assert_eq!(t.value(), Some(0.0));
-            assert_eq!(t.timestamp, 29);
-        }
-        {
-            let t = padding.next().unwrap();
-            assert_eq!(t.name, "");
-            assert_eq!(t.value(), Some(0.0));
-            assert_eq!(t.timestamp, 56);
-        }
-        {
-            let t = padding.next().unwrap();
-            assert_eq!(t.name, "");
-            assert_eq!(t.value(), Some(57.0));
-            assert_eq!(t.timestamp, 57);
-        }
-    }
-
-    #[test]
     fn test_no_unpadded_gaps() {
         fn inner(bin_width: u8, ms: Vec<Telemetry>) -> TestResult {
             if bin_width == 0 {
@@ -485,7 +405,6 @@ mod test {
                     //        more than one span apart
                     if t.hash() == next_t.hash() {
                         let span = (t.timestamp - next_t.timestamp).abs() / (bin_width as i64);
-                        // //println!("{:?}\n{:?}", t, next_t);
                         if span > 1 {
                             assert_eq!(t.value(), Some(0.0));
                             assert_eq!(next_t.value(), Some(0.0));
@@ -501,6 +420,39 @@ mod test {
                 }
             }
 
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(inner as fn(u8, Vec<Telemetry>) -> TestResult);
+    }
+
+    #[test]
+    fn test_never_fewer_non_zero() {
+        fn inner(bin_width: u8, ms: Vec<Telemetry>) -> TestResult {
+            if bin_width == 0 {
+                return TestResult::discard();
+            }
+
+            let mut bucket = Buckets::new(bin_width as i64);
+            for m in ms.clone() {
+                bucket.add(m);
+            }
+
+            let mut total_non_zero = 0;
+            for val in bucket.clone().into_iter() {
+                if val.value() != Some(0.0) {
+                    total_non_zero += 1;
+                }
+            }
+
+            let padding = padding(bucket.into_iter(), bin_width as i64);
+            let mut total = 0;
+            for val in padding {
+                if val.value() != Some(0.0) {
+                    total += 1;
+                }
+            }
+
+            assert_eq!(total_non_zero, total);
             TestResult::passed()
         }
         QuickCheck::new().quickcheck(inner as fn(u8, Vec<Telemetry>) -> TestResult);
