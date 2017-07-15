@@ -110,6 +110,13 @@ where
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // To figure out what to do we have to know if there's a 'gap' in the
+        // original iterator to be filled. This is complicated by emit_q which
+        // we use to buffer points that we've read out of the initial iterator
+        // _and_ zero points that need to be emitted.
+        //
+        // We preferentially pull points from the emission queue. In the event
+        // that there are not enough, we go to the original iterator.
         let next_x = if let Some(x) = self.emit_q.pop() {
             Some(x)
         } else {
@@ -122,13 +129,30 @@ where
         };
         match (next_x, next_y) {
             (Some(x), Some(y)) => {
+                // Telemetry hashes by considering name, timestamp and
+                // aggregation. If these three are different then the next point
+                // is not part of our current sequence and it requires no
+                // padding.
                 if x.hash() == y.hash() {
                     match (x.timestamp - y.timestamp).abs() / self.span {
                         0 | 1 => {
+                            // In this case the next point, y, is within the
+                            // span configured by the user. We stash it into
+                            // emit_q and will pull it on the next iterative
+                            // go-around.
                             self.emit_q.push(y);
                             return Some(x);
                         }
                         _ => {
+                            // This case is tricky. Here we've found that the
+                            // span between our current point, x, and the next
+                            // point, y, is larger than the configured
+                            // limit. But! If the current point is zero we don't
+                            // want to make any more zero points to pad the gap.
+                            //
+                            // If the value of x is zero we stash the next
+                            // point. Else, we make our pad, stashing those
+                            // points plus y.
                             if x.value() == Some(0.0) {
                                 self.emit_q.push(y);
                             } else {
