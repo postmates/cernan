@@ -93,7 +93,6 @@ pub fn padding<I: Iterator<Item = Telemetry>>(xs: I, span: i64) -> Padding<I> {
     Padding {
         span: span,
         orig: xs,
-        last_emit_ts: None,
         emit_q: Vec::new(),
     }
 }
@@ -101,7 +100,6 @@ pub fn padding<I: Iterator<Item = Telemetry>>(xs: I, span: i64) -> Padding<I> {
 pub struct Padding<I> {
     span: i64,
     orig: I,
-    last_emit_ts: Option<i64>,
     emit_q: Vec<Telemetry>,
 }
 
@@ -112,71 +110,54 @@ where
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
-        println!("{:?}", self.emit_q);
-        if let Some(x) = self.emit_q.pop() {
-            self.last_emit_ts = Some(x.timestamp);
-            return Some(x);
-        }
-        match (self.orig.next(), self.orig.next()) {
+        //println!("{:?}", self.emit_q);
+        let next_x = if let Some(x) = self.emit_q.pop() {
+            Some(x)
+        } else {
+            self.orig.next()
+        };
+        let next_y = if let Some(y) = self.emit_q.pop() {
+            Some(y)
+        } else {
+            self.orig.next()
+        };
+        match (next_x, next_y) {
             (Some(x), Some(y)) => {
-                // self.last_emit_ts = None;
-                println!("x: {:?} || y: {:?}", x, y);
-                println!("x_hash: {:?} || y_hash: {:?}", x.hash(), y.hash());
+                //println!("x: {:?} || y: {:?}", x, y);
+                ////println!("x_hash: {:?} || y_hash: {:?}", x.hash(), y.hash());
                 if x.hash() == y.hash() {
-                    println!("span_comp: {:?}", (x.timestamp - y.timestamp).abs() / self.span);
+                    //println!("span_comp: {:?}", (x.timestamp - y.timestamp).abs() / self.span);
                     match (x.timestamp - y.timestamp).abs() / self.span {
                         0 | 1 => {
                             self.emit_q.push(y);
                             return Some(x);
                         }
                         _ => {
-                            let sub_y = y.clone().timestamp(y.timestamp - 1).set_value(0.0);
-                            self.emit_q.push(y);
-                            self.emit_q.push(sub_y);
-                            self.emit_q.push(
-                                x.clone().timestamp(x.timestamp + 1).set_value(0.0),
-                            );
+                            if x.value() == Some(0.0) {
+                                self.emit_q.push(y);
+                            } else {
+                                let sub_y = y.clone().timestamp(y.timestamp - 1).set_value(0.0);
+                                self.emit_q.push(y);
+                                self.emit_q.push(sub_y);
+                                self.emit_q.push(
+                                    x.clone().timestamp(x.timestamp + 1).set_value(0.0),
+                                );
+                            }
                             return Some(x);
                         }
                     }
                 } else {
                     self.emit_q.push(y);
-                    if let Some(last_emit_ts) = self.last_emit_ts {
-                        match (x.timestamp - last_emit_ts).abs() / self.span {
-                            0 | 1 => { return Some(x) },
-                            _ => {
-                                let let_p = x.clone().timestamp(last_emit_ts + 1).set_value(0.0);
-                                let sub_x = x.clone().timestamp(x.timestamp - 1).set_value(0.0);
-                                self.emit_q.push(x);
-                                self.emit_q.push(sub_x);
-                                return Some(let_p);
-                            }
-                        }
-                    } else {
-                        return Some(x);
-                    }
-                }
-            }
-            (Some(x), None) => {
-                if let Some(last_emit_ts) = self.last_emit_ts {
-                    match (x.timestamp - last_emit_ts).abs() / self.span {
-                        0 | 1 => { return Some(x) },
-                        _ => {
-                            let let_p = x.clone().timestamp(last_emit_ts + 1).set_value(0.0);
-                            let sub_x = x.clone().timestamp(x.timestamp - 1).set_value(0.0);
-                            self.emit_q.push(x);
-                            self.emit_q.push(sub_x);
-                            return Some(let_p);
-                        }
-                    }
-                } else {
-                    // end of sequence
-                    println!("END OF SEQUENCE");
                     return Some(x);
                 }
             }
+            (Some(x), None) => {
+                // end of sequence
+                //println!("END OF SEQUENCE");
+                return Some(x);
+            }
             (None, _) => {
-                println!("FELL OFF THE WORLD");
+                //println!("FELL OFF THE WORLD");
                 return None;
             }
         }
@@ -404,9 +385,9 @@ mod test {
         let bin_width = 1;
         let mut bucket = Buckets::new(bin_width);
 
-        bucket.add(Telemetry::new("", 28.0).timestamp(28).aggr_sum());
-        bucket.add(Telemetry::new("", 19.0).timestamp(19).aggr_sum());
         bucket.add(Telemetry::new("", 3.0).timestamp(3).aggr_sum());
+        bucket.add(Telemetry::new("", 19.0).timestamp(19).aggr_sum());
+        bucket.add(Telemetry::new("", 28.0).timestamp(28).aggr_sum());
         bucket.add(Telemetry::new("", 57.0).timestamp(57).aggr_sum());
 
         let mut padding = padding(bucket.into_iter(), bin_width);
@@ -504,7 +485,7 @@ mod test {
                     //        more than one span apart
                     if t.hash() == next_t.hash() {
                         let span = (t.timestamp - next_t.timestamp).abs() / (bin_width as i64);
-                        // println!("{:?}\n{:?}", t, next_t);
+                        // //println!("{:?}\n{:?}", t, next_t);
                         if span > 1 {
                             assert_eq!(t.value(), Some(0.0));
                             assert_eq!(next_t.value(), Some(0.0));
@@ -626,7 +607,7 @@ mod test {
         wavefront.format_stats(dt_2);
         let lines: Vec<&str> = wavefront.stats.lines().collect();
 
-        println!("{:?}", lines);
+        //println!("{:?}", lines);
         assert!(lines.contains(&"test.counter 1 645181811 source=test-src"));
         assert!(lines.contains(&"test.counter 3 645181812 source=test-src"));
         assert!(lines.contains(&"test.gauge 3.211 645181811 source=test-src"));
