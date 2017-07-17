@@ -18,6 +18,8 @@ pub struct Native {
     host: String,
     buffer: Vec<metric::Event>,
     flush_interval: u64,
+    delivery_attempts: u32,
+    stream: Option<TcpStream>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,22 +43,46 @@ impl Default for NativeConfig {
 
 impl Native {
     pub fn new(config: NativeConfig) -> Native {
+        let stream = connect(&config.host, config.port);
         Native {
             port: config.port,
             host: config.host,
             buffer: Vec::new(),
             flush_interval: config.flush_interval,
+            delivery_attempts: 0,
+            stream: stream,
         }
     }
 }
 
-impl Default for Native {
-    fn default() -> Self {
-        Native {
-            port: 1972,
-            host: String::from("127.0.0.1"),
-            buffer: Vec::new(),
-            flush_interval: 60,
+fn connect(host: &str, port: u16) -> Option<TcpStream> {
+    let addrs = (host, port).to_socket_addrs();
+    match addrs {
+        Ok(srv) => {
+            let ips: Vec<_> = srv.collect();
+            for ip in ips {
+                match TcpStream::connect(ip) {
+                    Ok(stream) => return Some(stream),
+                    Err(e) => {
+                        info!(
+                            "Unable to connect to proxy at {} using addr {} with error \
+                             {}",
+                            host,
+                            ip,
+                            e
+                        )
+                    }
+                }
+            }
+            None
+        }
+        Err(e) => {
+            info!(
+                "Unable to perform DNS lookup on host {} with error {}",
+                host,
+                e
+            );
+            None
         }
     }
 }
@@ -170,44 +196,29 @@ impl Sink for Native {
         pyld.set_points(RepeatedField::from_vec(points));
         pyld.set_lines(RepeatedField::from_vec(lines));
 
-        let addrs = (self.host.as_str(), self.port).to_socket_addrs();
-        match addrs {
-            Ok(srv) => {
-                let ips: Vec<_> = srv.collect();
-                for ip in ips {
-                    match TcpStream::connect(ip) {
-                        Ok(stream) => {
-                            let mut bufwrite = BufWriter::new(stream);
-                            let mut stream = CodedOutputStream::new(&mut bufwrite);
-                            let mut sz_buf = [0; 4];
-                            let pyld_len = pyld.compute_size();
-                            BigEndian::write_u32(&mut sz_buf, pyld_len);
-                            stream.write_raw_bytes(&sz_buf).unwrap();
-                            let res = pyld.write_to_with_cached_sizes(&mut stream);
-                            if res.is_ok() {
-                                self.buffer.clear();
-                                return;
-                            }
-                        }
-                        Err(e) => {
-                            info!(
-                                "Unable to connect to proxy at {} using addr {}
-        with \
-                                   error {}",
-                                self.host,
-                                ip,
-                                e
-                            )
-                        }
-                    }
+        loop {
+            let mut delivery_failure = false;
+            if let Some(ref mut stream) = self.stream {
+                let mut bufwrite = BufWriter::new(stream);
+                let mut stream = CodedOutputStream::new(&mut bufwrite);
+                let mut sz_buf = [0; 4];
+                let pyld_len = pyld.compute_size();
+                BigEndian::write_u32(&mut sz_buf, pyld_len);
+                stream.write_raw_bytes(&sz_buf).unwrap();
+                let res = pyld.write_to_with_cached_sizes(&mut stream);
+                if res.is_ok() {
+                    self.buffer.clear();
+                    return;
+                } else {
+                    self.delivery_attempts = self.delivery_attempts.saturating_add(1);
+                    delivery_failure = true;
                 }
+            } else {
+                time::delay(self.delivery_attempts);
+                self.stream = connect(&self.host, self.port);
             }
-            Err(e) => {
-                info!(
-                    "Unable to perform DNS lookup on host {} with error {}",
-                    self.host,
-                    e
-                );
+            if delivery_failure {
+                self.stream = None
             }
         }
     }

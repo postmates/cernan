@@ -20,6 +20,7 @@ pub struct Wavefront {
     percentiles: Vec<(String, f64)>,
     pub stats: String,
     flush_interval: u64,
+    stream: Option<TcpStream>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -186,11 +187,44 @@ where
     }
 }
 
+fn connect(host: &str, port: u16) -> Option<TcpStream> {
+    let addrs = (host, port).to_socket_addrs();
+    match addrs {
+        Ok(srv) => {
+            let ips: Vec<_> = srv.collect();
+            for ip in ips {
+                match TcpStream::connect(ip) {
+                    Ok(stream) => return Some(stream),
+                    Err(e) => {
+                        info!(
+                            "Unable to connect to proxy at {} using addr {} with error \
+                             {}",
+                            host,
+                            ip,
+                            e
+                        )
+                    }
+                }
+            }
+            None
+        }
+        Err(e) => {
+            info!(
+                "Unable to perform DNS lookup on host {} with error {}",
+                host,
+                e
+            );
+            None
+        }
+    }
+}
+
 impl Wavefront {
     pub fn new(config: WavefrontConfig) -> Result<Wavefront, String> {
         if config.host == "" {
             return Err("Host can not be empty".to_string());
         }
+        let stream = connect(&config.host, config.port);
         Ok(Wavefront {
             host: config.host,
             port: config.port,
@@ -199,6 +233,7 @@ impl Wavefront {
             delivery_attempts: 0,
             percentiles: config.percentiles,
             stats: String::with_capacity(8_192),
+            stream: stream,
             flush_interval: config.flush_interval,
         })
     }
@@ -317,43 +352,24 @@ impl Sink for Wavefront {
             if self.delivery_attempts > 0 {
                 debug!("delivery attempts: {}", self.delivery_attempts);
             }
-            let addrs = (self.host.as_str(), self.port).to_socket_addrs();
-            match addrs {
-                Ok(srv) => {
-                    let ips: Vec<_> = srv.collect();
-                    for ip in ips {
-                        match TcpStream::connect(ip) {
-                            Ok(mut stream) => {
-                                let res = stream.write(self.stats.as_bytes());
-                                if res.is_ok() {
-                                    self.stats.clear();
-                                    self.delivery_attempts = 0;
-                                    return;
-                                } else {
-                                    self.delivery_attempts =
-                                        self.delivery_attempts.saturating_add(1);
-                                }
-                            }
-                            Err(e) => {
-                                info!(
-                                    "Unable to connect to proxy at {} using addr {} with error \
-                                     {}",
-                                    self.host,
-                                    ip,
-                                    e
-                                )
-                            }
-                        }
-                        time::delay(self.delivery_attempts);
-                    }
+            let mut delivery_failure = false;
+            if let Some(ref mut stream) = self.stream {
+                let res = stream.write_all(self.stats.as_bytes());
+                if res.is_ok() {
+                    self.aggrs.reset();
+                    self.stats.clear();
+                    self.delivery_attempts = 0;
+                    return;
+                } else {
+                    self.delivery_attempts = self.delivery_attempts.saturating_add(1);
+                    delivery_failure = true;
                 }
-                Err(e) => {
-                    info!(
-                        "Unable to perform DNS lookup on host {} with error {}",
-                        self.host,
-                        e
-                    );
-                }
+            } else {
+                time::delay(self.delivery_attempts);
+                self.stream = connect(&self.host, self.port);
+            }
+            if delivery_failure {
+                self.stream = None
             }
         }
     }
