@@ -294,6 +294,17 @@ impl Telemetry {
         }
     }
 
+    pub fn is_zeroed(&self) -> bool {
+        match self.value() {
+            None => false,
+            Some(n) => if n == 0.0 {
+                false
+            } else {
+                true
+            },
+        }
+    }
+
     pub fn hash(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.name.hash(&mut hasher);
