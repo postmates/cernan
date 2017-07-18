@@ -1,21 +1,43 @@
 use std::cmp;
+use std::hash::{Hash, Hasher};
 use std::slice::Iter;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TagMap<K, V> {
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TagMap<K, V>
+where
+    K: Hash,
+    V: Hash,
+{
     inner: Vec<(K, V)>,
+}
+
+impl<K, V> Hash for TagMap<K, V>
+where
+    K: Hash + cmp::Ord,
+    V: Hash + cmp::Ord,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for &(ref k, ref v) in self.iter() {
+            k.hash(state);
+            v.hash(state);
+        }
+    }
 }
 
 pub struct TagMapIterator<'a, K, V>
 where
-    V: 'a,
-    K: 'a,
+    V: 'a + Hash,
+    K: 'a + Hash,
 {
     tagmap: &'a TagMap<K, V>,
     index: usize,
 }
 
-impl<'a, K, V> IntoIterator for &'a TagMap<K, V> {
+impl<'a, K, V> IntoIterator for &'a TagMap<K, V>
+where
+    K: Hash,
+    V: Hash,
+{
     type Item = (&'a K, &'a V);
     type IntoIter = TagMapIterator<'a, K, V>;
 
@@ -27,7 +49,11 @@ impl<'a, K, V> IntoIterator for &'a TagMap<K, V> {
     }
 }
 
-impl<'a, K, V> Iterator for TagMapIterator<'a, K, V> {
+impl<'a, K, V> Iterator for TagMapIterator<'a, K, V>
+where
+    K: Hash,
+    V: Hash,
+{
     type Item = (&'a K, &'a V);
     fn next(&mut self) -> Option<(&'a K, &'a V)> {
         let result = if self.index < self.tagmap.inner.len() {
@@ -43,7 +69,8 @@ impl<'a, K, V> Iterator for TagMapIterator<'a, K, V> {
 
 impl<K, V> TagMap<K, V>
 where
-    K: cmp::Ord,
+    K: cmp::Ord + Hash,
+    V: Hash,
 {
     pub fn iter(&self) -> Iter<(K, V)> {
         self.inner.iter()
@@ -101,7 +128,11 @@ where
     }
 }
 
-impl<K, V> Default for TagMap<K, V> {
+impl<K, V> Default for TagMap<K, V>
+where
+    K: Hash,
+    V: Hash,
+{
     fn default() -> TagMap<K, V> {
         TagMap {
             inner: Vec::with_capacity(15),
@@ -111,8 +142,8 @@ impl<K, V> Default for TagMap<K, V> {
 
 pub fn cmp<K, V>(left: &TagMap<K, V>, right: &TagMap<K, V>) -> Option<cmp::Ordering>
 where
-    K: cmp::Ord,
-    V: cmp::Ord,
+    K: cmp::Ord + Hash,
+    V: cmp::Ord + Hash,
 {
     if left.len() != right.len() {
         left.len().partial_cmp(&right.len())

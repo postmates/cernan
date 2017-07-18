@@ -2,7 +2,9 @@ use metric::TagMap;
 use metric::tagmap::cmp;
 use quantiles::ckms::CKMS;
 use std::cmp;
+use std::collections::hash_map::DefaultHasher;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::ops::AddAssign;
 use std::sync;
 use time;
@@ -16,6 +18,14 @@ pub struct Telemetry {
     pub tags: sync::Arc<TagMap>,
     pub timestamp: i64, // seconds, see #166
     pub timestamp_ns: u64,
+}
+
+impl Hash for Telemetry {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.tags.hash(state);
+        self.aggr_method.hash(state);
+    }
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
@@ -54,13 +64,10 @@ impl fmt::Debug for Telemetry {
         write!(
             f,
             "Telemetry {{ aggr_method: {:#?}, name: {}, timestamp: {}, \
-             timestamp_ns: {}, persist: {}, tags: {:?}, value: {:?} }}",
+             value: {:?} }}",
             self.aggr_method,
             self.name,
             self.timestamp,
-            self.timestamp_ns,
-            self.persist,
-            self.tags,
             self.value()
         )
     }
@@ -285,6 +292,14 @@ impl Telemetry {
             }
             other => other.unwrap(),
         }
+    }
+
+    pub fn hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.name.hash(&mut hasher);
+        self.tags.hash(&mut hasher);
+        self.aggr_method.hash(&mut hasher);
+        hasher.finish()
     }
 
     pub fn persist(mut self) -> Telemetry {

@@ -4,6 +4,7 @@ use sink::{Sink, Valve};
 use source::report_telemetry;
 use std::cmp;
 use std::io::Write as IoWrite;
+use std::mem;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::string;
@@ -13,6 +14,7 @@ use time;
 pub struct Wavefront {
     host: String,
     port: u16,
+    bin_width: i64,
     aggrs: Buckets,
     delivery_attempts: u32,
     percentiles: Vec<(String, f64)>,
@@ -76,6 +78,99 @@ fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
     }
 }
 
+pub fn padding<I: Iterator<Item = Telemetry>>(xs: I, span: i64) -> Padding<I> {
+    Padding {
+        span: span,
+        orig: xs,
+        emit_q: Vec::new(),
+    }
+}
+
+pub struct Padding<I> {
+    span: i64,
+    orig: I,
+    emit_q: Vec<Telemetry>,
+}
+
+impl<I> Iterator for Padding<I>
+where
+    I: Iterator<Item = Telemetry>,
+{
+    type Item = I::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // To figure out what to do we have to know if there's a 'gap' in the
+        // original iterator to be filled. This is complicated by emit_q which
+        // we use to buffer points that we've read out of the initial iterator
+        // _and_ zero points that need to be emitted.
+        //
+        // We preferentially pull points from the emission queue. In the event
+        // that there are not enough, we go to the original iterator.
+        let next_x = if let Some(x) = self.emit_q.pop() {
+            Some(x)
+        } else {
+            self.orig.next()
+        };
+        let next_y = if let Some(y) = self.emit_q.pop() {
+            Some(y)
+        } else {
+            self.orig.next()
+        };
+        match (next_x, next_y) {
+            (Some(x), Some(y)) => {
+                // Telemetry hashes by considering name, timestamp and
+                // aggregation. If these three are different then the next point
+                // is not part of our current sequence and it requires no
+                // padding.
+                if x.hash() == y.hash() {
+                    match (x.timestamp - y.timestamp).abs() / self.span {
+                        0 | 1 => {
+                            // In this case the next point, y, is within the
+                            // span configured by the user. We stash it into
+                            // emit_q and will pull it on the next iterative
+                            // go-around.
+                            self.emit_q.push(y);
+                            return Some(x);
+                        }
+                        _ => {
+                            // This case is tricky. Here we've found that the
+                            // span between our current point, x, and the next
+                            // point, y, is larger than the configured
+                            // limit. But! If the current point is zero we don't
+                            // want to make any more zero points to pad the gap.
+                            //
+                            // If the value of x is zero we stash the next
+                            // point. Else, we make our pad, stashing those
+                            // points plus y.
+                            if x.value() == Some(0.0) {
+                                self.emit_q.push(y);
+                            } else {
+                                let sub_y = y.clone().timestamp(y.timestamp - 1).set_value(0.0);
+                                self.emit_q.push(y);
+                                self.emit_q.push(sub_y);
+                                self.emit_q.push(
+                                    x.clone().timestamp(x.timestamp + 1).set_value(0.0),
+                                );
+                            }
+                            return Some(x);
+                        }
+                    }
+                } else {
+                    self.emit_q.push(y);
+                    return Some(x);
+                }
+            }
+            (Some(x), None) => {
+                // end of sequence
+                return Some(x);
+            }
+            (None, _) => {
+                return None;
+            }
+        }
+    }
+}
+
 #[inline]
 fn get_from_cache<T>(cache: &mut Vec<(T, String)>, val: T) -> &str
 where
@@ -99,6 +194,7 @@ impl Wavefront {
         Ok(Wavefront {
             host: config.host,
             port: config.port,
+            bin_width: config.bin_width,
             aggrs: Buckets::new(config.bin_width),
             delivery_attempts: 0,
             percentiles: config.percentiles,
@@ -109,100 +205,97 @@ impl Wavefront {
 
     /// Convert the buckets into a String that
     /// can be sent to the the wavefront proxy
-    pub fn format_stats(&mut self, _: i64) -> () {
+    pub fn format_stats(&mut self) -> () {
         let mut time_cache: Vec<(i64, String)> = Vec::with_capacity(128);
         let mut count_cache: Vec<(usize, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let mut tag_buf = String::with_capacity(1_024);
-        for values in &self.aggrs {
-            for value in values {
-                match value.aggr_method {
-                    AggregationMethod::Sum => {
-                        report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
-                    }
-                    AggregationMethod::Set => {
-                        report_telemetry("cernan.sinks.wavefront.aggregation.set", 1.0)
-                    }
-                    AggregationMethod::Summarize => {
-                        report_telemetry(
-                            "cernan.sinks.wavefront.aggregation.summarize",
-                            1.0,
-                        );
-                        report_telemetry(
-                            "cernan.sinks.wavefront.aggregation.\
-                             summarize.total_percentiles",
-                            self.percentiles.len() as f64,
-                        );
-                    }
-                };
-                match value.aggr_method {
-                    AggregationMethod::Sum | AggregationMethod::Set => {
-                        if let Some(v) = value.value() {
-                            self.stats.push_str(&value.name);
-                            self.stats.push_str(" ");
-                            self.stats.push_str(get_from_cache(&mut value_cache, v));
-                            self.stats.push_str(" ");
-                            self.stats.push_str(
+        let aggrs = mem::replace(&mut self.aggrs, Buckets::default());
+        for value in padding(aggrs.into_iter(), self.bin_width) {
+            match value.aggr_method {
+                AggregationMethod::Sum => {
+                    report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
+                }
+                AggregationMethod::Set => {
+                    report_telemetry("cernan.sinks.wavefront.aggregation.set", 1.0)
+                }
+                AggregationMethod::Summarize => {
+                    report_telemetry(
+                        "cernan.sinks.wavefront.aggregation.summarize",
+                        1.0,
+                    );
+                    report_telemetry(
+                        "cernan.sinks.wavefront.aggregation.\
+                         summarize.total_percentiles",
+                        self.percentiles.len() as f64,
+                    );
+                }
+            };
+            match value.aggr_method {
+                AggregationMethod::Sum | AggregationMethod::Set => {
+                    if let Some(v) = value.value() {
+                        self.stats.push_str(&value.name);
+                        self.stats.push_str(" ");
+                        self.stats.push_str(get_from_cache(&mut value_cache, v));
+                        self.stats.push_str(" ");
+                        self.stats.push_str(
                                 get_from_cache(&mut time_cache, value.timestamp),
                             );
-                            self.stats.push_str(" ");
-                            fmt_tags(&value.tags, &mut tag_buf);
-                            self.stats.push_str(&tag_buf);
-                            self.stats.push_str("\n");
-
-                            tag_buf.clear();
-                        }
-                    }
-                    AggregationMethod::Summarize => {
+                        self.stats.push_str(" ");
                         fmt_tags(&value.tags, &mut tag_buf);
-                        for tup in &self.percentiles {
-                            let stat: &String = &tup.0;
-                            let quant: f64 = tup.1;
-                            self.stats.push_str(&value.name);
-                            self.stats.push_str(".");
-                            self.stats.push_str(stat);
-                            self.stats.push_str(" ");
-                            self.stats.push_str(get_from_cache(
-                                &mut value_cache,
-                                value.query(quant).unwrap(),
-                            ));
-                            self.stats.push_str(" ");
-                            self.stats.push_str(
-                                get_from_cache(&mut time_cache, value.timestamp),
-                            );
-                            self.stats.push_str(" ");
-                            self.stats.push_str(&tag_buf);
-                            self.stats.push_str("\n");
-                        }
-                        let count = value.count();
-                        self.stats.push_str(&value.name);
-                        self.stats.push_str(".count");
-                        self.stats.push_str(" ");
-                        self.stats.push_str(get_from_cache(&mut count_cache, count));
-                        self.stats.push_str(" ");
-                        self.stats
-                            .push_str(get_from_cache(&mut time_cache,
-                                                     value.timestamp));
-                        self.stats.push_str(" ");
-                        self.stats.push_str(&tag_buf);
-                        self.stats.push_str("\n");
-
-                        let mean = value.mean();
-                        self.stats.push_str(&value.name);
-                        self.stats.push_str(".mean");
-                        self.stats.push_str(" ");
-                        self.stats.push_str(get_from_cache(&mut value_cache, mean));
-                        self.stats.push_str(" ");
-                        self.stats
-                            .push_str(get_from_cache(&mut time_cache,
-                                                     value.timestamp));
-                        self.stats.push_str(" ");
                         self.stats.push_str(&tag_buf);
                         self.stats.push_str("\n");
 
                         tag_buf.clear();
                     }
+                }
+                AggregationMethod::Summarize => {
+                    fmt_tags(&value.tags, &mut tag_buf);
+                    for tup in &self.percentiles {
+                        let stat: &String = &tup.0;
+                        let quant: f64 = tup.1;
+                        self.stats.push_str(&value.name);
+                        self.stats.push_str(".");
+                        self.stats.push_str(stat);
+                        self.stats.push_str(" ");
+                        self.stats.push_str(get_from_cache(
+                            &mut value_cache,
+                            value.query(quant).unwrap(),
+                        ));
+                        self.stats.push_str(" ");
+                        self.stats.push_str(
+                                get_from_cache(&mut time_cache, value.timestamp),
+                            );
+                        self.stats.push_str(" ");
+                        self.stats.push_str(&tag_buf);
+                        self.stats.push_str("\n");
+                    }
+                    let count = value.count();
+                    self.stats.push_str(&value.name);
+                    self.stats.push_str(".count");
+                    self.stats.push_str(" ");
+                    self.stats.push_str(get_from_cache(&mut count_cache, count));
+                    self.stats.push_str(" ");
+                    self.stats
+                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                    self.stats.push_str(" ");
+                    self.stats.push_str(&tag_buf);
+                    self.stats.push_str("\n");
+
+                    let mean = value.mean();
+                    self.stats.push_str(&value.name);
+                    self.stats.push_str(".mean");
+                    self.stats.push_str(" ");
+                    self.stats.push_str(get_from_cache(&mut value_cache, mean));
+                    self.stats.push_str(" ");
+                    self.stats
+                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                    self.stats.push_str(" ");
+                    self.stats.push_str(&tag_buf);
+                    self.stats.push_str("\n");
+
+                    tag_buf.clear();
                 }
             }
         }
@@ -215,6 +308,7 @@ impl Sink for Wavefront {
     }
 
     fn flush(&mut self) {
+        self.format_stats();
         loop {
             report_telemetry(
                 "cernan.sinks.wavefront.delivery_attempts",
@@ -230,10 +324,8 @@ impl Sink for Wavefront {
                     for ip in ips {
                         match TcpStream::connect(ip) {
                             Ok(mut stream) => {
-                                self.format_stats(time::now());
                                 let res = stream.write(self.stats.as_bytes());
                                 if res.is_ok() {
-                                    self.aggrs.reset();
                                     self.stats.clear();
                                     self.delivery_attempts = 0;
                                     return;
@@ -267,7 +359,8 @@ impl Sink for Wavefront {
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        self.aggrs.add(sync::Arc::make_mut(&mut point).take().unwrap());
+        let telem: Telemetry = sync::Arc::make_mut(&mut point).take().unwrap();
+        self.aggrs.add(telem);
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
@@ -285,11 +378,96 @@ impl Sink for Wavefront {
 
 #[cfg(test)]
 mod test {
+    use quickcheck::{QuickCheck, TestResult};
     use super::*;
     use chrono::{TimeZone, Utc};
     use metric::{TagMap, Telemetry};
     use sink::Sink;
     use std::sync::Arc;
+
+    #[test]
+    fn test_no_unpadded_gaps() {
+        fn inner(bin_width: u8, ms: Vec<Telemetry>) -> TestResult {
+            if bin_width == 0 {
+                return TestResult::discard();
+            }
+            // TODO
+            //
+            // The fact that I have to set a bucket here suggests that 'padding'
+            // might be sensible for inclusion as an interator on the
+            // Bucket. But! It doesn't have to be that way, if the
+            // Vec<Telemetry> is pre-prepped.
+            let mut bucket = Buckets::new(bin_width as i64);
+            for m in ms.clone() {
+                bucket.add(m);
+            }
+            let mut padding = padding(bucket.into_iter(), bin_width as i64).peekable();
+
+            while let Some(t) = padding.next() {
+                if let Some(next_t) = padding.peek() {
+                    // When we examine the next point in a series there are
+                    // three possibilities:
+                    //
+                    //  1. the points don't hash the same, so we move on
+                    //  2. the points do hash the same:
+                    //     a. if their timestamps are greater than one span
+                    //        apart then they are both zero
+                    //     b. if both points are non-zero they must not be
+                    //        more than one span apart
+                    if t.hash() == next_t.hash() {
+                        let span = (t.timestamp - next_t.timestamp).abs() / (bin_width as i64);
+                        if span > 1 {
+                            assert_eq!(t.value(), Some(0.0));
+                            assert_eq!(next_t.value(), Some(0.0));
+                        }
+                        if (t.value() != Some(0.0)) && (next_t.value() != Some(0.0)) {
+                            assert!(span <= 1);
+                        }
+                    } else {
+                        continue
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(inner as fn(u8, Vec<Telemetry>) -> TestResult);
+    }
+
+    #[test]
+    fn test_never_fewer_non_zero() {
+        fn inner(bin_width: u8, ms: Vec<Telemetry>) -> TestResult {
+            if bin_width == 0 {
+                return TestResult::discard();
+            }
+
+            let mut bucket = Buckets::new(bin_width as i64);
+            for m in ms.clone() {
+                bucket.add(m);
+            }
+
+            let mut total_non_zero = 0;
+            for val in bucket.clone().into_iter() {
+                if val.value() != Some(0.0) {
+                    total_non_zero += 1;
+                }
+            }
+
+            let padding = padding(bucket.into_iter(), bin_width as i64);
+            let mut total = 0;
+            for val in padding {
+                if val.value() != Some(0.0) {
+                    total += 1;
+                }
+            }
+
+            assert_eq!(total_non_zero, total);
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(inner as fn(u8, Vec<Telemetry>) -> TestResult);
+    }
 
     #[test]
     fn test_format_wavefront() {
@@ -389,7 +567,7 @@ mod test {
                 .aggr_set()
                 .overlay_tags_from_map(&tags),
         )));
-        wavefront.format_stats(dt_2);
+        wavefront.format_stats();
         let lines: Vec<&str> = wavefront.stats.lines().collect();
 
         println!("{:?}", lines);
