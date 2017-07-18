@@ -570,7 +570,7 @@ mod test {
         wavefront.format_stats();
         let lines: Vec<&str> = wavefront.stats.lines().collect();
 
-        //println!("{:?}", lines);
+        println!("{:?}", lines);
         assert!(lines.contains(&"test.counter 1 645181811 source=test-src"));
         assert!(lines.contains(&"test.counter 3 645181812 source=test-src"));
         assert!(lines.contains(&"test.gauge 3.211 645181811 source=test-src"));
