@@ -205,7 +205,7 @@ impl Wavefront {
 
     /// Convert the buckets into a String that
     /// can be sent to the the wavefront proxy
-    pub fn format_stats(&mut self, _: i64) -> () {
+    pub fn format_stats(&mut self) -> () {
         let mut time_cache: Vec<(i64, String)> = Vec::with_capacity(128);
         let mut count_cache: Vec<(usize, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
@@ -308,7 +308,7 @@ impl Sink for Wavefront {
     }
 
     fn flush(&mut self) {
-        self.format_stats(time::now());
+        self.format_stats();
         loop {
             report_telemetry(
                 "cernan.sinks.wavefront.delivery_attempts",
@@ -567,7 +567,7 @@ mod test {
                 .aggr_set()
                 .overlay_tags_from_map(&tags),
         )));
-        wavefront.format_stats(dt_2);
+        wavefront.format_stats();
         let lines: Vec<&str> = wavefront.stats.lines().collect();
 
         //println!("{:?}", lines);
