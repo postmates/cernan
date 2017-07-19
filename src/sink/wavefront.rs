@@ -146,11 +146,15 @@ where
                             if x.value() == Some(0.0) {
                                 self.emit_q.push(y);
                             } else {
-                                let sub_y = y.clone().timestamp(y.timestamp - 1).set_value(0.0);
+                                let sub_y = y.clone()
+                                    .timestamp(y.timestamp - 1)
+                                    .set_value(0.0);
                                 self.emit_q.push(y);
                                 self.emit_q.push(sub_y);
                                 self.emit_q.push(
-                                    x.clone().timestamp(x.timestamp + 1).set_value(0.0),
+                                    x.clone()
+                                        .timestamp(x.timestamp + 1)
+                                        .set_value(0.0),
                                 );
                             }
                             return Some(x);
@@ -247,7 +251,9 @@ impl Wavefront {
 
         let mut tag_buf = String::with_capacity(1_024);
         let aggrs = mem::replace(&mut self.aggrs, Buckets::default());
-        for value in padding(aggrs.into_iter().filter(|x| x.is_zeroed()), self.bin_width) {
+        for value in
+            padding(aggrs.into_iter().filter(|x| x.is_zeroed()), self.bin_width)
+        {
             match value.aggr_method {
                 AggregationMethod::Sum => {
                     report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
@@ -394,10 +400,10 @@ impl Sink for Wavefront {
 
 #[cfg(test)]
 mod test {
-    use quickcheck::{QuickCheck, TestResult};
     use super::*;
     use chrono::{TimeZone, Utc};
     use metric::{TagMap, Telemetry};
+    use quickcheck::{QuickCheck, TestResult};
     use sink::Sink;
     use std::sync::Arc;
 
@@ -417,8 +423,10 @@ mod test {
             for m in ms.clone() {
                 bucket.add(m);
             }
-            let mut padding = padding(bucket.into_iter().filter(|x| x.is_zeroed()),
-                                      bin_width as i64).peekable();
+            let mut padding = padding(
+                bucket.into_iter().filter(|x| x.is_zeroed()),
+                bin_width as i64,
+            ).peekable();
 
             while let Some(t) = padding.next() {
                 if let Some(next_t) = padding.peek() {
@@ -432,7 +440,8 @@ mod test {
                     //     b. if both points are non-zero they must not be
                     //        more than one span apart
                     if t.hash() == next_t.hash() {
-                        let span = (t.timestamp - next_t.timestamp).abs() / (bin_width as i64);
+                        let span = (t.timestamp - next_t.timestamp).abs() /
+                            (bin_width as i64);
                         if span > 1 {
                             assert_eq!(t.value(), Some(0.0));
                             assert_eq!(next_t.value(), Some(0.0));
@@ -441,7 +450,7 @@ mod test {
                             assert!(span <= 1);
                         }
                     } else {
-                        continue
+                        continue;
                     }
                 } else {
                     break;
@@ -469,8 +478,10 @@ mod test {
             }
 
             let mut total_zero_run = 0;
-            let padding = padding(bucket.into_iter().filter(|x| x.is_zeroed()),
-                                  bin_width as i64);
+            let padding = padding(
+                bucket.into_iter().filter(|x| x.is_zeroed()),
+                bin_width as i64,
+            );
             for val in padding {
                 if val.value() == Some(0.0) {
                     total_zero_run += 1;
@@ -505,8 +516,10 @@ mod test {
                 }
             }
 
-            let padding = padding(bucket.into_iter().filter(|x| x.is_zeroed()),
-                                  bin_width as i64);
+            let padding = padding(
+                bucket.into_iter().filter(|x| x.is_zeroed()),
+                bin_width as i64,
+            );
             let mut total = 0;
             for val in padding {
                 if val.value() != Some(0.0) {
