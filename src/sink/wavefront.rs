@@ -247,7 +247,7 @@ impl Wavefront {
 
         let mut tag_buf = String::with_capacity(1_024);
         let aggrs = mem::replace(&mut self.aggrs, Buckets::default());
-        for value in padding(aggrs.into_iter(), self.bin_width) {
+        for value in padding(aggrs.into_iter().filter(|x| x.is_zeroed()), self.bin_width) {
             match value.aggr_method {
                 AggregationMethod::Sum => {
                     report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
@@ -417,7 +417,8 @@ mod test {
             for m in ms.clone() {
                 bucket.add(m);
             }
-            let mut padding = padding(bucket.into_iter(), bin_width as i64).peekable();
+            let mut padding = padding(bucket.into_iter().filter(|x| x.is_zeroed()),
+                                      bin_width as i64).peekable();
 
             while let Some(t) = padding.next() {
                 if let Some(next_t) = padding.peek() {
@@ -453,6 +454,39 @@ mod test {
     }
 
     #[test]
+    fn test_no_zero_runs() {
+        // We want to elide excess zeros. This means that if we examine the
+        // stream of values out of a padded stream then we should never
+        // encounter more than two zero-valued Telemetry in a row.
+        fn inner(bin_width: u8, ms: Vec<Telemetry>) -> TestResult {
+            if bin_width == 0 {
+                return TestResult::discard();
+            }
+
+            let mut bucket = Buckets::new(bin_width as i64);
+            for m in ms.clone() {
+                bucket.add(m);
+            }
+
+            let mut total_zero_run = 0;
+            let padding = padding(bucket.into_iter().filter(|x| x.is_zeroed()),
+                                  bin_width as i64);
+            for val in padding {
+                if val.value() == Some(0.0) {
+                    total_zero_run += 1;
+                } else {
+                    total_zero_run = 0;
+                }
+                if total_zero_run > 2 {
+                    return TestResult::failed();
+                }
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(inner as fn(u8, Vec<Telemetry>) -> TestResult);
+    }
+
+    #[test]
     fn test_never_fewer_non_zero() {
         fn inner(bin_width: u8, ms: Vec<Telemetry>) -> TestResult {
             if bin_width == 0 {
@@ -471,7 +505,8 @@ mod test {
                 }
             }
 
-            let padding = padding(bucket.into_iter(), bin_width as i64);
+            let padding = padding(bucket.into_iter().filter(|x| x.is_zeroed()),
+                                  bin_width as i64);
             let mut total = 0;
             for val in padding {
                 if val.value() != Some(0.0) {
