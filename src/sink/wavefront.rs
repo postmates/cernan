@@ -254,6 +254,10 @@ impl Wavefront {
         for value in
             padding(aggrs.into_iter().filter(|x| x.is_zeroed()), self.bin_width)
         {
+            if value.persist {
+                let new_val = value.clone();
+                self.aggrs.add(new_val.timestamp(value.timestamp + 1));
+            }
             match value.aggr_method {
                 AggregationMethod::Sum => {
                     report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
