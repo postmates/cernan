@@ -104,13 +104,15 @@ impl Iterator for IntoIter {
                     self.key_index += 1;
                 }
             } else {
-                let v = mem::replace(&mut self.buckets.values[self.key_index][0],
-                                     Default::default());
+                let v = mem::replace(
+                    &mut self.buckets.values[self.key_index][0],
+                    Default::default(),
+                );
                 self.value_index = Some(1);
                 return Some(v);
             }
         }
-        return None
+        return None;
     }
 }
 
@@ -226,11 +228,11 @@ impl Buckets {
 //
 #[cfg(test)]
 mod test {
-    use quickcheck::{QuickCheck, TestResult};
     use super::*;
     use chrono::{TimeZone, Utc};
     use metric::Telemetry;
     use quantiles::ckms::CKMS;
+    use quickcheck::{QuickCheck, TestResult};
     use std::cmp::Ordering;
     use std::collections::{HashMap, HashSet};
 
