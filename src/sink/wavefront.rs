@@ -3,6 +3,7 @@ use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
 use source::report_telemetry;
 use std::cmp;
+use std::collections::HashMap;
 use std::io::Write as IoWrite;
 use std::mem;
 use std::net::TcpStream;
@@ -21,6 +22,9 @@ pub struct Wavefront {
     pub stats: String,
     flush_interval: u64,
     stream: Option<TcpStream>,
+    flush_number: u32,
+    sustain: u32,
+    sustain_map: HashMap<u64, Sustain>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,6 +36,7 @@ pub struct WavefrontConfig {
     pub percentiles: Vec<(String, f64)>,
     pub tags: TagMap,
     pub flush_interval: u64,
+    pub sustain: u32,
 }
 
 impl Default for WavefrontConfig {
@@ -59,6 +64,7 @@ impl Default for WavefrontConfig {
             percentiles: percentiles,
             tags: TagMap::default(),
             flush_interval: 60,
+            sustain: 0,
         }
     }
 }
@@ -223,6 +229,11 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
     }
 }
 
+struct Sustain {
+    telem: Telemetry,
+    flush_number: u32,
+}
+
 impl Wavefront {
     pub fn new(config: WavefrontConfig) -> Result<Wavefront, String> {
         if config.host == "" {
@@ -239,6 +250,9 @@ impl Wavefront {
             stats: String::with_capacity(8_192),
             stream: stream,
             flush_interval: config.flush_interval,
+            flush_number: 0,
+            sustain: config.sustain,
+            sustain_map: HashMap::default(),
         })
     }
 
@@ -249,15 +263,24 @@ impl Wavefront {
         let mut count_cache: Vec<(usize, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
-        let mut tag_buf = String::with_capacity(1_024);
         let aggrs = mem::replace(&mut self.aggrs, Buckets::default());
         for value in
             padding(aggrs.into_iter().filter(|x| x.is_zeroed()), self.bin_width)
         {
+            {
+                let sustain =
+                    self.sustain_map.entry(value.hash()).or_insert(Sustain {
+                        telem: value.clone(), // NOTE boo-urns a clone
+                        flush_number: self.flush_number,
+                    });
+                sustain.flush_number = self.flush_number;
+            }
+
             if value.persist {
                 let new_val = value.clone();
                 self.aggrs.add(new_val.timestamp(value.timestamp + 1));
             }
+
             match value.aggr_method {
                 AggregationMethod::Sum => {
                     report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
@@ -277,71 +300,108 @@ impl Wavefront {
                     );
                 }
             };
-            match value.aggr_method {
-                AggregationMethod::Sum | AggregationMethod::Set => {
-                    if let Some(v) = value.value() {
-                        self.stats.push_str(&value.name);
-                        self.stats.push_str(" ");
-                        self.stats.push_str(get_from_cache(&mut value_cache, v));
-                        self.stats.push_str(" ");
-                        self.stats.push_str(
-                                get_from_cache(&mut time_cache, value.timestamp),
-                            );
-                        self.stats.push_str(" ");
-                        fmt_tags(&value.tags, &mut tag_buf);
-                        self.stats.push_str(&tag_buf);
-                        self.stats.push_str("\n");
-
-                        tag_buf.clear();
-                    }
+            self.fmt_val(&value, &mut time_cache, &mut count_cache, &mut value_cache);
+        }
+        let mut empties = Vec::new();
+        let mut sustainers = Vec::new();
+        // Emit sustained telemetry. In the event that a value comes through the
+        // map with the same flush window as current then we've just seen it,
+        // above.
+        {
+            for (k, v) in self.sustain_map.iter() {
+                if v.flush_number < (self.flush_number.saturating_sub(self.sustain)) {
+                    empties.push(k.clone());
+                    continue;
                 }
-                AggregationMethod::Summarize => {
-                    fmt_tags(&value.tags, &mut tag_buf);
-                    for tup in &self.percentiles {
-                        let stat: &String = &tup.0;
-                        let quant: f64 = tup.1;
-                        self.stats.push_str(&value.name);
-                        self.stats.push_str(".");
-                        self.stats.push_str(stat);
-                        self.stats.push_str(" ");
-                        self.stats.push_str(get_from_cache(
-                            &mut value_cache,
-                            value.query(quant).unwrap(),
-                        ));
-                        self.stats.push_str(" ");
-                        self.stats.push_str(
-                                get_from_cache(&mut time_cache, value.timestamp),
-                            );
-                        self.stats.push_str(" ");
-                        self.stats.push_str(&tag_buf);
-                        self.stats.push_str("\n");
-                    }
-                    let count = value.count();
-                    self.stats.push_str(&value.name);
-                    self.stats.push_str(".count");
-                    self.stats.push_str(" ");
-                    self.stats.push_str(get_from_cache(&mut count_cache, count));
-                    self.stats.push_str(" ");
-                    self.stats
-                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
-                    self.stats.push_str(" ");
-                    self.stats.push_str(&tag_buf);
-                    self.stats.push_str("\n");
+                if v.flush_number < self.flush_number {
+                    let sustain_val = v.telem.clone().timestamp(
+                        v.telem.timestamp +
+                            self.flush_number.saturating_sub(self.sustain) as i64,
+                    );
+                    sustainers.push(sustain_val);
+                }
+            }
+        }
+        {
+            for k in empties {
+                self.sustain_map.remove(&k);
+            }
+        }
+        {
+            for v in sustainers {
+                self.fmt_val(&v, &mut time_cache, &mut count_cache, &mut value_cache);
+            }
+        }
+    }
 
-                    let mean = value.mean();
+    fn fmt_val(
+        &mut self,
+        value: &Telemetry,
+        mut time_cache: &mut Vec<(i64, String)>,
+        mut count_cache: &mut Vec<(usize, String)>,
+        mut value_cache: &mut Vec<(f64, String)>,
+    ) -> () {
+        let mut tag_buf = String::with_capacity(1_024);
+        match value.aggr_method {
+            AggregationMethod::Sum | AggregationMethod::Set => {
+                if let Some(v) = value.value() {
                     self.stats.push_str(&value.name);
-                    self.stats.push_str(".mean");
                     self.stats.push_str(" ");
-                    self.stats.push_str(get_from_cache(&mut value_cache, mean));
+                    self.stats.push_str(get_from_cache(&mut value_cache, v));
                     self.stats.push_str(" ");
                     self.stats
                         .push_str(get_from_cache(&mut time_cache, value.timestamp));
                     self.stats.push_str(" ");
+                    fmt_tags(&value.tags, &mut tag_buf);
                     self.stats.push_str(&tag_buf);
                     self.stats.push_str("\n");
 
                     tag_buf.clear();
                 }
+            }
+            AggregationMethod::Summarize => {
+                fmt_tags(&value.tags, &mut tag_buf);
+                for tup in &self.percentiles {
+                    let stat: &String = &tup.0;
+                    let quant: f64 = tup.1;
+                    self.stats.push_str(&value.name);
+                    self.stats.push_str(".");
+                    self.stats.push_str(stat);
+                    self.stats.push_str(" ");
+                    self.stats.push_str(get_from_cache(
+                        &mut value_cache,
+                        value.query(quant).unwrap(),
+                    ));
+                    self.stats.push_str(" ");
+                    self.stats
+                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                    self.stats.push_str(" ");
+                    self.stats.push_str(&tag_buf);
+                    self.stats.push_str("\n");
+                }
+                let count = value.count();
+                self.stats.push_str(&value.name);
+                self.stats.push_str(".count");
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut count_cache, count));
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
+                self.stats.push_str(" ");
+                self.stats.push_str(&tag_buf);
+                self.stats.push_str("\n");
+
+                let mean = value.mean();
+                self.stats.push_str(&value.name);
+                self.stats.push_str(".mean");
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut value_cache, mean));
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
+                self.stats.push_str(" ");
+                self.stats.push_str(&tag_buf);
+                self.stats.push_str("\n");
+
+                tag_buf.clear();
             }
         }
     }
@@ -369,6 +429,7 @@ impl Sink for Wavefront {
                     self.aggrs.reset();
                     self.stats.clear();
                     self.delivery_attempts = 0;
+                    self.flush_number += 1;
                     return;
                 } else {
                     self.delivery_attempts = self.delivery_attempts.saturating_add(1);
@@ -563,6 +624,7 @@ mod test {
             config_path: Some("sinks.wavefront".to_string()),
             tags: tags.clone(),
             percentiles: percentiles,
+            sustain: 0,
             flush_interval: 60,
         };
         let mut wavefront = Wavefront::new(config).unwrap();
