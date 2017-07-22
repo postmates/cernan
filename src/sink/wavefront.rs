@@ -280,8 +280,7 @@ impl Wavefront {
                 let new_val = value.clone();
                 self.aggrs.add(new_val.timestamp(value.timestamp + 1));
             }
-
-            match value.aggr_method {
+            match value.aggregation() {
                 AggregationMethod::Sum => {
                     report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
                 }

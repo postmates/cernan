@@ -1,6 +1,5 @@
 use metric::TagMap;
 use metric::tagmap::cmp;
-use quantiles::ckms::CKMS;
 use std::cmp;
 use std::collections::hash_map::DefaultHasher;
 use std::fmt;
@@ -8,13 +7,14 @@ use std::hash::{Hash, Hasher};
 use std::ops::AddAssign;
 use std::sync;
 use time;
+use metric::value::Value;
 
 #[derive(PartialEq, Serialize, Deserialize, Clone)]
 pub struct Telemetry {
     pub name: String,
     value: Value,
     pub persist: bool,
-    pub aggr_method: AggregationMethod,
+    aggregation: AggregationMethod,
     pub tags: sync::Arc<TagMap>,
     pub timestamp: i64, // seconds, see #166
     pub timestamp_ns: u64,
@@ -24,24 +24,11 @@ impl Hash for Telemetry {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
         self.tags.hash(state);
-        self.aggr_method.hash(state);
+        self.aggregation.hash(state);
     }
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
-pub enum ValueKind {
-    Single,
-    Many,
-}
-
-#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
-pub struct Value {
-    kind: ValueKind,
-    single: Option<f64>,
-    many: Option<CKMS<f64>>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
 pub enum AggregationMethod {
     Sum,
     Set,
@@ -55,7 +42,7 @@ impl AddAssign for Telemetry {
         // Telemetry is persisted.
         self.persist = rhs.persist;
         self.value += rhs.value;
-        self.aggr_method = rhs.aggr_method;
+        self.aggregation = rhs.aggregation;
     }
 }
 
@@ -65,7 +52,7 @@ impl fmt::Debug for Telemetry {
             f,
             "Telemetry {{ aggr_method: {:#?}, name: {}, timestamp: {}, \
              value: {:?} }}",
-            self.aggr_method,
+            self.aggregation,
             self.name,
             self.timestamp,
             self.value()
@@ -93,7 +80,7 @@ impl Default for Telemetry {
             name: String::from(""),
             value: Value::new(Default::default()),
             persist: false,
-            aggr_method: AggregationMethod::Summarize,
+            aggregation: AggregationMethod::Summarize,
             tags: sync::Arc::new(TagMap::default()),
             timestamp: time::now(),
             timestamp_ns: time::now_ns(),
@@ -125,7 +112,7 @@ impl Telemetry {
     {
         let val = Value::new(value);
         Telemetry {
-            aggr_method: AggregationMethod::Summarize,
+            aggregation: AggregationMethod::Summarize,
             name: name.into(),
             tags: sync::Arc::new(TagMap::default()),
             timestamp: time::now(),
@@ -267,7 +254,7 @@ impl Telemetry {
     }
 
     pub fn value(&self) -> Option<f64> {
-        match self.aggr_method {
+        match self.aggregation {
             AggregationMethod::Set => self.value.last(),
             AggregationMethod::Sum => self.value.sum(),
             AggregationMethod::Summarize => self.value.query(1.0).map(|x| x.1),
@@ -311,7 +298,7 @@ impl Telemetry {
         let mut hasher = DefaultHasher::new();
         self.name.hash(&mut hasher);
         self.tags.hash(&mut hasher);
-        self.aggr_method.hash(&mut hasher);
+        self.aggregation.hash(&mut hasher);
         hasher.finish()
     }
 
@@ -339,12 +326,16 @@ impl Telemetry {
     /// assert!(m.is_set());
     /// ```
     pub fn aggr_set(mut self) -> Telemetry {
-        self.aggr_method = AggregationMethod::Set;
+        self.aggregation = AggregationMethod::Set;
         self
     }
 
     pub fn is_set(&self) -> bool {
-        self.aggr_method == AggregationMethod::Set
+        self.aggregation == AggregationMethod::Set
+    }
+
+    pub fn aggregation(&self) -> AggregationMethod {
+        self.aggregation
     }
 
     /// Set Telemetry aggregation to SUM
@@ -361,12 +352,12 @@ impl Telemetry {
     /// assert!(m.is_sum());
     /// ```
     pub fn aggr_sum(mut self) -> Telemetry {
-        self.aggr_method = AggregationMethod::Sum;
+        self.aggregation = AggregationMethod::Sum;
         self
     }
 
     pub fn is_sum(&self) -> bool {
-        self.aggr_method == AggregationMethod::Sum
+        self.aggregation == AggregationMethod::Sum
     }
 
     /// Set Telemetry aggregation to SUMMARIZE
@@ -384,12 +375,12 @@ impl Telemetry {
     /// assert!(m.is_summarize());
     /// ```
     pub fn aggr_summarize(mut self) -> Telemetry {
-        self.aggr_method = AggregationMethod::Summarize;
+        self.aggregation = AggregationMethod::Summarize;
         self
     }
 
     pub fn is_summarize(&self) -> bool {
-        self.aggr_method == AggregationMethod::Summarize
+        self.aggregation == AggregationMethod::Summarize
     }
 
     /// Adjust Telemetry time
@@ -449,133 +440,6 @@ impl Telemetry {
                 ckms
             }
             ValueKind::Many => self.value.many.clone().unwrap(),
-        }
-    }
-}
-
-
-impl AddAssign for Value {
-    fn add_assign(&mut self, rhs: Value) {
-        match rhs.kind {
-            ValueKind::Single => {
-                self.insert(rhs.single.expect("EMPTY SINGLE ADD_ASSIGN"))
-            }
-            ValueKind::Many => self.merge(rhs.many.expect("EMPTY MANY ADD_ASSIGN")),
-        }
-    }
-}
-
-impl Value {
-    fn new(value: f64) -> Value {
-        Value {
-            kind: ValueKind::Single,
-            single: Some(value),
-            many: None,
-        }
-    }
-
-    fn into_vec(self) -> Vec<f64> {
-        match self.kind {
-            ValueKind::Single => vec![self.single.unwrap()],
-            ValueKind::Many => self.many.unwrap().into_vec(),
-        }
-    }
-
-    fn insert(&mut self, value: f64) -> () {
-        match self.kind {
-            ValueKind::Single => {
-                let mut ckms = CKMS::new(0.001);
-                ckms.insert(self.single.expect("NOT SINGLE IN METRICVALUE INSERT"));
-                ckms.insert(value);
-                self.many = Some(ckms);
-                self.single = None;
-                self.kind = ValueKind::Many;
-            }
-            ValueKind::Many => {
-                match self.many.as_mut() {
-                    None => {}
-                    Some(ckms) => ckms.insert(value),
-                };
-            }
-        }
-    }
-
-    fn merge(&mut self, mut value: CKMS<f64>) -> () {
-        match self.kind {
-            ValueKind::Single => {
-                value.insert(self.single.expect("NOT SINGLE IN METRICVALUE MERGE"));
-                self.many = Some(value);
-                self.single = None;
-                self.kind = ValueKind::Many;
-            }
-            ValueKind::Many => {
-                match self.many.as_mut() {
-                    None => {}
-                    Some(ckms) => *ckms += value,
-                };
-            }
-        }
-    }
-
-    fn last(&self) -> Option<f64> {
-        match self.kind {
-            ValueKind::Single => self.single,
-            ValueKind::Many => {
-                match self.many {
-                    Some(ref ckms) => ckms.last(),
-                    None => None,
-                }
-            }
-        }
-    }
-
-    fn sum(&self) -> Option<f64> {
-        match self.kind {
-            ValueKind::Single => self.single,
-            ValueKind::Many => {
-                match self.many {
-                    Some(ref ckms) => ckms.sum(),
-                    None => None,
-                }
-            }
-        }
-    }
-
-    fn count(&self) -> usize {
-        match self.kind {
-            ValueKind::Single => 1,
-            ValueKind::Many => {
-                match self.many {
-                    Some(ref ckms) => ckms.count(),
-                    None => 0,
-                }
-            }
-        }
-    }
-
-    fn mean(&self) -> Option<f64> {
-        match self.kind {
-            ValueKind::Single => self.single,
-            ValueKind::Many => {
-                match self.many {
-                    Some(ref x) => x.cma(),
-                    None => None,
-                }
-            }
-        }
-    }
-
-    fn query(&self, query: f64) -> Option<(usize, f64)> {
-        match self.kind {
-            ValueKind::Single => {
-                Some((1, self.single.expect("NOT SINGLE IN METRICVALUE QUERY")))
-            }
-            ValueKind::Many => {
-                match self.many {
-                    Some(ref ckms) => ckms.query(query),
-                    None => None,
-                }
-            }
         }
     }
 }
@@ -669,7 +533,7 @@ mod tests {
     #[test]
     fn test_metric_within() {
         fn inner(span: i64, lhs: Telemetry, rhs: Telemetry) -> TestResult {
-            if lhs.aggr_method != rhs.aggr_method {
+            if lhs.aggregation != rhs.aggregation {
                 return TestResult::discard();
             } else if lhs.name != rhs.name {
                 return TestResult::discard();
@@ -726,7 +590,7 @@ mod tests {
     fn test_negative_timer() {
         let m = Telemetry::new("timer", -1.0).aggr_summarize();
 
-        assert_eq!(m.aggr_method, AggregationMethod::Summarize);
+        assert_eq!(m.aggregation, AggregationMethod::Summarize);
         assert_eq!(m.query(1.0), Some(-1.0));
         assert_eq!(m.name, "timer");
     }
@@ -735,7 +599,7 @@ mod tests {
     fn test_postive_delta_gauge() {
         let m = Telemetry::new("dgauge", 1.0).persist().aggr_set();
 
-        assert_eq!(m.aggr_method, AggregationMethod::Set);
+        assert_eq!(m.aggregation, AggregationMethod::Set);
         assert_eq!(m.value(), Some(1.0));
         assert_eq!(m.name, "dgauge");
     }

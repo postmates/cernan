@@ -110,15 +110,15 @@ impl Sink for Console {
         let mut sets = String::new();
         let mut summaries = String::new();
 
-        for value in self.aggrs.iter() {
-            match value.aggr_method {
+        for telem in self.aggrs.iter() {
+            match telem.aggregation() {
                 AggregationMethod::Sum => {
                     let mut tgt = &mut sums;
-                    if let Some(f) = value.value() {
+                    if let Some(f) = telem.value() {
                         tgt.push_str("    ");
-                        tgt.push_str(&value.name);
+                        tgt.push_str(&telem.name);
                         tgt.push_str("(");
-                        tgt.push_str(&value.timestamp.to_string());
+                        tgt.push_str(&telem.timestamp.to_string());
                         tgt.push_str("): ");
                         tgt.push_str(&f.to_string());
                         tgt.push_str("\n");
@@ -126,11 +126,11 @@ impl Sink for Console {
                 }
                 AggregationMethod::Set => {
                     let mut tgt = &mut sets;
-                    if let Some(f) = value.value() {
+                    if let Some(f) = telem.value() {
                         tgt.push_str("    ");
-                        tgt.push_str(&value.name);
+                        tgt.push_str(&telem.name);
                         tgt.push_str("(");
-                        tgt.push_str(&value.timestamp.to_string());
+                        tgt.push_str(&telem.timestamp.to_string());
                         tgt.push_str("): ");
                         tgt.push_str(&f.to_string());
                         tgt.push_str("\n");
@@ -148,9 +148,9 @@ impl Sink for Console {
                     ] {
                         let stat: &str = tup.0;
                         let quant: f64 = tup.1;
-                        if let Some(f) = value.query(quant) {
+                        if let Some(f) = telem.query(quant) {
                             tgt.push_str("    ");
-                            tgt.push_str(&value.name);
+                            tgt.push_str(&telem.name);
                             tgt.push_str(": ");
                             tgt.push_str(stat);
                             tgt.push_str(" ");

@@ -2,6 +2,7 @@ pub mod tagmap;
 mod logline;
 mod event;
 mod telemetry;
+mod value;
 
 pub use self::event::Event;
 pub use self::logline::LogLine;
