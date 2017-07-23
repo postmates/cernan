@@ -724,7 +724,8 @@ mod test {
     //             bucket.add(m)
     //         }
 
-    //         let mut cnts: HashMap<String, Vec<(i64, CKMS<f64>)>> = HashMap::default();
+    // let mut cnts: HashMap<String, Vec<(i64, CKMS<f64>)>> =
+    // HashMap::default();
     //         for m in ms {
     //             let c = cnts.entry(m.name.clone()).or_insert(vec![]);
     //             match c.binary_search_by_key(&m.timestamp, |&(a, _)| a) {

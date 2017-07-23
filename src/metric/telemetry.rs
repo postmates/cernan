@@ -1,5 +1,6 @@
 use metric::TagMap;
 use metric::tagmap::cmp;
+use metric::value::Value;
 use std::cmp;
 use std::collections::hash_map::DefaultHasher;
 use std::fmt;
@@ -7,25 +8,15 @@ use std::hash::{Hash, Hasher};
 use std::ops::AddAssign;
 use std::sync;
 use time;
-use metric::value::Value;
 
 #[derive(PartialEq, Serialize, Deserialize, Clone)]
 pub struct Telemetry {
     pub name: String,
     value: Value,
     pub persist: bool,
-    aggregation: AggregationMethod,
     pub tags: sync::Arc<TagMap>,
     pub timestamp: i64, // seconds, see #166
     pub timestamp_ns: u64,
-}
-
-impl Hash for Telemetry {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-        self.tags.hash(state);
-        self.aggregation.hash(state);
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
@@ -42,7 +33,6 @@ impl AddAssign for Telemetry {
         // Telemetry is persisted.
         self.persist = rhs.persist;
         self.value += rhs.value;
-        self.aggregation = rhs.aggregation;
     }
 }
 
@@ -52,7 +42,7 @@ impl fmt::Debug for Telemetry {
             f,
             "Telemetry {{ aggr_method: {:#?}, name: {}, timestamp: {}, \
              value: {:?} }}",
-            self.aggregation,
+            self.value.kind(),
             self.name,
             self.timestamp,
             self.value()
@@ -78,9 +68,8 @@ impl Default for Telemetry {
     fn default() -> Telemetry {
         Telemetry {
             name: String::from(""),
-            value: Value::new(Default::default()),
+            value: Value::new(),
             persist: false,
-            aggregation: AggregationMethod::Summarize,
             tags: sync::Arc::new(TagMap::default()),
             timestamp: time::now(),
             timestamp_ns: time::now_ns(),
@@ -102,7 +91,7 @@ impl Telemetry {
     ///
     /// let m = Telemetry::new("foo", 1.1);
     ///
-    /// assert_eq!(m.aggr_method, AggregationMethod::Summarize);
+    /// assert_eq!(m.aggregation(), AggregationMethod::Set);
     /// assert_eq!(m.name, "foo");
     /// assert_eq!(m.value(), Some(1.1));
     /// ```
@@ -110,9 +99,9 @@ impl Telemetry {
     where
         S: Into<String>,
     {
-        let val = Value::new(value);
+        let mut val = Value::new();
+        val.insert(value);
         Telemetry {
-            aggregation: AggregationMethod::Summarize,
             name: name.into(),
             tags: sync::Arc::new(TagMap::default()),
             timestamp: time::now(),
@@ -236,7 +225,7 @@ impl Telemetry {
     /// assert_eq!(m.value(), Some(10.10));
     /// ```
     pub fn set_value(mut self, value: f64) -> Telemetry {
-        self.value = Value::new(value);
+        self.value.set(value);
         self
     }
 
@@ -254,11 +243,7 @@ impl Telemetry {
     }
 
     pub fn value(&self) -> Option<f64> {
-        match self.aggregation {
-            AggregationMethod::Set => self.value.last(),
-            AggregationMethod::Sum => self.value.sum(),
-            AggregationMethod::Summarize => self.value.query(1.0).map(|x| x.1),
-        }
+        self.value.value()
     }
 
     pub fn into_vec(self) -> Vec<f64> {
@@ -298,7 +283,7 @@ impl Telemetry {
         let mut hasher = DefaultHasher::new();
         self.name.hash(&mut hasher);
         self.tags.hash(&mut hasher);
-        self.aggregation.hash(&mut hasher);
+        self.value.kind().hash(&mut hasher);
         hasher.finish()
     }
 
@@ -326,16 +311,16 @@ impl Telemetry {
     /// assert!(m.is_set());
     /// ```
     pub fn aggr_set(mut self) -> Telemetry {
-        self.aggregation = AggregationMethod::Set;
+        self.value.set_kind(AggregationMethod::Set);
         self
     }
 
     pub fn is_set(&self) -> bool {
-        self.aggregation == AggregationMethod::Set
+        self.value.kind() == AggregationMethod::Set
     }
 
     pub fn aggregation(&self) -> AggregationMethod {
-        self.aggregation
+        self.value.kind()
     }
 
     /// Set Telemetry aggregation to SUM
@@ -352,12 +337,12 @@ impl Telemetry {
     /// assert!(m.is_sum());
     /// ```
     pub fn aggr_sum(mut self) -> Telemetry {
-        self.aggregation = AggregationMethod::Sum;
+        self.value.set_kind(AggregationMethod::Sum);
         self
     }
 
     pub fn is_sum(&self) -> bool {
-        self.aggregation == AggregationMethod::Sum
+        self.value.kind() == AggregationMethod::Sum
     }
 
     /// Set Telemetry aggregation to SUMMARIZE
@@ -375,12 +360,12 @@ impl Telemetry {
     /// assert!(m.is_summarize());
     /// ```
     pub fn aggr_summarize(mut self) -> Telemetry {
-        self.aggregation = AggregationMethod::Summarize;
+        self.value.set_kind(AggregationMethod::Summarize);
         self
     }
 
     pub fn is_summarize(&self) -> bool {
-        self.aggregation == AggregationMethod::Summarize
+        self.value.kind() == AggregationMethod::Summarize
     }
 
     /// Adjust Telemetry time
@@ -533,7 +518,7 @@ mod tests {
     #[test]
     fn test_metric_within() {
         fn inner(span: i64, lhs: Telemetry, rhs: Telemetry) -> TestResult {
-            if lhs.aggregation != rhs.aggregation {
+            if lhs.aggregation() != rhs.aggregation() {
                 return TestResult::discard();
             } else if lhs.name != rhs.name {
                 return TestResult::discard();
@@ -565,6 +550,8 @@ mod tests {
                 AggregationMethod::Set => mrhs.aggr_set(),
                 AggregationMethod::Summarize => mrhs.aggr_summarize(),
             };
+            let old_mlhs = mlhs.clone();
+            let old_mrhs = mrhs.clone();
             mlhs += mrhs;
             if let Some(val) = mlhs.value() {
                 let expected = match kind {
@@ -572,9 +559,20 @@ mod tests {
                     AggregationMethod::Sum => lhs + rhs,
                     AggregationMethod::Summarize => lhs.max(rhs),
                 };
+                // println!("VAL: {:?} | EXPECTED: {:?}", val, expected);
                 match val.partial_cmp(&expected) {
                     Some(cmp::Ordering::Equal) => return TestResult::passed(),
-                    _ => return TestResult::failed(),
+                    _ => {
+                        println!(
+                            "\n\nMLHS: {:?} | MRHS: {:?} | RES: {:?}\nEXPECTED: {:?} | VAL: {:?}",
+                            old_mlhs,
+                            old_mrhs,
+                            mlhs,
+                            expected,
+                            val
+                        );
+                        return TestResult::failed();
+                    }
                 }
             } else {
                 return TestResult::failed();
@@ -590,7 +588,7 @@ mod tests {
     fn test_negative_timer() {
         let m = Telemetry::new("timer", -1.0).aggr_summarize();
 
-        assert_eq!(m.aggregation, AggregationMethod::Summarize);
+        assert_eq!(m.aggregation(), AggregationMethod::Summarize);
         assert_eq!(m.query(1.0), Some(-1.0));
         assert_eq!(m.name, "timer");
     }
@@ -599,7 +597,7 @@ mod tests {
     fn test_postive_delta_gauge() {
         let m = Telemetry::new("dgauge", 1.0).persist().aggr_set();
 
-        assert_eq!(m.aggregation, AggregationMethod::Set);
+        assert_eq!(m.aggregation(), AggregationMethod::Set);
         assert_eq!(m.value(), Some(1.0));
         assert_eq!(m.name, "dgauge");
     }
