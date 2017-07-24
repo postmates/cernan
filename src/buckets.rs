@@ -231,7 +231,7 @@ mod test {
     use super::*;
     use chrono::{TimeZone, Utc};
     use metric::Telemetry;
-    // use quantiles::ckms::CKMS;
+    use metric::Value;
     use quickcheck::{QuickCheck, TestResult};
     use std::cmp::Ordering;
     use std::collections::{HashMap, HashSet};
@@ -715,90 +715,89 @@ mod test {
         assert_eq!(m1, buckets.get(&String::from("test.counter_1")).unwrap()[0]);
     }
 
-    // #[test]
-    // fn test_all_insertions() {
-    //     fn qos_ret(ms: Vec<Telemetry>) -> TestResult {
-    //         let mut bucket = Buckets::default();
+    #[test]
+    fn test_all_insertions() {
+        fn qos_ret(ms: Vec<Telemetry>) -> TestResult {
+            let mut bucket = Buckets::default();
 
-    //         for m in ms.clone() {
-    //             bucket.add(m)
-    //         }
+            for m in ms.clone() {
+                bucket.add(m)
+            }
 
-    // let mut cnts: HashMap<String, Vec<(i64, CKMS<f64>)>> =
-    // HashMap::default();
-    //         for m in ms {
-    //             let c = cnts.entry(m.name.clone()).or_insert(vec![]);
-    //             match c.binary_search_by_key(&m.timestamp, |&(a, _)| a) {
-    //                 Ok(idx) => c[idx].1 += m.ckms(),
-    //                 Err(idx) => {
-    //                     if m.persist && idx > 0 {
-    //                         let mut val = c[idx - 1].clone().1;
-    //                         val += m.ckms();
-    //                         c.insert(idx, (m.timestamp, val))
-    //                     } else {
-    //                         c.insert(idx, (m.timestamp, m.ckms()))
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         let len_cnts = cnts.values().fold(0, |acc, ref x| acc + x.len());
+            let mut cnts: HashMap<String, Vec<(i64, Value)>> = HashMap::default();
+            for m in ms {
+                let c = cnts.entry(m.name.clone()).or_insert(vec![]);
+                match c.binary_search_by_key(&m.timestamp, |&(a, _)| a) {
+                    Ok(idx) => c[idx].1 += m.priv_value(),
+                    Err(idx) => {
+                        if m.persist && idx > 0 {
+                            let mut val = c[idx - 1].clone().1;
+                            val += m.priv_value();
+                            c.insert(idx, (m.timestamp, val))
+                        } else {
+                            c.insert(idx, (m.timestamp, m.priv_value()))
+                        }
+                    }
+                }
+            }
+            let len_cnts = cnts.values().fold(0, |acc, ref x| acc + x.len());
 
-    //         assert_eq!(len_cnts, bucket.count());
+            assert_eq!(len_cnts, bucket.count());
 
-    //         for val in bucket.into_iter() {
-    //             if let Some(c_vs) = cnts.get(&val.name) {
-    //                 match c_vs.binary_search_by_key(
-    //                     &val.timestamp,
-    //                     |&(c_ts, _)| c_ts,
-    //                 ) {
-    //                     Ok(idx) => {
-    //                         let c_v = &c_vs[idx];
+            for val in bucket.into_iter() {
+                if let Some(c_vs) = cnts.get(&val.name) {
+                    match c_vs.binary_search_by_key(
+                        &val.timestamp,
+                        |&(c_ts, _)| c_ts,
+                    ) {
+                        Ok(idx) => {
+                            let c_v = &c_vs[idx];
 
-    //                         let l_ckms = c_v.1.clone();
-    //                         let r_ckms = val.ckms();
-    //                         assert!(
-    //                             (l_ckms.sum().unwrap() - r_ckms.sum().unwrap())
-    //                                 .abs() < 0.0001
-    //                         );
-    //                         assert!(
-    //                             (l_ckms.cma().unwrap() - r_ckms.cma().unwrap())
-    //                                 .abs() < 0.0001
-    //                         );
-    //                         assert_eq!(l_ckms.count(), r_ckms.count());
-    //                         assert!(
-    //                             (l_ckms.query(0.5).unwrap().1 -
-    //                                  r_ckms.query(0.5).unwrap().1)
-    //                                 .abs() < 0.0001
-    //                         );
-    //                         assert!(
-    //                             (l_ckms.query(0.75).unwrap().1 -
-    //                                  r_ckms.query(0.75).unwrap().1)
-    //                                 .abs() < 0.0001
-    //                         );
-    //                         assert!(
-    //                             (l_ckms.query(0.99).unwrap().1 -
-    //                                  r_ckms.query(0.99).unwrap().1)
-    //                                 .abs() < 0.0001
-    //                         );
-    //                         assert!(
-    //                             (l_ckms.query(0.999).unwrap().1 -
-    //                                  r_ckms.query(0.999).unwrap().1)
-    //                                 .abs() < 0.0001
-    //                         );
-    //                     }
-    //                     Err(_) => return TestResult::failed(),
-    //                 }
+                            let l_ckms = c_v.1.clone();
+                            let r_ckms = val.priv_value();
+                            assert!(
+                                (l_ckms.sum().unwrap() - r_ckms.sum().unwrap())
+                                    .abs() < 0.0001
+                            );
+                            assert!(
+                                (l_ckms.mean().unwrap() - r_ckms.mean().unwrap())
+                                    .abs() < 0.0001
+                            );
+                            assert_eq!(l_ckms.count(), r_ckms.count());
+                            assert!(
+                                (l_ckms.query(0.5).unwrap().1 -
+                                     r_ckms.query(0.5).unwrap().1)
+                                    .abs() < 0.0001
+                            );
+                            assert!(
+                                (l_ckms.query(0.75).unwrap().1 -
+                                     r_ckms.query(0.75).unwrap().1)
+                                    .abs() < 0.0001
+                            );
+                            assert!(
+                                (l_ckms.query(0.99).unwrap().1 -
+                                     r_ckms.query(0.99).unwrap().1)
+                                    .abs() < 0.0001
+                            );
+                            assert!(
+                                (l_ckms.query(0.999).unwrap().1 -
+                                     r_ckms.query(0.999).unwrap().1)
+                                    .abs() < 0.0001
+                            );
+                        }
+                        Err(_) => return TestResult::failed(),
+                    }
 
-    //             } else {
-    //                 return TestResult::failed();
-    //             }
-    //         }
+                } else {
+                    return TestResult::failed();
+                }
+            }
 
-    //         TestResult::passed()
-    //     }
-    //     QuickCheck::new()
-    //         .tests(1000)
-    //         .max_tests(10000)
-    //         .quickcheck(qos_ret as fn(Vec<Telemetry>) -> TestResult);
-    // }
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .tests(1000)
+            .max_tests(10000)
+            .quickcheck(qos_ret as fn(Vec<Telemetry>) -> TestResult);
+    }
 }

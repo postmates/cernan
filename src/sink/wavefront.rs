@@ -341,7 +341,7 @@ impl Wavefront {
         mut value_cache: &mut Vec<(f64, String)>,
     ) -> () {
         let mut tag_buf = String::with_capacity(1_024);
-        match value.aggr_method {
+        match value.aggregation() {
             AggregationMethod::Sum | AggregationMethod::Set => {
                 if let Some(v) = value.value() {
                     self.stats.push_str(&value.name);

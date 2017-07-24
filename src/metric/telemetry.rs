@@ -416,17 +416,10 @@ impl Telemetry {
         self.value.sum().unwrap()
     }
 
-    // #[cfg(test)]
-    // pub fn ckms(&self) -> CKMS<f64> {
-    //     match self.value.kind {
-    //         ValueKind::Single => {
-    //             let mut ckms = CKMS::new(0.001);
-    //             ckms.insert(self.value.single.unwrap());
-    //             ckms
-    //         }
-    //         ValueKind::Many => self.value.many.clone().unwrap(),
-    //     }
-    // }
+    #[cfg(test)]
+    pub fn priv_value(&self) -> Value {
+        self.value.clone()
+    }
 }
 
 #[cfg(test)]

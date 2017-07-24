@@ -1,4 +1,3 @@
-
 use metric::AggregationMethod;
 use quantiles::ckms::CKMS;
 use std::ops::AddAssign;
