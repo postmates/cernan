@@ -112,7 +112,7 @@ impl Iterator for IntoIter {
                 return Some(v);
             }
         }
-        return None;
+        None
     }
 }
 

@@ -60,7 +60,7 @@ impl Elasticsearch {
     fn bulk_body(&self, mut buffer: &mut String) -> () {
         assert!(!self.buffer.is_empty());
         use serde_json::{Value, to_string};
-        for m in self.buffer.iter() {
+        for m in &self.buffer {
             let uuid = Uuid::new_v4().hyphenated().to_string();
             let header: Value = json!({
                 "index": {
@@ -181,8 +181,8 @@ fn format_time(time: i64) -> String {
 fn idx(prefix: &Option<String>, time: i64) -> String {
     let naive_time = NaiveDateTime::from_timestamp(time, 0);
     let utc_time: DateTime<Utc> = DateTime::from_utc(naive_time, Utc);
-    match prefix {
-        &Some(ref p) => format!("{}-{}", p, utc_time.format("%Y-%m-%d")),
-        &None => format!("{}", utc_time.format("%Y-%m-%d")),
+    match *prefix {
+        Some(ref p) => format!("{}-{}", p, utc_time.format("%Y-%m-%d")),
+        None => format!("{}", utc_time.format("%Y-%m-%d")),
     }
 }
