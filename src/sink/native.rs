@@ -146,7 +146,7 @@ impl Sink for Native {
                     let mut m = sync::Arc::make_mut(&mut m).take().unwrap();
                     let mut telem = Telemetry::new();
                     telem.set_name(replace(&mut m.name, Default::default()));
-                    let method = match m.aggr_method {
+                    let method = match m.aggregation() {
                         metric::AggregationMethod::Sum => AggregationMethod::SUM,
                         metric::AggregationMethod::Set => AggregationMethod::SET,
                         metric::AggregationMethod::Summarize => {

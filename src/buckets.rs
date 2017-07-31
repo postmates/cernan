@@ -231,7 +231,7 @@ mod test {
     use super::*;
     use chrono::{TimeZone, Utc};
     use metric::Telemetry;
-    use quantiles::ckms::CKMS;
+    use metric::Value;
     use quickcheck::{QuickCheck, TestResult};
     use std::cmp::Ordering;
     use std::collections::{HashMap, HashSet};
@@ -352,11 +352,11 @@ mod test {
             }
 
             for v in bucket.into_iter() {
-                let ref kind = v.aggr_method;
+                let ref kind = v.aggregation();
                 let time = v.timestamp;
                 let mut found_one = false;
                 for m in &mp {
-                    if (m.name == v.name) && (&m.aggr_method == kind) &&
+                    if (m.name == v.name) && (&m.aggregation() == kind) &&
                         within(bin_width, m.timestamp, time)
                     {
                         assert_eq!(Ordering::Equal, m.within(bin_width, &v));
@@ -724,18 +724,18 @@ mod test {
                 bucket.add(m)
             }
 
-            let mut cnts: HashMap<String, Vec<(i64, CKMS<f64>)>> = HashMap::default();
+            let mut cnts: HashMap<String, Vec<(i64, Value)>> = HashMap::default();
             for m in ms {
                 let c = cnts.entry(m.name.clone()).or_insert(vec![]);
                 match c.binary_search_by_key(&m.timestamp, |&(a, _)| a) {
-                    Ok(idx) => c[idx].1 += m.ckms(),
+                    Ok(idx) => c[idx].1 += m.priv_value(),
                     Err(idx) => {
                         if m.persist && idx > 0 {
                             let mut val = c[idx - 1].clone().1;
-                            val += m.ckms();
+                            val += m.priv_value();
                             c.insert(idx, (m.timestamp, val))
                         } else {
-                            c.insert(idx, (m.timestamp, m.ckms()))
+                            c.insert(idx, (m.timestamp, m.priv_value()))
                         }
                     }
                 }
@@ -754,13 +754,13 @@ mod test {
                             let c_v = &c_vs[idx];
 
                             let l_ckms = c_v.1.clone();
-                            let r_ckms = val.ckms();
+                            let r_ckms = val.priv_value();
                             assert!(
                                 (l_ckms.sum().unwrap() - r_ckms.sum().unwrap())
                                     .abs() < 0.0001
                             );
                             assert!(
-                                (l_ckms.cma().unwrap() - r_ckms.cma().unwrap())
+                                (l_ckms.mean().unwrap() - r_ckms.mean().unwrap())
                                     .abs() < 0.0001
                             );
                             assert_eq!(l_ckms.count(), r_ckms.count());
