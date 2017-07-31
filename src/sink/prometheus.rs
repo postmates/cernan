@@ -126,7 +126,7 @@ impl PrometheusAggr {
     /// If a Telemetry is passed that did not previously exist or has not been
     /// reported the effect will be the same as if `insert` had been called.
     fn recombine(&mut self, telems: Vec<metric::Telemetry>) {
-        for telem in telems.into_iter() {
+        for telem in telems {
             self.insert(telem);
         }
     }
@@ -218,12 +218,12 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
         ],
     );
     let mut res = res.start().unwrap();
-    for m in aggrs.into_iter() {
+    for m in aggrs {
         let mut metric_family = MetricFamily::new();
         metric_family.set_name(m.name.clone());
         let mut metric = Metric::new();
         let mut label_pairs = Vec::with_capacity(8);
-        for (k, v) in m.tags.into_iter() {
+        for &(ref k, ref v) in m.tags.iter() {
             let mut lp = LabelPair::new();
             lp.set_name(k.clone());
             lp.set_value(v.clone());
@@ -256,7 +256,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         .set_raw("content-type", vec![b"text/plain; version=0.0.4".to_vec()]);
     let mut buf = String::with_capacity(1024);
     let mut res = res.start().unwrap();
-    for m in aggrs.into_iter() {
+    for m in aggrs {
         let sum_tags = m.tags.clone();
         let count_tags = m.tags.clone();
         for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
@@ -309,7 +309,8 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
 /// Sanitize cernan Telemetry into prometheus' notion
 ///
 /// Prometheus is pretty strict about the names of its ingested metrics.
-/// According to https://prometheus.io/docs/instrumenting/writing_exporters/
+/// According to [Writing
+/// Exporters](https://prometheus.io/docs/instrumenting/writing_exporters/)
 /// "Only [a-zA-Z0-9:_] are valid in metric names, any other characters should
 /// be sanitized to an underscore."
 ///

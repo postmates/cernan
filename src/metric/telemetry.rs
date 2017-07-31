@@ -270,11 +270,7 @@ impl Telemetry {
         match self.value() {
             None => false,
             Some(n) => {
-                if n == 0.0 {
-                    false
-                } else {
-                    true
-                }
+                !(n == 0.0)
             }
         }
     }

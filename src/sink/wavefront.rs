@@ -137,7 +137,7 @@ where
                             // emit_q and will pull it on the next iterative
                             // go-around.
                             self.emit_q.push(y);
-                            return Some(x);
+                            Some(x)
                         }
                         _ => {
                             // This case is tricky. Here we've found that the
@@ -163,20 +163,20 @@ where
                                         .set_value(0.0),
                                 );
                             }
-                            return Some(x);
+                            Some(x)
                         }
                     }
                 } else {
                     self.emit_q.push(y);
-                    return Some(x);
+                    Some(x)
                 }
             }
             (Some(x), None) => {
                 // end of sequence
-                return Some(x);
+                Some(x)
             }
             (None, _) => {
-                return None;
+                None
             }
         }
     }
@@ -307,9 +307,9 @@ impl Wavefront {
         // map with the same flush window as current then we've just seen it,
         // above.
         {
-            for (k, v) in self.sustain_map.iter() {
+            for (k, v) in &self.sustain_map {
                 if v.flush_number < (self.flush_number.saturating_sub(self.sustain)) {
-                    empties.push(k.clone());
+                    empties.push(*k);
                     continue;
                 }
                 if v.flush_number < self.flush_number {

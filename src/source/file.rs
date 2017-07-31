@@ -131,7 +131,7 @@ impl FileWatcher {
                     Some(vec![
                         (
                             "file_path",
-                            &self.path.to_str().expect("could not make path"),
+                            self.path.to_str().expect("could not make path"),
                         ),
                     ]),
                 );

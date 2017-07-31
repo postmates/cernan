@@ -43,8 +43,8 @@ impl Value {
 
     pub fn set_kind(&mut self, aggr: AggregationMethod) -> () {
         match (self.kind, aggr) {
-            (AggregationMethod::Set, AggregationMethod::Set) => {}
-            (AggregationMethod::Sum, AggregationMethod::Sum) => {}
+            (AggregationMethod::Set, AggregationMethod::Set) |
+            (AggregationMethod::Sum, AggregationMethod::Sum) |
             (AggregationMethod::Summarize, AggregationMethod::Summarize) => {}
             (AggregationMethod::Summarize, AggregationMethod::Sum) => {
                 if let Some(ref ckms) = self.many {
@@ -63,12 +63,7 @@ impl Value {
             (AggregationMethod::Sum, AggregationMethod::Set) => {
                 self.kind = AggregationMethod::Set;
             }
-            (AggregationMethod::Sum, AggregationMethod::Summarize) => {
-                let mut ckms = CKMS::new(0.001);
-                ckms.insert(self.single.unwrap());
-                self.many = Some(ckms);
-                self.kind = AggregationMethod::Summarize;
-            }
+            (AggregationMethod::Sum, AggregationMethod::Summarize) |
             (AggregationMethod::Set, AggregationMethod::Summarize) => {
                 let mut ckms = CKMS::new(0.001);
                 ckms.insert(self.single.unwrap());
