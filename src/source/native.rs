@@ -86,6 +86,8 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                 return;
             }
             match protobuf::parse_from_bytes::<Payload>(&buf) {
+                // TODO we have to handle bin_bounds. We'll use samples to get
+                // the values of each bounds' counter.
                 Ok(mut pyld) => {
                     for mut point in pyld.take_points().into_iter() {
                         let name: String = point.take_name();
@@ -98,14 +100,13 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         if smpls.is_empty() {
                             continue;
                         }
-                        let mut metric = metric::Telemetry::new(name, smpls[0]);
-                        for smpl in &smpls[1..] {
-                            metric = metric.insert_value(*smpl);
-                        }
+                        let mut metric = metric::Telemetry::new(name);
+                        metric = metric.initial_value(smpls[0]);
                         metric = match aggr_type {
                             AggregationMethod::SET => metric.aggr_set(),
                             AggregationMethod::SUM => metric.aggr_sum(),
                             AggregationMethod::SUMMARIZE => metric.aggr_summarize(),
+                            AggregationMethod::BIN => metric.aggr_histogram(),
                         };
                         metric = if point.get_persisted() {
                             metric.persist()
@@ -116,6 +117,10 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         metric = metric.overlay_tags_from_map(&tags);
                         for (key, value) in meta.drain() {
                             metric = metric.overlay_tag(key, value);
+                        }
+                        let mut metric = metric.harden().unwrap(); // todo don't unwrap
+                        for smpl in &smpls[1..] {
+                            metric = metric.insert(*smpl);
                         }
                         util::send(&mut chans, metric::Event::new_telemetry(metric));
                     }

@@ -69,18 +69,12 @@ where
 pub fn report_full_telemetry<S>(
     name: S,
     value: f64,
-    aggr: Option<metric::AggregationMethod>,
     metadata: Option<Vec<(&str, &str)>>,
 ) -> ()
 where
     S: Into<String>,
 {
-    let mut telem = metric::Telemetry::new(name, value);
-    telem = match aggr {
-        Some(metric::AggregationMethod::Sum) | None => telem.aggr_sum(),
-        Some(metric::AggregationMethod::Set) => telem.aggr_set(),
-        Some(metric::AggregationMethod::Summarize) => telem.aggr_summarize(),
-    };
+    let mut telem = metric::Telemetry::new(name, value).aggr_sum();
     telem = metadata
         .unwrap_or(vec![])
         .iter()

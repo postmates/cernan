@@ -112,9 +112,12 @@ impl Sink for Console {
 
         for telem in self.aggrs.iter() {
             match telem.aggregation() {
+                AggregationMethod::Histogram => {
+                    unimplemented!();
+                }
                 AggregationMethod::Sum => {
                     let mut tgt = &mut sums;
-                    if let Some(f) = telem.value() {
+                    if let Some(f) = telem.sum() {
                         tgt.push_str("    ");
                         tgt.push_str(&telem.name);
                         tgt.push_str("(");
@@ -126,7 +129,7 @@ impl Sink for Console {
                 }
                 AggregationMethod::Set => {
                     let mut tgt = &mut sets;
-                    if let Some(f) = telem.value() {
+                    if let Some(f) = telem.set() {
                         tgt.push_str("    ");
                         tgt.push_str(&telem.name);
                         tgt.push_str("(");

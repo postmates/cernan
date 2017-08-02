@@ -149,18 +149,18 @@ where
                             // If the value of x is zero we stash the next
                             // point. Else, we make our pad, stashing those
                             // points plus y.
-                            if x.value() == Some(0.0) {
+                            if x.is_zeroed() {
                                 self.emit_q.push(y);
                             } else {
-                                let sub_y = y.clone()
+                                let sub_y = y.clone().thaw()
                                     .timestamp(y.timestamp - 1)
-                                    .set_value(0.0);
+                                    .value(0.0).harden().unwrap();
                                 self.emit_q.push(y);
                                 self.emit_q.push(sub_y);
                                 self.emit_q.push(
-                                    x.clone()
+                                    x.clone().thaw()
                                         .timestamp(x.timestamp + 1)
-                                        .set_value(0.0),
+                                        .value(0.0).harden().unwrap(),
                                 );
                             }
                             Some(x)
@@ -175,9 +175,7 @@ where
                 // end of sequence
                 Some(x)
             }
-            (None, _) => {
-                None
-            }
+            (None, _) => None,
         }
     }
 }
@@ -281,6 +279,12 @@ impl Wavefront {
                 self.aggrs.add(new_val.timestamp(value.timestamp + 1));
             }
             match value.aggregation() {
+                AggregationMethod::Histogram => {
+                    report_telemetry(
+                        "cernan.sinks.wavefront.aggregation.histogram",
+                        1.0,
+                    )
+                }
                 AggregationMethod::Sum => {
                     report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
                 }
@@ -342,8 +346,27 @@ impl Wavefront {
     ) -> () {
         let mut tag_buf = String::with_capacity(1_024);
         match value.aggregation() {
-            AggregationMethod::Sum | AggregationMethod::Set => {
-                if let Some(v) = value.value() {
+            AggregationMethod::Histogram => {
+                unimplemented!();
+            }
+            AggregationMethod::Sum => {
+                if let Some(v) = value.sum() {
+                    self.stats.push_str(&value.name);
+                    self.stats.push_str(" ");
+                    self.stats.push_str(get_from_cache(&mut value_cache, v));
+                    self.stats.push_str(" ");
+                    self.stats
+                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                    self.stats.push_str(" ");
+                    fmt_tags(&value.tags, &mut tag_buf);
+                    self.stats.push_str(&tag_buf);
+                    self.stats.push_str("\n");
+
+                    tag_buf.clear();
+                }
+            }
+            AggregationMethod::Set => {
+                if let Some(v) = value.set() {
                     self.stats.push_str(&value.name);
                     self.stats.push_str(" ");
                     self.stats.push_str(get_from_cache(&mut value_cache, v));

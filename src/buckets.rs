@@ -201,7 +201,7 @@ impl Buckets {
                 self.count = self.count.saturating_add(1);
                 if value.persist && idx > 0 {
                     let mut cur: Telemetry =
-                        hsh[idx - 1].clone().timestamp(value.timestamp).persist();
+                        hsh[idx - 1].clone().timestamp(value.timestamp).thaw().persist(true).harden().unwrap();
                     cur += value;
                     hsh.insert(idx, cur)
                 } else {

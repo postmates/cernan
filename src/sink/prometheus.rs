@@ -232,7 +232,7 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
         metric.set_label(RepeatedField::from_vec(label_pairs));
         let mut summary = Summary::new();
         summary.set_sample_count(m.count() as u64);
-        summary.set_sample_sum(m.sum());
+        summary.set_sample_sum(m.samples_sum());
         let mut quantiles = Vec::with_capacity(9);
         for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
             let mut quantile = Quantile::new();
@@ -283,7 +283,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
             buf.push_str("\", ");
         }
         buf.push_str("} ");
-        buf.push_str(&m.sum().to_string());
+        buf.push_str(&m.samples_sum().to_string());
         buf.push_str("\n");
         buf.push_str(&m.name);
         buf.push_str("_count ");
@@ -330,11 +330,11 @@ fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
             _ => new_name.push(b'_'),
         }
     }
-    metric
-        .set_name(
+    metric.thaw()
+        .name(
             String::from_utf8(new_name).expect("wait, we bungled the conversion"),
         )
-        .aggr_summarize()
+        .kind(metric::AggregationMethod::Summarize).harden().unwrap()
 }
 
 impl Sink for Prometheus {

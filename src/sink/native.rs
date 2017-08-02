@@ -147,6 +147,7 @@ impl Sink for Native {
                     let mut telem = Telemetry::new();
                     telem.set_name(replace(&mut m.name, Default::default()));
                     let method = match m.aggregation() {
+                        metric::AggregationMethod::Histogram => AggregationMethod::BIN,
                         metric::AggregationMethod::Sum => AggregationMethod::SUM,
                         metric::AggregationMethod::Set => AggregationMethod::SET,
                         metric::AggregationMethod::Summarize => {
@@ -166,8 +167,10 @@ impl Sink for Native {
                     }
                     telem.set_metadata(meta);
                     telem.set_timestamp_ms(m.timestamp * 1000); // FIXME #166
-                    telem.set_samples(m.into_vec());
-
+                    telem.set_samples(m.samples());
+                    // TODO set bin_bounds. What we do is set the counts for the
+                    // bins as set_samples above, then bin_bounds comes from
+                    // elsewhere
                     points.push(telem);
                 }
                 metric::Event::Log(mut l) => {

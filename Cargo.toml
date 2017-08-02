@@ -29,7 +29,7 @@ libc = "0.2"
 log = "0.3.6"
 lua = { git = "https://github.com/blt/rust-lua53.git", branch = "master" }
 protobuf = "1.2"
-quantiles = { version = "0.5", features = ["serde_support"] }
+quantiles = { git = "https://github.com/postmates/quantiles.git", branch = "histogram_cernan_support", features = ["serde_support"] }
 seahash = "3.0"
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
@@ -50,4 +50,3 @@ codegen-units = 4
 [profile.release]
 lto = true
 codegen-units = 1
-

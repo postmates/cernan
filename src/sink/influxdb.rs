@@ -121,19 +121,23 @@ impl InfluxDB {
 
         let mut tag_buf = String::with_capacity(1_024);
         for telem in telems.iter() {
-            if let Some(val) = telem.value() {
-                buffer.push_str(&telem.name);
-                buffer.push_str(",");
-                fmt_tags(&telem.tags, &mut tag_buf);
-                buffer.push_str(&tag_buf);
-                buffer.push_str(" ");
-                buffer.push_str("value=");
-                buffer.push_str(get_from_cache(&mut value_cache, val));
-                buffer.push_str(" ");
-                buffer.push_str(get_from_cache(&mut time_cache, telem.timestamp_ns));
-                buffer.push_str("\n");
-                tag_buf.clear();
-            }
+            // TODO repair 
+            // if let Some(val) = telem.value() {
+            //     buffer.push_str(&telem.name);
+            //     buffer.push_str(",");
+            //     fmt_tags(&telem.tags, &mut tag_buf);
+            //     buffer.push_str(&tag_buf);
+            //     buffer.push_str(" ");
+            //     buffer.push_str("value=");
+            //     buffer.push_str(get_from_cache(&mut value_cache, val));
+            //     buffer.push_str(" ");
+            //     buffer.push_str(get_from_cache(
+            //         &mut time_cache,
+            //         telem.timestamp.saturating_mul(1_000_000_000) as u64,
+            //     ));
+            //     buffer.push_str("\n");
+            //     tag_buf.clear();
+            // }
         }
     }
 
