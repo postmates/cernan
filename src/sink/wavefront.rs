@@ -152,15 +152,21 @@ where
                             if x.is_zeroed() {
                                 self.emit_q.push(y);
                             } else {
-                                let sub_y = y.clone().thaw()
+                                let sub_y = y.clone()
+                                    .thaw()
                                     .timestamp(y.timestamp - 1)
-                                    .value(0.0).harden().unwrap();
+                                    .value(0.0)
+                                    .harden()
+                                    .unwrap();
                                 self.emit_q.push(y);
                                 self.emit_q.push(sub_y);
                                 self.emit_q.push(
-                                    x.clone().thaw()
+                                    x.clone()
+                                        .thaw()
                                         .timestamp(x.timestamp + 1)
-                                        .value(0.0).harden().unwrap(),
+                                        .value(0.0)
+                                        .harden()
+                                        .unwrap(),
                                 );
                             }
                             Some(x)
@@ -203,15 +209,13 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
             for ip in ips {
                 match TcpStream::connect(ip) {
                     Ok(stream) => return Some(stream),
-                    Err(e) => {
-                        info!(
-                            "Unable to connect to proxy at {} using addr {} with error \
-                             {}",
-                            host,
-                            ip,
-                            e
-                        )
-                    }
+                    Err(e) => info!(
+                        "Unable to connect to proxy at {} using addr {} with error \
+                         {}",
+                        host,
+                        ip,
+                        e
+                    ),
                 }
             }
             None
@@ -278,13 +282,11 @@ impl Wavefront {
                 let new_val = value.clone();
                 self.aggrs.add(new_val.timestamp(value.timestamp + 1));
             }
-            match value.aggregation() {
-                AggregationMethod::Histogram => {
-                    report_telemetry(
-                        "cernan.sinks.wavefront.aggregation.histogram",
-                        1.0,
-                    )
-                }
+            match value.kind() {
+                AggregationMethod::Histogram => report_telemetry(
+                    "cernan.sinks.wavefront.aggregation.histogram",
+                    1.0,
+                ),
                 AggregationMethod::Sum => {
                     report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
                 }
@@ -345,42 +347,36 @@ impl Wavefront {
         mut value_cache: &mut Vec<(f64, String)>,
     ) -> () {
         let mut tag_buf = String::with_capacity(1_024);
-        match value.aggregation() {
+        match value.kind() {
             AggregationMethod::Histogram => {
                 unimplemented!();
             }
-            AggregationMethod::Sum => {
-                if let Some(v) = value.sum() {
-                    self.stats.push_str(&value.name);
-                    self.stats.push_str(" ");
-                    self.stats.push_str(get_from_cache(&mut value_cache, v));
-                    self.stats.push_str(" ");
-                    self.stats
-                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
-                    self.stats.push_str(" ");
-                    fmt_tags(&value.tags, &mut tag_buf);
-                    self.stats.push_str(&tag_buf);
-                    self.stats.push_str("\n");
+            AggregationMethod::Sum => if let Some(v) = value.sum() {
+                self.stats.push_str(&value.name);
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut value_cache, v));
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
+                self.stats.push_str(" ");
+                fmt_tags(&value.tags, &mut tag_buf);
+                self.stats.push_str(&tag_buf);
+                self.stats.push_str("\n");
 
-                    tag_buf.clear();
-                }
-            }
-            AggregationMethod::Set => {
-                if let Some(v) = value.set() {
-                    self.stats.push_str(&value.name);
-                    self.stats.push_str(" ");
-                    self.stats.push_str(get_from_cache(&mut value_cache, v));
-                    self.stats.push_str(" ");
-                    self.stats
-                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
-                    self.stats.push_str(" ");
-                    fmt_tags(&value.tags, &mut tag_buf);
-                    self.stats.push_str(&tag_buf);
-                    self.stats.push_str("\n");
+                tag_buf.clear();
+            },
+            AggregationMethod::Set => if let Some(v) = value.set() {
+                self.stats.push_str(&value.name);
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut value_cache, v));
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
+                self.stats.push_str(" ");
+                fmt_tags(&value.tags, &mut tag_buf);
+                self.stats.push_str(&tag_buf);
+                self.stats.push_str("\n");
 
-                    tag_buf.clear();
-                }
-            }
+                tag_buf.clear();
+            },
             AggregationMethod::Summarize => {
                 fmt_tags(&value.tags, &mut tag_buf);
                 for tup in &self.percentiles {
@@ -530,10 +526,10 @@ mod test {
                         let span = (t.timestamp - next_t.timestamp).abs() /
                             (bin_width as i64);
                         if span > 1 {
-                            assert_eq!(t.value(), Some(0.0));
-                            assert_eq!(next_t.value(), Some(0.0));
+                            assert!(t.is_zeroed());
+                            assert!(next_t.is_zeroed());
                         }
-                        if (t.value() != Some(0.0)) && (next_t.value() != Some(0.0)) {
+                        if (!t.is_zeroed()) && (next_t.is_zeroed()) {
                             assert!(span <= 1);
                         }
                     } else {
@@ -570,7 +566,7 @@ mod test {
                 bin_width as i64,
             );
             for val in padding {
-                if val.value() == Some(0.0) {
+                if val.is_zeroed() {
                     total_zero_run += 1;
                 } else {
                     total_zero_run = 0;
@@ -598,7 +594,7 @@ mod test {
 
             let mut total_non_zero = 0;
             for val in bucket.clone().into_iter() {
-                if val.value() != Some(0.0) {
+                if val.is_zeroed() {
                     total_non_zero += 1;
                 }
             }
@@ -609,7 +605,7 @@ mod test {
             );
             let mut total = 0;
             for val in padding {
-                if val.value() != Some(0.0) {
+                if val.is_zeroed() {
                     total += 1;
                 }
             }
@@ -654,69 +650,113 @@ mod test {
         let dt_1 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
         let dt_2 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.counter", -1.0)
+            Telemetry::new()
+                .name("test.counter")
+                .value(-1.0)
                 .timestamp(dt_0)
-                .aggr_sum()
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.counter", 2.0)
+            Telemetry::new()
+                .name("test.counter")
+                .value(2.0)
                 .timestamp(dt_0)
-                .aggr_sum()
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.counter", 3.0)
+            Telemetry::new()
+                .name("test.counter")
+                .value(3.0)
                 .timestamp(dt_1)
-                .aggr_sum()
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.gauge", 3.211)
+            Telemetry::new()
+                .name("test.gauge")
+                .value(3.211)
                 .timestamp(dt_0)
-                .aggr_set()
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.gauge", 4.322)
+            Telemetry::new()
+                .name("test.gauge")
+                .value(4.322)
                 .timestamp(dt_1)
-                .aggr_set()
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.gauge", 5.433)
+            Telemetry::new()
+                .name("test.gauge")
+                .value(5.433)
                 .timestamp(dt_2)
-                .aggr_set()
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.timer", 12.101)
+            Telemetry::new()
+                .name("test.timer")
+                .value(12.101)
                 .timestamp(dt_0)
-                .aggr_summarize()
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.timer", 1.101)
+            Telemetry::new()
+                .name("test.timer")
+                .value(1.101)
                 .timestamp(dt_0)
-                .aggr_summarize()
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.timer", 3.101)
+            Telemetry::new()
+                .name("test.timer")
+                .value(3.101)
                 .timestamp(dt_0)
-                .aggr_summarize()
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.raw", 1.0)
+            Telemetry::new()
+                .name("test.raw")
+                .value(1.0)
                 .timestamp(dt_0)
-                .aggr_set()
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.raw", 2.0)
+            Telemetry::new()
+                .name("test.raw")
+                .value(2.0)
                 .timestamp(dt_1)
-                .aggr_set()
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.format_stats();

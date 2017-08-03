@@ -94,7 +94,11 @@ impl<'a> Payload<'a> {
         let val = state.to_number(3);
         match state.to_str(2) {
             Some(name) => {
-                let m = metric::Telemetry::new().name(name).value(val).harden().unwrap()
+                let m = metric::Telemetry::new()
+                    .name(name)
+                    .value(val)
+                    .harden()
+                    .unwrap()
                     .overlay_tags_from_map((*pyld).global_tags);
                 (*pyld).metrics.push(Box::new(m));
             }
@@ -160,16 +164,14 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => {
-                match (*pyld).logs[idx].tags.get(&key) {
-                    Some(v) => {
-                        state.push_string(v);
-                    }
-                    None => {
-                        state.push_nil();
-                    }
+            Some(key) => match (*pyld).logs[idx].tags.get(&key) {
+                Some(v) => {
+                    state.push_string(v);
                 }
-            }
+                None => {
+                    state.push_nil();
+                }
+            },
             None => {
                 error!("[log_tag_value] no key provided");
                 state.push_nil();
@@ -184,16 +186,14 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => {
-                match (*pyld).logs[idx].fields.get(&key) {
-                    Some(v) => {
-                        state.push_string(v);
-                    }
-                    None => {
-                        state.push_nil();
-                    }
+            Some(key) => match (*pyld).logs[idx].fields.get(&key) {
+                Some(v) => {
+                    state.push_string(v);
                 }
-            }
+                None => {
+                    state.push_nil();
+                }
+            },
             None => {
                 error!("[log_tag_value] no key provided");
                 state.push_nil();
@@ -208,16 +208,14 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => {
-                match (*pyld).metrics[idx].tags.get(&key) {
-                    Some(v) => {
-                        state.push_string(v);
-                    }
-                    None => {
-                        state.push_nil();
-                    }
+            Some(key) => match (*pyld).metrics[idx].tags.get(&key) {
+                Some(v) => {
+                    state.push_string(v);
                 }
-            }
+                None => {
+                    state.push_nil();
+                }
+            },
             None => {
                 error!("[log_tag_value] no key provided");
                 state.push_nil();
@@ -232,25 +230,23 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => {
-                match state.to_str(4).map(|v| v.to_owned()) {
-                    Some(val) => {
-                        match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags)
-                            .insert(key, val) {
-                            Some(old_v) => {
-                                state.push_string(&old_v);
-                            }
-                            None => {
-                                state.push_nil();
-                            }
-                        }
+            Some(key) => match state.to_str(4).map(|v| v.to_owned()) {
+                Some(val) => match sync::Arc::make_mut(
+                    &mut (*pyld).metrics[idx].tags,
+                ).insert(key, val)
+                {
+                    Some(old_v) => {
+                        state.push_string(&old_v);
                     }
                     None => {
-                        error!("[metric_set_tag] no key provided");
                         state.push_nil();
                     }
+                },
+                None => {
+                    error!("[metric_set_tag] no key provided");
+                    state.push_nil();
                 }
-            }
+            },
             None => {
                 error!("[metric_set_tag] no val provided");
                 state.push_nil();
@@ -265,24 +261,20 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => {
-                match state.to_str(4).map(|v| v.to_owned()) {
-                    Some(val) => {
-                        match (*pyld).logs[idx].tags.insert(key, val) {
-                            Some(old_v) => {
-                                state.push_string(&old_v);
-                            }
-                            None => {
-                                state.push_nil();
-                            }
-                        }
+            Some(key) => match state.to_str(4).map(|v| v.to_owned()) {
+                Some(val) => match (*pyld).logs[idx].tags.insert(key, val) {
+                    Some(old_v) => {
+                        state.push_string(&old_v);
                     }
                     None => {
-                        error!("[log_set_tag] no key provided");
                         state.push_nil();
                     }
+                },
+                None => {
+                    error!("[log_set_tag] no key provided");
+                    state.push_nil();
                 }
-            }
+            },
             None => {
                 error!("[log_set_tag] no val provided");
                 state.push_nil();
@@ -297,24 +289,20 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => {
-                match state.to_str(4).map(|v| v.to_owned()) {
-                    Some(val) => {
-                        match (*pyld).logs[idx].fields.insert(key, val) {
-                            Some(old_v) => {
-                                state.push_string(&old_v);
-                            }
-                            None => {
-                                state.push_nil();
-                            }
-                        }
+            Some(key) => match state.to_str(4).map(|v| v.to_owned()) {
+                Some(val) => match (*pyld).logs[idx].fields.insert(key, val) {
+                    Some(old_v) => {
+                        state.push_string(&old_v);
                     }
                     None => {
-                        error!("[log_set_field] no key provided");
                         state.push_nil();
                     }
+                },
+                None => {
+                    error!("[log_set_field] no key provided");
+                    state.push_nil();
                 }
-            }
+            },
             None => {
                 error!("[log_set_field] no val provided");
                 state.push_nil();
@@ -329,17 +317,16 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => {
-                match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags)
-                    .remove(&key) {
-                    Some(old_v) => {
-                        state.push_string(&old_v);
-                    }
-                    None => {
-                        state.push_nil();
-                    }
+            Some(key) => match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags)
+                .remove(&key)
+            {
+                Some(old_v) => {
+                    state.push_string(&old_v);
                 }
-            }
+                None => {
+                    state.push_nil();
+                }
+            },
             None => {
                 error!("[metric_remove_tag] no val provided");
                 state.push_nil();
@@ -354,16 +341,14 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => {
-                match (*pyld).logs[idx].tags.remove(&key) {
-                    Some(old_v) => {
-                        state.push_string(&old_v);
-                    }
-                    None => {
-                        state.push_nil();
-                    }
+            Some(key) => match (*pyld).logs[idx].tags.remove(&key) {
+                Some(old_v) => {
+                    state.push_string(&old_v);
                 }
-            }
+                None => {
+                    state.push_nil();
+                }
+            },
             None => {
                 error!("[log_remove_tag] no val provided");
                 state.push_nil();
@@ -405,7 +390,7 @@ const PAYLOAD_LIB: [(&'static str, Function); 16] = [
     ("metric_set_tag", Some(Payload::lua_metric_set_tag)),
     ("metric_tag_value", Some(Payload::lua_metric_tag_value)),
     // TODO
-    // 
+    //
     // The single 'value' for a Telemetry doesn't make sense and never did make
     // sense. We were just bad people and pretended that it did. What I'm
     // thinking we'll do is expose metric_value_sum(), metric_value_set() etc to
@@ -521,13 +506,16 @@ impl filter::Filter for ProgrammableFilter {
             metric::Event::Telemetry(mut m) => {
                 self.state.get_global("process_metric");
                 if !self.state.is_fn(-1) {
-                    let filter_telem = metric::Telemetry::new().name(
-                        format!(
+                    let filter_telem = metric::Telemetry::new()
+                        .name(format!(
                             "cernan.filter.{}.\
                              process_metric.failure",
                             self.path
-                        )).value(
-                        1.0).kind(metric::AggregationMethod::Sum).harden().unwrap();
+                        ))
+                        .value(1.0)
+                        .kind(metric::AggregationMethod::Sum)
+                        .harden()
+                        .unwrap();
                     let fail =
                         metric::Event::Telemetry(sync::Arc::new(Some(filter_telem)));
                     return Err(
@@ -557,18 +545,24 @@ impl filter::Filter for ProgrammableFilter {
                 Ok(())
             }
             metric::Event::TimerFlush(flush_idx)
-                if self.last_flush_idx >= flush_idx => Ok(()),
+                if self.last_flush_idx >= flush_idx =>
+            {
+                Ok(())
+            }
             metric::Event::TimerFlush(flush_idx) => {
                 self.state.get_global("tick");
                 if !self.state.is_fn(-1) {
                     let fail = metric::Event::new_telemetry(
-                        metric::Telemetry::new().name(
-                            format!(
+                        metric::Telemetry::new()
+                            .name(format!(
                                 "cernan.filter.\
                                  {}.tick.failure",
                                 self.path
-                            )).value(
-                            1.0).kind(metric::AggregationMethod::Sum).harden().unwrap()
+                            ))
+                            .value(1.0)
+                            .kind(metric::AggregationMethod::Sum)
+                            .harden()
+                            .unwrap(),
                     );
                     return Err(filter::FilterError::NoSuchFunction("tick", fail));
                 }
@@ -596,14 +590,17 @@ impl filter::Filter for ProgrammableFilter {
                 self.state.get_global("process_log");
                 if !self.state.is_fn(-1) {
                     let fail = metric::Event::new_telemetry(
-                        metric::Telemetry::new().name(
-                            format!(
+                        metric::Telemetry::new()
+                            .name(format!(
                                 "cernan.filter.\
                                  {}.process_log.\
                                  failure",
                                 self.path
-                            )).value(
-                            1.0).kind(metric::AggregationMethod::Sum).harden().unwrap()
+                            ))
+                            .value(1.0)
+                            .kind(metric::AggregationMethod::Sum)
+                            .harden()
+                            .unwrap(),
                     );
                     return Err(
                         filter::FilterError::NoSuchFunction("process_log", fail),

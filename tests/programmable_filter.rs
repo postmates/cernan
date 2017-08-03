@@ -25,7 +25,11 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let metric = metric::Telemetry::new("identity", 12.0)
+            let metric = metric::Telemetry::new()
+                .name("identity")
+                .value(12.0)
+                .harden()
+                .unwrap()
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
             let event = metric::Event::new_telemetry(metric);
@@ -54,7 +58,11 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let metric = metric::Telemetry::new("clear_me", 12.0)
+            let metric = metric::Telemetry::new()
+                .name("clear_me")
+                .value(12.0)
+                .harden()
+                .unwrap()
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
             let event = metric::Event::new_telemetry(metric);
@@ -147,8 +155,12 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let expected_metric =
-                metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
+            let expected_metric = metric::Telemetry::new()
+                .name("identity")
+                .value(12.0)
+                .harden()
+                .unwrap()
+                .overlay_tag("foo", "bar");
             let orig_metric = expected_metric.clone().overlay_tag("bizz", "bazz");
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
@@ -177,7 +189,11 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_metric = metric::Telemetry::new("identity", 12.0)
+            let orig_metric = metric::Telemetry::new()
+                .name("identity")
+                .value(12.0)
+                .harden()
+                .unwrap()
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
 
@@ -207,7 +223,11 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_metric = metric::Telemetry::new("identity", 12.0)
+            let orig_metric = metric::Telemetry::new()
+                .name("identity")
+                .value(12.0)
+                .harden()
+                .unwrap()
                 .overlay_tag("foo", "bar")
                 .overlay_tag("bizz", "bazz");
 
@@ -309,8 +329,12 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let orig_metric =
-                metric::Telemetry::new("identity", 12.0).overlay_tag("foo", "bar");
+            let orig_metric = metric::Telemetry::new()
+                .name("identity")
+                .value(12.0)
+                .harden()
+                .unwrap()
+                .overlay_tag("foo", "bar");
             let expected_metric = orig_metric.clone().overlay_tag("bizz", "bazz");
             let orig_event = metric::Event::new_telemetry(orig_metric);
             let expected_event = metric::Event::new_telemetry(expected_metric);
@@ -339,12 +363,27 @@ mod integration {
             };
             let mut cs = ProgrammableFilter::new(config);
 
-            let metric0 =
-                metric::Event::new_telemetry(metric::Telemetry::new("identity", 12.0));
-            let metric1 =
-                metric::Event::new_telemetry(metric::Telemetry::new("identity", 13.0));
-            let metric2 =
-                metric::Event::new_telemetry(metric::Telemetry::new("identity", 14.0));
+            let metric0 = metric::Event::new_telemetry(
+                metric::Telemetry::new()
+                    .name("identity")
+                    .value(12.0)
+                    .harden()
+                    .unwrap(),
+            );
+            let metric1 = metric::Event::new_telemetry(
+                metric::Telemetry::new()
+                    .name("identity")
+                    .value(13.0)
+                    .harden()
+                    .unwrap(),
+            );
+            let metric2 = metric::Event::new_telemetry(
+                metric::Telemetry::new()
+                    .name("identity")
+                    .value(14.0)
+                    .harden()
+                    .unwrap(),
+            );
 
             let log0 =
                 metric::Event::new_log(metric::LogLine::new("identity", "a log line"));
@@ -374,7 +413,7 @@ mod integration {
                 metric::Event::Telemetry(ref mut m) => {
                     let p = ::std::sync::Arc::make_mut(m).take().unwrap();
                     assert_eq!(p.name, "count_per_tick");
-                    assert_eq!(p.value(), Some(5.0));
+                    assert_eq!(p.set(), Some(5.0));
                 }
                 _ => {
                     assert!(false);
@@ -404,7 +443,7 @@ mod integration {
                 metric::Event::Telemetry(ref mut m) => {
                     let p = ::std::sync::Arc::make_mut(m).take().unwrap();
                     assert_eq!(p.name, "count_per_tick");
-                    assert_eq!(p.value(), Some(2.0));
+                    assert_eq!(p.set(), Some(2.0));
                 }
                 _ => {
                     assert!(false);
@@ -439,7 +478,8 @@ mod integration {
                         protocol_counter-TCPFastOpenActive";
             let expected = "collectd.protocols-TcpExt.protocol_counter-TCPFastOpenActive";
 
-            let metric = metric::Telemetry::new(orig, 12.0);
+            let metric =
+                metric::Telemetry::new().name(orig).value(12.0).harden().unwrap();
             let event = metric::Event::new_telemetry(metric);
 
             let mut events = Vec::new();
@@ -480,7 +520,8 @@ mod integration {
             let orig = "totally_fine.interface-lo.if_errors.tx 0 1478751126";
             let expected = "totally_fine.interface-lo.if_errors.tx 0 1478751126";
 
-            let metric = metric::Telemetry::new(orig, 12.0);
+            let metric =
+                metric::Telemetry::new().name(orig).value(12.0).harden().unwrap();
             let event = metric::Event::new_telemetry(metric);
 
             let mut events = Vec::new();

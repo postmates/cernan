@@ -66,17 +66,15 @@ fn handle_udp(
             Err(_) => panic!("Could not read UDP socket."),
         };
         match str::from_utf8(&buf[..len]) {
-            Ok(val) => {
-                if parse_statsd(val, &mut metrics, basic_metric.clone()) {
-                    for m in metrics.drain(..) {
-                        send(&mut chans, metric::Event::new_telemetry(m));
-                    }
-                    report_telemetry("cernan.statsd.packet", 1.0);
-                } else {
-                    report_telemetry("cernan.statsd.bad_packet", 1.0);
-                    error!("BAD PACKET: {:?}", val);
+            Ok(val) => if parse_statsd(val, &mut metrics, basic_metric.clone()) {
+                for m in metrics.drain(..) {
+                    send(&mut chans, metric::Event::new_telemetry(m));
                 }
-            }
+                report_telemetry("cernan.statsd.packet", 1.0);
+            } else {
+                report_telemetry("cernan.statsd.bad_packet", 1.0);
+                error!("BAD PACKET: {:?}", val);
+            },
             Err(e) => {
                 error!("Payload not valid UTF-8: {:?}", e);
             }

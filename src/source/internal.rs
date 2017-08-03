@@ -75,7 +75,12 @@ where
     S: Into<String>,
 {
     use metric::AggregationMethod;
-    let mut telem = metric::Telemetry::new().name(name).value(value).kind(AggregationMethod::Sum).harden().unwrap();
+    let mut telem = metric::Telemetry::new()
+        .name(name)
+        .value(value)
+        .kind(AggregationMethod::Sum)
+        .harden()
+        .unwrap();
     telem = metadata
         .unwrap_or(vec![])
         .iter()

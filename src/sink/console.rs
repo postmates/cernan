@@ -111,7 +111,7 @@ impl Sink for Console {
         let mut summaries = String::new();
 
         for telem in self.aggrs.iter() {
-            match telem.aggregation() {
+            match telem.kind() {
                 AggregationMethod::Histogram => {
                     unimplemented!();
                 }

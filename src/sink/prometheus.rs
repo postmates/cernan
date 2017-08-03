@@ -330,11 +330,14 @@ fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
             _ => new_name.push(b'_'),
         }
     }
-    metric.thaw()
+    metric
+        .thaw()
         .name(
             String::from_utf8(new_name).expect("wait, we bungled the conversion"),
         )
-        .kind(metric::AggregationMethod::Summarize).harden().unwrap()
+        .kind(metric::AggregationMethod::Summarize)
+        .harden()
+        .unwrap()
 }
 
 impl Sink for Prometheus {
@@ -448,7 +451,7 @@ mod test {
                     let new_t =
                         aggr.find_match(&telem).expect("could not find in test");
                     assert_eq!(other.name, new_t.name);
-                    assert_eq!(new_t.aggregation(), telem.aggregation());
+                    assert_eq!(new_t.kind(), telem.aggregation());
                     // TODO
                     //
                     // This will not longer function correctly. Previously we

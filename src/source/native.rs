@@ -103,10 +103,18 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         let mut metric = metric::Telemetry::new().name(name);
                         metric = metric.value(smpls[0]);
                         metric = match aggr_type {
-                            AggregationMethod::SET => metric.kind(metric::AggregationMethod::Set),
-                            AggregationMethod::SUM => metric.kind(metric::AggregationMethod::Sum),
-                            AggregationMethod::SUMMARIZE => metric.kind(metric::AggregationMethod::Summarize),
-                            AggregationMethod::BIN => metric.kind(metric::AggregationMethod::Histogram),
+                            AggregationMethod::SET => {
+                                metric.kind(metric::AggregationMethod::Set)
+                            }
+                            AggregationMethod::SUM => {
+                                metric.kind(metric::AggregationMethod::Sum)
+                            }
+                            AggregationMethod::SUMMARIZE => {
+                                metric.kind(metric::AggregationMethod::Summarize)
+                            }
+                            AggregationMethod::BIN => {
+                                metric.kind(metric::AggregationMethod::Histogram)
+                            }
                         };
                         metric = metric.persist(point.get_persisted());
                         metric = metric.timestamp(ts);
