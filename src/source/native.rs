@@ -100,25 +100,21 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         if smpls.is_empty() {
                             continue;
                         }
-                        let mut metric = metric::Telemetry::new(name);
-                        metric = metric.initial_value(smpls[0]);
+                        let mut metric = metric::Telemetry::new().name(name);
+                        metric = metric.value(smpls[0]);
                         metric = match aggr_type {
-                            AggregationMethod::SET => metric.aggr_set(),
-                            AggregationMethod::SUM => metric.aggr_sum(),
-                            AggregationMethod::SUMMARIZE => metric.aggr_summarize(),
-                            AggregationMethod::BIN => metric.aggr_histogram(),
+                            AggregationMethod::SET => metric.kind(metric::AggregationMethod::Set),
+                            AggregationMethod::SUM => metric.kind(metric::AggregationMethod::Sum),
+                            AggregationMethod::SUMMARIZE => metric.kind(metric::AggregationMethod::Summarize),
+                            AggregationMethod::BIN => metric.kind(metric::AggregationMethod::Histogram),
                         };
-                        metric = if point.get_persisted() {
-                            metric.persist()
-                        } else {
-                            metric.ephemeral()
-                        };
+                        metric = metric.persist(point.get_persisted());
                         metric = metric.timestamp(ts);
+                        let mut metric = metric.harden().unwrap(); // todo don't unwrap
                         metric = metric.overlay_tags_from_map(&tags);
                         for (key, value) in meta.drain() {
                             metric = metric.overlay_tag(key, value);
                         }
-                        let mut metric = metric.harden().unwrap(); // todo don't unwrap
                         for smpl in &smpls[1..] {
                             metric = metric.insert(*smpl);
                         }

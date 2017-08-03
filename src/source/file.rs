@@ -127,7 +127,6 @@ impl FileWatcher {
                 report_full_telemetry(
                     "cernan.sources.file.switch",
                     1.0,
-                    None,
                     Some(vec![
                         (
                             "file_path",
@@ -282,7 +281,6 @@ impl Source for FileServer {
                                     report_full_telemetry(
                                         "cernan.sources.file.lines_read",
                                         1.0,
-                                        None,
                                         Some(vec![("file_path", path_name)]),
                                     );
                                     trace!("{} | {}", path_name, buffer);

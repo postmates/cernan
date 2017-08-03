@@ -1,4 +1,4 @@
-use metric::Telemetry;
+use metric::{Telemetry, AggregationMethod};
 use std::str::FromStr;
 use std::sync;
 
@@ -24,11 +24,11 @@ pub fn parse_graphite(
                         let metric =
                             sync::Arc::make_mut(&mut metric.clone()).take().unwrap();
                         res.push(
-                            metric
-                                .set_name(name)
-                                .set_value(parsed_val)
-                                .aggr_set()
-                                .timestamp(parsed_time),
+                            metric.thaw()
+                                .name(name)
+                                .value(parsed_val)
+                                .kind(AggregationMethod::Set)
+                                .timestamp(parsed_time).harden().unwrap(),
                         );
                     }
                     None => return false,

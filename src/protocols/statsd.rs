@@ -1,4 +1,5 @@
 use metric;
+use metric::AggregationMethod;
 use std::str::FromStr;
 use std::sync;
 use time;
@@ -39,9 +40,9 @@ pub fn parse_statsd(
                                 Err(_) => return false,
                             };
                         let mut metric =
-                            sync::Arc::make_mut(&mut metric.clone()).take().unwrap();
-                        metric = metric.set_name(name);
-                        metric = metric.set_value(val);
+                            sync::Arc::make_mut(&mut metric.clone()).take().unwrap().thaw();
+                        metric = metric.name(name);
+                        metric = metric.value(val);
                         metric = metric.timestamp(time::now());
                         let signed = match &src[offset..(offset + 1)] {
                             "+" | "-" => true,
@@ -61,13 +62,13 @@ pub fn parse_statsd(
                                             Ok(f) => f,
                                             Err(_) => return false,
                                         };
-                                        metric.persist = true;
+                                        metric = metric.persist(true);
                                         metric = if signed {
-                                            metric.aggr_sum()
+                                            metric.kind(AggregationMethod::Sum)
                                         } else {
-                                            metric.aggr_set()
+                                            metric.kind(AggregationMethod::Set)
                                         };
-                                        metric.set_value(val * (1.0 / sample))
+                                        metric.value(val * (1.0 / sample))
                                     }
                                     "c|" | "c" => {
                                         let sample = match f64::from_str(
@@ -76,8 +77,8 @@ pub fn parse_statsd(
                                             Ok(f) => f,
                                             Err(_) => return false,
                                         };
-                                        metric = metric.aggr_sum().ephemeral();
-                                        metric.set_value(val * (1.0 / sample))
+                                        metric = metric.kind(AggregationMethod::Sum).persist(false);
+                                        metric.value(val * (1.0 / sample))
                                     }
                                     "ms" | "ms|" | "h" | "h|" => {
                                         let sample = match f64::from_str(
@@ -86,8 +87,8 @@ pub fn parse_statsd(
                                             Ok(f) => f,
                                             Err(_) => return false,
                                         };
-                                        metric = metric.aggr_summarize().ephemeral();
-                                        metric.set_value(val * (1.0 / sample))
+                                        metric = metric.kind(AggregationMethod::Summarize).persist(false);
+                                        metric.value(val * (1.0 / sample))
                                     }
                                     _ => return false,
                                 }
@@ -95,20 +96,20 @@ pub fn parse_statsd(
                             None => {
                                 match &src[offset..] {
                                     "g" => {
-                                        metric.persist = true;
+                                        metric = metric.persist(true);
                                         if signed {
-                                            metric.aggr_sum()
+                                            metric.kind(AggregationMethod::Sum)
                                         } else {
-                                            metric.aggr_set()
+                                            metric.kind(AggregationMethod::Set)
                                         }
                                     }
-                                    "ms" | "h" => metric.aggr_summarize().ephemeral(),
-                                    "c" => metric.aggr_sum().ephemeral(),
+                                    "ms" | "h" => metric.kind(AggregationMethod::Summarize).persist(false),
+                                    "c" => metric.kind(AggregationMethod::Sum).persist(false),
                                     _ => return false,
                                 }
                             }
                         };
-                        res.push(metric);
+                        res.push(metric.harden().unwrap());
                     }
                     None => return false,
                 }

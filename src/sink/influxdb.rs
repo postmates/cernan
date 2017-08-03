@@ -8,6 +8,7 @@ use std::string;
 use std::sync;
 use time;
 use url::Url;
+use quantiles::histogram::Bound;
 
 /// The `InfluxDB` structure
 ///
@@ -116,28 +117,94 @@ impl InfluxDB {
 
     /// Convert the slice into a payload that can be sent to InfluxDB
     fn format_stats(&self, mut buffer: &mut String, telems: &[Telemetry]) -> () {
+        use metric::AggregationMethod;
         let mut time_cache: Vec<(u64, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let mut tag_buf = String::with_capacity(1_024);
         for telem in telems.iter() {
-            // TODO repair 
-            // if let Some(val) = telem.value() {
-            //     buffer.push_str(&telem.name);
-            //     buffer.push_str(",");
-            //     fmt_tags(&telem.tags, &mut tag_buf);
-            //     buffer.push_str(&tag_buf);
-            //     buffer.push_str(" ");
-            //     buffer.push_str("value=");
-            //     buffer.push_str(get_from_cache(&mut value_cache, val));
-            //     buffer.push_str(" ");
-            //     buffer.push_str(get_from_cache(
-            //         &mut time_cache,
-            //         telem.timestamp.saturating_mul(1_000_000_000) as u64,
-            //     ));
-            //     buffer.push_str("\n");
-            //     tag_buf.clear();
-            // }
+            match telem.aggregation() {
+                AggregationMethod::Sum => {
+                    if let Some(val) = telem.sum() {
+                        buffer.push_str(&telem.name);
+                        buffer.push_str(",");
+                        fmt_tags(&telem.tags, &mut tag_buf);
+                        buffer.push_str(&tag_buf);
+                        buffer.push_str(" ");
+                        buffer.push_str("value=");
+                        buffer.push_str(get_from_cache(&mut value_cache, val));
+                        buffer.push_str(" ");
+                        buffer.push_str(get_from_cache(
+                            &mut time_cache,
+                            telem.timestamp.saturating_mul(1_000_000_000) as u64,
+                        ));
+                        buffer.push_str("\n");
+                        tag_buf.clear();
+                    }
+                }
+                AggregationMethod::Set => {
+                    if let Some(val) = telem.set() {
+                        buffer.push_str(&telem.name);
+                        buffer.push_str(",");
+                        fmt_tags(&telem.tags, &mut tag_buf);
+                        buffer.push_str(&tag_buf);
+                        buffer.push_str(" ");
+                        buffer.push_str("value=");
+                        buffer.push_str(get_from_cache(&mut value_cache, val));
+                        buffer.push_str(" ");
+                        buffer.push_str(get_from_cache(
+                            &mut time_cache,
+                            telem.timestamp.saturating_mul(1_000_000_000) as u64,
+                        ));
+                        buffer.push_str("\n");
+                        tag_buf.clear();
+                    }
+                }
+                AggregationMethod::Histogram => {
+                    if let Some(bin_iter) = telem.bins() {
+                        for &(bound, count) in bin_iter {
+                            let bound_name = match bound {
+                                Bound::Finite(x) => format!("le_{}", x),
+                                Bound::PosInf => format!("le_inf"),
+                            }; 
+                            buffer.push_str(&format!("{}.{}", &telem.name, bound_name));
+                            buffer.push_str(",");
+                            fmt_tags(&telem.tags, &mut tag_buf);
+                            buffer.push_str(&tag_buf);
+                            buffer.push_str(" ");
+                            buffer.push_str("value=");
+                            buffer.push_str(get_from_cache(&mut value_cache, count as f64));
+                            buffer.push_str(" ");
+                            buffer.push_str(get_from_cache(
+                                &mut time_cache,
+                                telem.timestamp.saturating_mul(1_000_000_000) as u64,
+                            ));
+                            buffer.push_str("\n");
+                            tag_buf.clear();
+                        }
+                    }
+                }
+                AggregationMethod::Summarize => {
+                    for percentile in &[0.25, 0.50, 0.75, 0.90, 0.99, 1.0] {
+                    if let Some(val) = telem.query(*percentile) {
+                        buffer.push_str(&format!("{}.{}", &telem.name, percentile));
+                        buffer.push_str(",");
+                        fmt_tags(&telem.tags, &mut tag_buf);
+                        buffer.push_str(&tag_buf);
+                        buffer.push_str(" ");
+                        buffer.push_str("value=");
+                        buffer.push_str(get_from_cache(&mut value_cache, val));
+                        buffer.push_str(" ");
+                        buffer.push_str(get_from_cache(
+                            &mut time_cache,
+                            telem.timestamp.saturating_mul(1_000_000_000) as u64,
+                        ));
+                        buffer.push_str("\n");
+                        tag_buf.clear();
+                    }
+                    }
+                }
+            }
         }
     }
 

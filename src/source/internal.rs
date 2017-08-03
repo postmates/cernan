@@ -58,7 +58,7 @@ pub fn report_telemetry<S>(name: S, value: f64) -> ()
 where
     S: Into<String>,
 {
-    report_full_telemetry(name, value, None, None);
+    report_full_telemetry(name, value, None);
 }
 
 /// Push telemetry into the Internal queue
@@ -74,7 +74,8 @@ pub fn report_full_telemetry<S>(
 where
     S: Into<String>,
 {
-    let mut telem = metric::Telemetry::new(name, value).aggr_sum();
+    use metric::AggregationMethod;
+    let mut telem = metric::Telemetry::new().name(name).value(value).kind(AggregationMethod::Sum).harden().unwrap();
     telem = metadata
         .unwrap_or(vec![])
         .iter()
