@@ -279,13 +279,13 @@ impl SoftTelemetry {
                 if self.error.is_some() {
                     return Err(Error::CannotSetError);
                 }
-                let bounds = if let Some(bounds) = self.bounds {
-                    bounds
-                } else {
-                    return Err(Error::NoBoundsForSummarize);
-                };
                 let value = match (self.initial_value, self.thawed_value) {
                     (Some(iv), None) => {
+                        let bounds = if let Some(bounds) = self.bounds {
+                            bounds
+                        } else {
+                            return Err(Error::NoBoundsForHistogram);
+                        };
                         let mut histo = Histogram::new(bounds).unwrap();
                         histo.insert(iv);
                         Value::Histogram(histo)
@@ -360,12 +360,11 @@ pub enum Error {
     CannotHaveTwoValues,
     CannotSetBounds,
     CannotSetError,
-    NoBoundsForSummarize,
+    NoBoundsForHistogram,
     NoInitialValue,
     NoKind,
     NoName,
     NoValue,
-    SummarizeBoundsTooLarge,
     SummarizeErrorTooLarge,
 }
 
@@ -800,8 +799,13 @@ mod tests {
             mb = match kind {
                 AggregationMethod::Set => mb.kind(AggregationMethod::Set),
                 AggregationMethod::Sum => mb.kind(AggregationMethod::Sum),
-                AggregationMethod::Summarize => mb.kind(AggregationMethod::Summarize),
-                AggregationMethod::Histogram => mb.kind(AggregationMethod::Histogram),
+                AggregationMethod::Summarize => {
+                    mb.kind(AggregationMethod::Summarize)
+                }, 
+                AggregationMethod::Histogram => {
+                    mb.kind(AggregationMethod::Histogram)
+                        .bounds(vec![1.0, 10.0, 100.0, 1000.0])
+                }
             };
             mb = if persist { mb.persist(true) } else { mb };
             mb.harden().unwrap()
