@@ -284,7 +284,7 @@ impl SoftTelemetry {
                         let bounds = if let Some(bounds) = self.bounds {
                             bounds
                         } else {
-                            return Err(Error::NoBoundsForHistogram);
+                            vec![1.0, 10.0, 100.0, 1000.0]
                         };
                         let mut histo = Histogram::new(bounds).unwrap();
                         histo.insert(iv);
@@ -360,7 +360,6 @@ pub enum Error {
     CannotHaveTwoValues,
     CannotSetBounds,
     CannotSetError,
-    NoBoundsForHistogram,
     NoInitialValue,
     NoKind,
     NoName,
@@ -860,14 +859,16 @@ mod tests {
                     AggregationMethod::Set => rhs,
                     AggregationMethod::Sum => lhs + rhs,
                     AggregationMethod::Summarize => lhs.max(rhs),
-                    AggregationMethod::Histogram => unimplemented!(),
+                    AggregationMethod::Histogram => lhs + rhs, 
                 };
                 // println!("VAL: {:?} | EXPECTED: {:?}", val, expected);
                 match val.partial_cmp(&expected) {
                     Some(cmp::Ordering::Equal) => return TestResult::passed(),
                     _ => {
                         println!(
-                            "\n\nMLHS: {:?} | MRHS: {:?} | RES: {:?}\nEXPECTED: {:?} | VAL: {:?}",
+                            "\n\nLHS: {:?}\nRHS: {:?}\nMLHS: {:?}\nMRHS: {:?}\nRES: {:?}\nEXPECTED: {:?}\nVAL: {:?}",
+                            lhs,
+                            rhs,
                             old_mlhs,
                             old_mrhs,
                             mlhs,
