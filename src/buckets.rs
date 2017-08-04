@@ -306,7 +306,7 @@ mod test {
         assert_eq!(0, res[0].timestamp);
         assert_eq!(Some(1.0), res[0].set());
         assert_eq!(1, res[1].timestamp);
-        assert_eq!(Some(3.0), res[1].set());
+        assert_eq!(Some(3.0), res[1].sum());
 
         //  * a SET|SUM with persist will survive across resets
         bkt.reset();
@@ -714,7 +714,7 @@ mod test {
         let metric = Telemetry::new()
             .name("some.metric")
             .value(11.5)
-            .kind(AggregationMethod::Sum)
+            .kind(AggregationMethod::Summarize)
             .harden()
             .unwrap();
         buckets.add(metric);
@@ -726,7 +726,7 @@ mod test {
         let metric_two = Telemetry::new()
             .name("some.metric")
             .value(99.5)
-            .kind(AggregationMethod::Sum)
+            .kind(AggregationMethod::Summarize)
             .harden()
             .unwrap();
         buckets.add(metric_two);
@@ -735,7 +735,7 @@ mod test {
         let metric_three = Telemetry::new()
             .name("other.metric")
             .value(811.5)
-            .kind(AggregationMethod::Sum)
+            .kind(AggregationMethod::Summarize)
             .harden()
             .unwrap();
         buckets.add(metric_three);
