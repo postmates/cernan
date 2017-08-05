@@ -390,22 +390,22 @@ mod tests {
         assert_eq!(res[0].kind(), AggregationMethod::Set);
         assert_eq!(res[0].name, "foo");
         assert_eq!(res[0].persist, true);
-        assert_eq!(Some(1.0 * (1.0 / 0.22)), res[0].query(1.0));
+        assert_eq!(Some(1.0 * (1.0 / 0.22)), res[0].set());
 
         assert_eq!(res[1].kind(), AggregationMethod::Set);
         assert_eq!(res[1].name, "bar");
         assert_eq!(res[1].persist, true);
-        assert_eq!(Some(101.0 * (1.0 / 2.0)), res[1].query(1.0));
+        assert_eq!(Some(101.0 * (1.0 / 2.0)), res[1].set());
 
         assert_eq!(res[2].kind(), AggregationMethod::Set);
         assert_eq!(res[2].name, "baz");
         assert_eq!(res[2].persist, true);
-        assert_eq!(Some(2.0 * (1.0 / 0.2)), res[2].query(1.0));
+        assert_eq!(Some(2.0 * (1.0 / 0.2)), res[2].set());
 
         assert_eq!(res[3].kind(), AggregationMethod::Set);
         assert_eq!(res[3].name, "qux");
         assert_eq!(res[3].persist, true);
-        assert_eq!(Some(4.0 * (1.0 / 0.1)), res[3].query(1.0));
+        assert_eq!(Some(4.0 * (1.0 / 0.1)), res[3].set());
     }
 
     #[test]

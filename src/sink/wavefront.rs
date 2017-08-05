@@ -266,8 +266,9 @@ impl Wavefront {
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let aggrs = mem::replace(&mut self.aggrs, Buckets::default());
+        assert!(!aggrs.is_empty());
         for value in
-            padding(aggrs.into_iter().filter(|x| x.is_zeroed()), self.bin_width)
+            padding(aggrs.into_iter().filter(|x| !x.is_zeroed()), self.bin_width)
         {
             {
                 let sustain =

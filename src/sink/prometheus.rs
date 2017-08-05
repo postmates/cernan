@@ -499,7 +499,6 @@ mod test {
     fn test_sanitization() {
         fn inner(metric: metric::Telemetry) -> TestResult {
             let metric = sanitize(metric);
-            assert!(metric.is_summarize());
             for c in metric.name.chars() {
                 match c {
                     'a'...'z' | 'A'...'Z' | '0'...'9' | ':' | '_' => continue,

@@ -431,47 +431,37 @@ mod test {
         let lines: Vec<&str> = buffer.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(11, lines.len());
-        assert!(
-            lines
-                .contains(&"test.counter,source=test-src value=-1 645181811000000000")
-        );
-        assert!(
-            lines.contains(&"test.counter,source=test-src value=2 645181811000000000")
-        );
-        assert!(
-            lines.contains(&"test.counter,source=test-src value=3 645181812000000000")
-        );
-        assert!(
-            lines
-                .contains(&"test.gauge,source=test-src value=3.211 645181811000000000")
-        );
-        assert!(
-            lines
-                .contains(&"test.gauge,source=test-src value=4.322 645181812000000000")
-        );
-        assert!(
-            lines
-                .contains(&"test.gauge,source=test-src value=5.433 645181813000000000")
-        );
-        assert!(
-            lines.contains(
-                &"test.timer,source=test-src value=12.101 645181811000000000"
-            )
-        );
-        assert!(
-            lines
-                .contains(&"test.timer,source=test-src value=1.101 645181811000000000")
-        );
-        assert!(
-            lines
-                .contains(&"test.timer,source=test-src value=3.101 645181811000000000")
-        );
-        assert!(
-            lines.contains(&"test.raw,source=test-src value=1 645181811000000000")
-        );
-        assert!(
-            lines.contains(&"test.raw,source=test-src value=2 645181812000000000")
-        );
+        let expected = [
+            "test.counter,source=test-src value=-1 645181811000000000",
+            "test.counter,source=test-src value=2 645181811000000000",
+            "test.counter,source=test-src value=3 645181812000000000",
+            "test.gauge,source=test-src value=3.211 645181811000000000",
+            "test.gauge,source=test-src value=4.322 645181812000000000",
+            "test.gauge,source=test-src value=5.433 645181813000000000",
+            "test.timer.0.25,source=test-src value=12.101 645181811000000000",
+            "test.timer.0.5,source=test-src value=12.101 645181811000000000",
+            "test.timer.0.75,source=test-src value=12.101 645181811000000000",
+            "test.timer.0.9,source=test-src value=12.101 645181811000000000",
+            "test.timer.0.99,source=test-src value=12.101 645181811000000000",
+            "test.timer.1,source=test-src value=12.101 645181811000000000",
+            "test.timer.0.25,source=test-src value=1.101 645181811000000000",
+            "test.timer.0.5,source=test-src value=1.101 645181811000000000",
+            "test.timer.0.75,source=test-src value=1.101 645181811000000000",
+            "test.timer.0.9,source=test-src value=1.101 645181811000000000",
+            "test.timer.0.99,source=test-src value=1.101 645181811000000000",
+            "test.timer.1,source=test-src value=1.101 645181811000000000",
+            "test.timer.0.25,source=test-src value=3.101 645181811000000000",
+            "test.timer.0.5,source=test-src value=3.101 645181811000000000",
+            "test.timer.0.75,source=test-src value=3.101 645181811000000000",
+            "test.timer.0.9,source=test-src value=3.101 645181811000000000",
+            "test.timer.0.99,source=test-src value=3.101 645181811000000000",
+            "test.timer.1,source=test-src value=3.101 645181811000000000",
+            "test.raw,source=test-src value=1 645181811000000000",
+            "test.raw,source=test-src value=2 645181812000000000",
+        ];
+        assert_eq!(expected.len(), lines.len());
+        for line in &expected {
+            assert!(lines.contains(line))
+        }
     }
 }

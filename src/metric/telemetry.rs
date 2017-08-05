@@ -3,9 +3,9 @@ use metric::tagmap::cmp;
 use quantiles::ckms::CKMS;
 use quantiles::histogram::{Histogram, Iter};
 use std::cmp;
-use std::mem;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::mem;
 use std::ops::AddAssign;
 use std::sync;
 use time;
@@ -51,42 +51,55 @@ impl AddAssign for Telemetry {
     fn add_assign(&mut self, rhs: Telemetry) {
         let value = mem::replace(&mut self.value, Default::default());
         match value.unwrap() {
-            Value::Set(x) => {
-                match rhs.value.unwrap() {
-                    Value::Set(y) => { self.value = Some(Value::Set(y)) },
-                    Value::Sum(y) => { self.value = Some(Value::Sum(x + y)) },
-                    Value::Histogram(mut y) => { y.insert(x); self.value = Some(Value::Histogram(y)) },
-                    Value::Quantiles(mut y) => { y.insert(x); self.value = Some(Value::Quantiles(y)) },
+            Value::Set(x) => match rhs.value.unwrap() {
+                Value::Set(y) => self.value = Some(Value::Set(y)),
+                Value::Sum(y) => self.value = Some(Value::Sum(x + y)),
+                Value::Histogram(mut y) => {
+                    y.insert(x);
+                    self.value = Some(Value::Histogram(y))
+                }
+                Value::Quantiles(mut y) => {
+                    y.insert(x);
+                    self.value = Some(Value::Quantiles(y))
                 }
             },
-            Value::Sum(x) => {
-                match rhs.value.unwrap() {
-                    Value::Set(y) => { self.value = Some(Value::Set(y)) },
-                    Value::Sum(y) => { self.value = Some(Value::Sum(x + y)) },
-                    Value::Histogram(mut y) => { y.insert(x); self.value = Some(Value::Histogram(y)) },
-                    Value::Quantiles(mut y) => { y.insert(x); self.value = Some(Value::Quantiles(y)) },
+            Value::Sum(x) => match rhs.value.unwrap() {
+                Value::Set(y) => self.value = Some(Value::Set(y)),
+                Value::Sum(y) => self.value = Some(Value::Sum(x + y)),
+                Value::Histogram(mut y) => {
+                    y.insert(x);
+                    self.value = Some(Value::Histogram(y))
+                }
+                Value::Quantiles(mut y) => {
+                    y.insert(x);
+                    self.value = Some(Value::Quantiles(y))
                 }
             },
-            Value::Histogram(mut x) => {
-                match rhs.value.unwrap() {
-                    Value::Set(y) => { self.value = Some(Value::Set(y)) },
-                    Value::Sum(y) => { self.value = Some(Value::Sum(x.sum().unwrap_or(0.0) + y)) },
-                    Value::Histogram(y) => { x += y; self.value = Some(Value::Histogram(x)) },
-                    Value::Quantiles(y) => { self.value = Some(Value::Quantiles(y)) },
+            Value::Histogram(mut x) => match rhs.value.unwrap() {
+                Value::Set(y) => self.value = Some(Value::Set(y)),
+                Value::Sum(y) => {
+                    self.value = Some(Value::Sum(x.sum().unwrap_or(0.0) + y))
                 }
+                Value::Histogram(y) => {
+                    x += y;
+                    self.value = Some(Value::Histogram(x))
+                }
+                Value::Quantiles(y) => self.value = Some(Value::Quantiles(y)),
             },
-            Value::Quantiles(mut x) => {
-                match rhs.value.unwrap() {
-                    Value::Set(y) => { self.value = Some(Value::Set(y)) },
-                    Value::Sum(y) => { self.value = Some(Value::Sum(x.sum().unwrap_or(0.0) + y)) },
-                    Value::Histogram(mut y) => {
-                        for v in x.into_vec() {
-                            y.insert(v);
-                        }
-                        self.value = Some(Value::Histogram(y))
-                    },
-                    Value::Quantiles(y) => { x += y; self.value = Some(Value::Quantiles(x))
-                    },
+            Value::Quantiles(mut x) => match rhs.value.unwrap() {
+                Value::Set(y) => self.value = Some(Value::Set(y)),
+                Value::Sum(y) => {
+                    self.value = Some(Value::Sum(x.sum().unwrap_or(0.0) + y))
+                }
+                Value::Histogram(mut y) => {
+                    for v in x.into_vec() {
+                        y.insert(v);
+                    }
+                    self.value = Some(Value::Histogram(y))
+                }
+                Value::Quantiles(y) => {
+                    x += y;
+                    self.value = Some(Value::Quantiles(x))
                 }
             },
         }
@@ -261,10 +274,8 @@ impl SoftTelemetry {
                         let mut ckms = CKMS::new(error);
                         ckms.insert(iv);
                         Value::Quantiles(ckms)
-                    },
-                    (None, Some(tv)) => {
-                        tv
-                    },
+                    }
+                    (None, Some(tv)) => tv,
                     _ => unreachable!(),
                 };
                 Ok(Telemetry {
@@ -289,10 +300,8 @@ impl SoftTelemetry {
                         let mut histo = Histogram::new(bounds).unwrap();
                         histo.insert(iv);
                         Value::Histogram(histo)
-                    },
-                    (None, Some(tv)) => {
-                        tv
-                    },
+                    }
+                    (None, Some(tv)) => tv,
                     _ => unreachable!(),
                 };
                 Ok(Telemetry {
@@ -311,12 +320,8 @@ impl SoftTelemetry {
                     return Err(Error::CannotSetBounds);
                 }
                 let value = match (self.initial_value, self.thawed_value) {
-                    (Some(iv), None) => {
-                        Value::Set(iv)
-                    },
-                    (None, Some(tv)) => {
-                        tv
-                    },
+                    (Some(iv), None) => Value::Set(iv),
+                    (None, Some(tv)) => tv,
                     _ => unreachable!(),
                 };
                 Ok(Telemetry {
@@ -335,12 +340,8 @@ impl SoftTelemetry {
                     return Err(Error::CannotSetBounds);
                 }
                 let value = match (self.initial_value, self.thawed_value) {
-                    (Some(iv), None) => {
-                        Value::Sum(iv)
-                    },
-                    (None, Some(tv)) => {
-                        tv
-                    },
+                    (Some(iv), None) => Value::Sum(iv),
+                    (None, Some(tv)) => tv,
                     _ => unreachable!(),
                 };
                 Ok(Telemetry {
@@ -531,7 +532,7 @@ impl Telemetry {
             }
             Some(Value::Quantiles(ref mut ckms)) => {
                 ckms.insert(value);
-            },
+            }
             None => unreachable!(),
         }
         self
@@ -621,7 +622,7 @@ impl Telemetry {
             Some(Value::Quantiles(ref ckms)) => ckms.clone().into_vec(),
             Some(Value::Histogram(ref histo)) => {
                 histo.clone().into_vec().iter().map(|x| x.1 as f64).collect()
-            },
+            }
             None => unreachable!(),
         }
     }
@@ -798,13 +799,9 @@ mod tests {
             mb = match kind {
                 AggregationMethod::Set => mb.kind(AggregationMethod::Set),
                 AggregationMethod::Sum => mb.kind(AggregationMethod::Sum),
-                AggregationMethod::Summarize => {
-                    mb.kind(AggregationMethod::Summarize)
-                }, 
-                AggregationMethod::Histogram => {
-                    mb.kind(AggregationMethod::Histogram)
-                        .bounds(vec![1.0, 10.0, 100.0, 1000.0])
-                }
+                AggregationMethod::Summarize => mb.kind(AggregationMethod::Summarize), 
+                AggregationMethod::Histogram => mb.kind(AggregationMethod::Histogram)
+                    .bounds(vec![1.0, 10.0, 100.0, 1000.0]),
             };
             mb = if persist { mb.persist(true) } else { mb };
             mb.harden().unwrap()
