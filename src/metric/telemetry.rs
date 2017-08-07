@@ -2,6 +2,8 @@ use metric::TagMap;
 use metric::tagmap::cmp;
 use quantiles::ckms::CKMS;
 use quantiles::histogram::{Histogram, Iter};
+#[cfg(test)]
+use quantiles::histogram::Bound;
 use std::cmp;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -19,7 +21,7 @@ pub enum AggregationMethod {
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
-enum Value {
+pub enum Value {
     Set(f64),
     Sum(f64),
     Histogram(Histogram<f64>),
@@ -47,63 +49,142 @@ pub struct Telemetry {
     pub timestamp: i64,
 }
 
-impl AddAssign for Telemetry {
-    fn add_assign(&mut self, rhs: Telemetry) {
-        let value = mem::replace(&mut self.value, Default::default());
-        match value.unwrap() {
-            Value::Set(x) => match rhs.value.unwrap() {
-                Value::Set(y) => self.value = Some(Value::Set(y)),
-                Value::Sum(y) => self.value = Some(Value::Sum(x + y)),
+impl Value {
+    #[cfg(test)]
+    pub fn is_same_kind(&self, rhs: &Value) -> bool {
+        match (self, rhs) {
+            (&Value::Set(_), &Value::Set(_)) => true,
+            (&Value::Sum(_), &Value::Sum(_)) => true,
+            (&Value::Histogram(_), &Value::Histogram(_)) => true,
+            (&Value::Quantiles(_), &Value::Quantiles(_)) => true,
+            _ => false,
+        }
+    }
+
+    pub fn add(self, rhs: Value) -> Value {
+        match self {
+            Value::Set(x) => match rhs {
+                Value::Set(y) => Value::Set(y),
+                Value::Sum(y) => Value::Sum(x + y),
                 Value::Histogram(mut y) => {
                     y.insert(x);
-                    self.value = Some(Value::Histogram(y))
+                    Value::Histogram(y)
                 }
                 Value::Quantiles(mut y) => {
                     y.insert(x);
-                    self.value = Some(Value::Quantiles(y))
+                    Value::Quantiles(y)
                 }
             },
-            Value::Sum(x) => match rhs.value.unwrap() {
-                Value::Set(y) => self.value = Some(Value::Set(y)),
-                Value::Sum(y) => self.value = Some(Value::Sum(x + y)),
+            Value::Sum(x) => match rhs {
+                Value::Set(y) => Value::Set(y),
+                Value::Sum(y) => Value::Sum(x + y),
                 Value::Histogram(mut y) => {
                     y.insert(x);
-                    self.value = Some(Value::Histogram(y))
+                    Value::Histogram(y)
                 }
                 Value::Quantiles(mut y) => {
                     y.insert(x);
-                    self.value = Some(Value::Quantiles(y))
+                    Value::Quantiles(y)
                 }
             },
-            Value::Histogram(mut x) => match rhs.value.unwrap() {
-                Value::Set(y) => self.value = Some(Value::Set(y)),
-                Value::Sum(y) => {
-                    self.value = Some(Value::Sum(x.sum().unwrap_or(0.0) + y))
-                }
+            Value::Histogram(mut x) => match rhs {
+                Value::Set(y) => Value::Set(y),
+                Value::Sum(y) => Value::Sum(x.sum().unwrap_or(0.0) + y),
                 Value::Histogram(y) => {
                     x += y;
-                    self.value = Some(Value::Histogram(x))
+                    Value::Histogram(x)
                 }
-                Value::Quantiles(y) => self.value = Some(Value::Quantiles(y)),
+                Value::Quantiles(y) => Value::Quantiles(y),
             },
-            Value::Quantiles(mut x) => match rhs.value.unwrap() {
-                Value::Set(y) => self.value = Some(Value::Set(y)),
-                Value::Sum(y) => {
-                    self.value = Some(Value::Sum(x.sum().unwrap_or(0.0) + y))
-                }
+            Value::Quantiles(mut x) => match rhs {
+                Value::Set(y) => Value::Set(y),
+                Value::Sum(y) => Value::Sum(x.sum().unwrap_or(0.0) + y),
                 Value::Histogram(mut y) => {
                     for v in x.into_vec() {
                         y.insert(v);
                     }
-                    self.value = Some(Value::Histogram(y))
+                    Value::Histogram(y)
                 }
                 Value::Quantiles(y) => {
                     x += y;
-                    self.value = Some(Value::Quantiles(x))
+                    Value::Quantiles(x)
                 }
             },
         }
+    }
 
+    pub fn sum(&self) -> Option<f64> {
+        match *self {
+            Value::Sum(x) => Some(x),
+            _ => None,
+        }
+    }
+
+    pub fn set(&self) -> Option<f64> {
+        match *self {
+            Value::Set(x) => Some(x),
+            _ => None,
+        }
+    }
+
+    pub fn query(&self, prcnt: f64) -> Option<f64> {
+        match *self {
+            Value::Quantiles(ref ckms) => ckms.query(prcnt).map(|x| x.1),
+            _ => None,
+        }
+    }
+
+    pub fn bins(&self) -> Option<Iter<f64>> {
+        match *self {
+            Value::Histogram(ref histo) => Some(histo.iter()),
+            _ => None,
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        match *self {
+            Value::Set(_) | Value::Sum(_) => 1,
+            Value::Histogram(ref histo) => histo.count(),
+            Value::Quantiles(ref ckms) => ckms.count(),
+        }
+    }
+
+    pub fn mean(&self) -> f64 {
+        match *self {
+            Value::Set(_) | Value::Sum(_) => 1.0,
+            Value::Histogram(ref histo) => if let Some(sum) = histo.sum() {
+                let count = histo.count();
+                assert!(count > 0);
+                sum / (count as f64)
+            } else {
+                0.0
+            },
+            Value::Quantiles(ref ckms) => ckms.cma().unwrap_or(0.0),
+        }
+    }
+
+    pub fn kind(&self) -> AggregationMethod {
+        match *self {
+            Value::Set(_) => AggregationMethod::Set,
+            Value::Sum(_) => AggregationMethod::Sum,
+            Value::Histogram(_) => AggregationMethod::Histogram,
+            Value::Quantiles(_) => AggregationMethod::Summarize,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn into_vec(self) -> Option<Vec<(Bound<f64>, usize)>> {
+        match self {
+            Value::Histogram(h) => Some(h.into_vec()),
+            _ => None,
+        }
+    }
+}
+
+impl AddAssign for Telemetry {
+    fn add_assign(&mut self, rhs: Telemetry) {
+        let value = mem::replace(&mut self.value, Default::default());
+        self.value = Some(value.unwrap().add(rhs.value.unwrap()));
         // When we add two telemetries together what we gotta do is make sure
         // that if one side or the other is persisted then the resulting
         // Telemetry is persisted.
@@ -231,15 +312,10 @@ impl SoftTelemetry {
         } else {
             return Err(Error::NoName);
         };
-        // let initial_value = if let Some(initial_value) = self.initial_value {
-        //     initial_value
-        // } else {
-        //     return Err(Error::NoInitialValue);
-        // };
         let kind = if let Some(kind) = self.kind {
             kind
         } else {
-            return Err(Error::NoKind);
+            AggregationMethod::Set
         };
         let timestamp = if let Some(timestamp) = self.timestamp {
             timestamp
@@ -362,7 +438,6 @@ pub enum Error {
     CannotSetBounds,
     CannotSetError,
     NoInitialValue,
-    NoKind,
     NoName,
     NoValue,
     SummarizeErrorTooLarge,
@@ -380,11 +455,11 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,AggregationMethod};
     ///
-    /// let m = Telemetry::new("foo", 1.1);
+    /// let m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
     /// assert_eq!(m.kind(), AggregationMethod::Set);
     /// assert_eq!(m.name, "foo");
-    /// assert_eq!(m.value(), Some(1.1));
+    /// assert_eq!(m.set(), Some(1.1));
     /// ```
     pub fn new() -> SoftTelemetry {
         SoftTelemetry {
@@ -416,12 +491,10 @@ impl Telemetry {
     }
 
     pub fn kind(&self) -> AggregationMethod {
-        match self.value {
-            Some(Value::Set(_)) => AggregationMethod::Set,
-            Some(Value::Sum(_)) => AggregationMethod::Sum,
-            Some(Value::Histogram(_)) => AggregationMethod::Histogram,
-            Some(Value::Quantiles(_)) => AggregationMethod::Summarize,
-            None => unreachable!(),
+        if let Some(ref v) = self.value {
+            v.kind()
+        } else {
+            unreachable!()
         }
     }
 
@@ -436,7 +509,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -465,7 +538,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,TagMap};
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -499,7 +572,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,TagMap};
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -539,33 +612,34 @@ impl Telemetry {
     }
 
     pub fn sum(&self) -> Option<f64> {
-        match self.value {
-            Some(Value::Sum(x)) => Some(x),
-            Some(_) => None,
-            None => unreachable!(),
+        if let Some(ref v) = self.value {
+            v.sum()
+        } else {
+            None
         }
     }
 
     pub fn set(&self) -> Option<f64> {
-        match self.value {
-            Some(Value::Set(x)) => Some(x),
-            Some(_) => None,
-            None => unreachable!(),
+        if let Some(ref v) = self.value {
+            v.set()
+        } else {
+            None
         }
     }
 
     pub fn query(&self, prcnt: f64) -> Option<f64> {
-        match self.value {
-            Some(Value::Quantiles(ref ckms)) => ckms.query(prcnt).map(|x| x.1),
-            Some(_) => None,
-            None => unreachable!(),
+        if let Some(ref v) = self.value {
+            v.query(prcnt)
+        } else {
+            None
         }
     }
 
     pub fn bins(&self) -> Option<Iter<f64>> {
-        match self.value {
-            Some(Value::Histogram(ref histo)) => Some(histo.iter()),
-            _ => None,
+        if let Some(ref v) = self.value {
+            v.bins()
+        } else {
+            None
         }
     }
 
@@ -575,26 +649,18 @@ impl Telemetry {
     }
 
     pub fn count(&self) -> usize {
-        match self.value {
-            Some(Value::Set(_)) | Some(Value::Sum(_)) => 1,
-            Some(Value::Histogram(ref histo)) => histo.count(),
-            Some(Value::Quantiles(ref ckms)) => ckms.count(),
-            None => unreachable!(),
+        if let Some(ref v) = self.value {
+            v.count()
+        } else {
+            0
         }
     }
 
     pub fn mean(&self) -> f64 {
-        match self.value {
-            Some(Value::Set(_)) | Some(Value::Sum(_)) => 1.0,
-            Some(Value::Histogram(ref histo)) => if let Some(sum) = histo.sum() {
-                let count = histo.count();
-                assert!(count > 0);
-                sum / (count as f64)
-            } else {
-                0.0
-            },
-            Some(Value::Quantiles(ref ckms)) => ckms.cma().unwrap_or(0.0),
-            None => unreachable!(),
+        if let Some(ref v) = self.value {
+            v.mean()
+        } else {
+            0.0
         }
     }
 
@@ -610,10 +676,6 @@ impl Telemetry {
             None => unreachable!(),
         }
     }
-
-    // pub fn into_vec(self) -> Vec<f64> {
-    //     self.value.clone().into_vec()
-    // }
 
     pub fn samples(&self) -> Vec<f64> {
         match self.value {
@@ -679,6 +741,11 @@ impl Telemetry {
         self.kind() == AggregationMethod::Summarize
     }
 
+    #[cfg(test)]
+    pub fn priv_value(&self) -> Value {
+        self.value.clone().unwrap()
+    }
+
     /// Adjust Telemetry time
     ///
     /// This sets the metric time to the specified value, taken to be UTC
@@ -690,7 +757,8 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101);
+    /// let m = Telemetry::new().name("foo").value(1.1).harden().unwrap().
+    /// timestamp(10101);
     ///
     /// assert_eq!(10101, m.timestamp);
     /// ```
@@ -799,7 +867,7 @@ mod tests {
             mb = match kind {
                 AggregationMethod::Set => mb.kind(AggregationMethod::Set),
                 AggregationMethod::Sum => mb.kind(AggregationMethod::Sum),
-                AggregationMethod::Summarize => mb.kind(AggregationMethod::Summarize), 
+                AggregationMethod::Summarize => mb.kind(AggregationMethod::Summarize),
                 AggregationMethod::Histogram => mb.kind(AggregationMethod::Histogram)
                     .bounds(vec![1.0, 10.0, 100.0, 1000.0]),
             };
@@ -856,7 +924,7 @@ mod tests {
                     AggregationMethod::Set => rhs,
                     AggregationMethod::Sum => lhs + rhs,
                     AggregationMethod::Summarize => lhs.max(rhs),
-                    AggregationMethod::Histogram => lhs + rhs, 
+                    AggregationMethod::Histogram => lhs + rhs,
                 };
                 // println!("VAL: {:?} | EXPECTED: {:?}", val, expected);
                 match val.partial_cmp(&expected) {

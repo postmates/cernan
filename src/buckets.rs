@@ -141,8 +141,9 @@ impl Buckets {
     /// ```
     /// extern crate cernan;
     ///
-    /// let metric = cernan::metric::Telemetry::new("foo",
-    /// 1.0).kind(AggregationMethod::Sum).harden().unwrap();
+    /// let metric =
+    /// cernan::metric::Telemetry::new().name("foo").value(1.0).kind(cernan::
+    /// metric::AggregationMethod::Sum).harden().unwrap();
     /// let mut buckets = cernan::buckets::Buckets::default();
     ///
     /// assert_eq!(true, buckets.is_empty());
@@ -180,8 +181,9 @@ impl Buckets {
     /// ```
     /// extern crate cernan;
     ///
-    /// let metric = cernan::metric::Telemetry::new("foo",
-    /// 1.0).kind(AggregationMethod::Sum).harden().unwrap();
+    /// let metric =
+    /// cernan::metric::Telemetry::new().name("foo").value(1.0).kind(cernan::
+    /// metric::AggregationMethod::Sum).harden().unwrap();
     /// let mut bucket = cernan::buckets::Buckets::default();
     /// bucket.add(metric);
     /// ```
@@ -937,6 +939,8 @@ mod test {
 
     #[test]
     fn test_all_insertions() {
+        use metric::Value;
+
         fn qos_ret(ms: Vec<Telemetry>) -> TestResult {
             let mut bucket = Buckets::default();
 
@@ -948,10 +952,13 @@ mod test {
             for m in ms {
                 let c = cnts.entry(m.name.clone()).or_insert(vec![]);
                 match c.binary_search_by_key(&m.timestamp, |&(a, _)| a) {
-                    Ok(idx) => c[idx].1 += m.priv_value(),
+                    Ok(idx) => {
+                        let val = c[idx].1.clone();
+                        c[idx].1 = val.add(m.priv_value());
+                    }
                     Err(idx) => if m.persist && idx > 0 {
                         let mut val = c[idx - 1].clone().1;
-                        val += m.priv_value();
+                        val = val.add(m.priv_value());
                         c.insert(idx, (m.timestamp, val))
                     } else {
                         c.insert(idx, (m.timestamp, m.priv_value()))
@@ -971,37 +978,36 @@ mod test {
                         Ok(idx) => {
                             let c_v = &c_vs[idx];
 
-                            let l_ckms = c_v.1.clone();
-                            let r_ckms = val.priv_value();
-                            assert!(
-                                (l_ckms.sum().unwrap() - r_ckms.sum().unwrap())
-                                    .abs() < 0.0001
-                            );
-                            assert!(
-                                (l_ckms.mean().unwrap() - r_ckms.mean().unwrap())
-                                    .abs() < 0.0001
-                            );
-                            assert_eq!(l_ckms.count(), r_ckms.count());
-                            assert!(
-                                (l_ckms.query(0.5).unwrap().1 -
-                                    r_ckms.query(0.5).unwrap().1)
-                                    .abs() < 0.0001
-                            );
-                            assert!(
-                                (l_ckms.query(0.75).unwrap().1 -
-                                    r_ckms.query(0.75).unwrap().1)
-                                    .abs() < 0.0001
-                            );
-                            assert!(
-                                (l_ckms.query(0.99).unwrap().1 -
-                                    r_ckms.query(0.99).unwrap().1)
-                                    .abs() < 0.0001
-                            );
-                            assert!(
-                                (l_ckms.query(0.999).unwrap().1 -
-                                    r_ckms.query(0.999).unwrap().1)
-                                    .abs() < 0.0001
-                            );
+                            let lhs = c_v.1.clone();
+                            let rhs = val.priv_value();
+                            assert!(lhs.is_same_kind(&rhs));
+                            assert!((lhs.mean() - rhs.mean()).abs() < 0.0001);
+                            assert_eq!(lhs.count(), rhs.count());
+                            match lhs.kind() {
+                                AggregationMethod::Set => assert!(
+                                    (lhs.set().unwrap() - rhs.set().unwrap()).abs() <
+                                        0.0001
+                                ),
+                                AggregationMethod::Sum => assert!(
+                                    (lhs.sum().unwrap() - rhs.sum().unwrap()).abs() <
+                                        0.0001
+                                ),
+                                AggregationMethod::Summarize => {
+                                    for prcnt in &[0.5, 0.75, 0.99, 0.999] {
+                                        assert!(
+                                            (lhs.query(*prcnt).unwrap() -
+                                                rhs.query(*prcnt).unwrap())
+                                                .abs() <
+                                                0.0001
+                                        )
+                                    }
+                                }
+                                AggregationMethod::Histogram => {
+                                    let l_bins = lhs.into_vec();
+                                    let r_bins = rhs.into_vec();
+                                    assert_eq!(l_bins, r_bins);
+                                }
+                            }
                         }
                         Err(_) => return TestResult::failed(),
                     }

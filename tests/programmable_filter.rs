@@ -6,6 +6,7 @@ mod integration {
         use self::cernan::filter::{Filter, ProgrammableFilter,
                                    ProgrammableFilterConfig};
         use self::cernan::metric;
+        use self::cernan::metric::AggregationMethod;
         use std::path::PathBuf;
         use std::sync::Arc;
 
@@ -28,6 +29,7 @@ mod integration {
             let metric = metric::Telemetry::new()
                 .name("identity")
                 .value(12.0)
+                .kind(metric::AggregationMethod::Set)
                 .harden()
                 .unwrap()
                 .overlay_tag("foo", "bar")
@@ -61,6 +63,7 @@ mod integration {
             let metric = metric::Telemetry::new()
                 .name("clear_me")
                 .value(12.0)
+                .kind(metric::AggregationMethod::Set)
                 .harden()
                 .unwrap()
                 .overlay_tag("foo", "bar")
@@ -157,6 +160,7 @@ mod integration {
 
             let expected_metric = metric::Telemetry::new()
                 .name("identity")
+                .kind(metric::AggregationMethod::Set)
                 .value(12.0)
                 .harden()
                 .unwrap()
@@ -192,6 +196,7 @@ mod integration {
             let orig_metric = metric::Telemetry::new()
                 .name("identity")
                 .value(12.0)
+                .kind(metric::AggregationMethod::Set)
                 .harden()
                 .unwrap()
                 .overlay_tag("foo", "bar")
@@ -226,6 +231,7 @@ mod integration {
             let orig_metric = metric::Telemetry::new()
                 .name("identity")
                 .value(12.0)
+                .kind(metric::AggregationMethod::Set)
                 .harden()
                 .unwrap()
                 .overlay_tag("foo", "bar")
@@ -332,6 +338,7 @@ mod integration {
             let orig_metric = metric::Telemetry::new()
                 .name("identity")
                 .value(12.0)
+                .kind(metric::AggregationMethod::Set)
                 .harden()
                 .unwrap()
                 .overlay_tag("foo", "bar");
@@ -367,6 +374,7 @@ mod integration {
                 metric::Telemetry::new()
                     .name("identity")
                     .value(12.0)
+                    .kind(metric::AggregationMethod::Set)
                     .harden()
                     .unwrap(),
             );
@@ -374,6 +382,7 @@ mod integration {
                 metric::Telemetry::new()
                     .name("identity")
                     .value(13.0)
+                    .kind(metric::AggregationMethod::Set)
                     .harden()
                     .unwrap(),
             );
@@ -381,6 +390,7 @@ mod integration {
                 metric::Telemetry::new()
                     .name("identity")
                     .value(14.0)
+                    .kind(metric::AggregationMethod::Set)
                     .harden()
                     .unwrap(),
             );
@@ -478,8 +488,12 @@ mod integration {
                         protocol_counter-TCPFastOpenActive";
             let expected = "collectd.protocols-TcpExt.protocol_counter-TCPFastOpenActive";
 
-            let metric =
-                metric::Telemetry::new().name(orig).value(12.0).harden().unwrap();
+            let metric = metric::Telemetry::new()
+                .name(orig)
+                .value(12.0)
+                .kind(metric::AggregationMethod::Set)
+                .harden()
+                .unwrap();
             let event = metric::Event::new_telemetry(metric);
 
             let mut events = Vec::new();
@@ -520,8 +534,12 @@ mod integration {
             let orig = "totally_fine.interface-lo.if_errors.tx 0 1478751126";
             let expected = "totally_fine.interface-lo.if_errors.tx 0 1478751126";
 
-            let metric =
-                metric::Telemetry::new().name(orig).value(12.0).harden().unwrap();
+            let metric = metric::Telemetry::new()
+                .name(orig)
+                .value(12.0)
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap();
             let event = metric::Event::new_telemetry(metric);
 
             let mut events = Vec::new();
