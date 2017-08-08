@@ -48,22 +48,29 @@ pub struct Iter<'a> {
 
 impl<'a> Iterator for Iter<'a> {
     type Item = &'a Telemetry;
+
     fn next(&mut self) -> Option<&'a Telemetry> {
-        if let Some(value_index) = self.value_index {
-            let v = &self.buckets.values[self.key_index][value_index];
-            self.value_index = Some(value_index + 1);
-            Some(v)
-        } else {
-            let result = if self.key_index < self.buckets.keys.len() {
-                let v = &self.buckets.values[self.key_index][0];
-                Some(v)
+        while self.key_index < self.buckets.keys.len() {
+            if let Some(value_index) = self.value_index {
+                if value_index < self.buckets.values[self.key_index].len() {
+                    let v = &self.buckets.values[self.key_index][value_index];
+                    self.value_index = Some(value_index + 1);
+                    return Some(v);
+                } else {
+                    self.value_index = None;
+                    self.key_index += 1;
+                }
             } else {
-                None
-            };
-            self.value_index = Some(1);
-            self.key_index += 1;
-            result
+                if !self.buckets.values[self.key_index].is_empty() {
+                    let v = &self.buckets.values[self.key_index][0];
+                    self.value_index = Some(1);
+                    return Some(v);
+                } else {
+                    return None;
+                }
+            }
         }
+        None
     }
 }
 
@@ -104,12 +111,16 @@ impl Iterator for IntoIter {
                     self.key_index += 1;
                 }
             } else {
-                let v = mem::replace(
-                    &mut self.buckets.values[self.key_index][0],
-                    Default::default(),
-                );
-                self.value_index = Some(1);
-                return Some(v);
+                if !self.buckets.values[self.key_index].is_empty() {
+                    let v = mem::replace(
+                        &mut self.buckets.values[self.key_index][0],
+                        Default::default(),
+                    );
+                    self.value_index = Some(1);
+                    return Some(v);
+                } else {
+                    return None;
+                }
             }
         }
         None
