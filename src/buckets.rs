@@ -875,6 +875,35 @@ mod test {
     }
 
     #[test]
+    fn test_reset_maintains_persist() {
+        use std::collections::HashSet;
+        fn inner(cycles: u8, mut ms: Vec<Telemetry>) -> TestResult {
+            ms.sort_by(|x, y| x.timestamp.cmp(&y.timestamp));
+
+            let mut bucket = Buckets::default();
+            let mut persists = HashSet::new();
+
+            for m in ms {
+                bucket.add(m);
+            }
+            for t in bucket.iter() {
+                if t.persist {
+                    persists.insert(t.name_tag_hash());
+                } else {
+                    persists.remove(&t.name_tag_hash());
+                }
+            }
+
+            for _ in 0..(cycles as usize) {
+                bucket.reset();
+                assert_eq!(persists.len(), bucket.count());
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(inner as fn(u8, Vec<Telemetry>) -> TestResult);
+    }
+
+    #[test]
     fn test_reset_clears_not_all_space_if_persistent() {
         fn qos_ret(ms: Vec<Telemetry>) -> TestResult {
             if ms.is_empty() {
