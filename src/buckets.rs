@@ -6,13 +6,13 @@
 use metric::Telemetry;
 use std::iter::{IntoIterator, Iterator};
 use std::mem;
-use std::ops::{Index, IndexMut};
+use std::ops::IndexMut;
 use time;
 
 /// Buckets stores all metrics until they are flushed.
 #[derive(Clone)]
 pub struct Buckets {
-    keys: Vec<String>,
+    keys: Vec<u64>,
     values: Vec<Vec<Telemetry>>,
     count: u64,
     bin_width: i64,
@@ -188,12 +188,12 @@ impl Buckets {
     /// bucket.add(metric);
     /// ```
     pub fn add(&mut self, value: Telemetry) {
-        let mut hsh = match self.keys
-            .binary_search_by(|probe| probe.partial_cmp(&value.name).unwrap())
-        {
+        let mut hsh = match self.keys.binary_search_by(
+            |probe| probe.partial_cmp(&value.name_tag_hash()).unwrap(),
+        ) {
             Ok(hsh_idx) => self.values.index_mut(hsh_idx),
             Err(hsh_idx) => {
-                self.keys.insert(hsh_idx, value.name.to_owned());
+                self.keys.insert(hsh_idx, value.name_tag_hash());
                 self.values.insert(hsh_idx, Vec::with_capacity(128));
                 self.values.index_mut(hsh_idx)
             }
@@ -221,8 +221,10 @@ impl Buckets {
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<&[Telemetry]> {
-        match self.keys.iter().position(|k| k == key) {
+    #[cfg(test)]
+    pub fn get(&self, key: u64) -> Option<&[Telemetry]> {
+        use std::ops::Index;
+        match self.keys.iter().position(|k| *k == key) {
             Some(idx) => Some(self.values.index(idx)),
             None => None,
         }
@@ -298,13 +300,15 @@ mod test {
             .unwrap();
 
         let mut bkt = Buckets::new(bin_width);
+        let id = m0.name_tag_hash();
+
         bkt.add(m0);
         bkt.add(m1);
 
         //  * it is possible to switch a SET|SUM from persist to ephemeral
         //  * an ephemeral SET|SUM will have its value inherited by a persist SET|SUM
         let aggrs = bkt.clone();
-        let res = aggrs.get("lO").unwrap();
+        let res = aggrs.get(id).unwrap();
         assert_eq!(0, res[0].timestamp);
         assert_eq!(Some(1.0), res[0].set());
         assert_eq!(1, res[1].timestamp);
@@ -316,10 +320,10 @@ mod test {
 
         //  * an ephemeral SET|SUM will not inherit the value of a persist SET|SUM
         let aggrs = bkt.clone();
-        let res = aggrs.get("lO").unwrap();
+        let res = aggrs.get(id).unwrap();
         bkt.add(m2.timestamp(res[0].timestamp));
         let aggrs = bkt.clone();
-        let res = aggrs.get("lO").unwrap();
+        let res = aggrs.get(id).unwrap();
         assert_eq!(Some(0.0), res[0].set());
 
         bkt.reset();
@@ -353,11 +357,13 @@ mod test {
             .unwrap();
 
         let mut bkt = Buckets::new(bin_width);
+        let id = m0.name_tag_hash();
+
         bkt.add(m0);
         bkt.add(m4);
         bkt.add(m7);
 
-        let raws = bkt.get("lO").unwrap();
+        let raws = bkt.get(id).unwrap();
         println!("RAWS: {:?}", raws);
         let ref res = raws[0];
         assert_eq!(18, res.timestamp);
@@ -390,11 +396,13 @@ mod test {
             .unwrap();
 
         let mut bkt = Buckets::new(bin_width);
+        let id = m0.name_tag_hash();
+
         bkt.add(m0);
         bkt.add(m1);
         bkt.add(m2);
 
-        let v = bkt.get("lO").unwrap();
+        let v = bkt.get(id).unwrap();
         assert_eq!(3, v.len());
     }
 
@@ -493,11 +501,7 @@ mod test {
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
-        let res = buckets.get("some.metric");
-        assert!(res.is_some());
-        let res = res.unwrap();
-        assert_eq!(Some(&m0), res.get(0));
-        assert_eq!(Some(&m1), res.get(1));
+        assert_eq!(2, buckets.count());
     }
 
     #[test]
@@ -511,12 +515,13 @@ mod test {
             .unwrap();
         buckets.add(metric.clone());
 
-        let rmname = String::from("some.metric");
-        assert_eq!(Some(1.0), buckets.get(&rmname).unwrap()[0].value());
+        let id = metric.name_tag_hash();
+
+        assert_eq!(Some(1.0), buckets.get(id).unwrap()[0].value());
 
         // Increment counter
         buckets.add(metric);
-        assert_eq!(Some(2.0), buckets.get(&rmname).unwrap()[0].value());
+        assert_eq!(Some(2.0), buckets.get(id).unwrap()[0].value());
         assert_eq!(1, buckets.count());
     }
 
@@ -530,16 +535,16 @@ mod test {
             .harden()
             .unwrap()
             .timestamp(101);
+        let id = m0.name_tag_hash();
         let m1 = m0.clone();
 
         buckets.add(m0);
 
-        let rmname = String::from("some.metric");
-        assert_eq!(Some(1.0), buckets.get(&rmname).unwrap()[0].value());
+        assert_eq!(Some(1.0), buckets.get(id).unwrap()[0].value());
 
         // Increment counter
         buckets.add(m1);
-        assert_eq!(Some(2.0), buckets.get(&rmname).unwrap()[0].value());
+        assert_eq!(Some(2.0), buckets.get(id).unwrap()[0].value());
         assert_eq!(1, buckets.count());
 
         buckets.reset();
@@ -554,7 +559,6 @@ mod test {
         let dt_1 = Utc.ymd(1996, 10, 7).and_hms_milli(10, 11, 12, 0).timestamp();
         let dt_2 = Utc.ymd(1996, 10, 7).and_hms_milli(10, 11, 13, 0).timestamp();
 
-        let name = String::from("some.metric");
         let m0 = Telemetry::new()
             .name("some.metric")
             .value(1.0)
@@ -577,13 +581,15 @@ mod test {
             .unwrap()
             .timestamp(dt_2);
 
+        let id = m0.name_tag_hash();
+
         buckets.add(m0.clone());
         buckets.add(m1.clone());
         buckets.add(m2.clone());
 
         let hists = buckets;
-        assert!(hists.get(&name).is_some());
-        let ref hist = hists.get(&name).unwrap();
+        assert!(hists.get(id).is_some());
+        let ref hist = hists.get(id).unwrap();
 
         assert_eq!(3, hist.len());
 
@@ -636,15 +642,16 @@ mod test {
     #[test]
     fn test_add_gauge_metric() {
         let mut buckets = Buckets::default();
-        let rmname = String::from("some.metric");
         let metric = Telemetry::new()
             .name("some.metric")
             .value(11.5)
             .kind(AggregationMethod::Set)
             .harden()
             .unwrap();
+        let id = metric.name_tag_hash();
         buckets.add(metric);
-        assert_eq!(Some(11.5), buckets.get(&rmname).unwrap()[0].value());
+
+        assert_eq!(Some(11.5), buckets.get(id).unwrap()[0].value());
         assert_eq!(1, buckets.count());
     }
 
@@ -655,7 +662,6 @@ mod test {
         // the value to zero before moving to a delta gauge. Cernan does not
         // require this explicit reset, only the +/- on the metric value.
         let mut buckets = Buckets::default();
-        let rmname = String::from("some.metric");
         let metric = Telemetry::new()
             .name("some.metric")
             .value(100.0)
@@ -663,6 +669,7 @@ mod test {
             .kind(AggregationMethod::Set)
             .harden()
             .unwrap();
+        let id = metric.name_tag_hash();
         buckets.add(metric);
         let delta_metric = Telemetry::new()
             .name("some.metric")
@@ -673,7 +680,8 @@ mod test {
             .harden()
             .unwrap();
         buckets.add(delta_metric);
-        assert_eq!(Some(88.5), buckets.get(&rmname).unwrap()[0].value());
+
+        assert_eq!(Some(88.5), buckets.get(id).unwrap()[0].value());
         assert_eq!(1, buckets.count());
         buckets.reset();
         assert_eq!(1, buckets.count());
@@ -682,13 +690,13 @@ mod test {
     #[test]
     fn test_reset_add_delta_gauge_metric() {
         let mut buckets = Buckets::default();
-        let rmname = String::from("some.metric");
         let metric = Telemetry::new()
             .name("some.metric")
             .value(100.0)
             .kind(AggregationMethod::Set)
             .harden()
             .unwrap();
+        let id = metric.name_tag_hash();
         buckets.add(metric);
         let delta_metric = Telemetry::new()
             .name("some.metric")
@@ -705,25 +713,23 @@ mod test {
             .harden()
             .unwrap();
         buckets.add(reset_metric);
-        assert_eq!(Some(2007.3), buckets.get(&rmname).unwrap()[0].value());
+
+        assert_eq!(Some(2007.3), buckets.get(id).unwrap()[0].value());
         assert_eq!(1, buckets.count());
     }
 
     #[test]
     fn test_add_timer_metric() {
         let mut buckets = Buckets::default();
-        let rmname = String::from("some.metric");
         let metric = Telemetry::new()
             .name("some.metric")
             .value(11.5)
             .kind(AggregationMethod::Summarize)
             .harden()
             .unwrap();
+        let id = metric.name_tag_hash();
         buckets.add(metric);
-        assert_eq!(
-            Some(11.5),
-            buckets.get(&rmname).expect("hwhap")[0].query(0.0)
-        );
+        assert_eq!(Some(11.5), buckets.get(id).expect("hwhap")[0].query(0.0));
 
         let metric_two = Telemetry::new()
             .name("some.metric")
@@ -733,18 +739,15 @@ mod test {
             .unwrap();
         buckets.add(metric_two);
 
-        let romname = String::from("other.metric");
         let metric_three = Telemetry::new()
             .name("other.metric")
             .value(811.5)
             .kind(AggregationMethod::Summarize)
             .harden()
             .unwrap();
+        let id_3 = metric_three.name_tag_hash();
         buckets.add(metric_three);
-        assert_eq!(
-            Some(811.5),
-            buckets.get(&romname).expect("hwhap")[0].query(0.0)
-        );
+        assert_eq!(Some(811.5), buckets.get(id_3).expect("hwhap")[0].query(0.0));
     }
 
     #[test]
@@ -753,15 +756,15 @@ mod test {
         let dt_0 = Utc.ymd(2016, 9, 13).and_hms_milli(11, 30, 0, 0).timestamp();
         let dt_1 = Utc.ymd(2016, 9, 13).and_hms_milli(11, 30, 1, 0).timestamp();
 
-        buckets.add(
-            Telemetry::new()
-                .name("some.metric")
-                .value(1.0)
-                .timestamp(dt_0)
-                .kind(AggregationMethod::Set)
-                .harden()
-                .unwrap(),
-        );
+        let m0 = Telemetry::new()
+            .name("some.metric")
+            .value(1.0)
+            .timestamp(dt_0)
+            .kind(AggregationMethod::Set)
+            .harden()
+            .unwrap();
+        let id = m0.name_tag_hash();
+        buckets.add(m0);
         buckets.add(
             Telemetry::new()
                 .name("some.metric")
@@ -790,8 +793,7 @@ mod test {
                 .unwrap(),
         );
 
-        let mname = String::from("some.metric");
-        let metrics = buckets.get(&mname).unwrap();
+        let metrics = buckets.get(id).unwrap();
         assert_eq!(2, metrics.len());
 
         assert_eq!(dt_0, metrics[0].timestamp);
@@ -910,8 +912,8 @@ mod test {
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
-        assert_eq!(m0, buckets.get(&String::from("test.gauge_0")).unwrap()[0]);
-        assert_eq!(m1, buckets.get(&String::from("test.gauge_1")).unwrap()[0]);
+        assert_eq!(m0, buckets.get(m0.name_tag_hash()).unwrap()[0]);
+        assert_eq!(m1, buckets.get(m1.name_tag_hash()).unwrap()[0]);
     }
 
     #[test]
@@ -933,8 +935,8 @@ mod test {
         buckets.add(m0.clone());
         buckets.add(m1.clone());
 
-        assert_eq!(m0, buckets.get(&String::from("test.counter_0")).unwrap()[0]);
-        assert_eq!(m1, buckets.get(&String::from("test.counter_1")).unwrap()[0]);
+        assert_eq!(m0, buckets.get(m0.name_tag_hash()).unwrap()[0]);
+        assert_eq!(m1, buckets.get(m1.name_tag_hash()).unwrap()[0]);
     }
 
     #[test]

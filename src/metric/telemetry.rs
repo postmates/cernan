@@ -721,6 +721,13 @@ impl Telemetry {
         hasher.finish()
     }
 
+    pub fn name_tag_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.name.hash(&mut hasher);
+        self.tags.hash(&mut hasher);
+        hasher.finish()
+    }
+
     pub fn is_set(&self) -> bool {
         self.kind() == AggregationMethod::Set
     }
