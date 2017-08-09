@@ -149,7 +149,7 @@ where
                             // If the value of x is zero we stash the next
                             // point. Else, we make our pad, stashing those
                             // points plus y.
-                            if x.is_zeroed() {
+                            if !x.is_zeroed() {
                                 self.emit_q.push(y);
                             } else {
                                 let sub_y = y.clone()
@@ -266,10 +266,13 @@ impl Wavefront {
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let aggrs = mem::replace(&mut self.aggrs, Buckets::default());
-        assert!(!aggrs.is_empty());
+        if aggrs.is_empty() {
+            return
+        }
         for value in
             padding(aggrs.into_iter().filter(|x| !x.is_zeroed()), self.bin_width)
         {
+            println!("VALUE: {:?}", value);
             {
                 let sustain =
                     self.sustain_map.entry(value.hash()).or_insert(Sustain {
@@ -508,7 +511,7 @@ mod test {
                 bucket.add(m);
             }
             let mut padding = padding(
-                bucket.into_iter().filter(|x| x.is_zeroed()),
+                bucket.into_iter().filter(|x| !x.is_zeroed()),
                 bin_width as i64,
             ).peekable();
 
@@ -527,10 +530,10 @@ mod test {
                         let span = (t.timestamp - next_t.timestamp).abs() /
                             (bin_width as i64);
                         if span > 1 {
-                            assert!(t.is_zeroed());
-                            assert!(next_t.is_zeroed());
+                            assert!(!t.is_zeroed());
+                            assert!(!next_t.is_zeroed());
                         }
-                        if (!t.is_zeroed()) && (next_t.is_zeroed()) {
+                        if (t.is_zeroed()) && (!next_t.is_zeroed()) {
                             assert!(span <= 1);
                         }
                     } else {
@@ -563,7 +566,7 @@ mod test {
 
             let mut total_zero_run = 0;
             let padding = padding(
-                bucket.into_iter().filter(|x| x.is_zeroed()),
+                bucket.into_iter().filter(|x| !x.is_zeroed()),
                 bin_width as i64,
             );
             for val in padding {
@@ -595,18 +598,18 @@ mod test {
 
             let mut total_non_zero = 0;
             for val in bucket.clone().into_iter() {
-                if val.is_zeroed() {
+                if !val.is_zeroed() {
                     total_non_zero += 1;
                 }
             }
 
             let padding = padding(
-                bucket.into_iter().filter(|x| x.is_zeroed()),
+                bucket.into_iter().filter(|x| !x.is_zeroed()),
                 bin_width as i64,
             );
             let mut total = 0;
             for val in padding {
-                if val.is_zeroed() {
+                if !val.is_zeroed() {
                     total += 1;
                 }
             }
