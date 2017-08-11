@@ -4,8 +4,7 @@
 //! each set of metrics received by clients.
 
 use metric::Telemetry;
-use std::iter::{IntoIterator, Iterator};
-use std::mem;
+use std::iter::Iterator;
 use std::ops::IndexMut;
 use time;
 
@@ -63,59 +62,6 @@ impl<'a> Iterator for Iter<'a> {
             } else {
                 if !self.buckets.values[self.key_index].is_empty() {
                     let v = &self.buckets.values[self.key_index][0];
-                    self.value_index = Some(1);
-                    return Some(v);
-                } else {
-                    return None;
-                }
-            }
-        }
-        None
-    }
-}
-
-pub struct IntoIter {
-    buckets: Buckets,
-    key_index: usize,
-    value_index: Option<usize>,
-}
-
-impl IntoIterator for Buckets {
-    type Item = Telemetry;
-    type IntoIter = IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        IntoIter {
-            buckets: self,
-            key_index: 0,
-            value_index: None,
-        }
-    }
-}
-
-impl Iterator for IntoIter {
-    type Item = Telemetry;
-
-    fn next(&mut self) -> Option<Telemetry> {
-        while self.key_index < self.buckets.keys.len() {
-            if let Some(value_index) = self.value_index {
-                if value_index < self.buckets.values[self.key_index].len() {
-                    let v = mem::replace(
-                        &mut self.buckets.values[self.key_index][value_index],
-                        Default::default(),
-                    );
-                    self.value_index = Some(value_index + 1);
-                    return Some(v);
-                } else {
-                    self.value_index = None;
-                    self.key_index += 1;
-                }
-            } else {
-                if !self.buckets.values[self.key_index].is_empty() {
-                    let v = mem::replace(
-                        &mut self.buckets.values[self.key_index][0],
-                        Default::default(),
-                    );
                     self.value_index = Some(1);
                     return Some(v);
                 } else {
@@ -442,7 +388,7 @@ mod test {
                 }
             }
 
-            for v in bucket.into_iter() {
+            for v in bucket.iter() {
                 let ref kind = v.kind();
                 let time = v.timestamp;
                 let mut found_one = false;
@@ -818,7 +764,7 @@ mod test {
                     acc
                 });
             let b_cnts: HashSet<String> =
-                bucket.into_iter().fold(HashSet::default(), |mut acc, v| {
+                bucket.iter().fold(HashSet::default(), |mut acc, v| {
                     acc.insert(v.name.clone());
                     acc
                 });
@@ -1000,7 +946,7 @@ mod test {
 
             assert_eq!(len_cnts, bucket.count());
 
-            for val in bucket.into_iter() {
+            for val in bucket.iter() {
                 if let Some(c_vs) = cnts.get(&val.name) {
                     match c_vs.binary_search_by_key(
                         &val.timestamp,

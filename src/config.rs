@@ -300,14 +300,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 })
                 .unwrap_or(args.flush_interval);
 
-            res.sustain = snk.get("sustain")
-                .map(|fi| {
-                    fi.as_integer()
-                        .expect("could not parse sinks.wavefront.sustain") as
-                        u32
-                })
-                .unwrap_or(res.sustain);
-
             res.tags = global_tags.clone();
 
             res
