@@ -84,50 +84,29 @@ fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
 
 #[derive(Clone, Debug)]
 enum Pad<'a> {
-    PreZero(&'a Telemetry),
+    Zero(&'a Telemetry, i64),
     Telem(&'a Telemetry),
-    PostZero(&'a Telemetry),
 }
 
 impl<'a> Pad<'a> {
     pub fn hash(&self) -> u64 {
         match *self {
-            Pad::PreZero(x) => x.hash(),
+            Pad::Zero(x, _) => x.hash(),
             Pad::Telem(x) => x.hash(),
-            Pad::PostZero(x) => x.hash(),
         }
     }
 
-    pub fn is_zeroed(&self) -> bool {
-        match *self {
-            Pad::PreZero(_) => true,
-            Pad::Telem(x) => x.is_zeroed(),
-            Pad::PostZero(_) => true,
-        }
-    }
-
-    pub fn pre_zero(self) -> Pad<'a> {
+    pub fn zero_at(self, ts: i64) -> Pad<'a> {
         match self {
-            Pad::PreZero(x) => Pad::PreZero(x),
-            Pad::Telem(x) => Pad::PreZero(x),
-            Pad::PostZero(x) => Pad::PreZero(x),
-        }
-    }
-
-
-    pub fn post_zero(self) -> Pad<'a> {
-        match self {
-            Pad::PreZero(x) => Pad::PostZero(x),
-            Pad::Telem(x) => Pad::PostZero(x),
-            Pad::PostZero(x) => Pad::PostZero(x),
+            Pad::Zero(x, _) => Pad::Zero(x, ts),
+            Pad::Telem(x) => Pad::Zero(x, ts),
         }
     }
 
     pub fn timestamp(&self) -> i64 {
         match *self {
-            Pad::PreZero(x) => x.timestamp.saturating_sub(1),
+            Pad::Zero(_, ts) => ts,
             Pad::Telem(x) => x.timestamp,
-            Pad::PostZero(x) => x.timestamp.saturating_add(1),
         }
     }
 }
@@ -162,38 +141,33 @@ impl<'a> Iterator for Padding<'a> {
         // _and_ zero points that need to be emitted. We preferentially pull
         // points from the emission queue. In the event that there are not
         // enough, we go to the original iterator.
-        //
+        if let Some(x) = self.emit_q.pop() {
+            return Some(x)
+        }
         // We have to determine if the first point we pull needs a pad before
         // it. This will happen if the hash of x exists in last_seen and
         // last_seen is within the span window.
-        let next_x = if let Some(x) = self.emit_q.pop() {
-            Some(x)
-        } else {
-            if let Some(x) = self.orig.next().map(|x| Pad::Telem(x)) {
-                match self.last_seen.get(&x.hash()) {
-                    Some(ts) => match (x.timestamp() - ts) / self.span {
+        let next_x = if let Some(x) = self.orig.next().map(|x| Pad::Telem(x)) {
+            match self.last_seen.get(&x.hash()) {
+                Some(ts) => {
+                    if *ts > x.timestamp() { return Some(x) }
+                    match (x.timestamp() - ts) / self.span {
                         0 | 1 => Some(x),
-                        res => if res < 0 {
-                            Some(x)
-                        } else {
-                            let sub_x = x.clone().pre_zero();
+                        _ => {
+                            let sub_x = x.clone().zero_at(x.timestamp().saturating_sub(1));
+                            let post_x = x.clone().zero_at(ts.saturating_add(1));
                             self.emit_q.push(x);
-                            Some(sub_x)
+                            self.emit_q.push(sub_x);
+                            Some(post_x)
                         },
-                    },
-                    None => Some(x),
+                    }
                 }
-            } else {
-                None
+                None => Some(x),
             }
-        };
-        // There's no previous point in range. We now compare the next point
-        // after next_x.
-        let next_y = if let Some(y) = self.emit_q.pop() {
-            Some(y)
         } else {
-            self.orig.next().map(|x| Pad::Telem(x))
+            return None
         };
+        let next_y = self.orig.next().map(|y| Pad::Telem(y));
         match (next_x, next_y) {
             (Some(x), Some(y)) => {
                 // Telemetry hashes by considering name, timestamp and
@@ -220,14 +194,11 @@ impl<'a> Iterator for Padding<'a> {
                             // If the value of x is zero we stash the next
                             // point. Else, we make our pad, stashing those
                             // points plus y.
-                            if x.is_zeroed() {
-                                self.emit_q.push(y);
-                            } else {
-                                let sub_y = y.clone().pre_zero();
-                                self.emit_q.push(y);
-                                self.emit_q.push(sub_y);
-                                self.emit_q.push(x.clone().post_zero());
-                            }
+                            let sub_y = y.clone().zero_at(y.timestamp().saturating_sub(1));
+                            let post_x = x.clone().zero_at(x.timestamp().saturating_add(1));
+                            self.emit_q.push(y);
+                            self.emit_q.push(sub_y);
+                            self.emit_q.push(post_x);
                             Some(x)
                         }
                     }
@@ -320,38 +291,24 @@ impl Wavefront {
 
         let mut tmp_last_seen = HashMap::new();
         let mut aggrs = mem::replace(&mut self.aggrs, buckets::Buckets::default());
-        let last_seen = mem::replace(&mut self.last_seen, Default::default());
+        let mut last_seen = mem::replace(&mut self.last_seen, Default::default());
 
         for pad in padding(aggrs.iter(), self.bin_width, &last_seen) {
+            println!("[{:?}] {:?}", time::now(), pad);
             // When we update the last_seen map we have to be sure that if the new
             // telem has a point with a timestamp greater than the one we have
             // stored we replace the timestamp. Else, we ignore.
             tmp_last_seen.insert(pad.hash(), pad.timestamp());
 
             match pad {
-                Pad::PreZero(value) => {
+                Pad::Zero(value, ts) => {
                     let zero = value
                         .clone()
                         .thaw()
                         .value(0.0)
                         .harden()
                         .unwrap()
-                        .timestamp(value.timestamp.saturating_sub(1));
-                    self.fmt_val(
-                        &zero,
-                        &mut time_cache,
-                        &mut count_cache,
-                        &mut value_cache,
-                    );
-                }
-                Pad::PostZero(value) => {
-                    let zero = value
-                        .clone()
-                        .thaw()
-                        .value(0.0)
-                        .harden()
-                        .unwrap()
-                        .timestamp(value.timestamp.saturating_add(1));
+                        .timestamp(ts);
                     self.fmt_val(
                         &zero,
                         &mut time_cache,
@@ -401,7 +358,7 @@ impl Wavefront {
             }
         }
         for (k, v) in tmp_last_seen {
-            self.last_seen.insert(k, v);
+            last_seen.insert(k, v);
         }
         self.aggrs = aggrs;
         self.aggrs.reset();
