@@ -103,6 +103,14 @@ impl<'a> Pad<'a> {
         }
     }
 
+    #[cfg(test)]
+    pub fn is_zeroed(&self) -> bool {
+        match *self {
+            Pad::Zero(_, _) => true,
+            Pad::Telem(x) => x.is_zeroed(),
+        }
+    }
+
     pub fn timestamp(&self) -> i64 {
         match *self {
             Pad::Zero(_, ts) => ts,
@@ -121,6 +129,7 @@ fn padding<'a>(
         orig: xs,
         last_seen: last_seen,
         emit_q: Vec::new(),
+        last_hash: 0,
     }
 }
 
@@ -129,6 +138,7 @@ struct Padding<'a> {
     orig: buckets::Iter<'a>,
     last_seen: &'a HashMap<u64, i64>,
     emit_q: Vec<Pad<'a>>,
+    last_hash: u64,
 }
 
 impl<'a> Iterator for Padding<'a> {
@@ -142,34 +152,46 @@ impl<'a> Iterator for Padding<'a> {
         // points from the emission queue. In the event that there are not
         // enough, we go to the original iterator.
         if let Some(x) = self.emit_q.pop() {
-            return Some(x)
+            if x.hash() == self.last_hash {
+                return Some(x);
+            } else {
+                self.emit_q.push(x);
+            }
         }
         // We have to determine if the first point we pull needs a pad before
         // it. This will happen if the hash of x exists in last_seen and
         // last_seen is within the span window.
-        let next_x = if let Some(x) = self.orig.next().map(|x| Pad::Telem(x)) {
+        let next = match self.emit_q.pop() {
+            Some(x) => Some(x),
+            None => self.orig.next().map(|x| Pad::Telem(x)),
+        };
+        let next_x = if let Some(x) = next {
             match self.last_seen.get(&x.hash()) {
                 Some(ts) => {
-                    if *ts > x.timestamp() { return Some(x) }
+                    if *ts > x.timestamp() {
+                        return Some(x);
+                    }
                     match (x.timestamp() - ts) / self.span {
                         0 | 1 => Some(x),
                         _ => {
-                            let sub_x = x.clone().zero_at(x.timestamp().saturating_sub(1));
+                            let sub_x =
+                                x.clone().zero_at(x.timestamp().saturating_sub(1));
                             let post_x = x.clone().zero_at(ts.saturating_add(1));
                             self.emit_q.push(x);
                             self.emit_q.push(sub_x);
                             Some(post_x)
-                        },
+                        }
                     }
                 }
                 None => Some(x),
             }
         } else {
-            return None
+            return None;
         };
         let next_y = self.orig.next().map(|y| Pad::Telem(y));
         match (next_x, next_y) {
             (Some(x), Some(y)) => {
+                self.last_hash = x.hash();
                 // Telemetry hashes by considering name, timestamp and
                 // aggregation. If these three are different then the next point
                 // is not part of our current sequence and it requires no
@@ -194,8 +216,10 @@ impl<'a> Iterator for Padding<'a> {
                             // If the value of x is zero we stash the next
                             // point. Else, we make our pad, stashing those
                             // points plus y.
-                            let sub_y = y.clone().zero_at(y.timestamp().saturating_sub(1));
-                            let post_x = x.clone().zero_at(x.timestamp().saturating_add(1));
+                            let sub_y =
+                                y.clone().zero_at(y.timestamp().saturating_sub(1));
+                            let post_x =
+                                x.clone().zero_at(x.timestamp().saturating_add(1));
                             self.emit_q.push(y);
                             self.emit_q.push(sub_y);
                             self.emit_q.push(post_x);
@@ -208,6 +232,7 @@ impl<'a> Iterator for Padding<'a> {
                 }
             }
             (Some(x), None) => {
+                self.last_hash = x.hash();
                 // end of sequence
                 Some(x)
             }
@@ -293,8 +318,8 @@ impl Wavefront {
         let mut aggrs = mem::replace(&mut self.aggrs, buckets::Buckets::default());
         let mut last_seen = mem::replace(&mut self.last_seen, Default::default());
 
+        // for pad in padding(aggrs.iter(), self.bin_width, &last_seen) {
         for pad in padding(aggrs.iter(), self.bin_width, &last_seen) {
-            println!("[{:?}] {:?}", time::now(), pad);
             // When we update the last_seen map we have to be sure that if the new
             // telem has a point with a timestamp greater than the one we have
             // stored we replace the timestamp. Else, we ignore.
@@ -568,11 +593,9 @@ mod test {
         bucket.add(m0);
 
         let mut telems = padding(bucket.iter(), bin_width, &last_seen);
-
-        let t0 = telems.next();
-        assert!(t0.unwrap().is_zeroed());
-        let t1 = telems.next();
-        assert!(!t1.unwrap().is_zeroed());
+        assert!(telems.next().unwrap().is_zeroed());
+        assert!(telems.next().unwrap().is_zeroed());
+        assert!(!telems.next().unwrap().is_zeroed());
         assert!(telems.next().is_none());
     }
 
@@ -619,15 +642,74 @@ mod test {
 
         let mut telems = padding(bucket.iter(), bin_width, &last_seen);
 
-        assert!(!telems.next().unwrap().is_zeroed());
-        assert!(telems.next().unwrap().is_zeroed());
-        assert!(telems.next().unwrap().is_zeroed());
-        assert!(!telems.next().unwrap().is_zeroed());
-        assert!(!telems.next().unwrap().is_zeroed());
-        assert!(telems.next().unwrap().is_zeroed());
-        assert!(telems.next().unwrap().is_zeroed());
-        assert!(!telems.next().unwrap().is_zeroed());
+        assert!(!telems.next().unwrap().is_zeroed()); // m0
+        assert!(!telems.next().unwrap().is_zeroed()); // m1
+        assert!(!telems.next().unwrap().is_zeroed()); // m2
+        assert!(telems.next().unwrap().is_zeroed()); // m2_0
+        assert!(telems.next().unwrap().is_zeroed()); // m3_0
+        assert!(!telems.next().unwrap().is_zeroed()); // m3
         assert!(telems.next().is_none());
+    }
+
+
+    #[test]
+    fn test_manual_no_unpadded_gaps() {
+        let bin_width = 1;
+        let m0 = Telemetry::new().name("\u{8e231}\u{454b0}\u{4ff26}\u{4e17b}\u{873f6}\u{67684}\u{8920b}\u{b765f}\u{d2cd8}").value(0.3915207077806604).persist(true).kind(AggregationMethod::Sum).harden().unwrap().timestamp(51);
+        let m1 = Telemetry::new()
+            .name("")
+            .value(0.11634560004870509)
+            .persist(false)
+            .kind(AggregationMethod::Set)
+            .harden()
+            .unwrap()
+            .timestamp(99);
+        let m2 = Telemetry::new()
+            .name("")
+            .value(0.2923750702148473)
+            .persist(false)
+            .kind(AggregationMethod::Set)
+            .harden()
+            .unwrap()
+            .timestamp(21);
+
+        let mut bucket = Buckets::new(bin_width as i64);
+        bucket.add(m0);
+        bucket.add(m1);
+        bucket.add(m2);
+
+        let last_seen = Default::default();
+        let mut padding =
+            padding(bucket.iter(), bin_width as i64, &last_seen).peekable();
+
+        while let Some(t) = padding.next() {
+            if let Some(next_t) = padding.peek() {
+                // When we examine the next point in a series there are
+                // three possibilities:
+                //
+                //  1. the points don't hash the same, so we move on
+                //  2. the points do hash the same:
+                //     a. if their timestamps are greater than one span
+                //        apart then they are both zero
+                //     b. if both points are non-zero they must not be
+                //        more than one span apart
+                if t.hash() == next_t.hash() {
+                    let span = (t.timestamp() - next_t.timestamp()).abs() /
+                        (bin_width as i64);
+                    if span > 1 {
+                        assert!(t.is_zeroed());
+                        assert!(next_t.is_zeroed());
+                    }
+                    if !t.is_zeroed() && !next_t.is_zeroed() {
+                        assert!(span <= 1);
+                    }
+                } else {
+                    continue;
+                }
+            } else {
+                break;
+            }
+        }
     }
 
     #[test]
@@ -709,6 +791,38 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new().quickcheck(inner as fn(u8, Vec<Telemetry>) -> TestResult);
+    }
+
+    #[test]
+    fn test_manual_never_fewer_non_zero() {
+        let bin_width = 1;
+
+        let m0 = Telemetry::new().name("one").value(0.497).kind(AggregationMethod::Set).persist(false).harden().unwrap().timestamp(43);
+        let m1 = Telemetry::new().name("two").value(0.599).kind(AggregationMethod::Set).persist(false).harden().unwrap().timestamp(95);
+        let m2 = Telemetry::new().name("three").value(0.486).kind(AggregationMethod::Set).persist(true).harden().unwrap().timestamp(6);
+
+        let mut bucket = Buckets::new(bin_width as i64);
+        bucket.add(m0);
+        bucket.add(m1);
+        bucket.add(m2);
+
+        let mut total_non_zero = 0;
+        for val in bucket.clone().iter() {
+            if !val.is_zeroed() {
+                total_non_zero += 1;
+            }
+        }
+
+        let last_seen = Default::default();
+        let padding = padding(bucket.iter(), bin_width as i64, &last_seen);
+        let mut total = 0;
+        for val in padding {
+            if !val.is_zeroed() {
+                total += 1;
+            }
+        }
+
+        assert_eq!(total_non_zero, total);
     }
 
     #[test]
