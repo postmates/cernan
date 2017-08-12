@@ -14,6 +14,7 @@ use toml;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
+use filter::DelayFilterConfig;
 use filter::ProgrammableFilterConfig;
 
 use sink::ConsoleConfig;
@@ -55,7 +56,8 @@ pub struct Args {
     pub verbose: u64,
     pub version: String,
     // filters
-    pub filters: Option<HashMap<String, ProgrammableFilterConfig>>,
+    pub programmable_filters: Option<HashMap<String, ProgrammableFilterConfig>>,
+    pub delay_filters: Option<HashMap<String, DelayFilterConfig>>,
     // sinks
     pub console: Option<ConsoleConfig>,
     pub null: Option<NullConfig>,
@@ -82,7 +84,8 @@ impl Default for Args {
             version: default_version(),
             verbose: 0,
             // filters
-            filters: None,
+            programmable_filters: None,
+            delay_filters: None,
             // sinks
             console: None,
             null: None,
@@ -191,36 +194,69 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
     // filters
     //
-    args.filters = value.get("filters").map(|fltr| {
-        let mut filters: HashMap<String, ProgrammableFilterConfig> = HashMap::new();
-        for (name, tbl) in fltr.as_table().unwrap().iter() {
-            match tbl.get("script") {
-                Some(pth) => {
-                    let path = Path::new(pth.as_str().unwrap());
-                    let fwds = match tbl.get("forwards") {
-                        Some(fwds) => fwds.as_array()
-                            .expect("forwards must be an array")
-                            .to_vec()
-                            .iter()
-                            .map(|s| s.as_str().unwrap().to_string())
-                            .collect(),
-                        None => Vec::new(),
-                    };
-                    let config_path = format!("filters.{}", name);
-                    let config = ProgrammableFilterConfig {
-                        scripts_directory: Some(args.scripts_directory.clone()),
-                        script: Some(args.scripts_directory.join(path)),
-                        forwards: fwds,
-                        config_path: Some(config_path.clone()),
-                        tags: global_tags.clone(),
-                    };
-                    filters.insert(config_path, config);
+    if let Some(filters) = value.get("filters") {
+        args.delay_filters = filters.get("delay").map(|fltr| {
+            let mut filters: HashMap<String, DelayFilterConfig> = HashMap::new();
+            for (name, tbl) in fltr.as_table().unwrap().iter() {
+                match tbl.get("tolerance") {
+                    Some(tol) => {
+                        let tolerance =
+                            tol.as_integer().expect("tolerance must be an integer");
+                        let fwds = match tbl.get("forwards") {
+                            Some(fwds) => fwds.as_array()
+                                .expect("forwards must be an array")
+                                .to_vec()
+                                .iter()
+                                .map(|s| s.as_str().unwrap().to_string())
+                                .collect(),
+                            None => Vec::new(),
+                        };
+                        let config_path = format!("filters.delay.{}", name);
+                        let config = DelayFilterConfig {
+                            tolerance: tolerance,
+                            forwards: fwds,
+                            config_path: Some(config_path.clone()),
+                        };
+                        filters.insert(config_path, config);
+                    }
+                    None => continue,
                 }
-                None => continue,
             }
-        }
-        filters
-    });
+            filters
+        });
+
+        args.programmable_filters = filters.get("programmable").map(|fltr| {
+            let mut filters: HashMap<String, ProgrammableFilterConfig> =
+                HashMap::new();
+            for (name, tbl) in fltr.as_table().unwrap().iter() {
+                match tbl.get("script") {
+                    Some(pth) => {
+                        let path = Path::new(pth.as_str().unwrap());
+                        let fwds = match tbl.get("forwards") {
+                            Some(fwds) => fwds.as_array()
+                                .expect("forwards must be an array")
+                                .to_vec()
+                                .iter()
+                                .map(|s| s.as_str().unwrap().to_string())
+                                .collect(),
+                            None => Vec::new(),
+                        };
+                        let config_path = format!("filters.programmable.{}", name);
+                        let config = ProgrammableFilterConfig {
+                            scripts_directory: Some(args.scripts_directory.clone()),
+                            script: Some(args.scripts_directory.join(path)),
+                            forwards: fwds,
+                            config_path: Some(config_path.clone()),
+                            tags: global_tags.clone(),
+                        };
+                        filters.insert(config_path, config);
+                    }
+                    None => continue,
+                }
+            }
+            filters
+        })
+    }
 
     // sinks
     //
@@ -989,18 +1025,18 @@ scripts-directory = "/foo/bar"
     fn config_filters_sources_style() {
         let config = r#"
     [filters]
-      [filters.collectd_scrub]
+      [filters.programmable.collectd_scrub]
       script = "cernan_bridge.lua"
       forwards = ["sinks.console"]
     "#;
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.filters.is_some());
-        let filters = args.filters.unwrap();
+        assert!(args.programmable_filters.is_some());
+        let filters = args.programmable_filters.unwrap();
 
         let config0: &ProgrammableFilterConfig =
-            filters.get("filters.collectd_scrub").unwrap();
+            filters.get("filters.programmable.collectd_scrub").unwrap();
         let script = config0.script.clone();
         assert_eq!(
             script.unwrap().to_str().unwrap(),
@@ -1014,20 +1050,40 @@ scripts-directory = "/foo/bar"
         let config = r#"
     scripts-directory = "data/"
     [filters]
-      [filters.collectd_scrub]
+      [filters.programmable.collectd_scrub]
       script = "cernan_bridge.lua"
       forwards = ["sinks.console"]
     "#;
 
         let args = parse_config_file(config, 4);
 
-        assert!(args.filters.is_some());
-        let filters = args.filters.unwrap();
+        assert!(args.programmable_filters.is_some());
+        let filters = args.programmable_filters.unwrap();
 
         let config0: &ProgrammableFilterConfig =
-            filters.get("filters.collectd_scrub").unwrap();
+            filters.get("filters.programmable.collectd_scrub").unwrap();
         let script = config0.script.clone();
         assert_eq!(script.unwrap().to_str().unwrap(), "data/cernan_bridge.lua");
+        assert_eq!(config0.forwards, vec!["sinks.console"]);
+    }
+
+    #[test]
+    fn config_filters_delay() {
+        let config = r#"
+    [filters]
+      [filters.delay.ten_second]
+      tolerance = 10
+      forwards = ["sinks.console"]
+    "#;
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.delay_filters.is_some());
+        let filters = args.delay_filters.unwrap();
+
+        let config0: &DelayFilterConfig =
+            filters.get("filters.delay.ten_second").unwrap();
+        assert_eq!(config0.tolerance, 10);
         assert_eq!(config0.forwards, vec!["sinks.console"]);
     }
 
