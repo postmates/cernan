@@ -9,6 +9,37 @@ pub enum Event {
 }
 
 impl Event {
+    pub fn is_timer_flush(&self) -> bool {
+        match self {
+            &Event::TimerFlush(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn timestamp(&self) -> Option<i64> {
+        match *self {
+            Event::Telemetry(ref t) => {
+                let t = t.clone();
+                match *t {
+                    Some(ref telem) => Some(telem.timestamp),
+                    None => None,
+                }
+            },
+            Event::Log(ref l) => {
+                let l = l.clone();
+                match *l {
+                    Some(ref log) => Some(log.time),
+                    None => None,
+                }
+            },
+            Event::TimerFlush(_) => {
+                None
+            }
+        }
+    }
+}
+
+impl Event {
     #[inline]
     pub fn new_telemetry(metric: Telemetry) -> Event {
         Event::Telemetry(sync::Arc::new(Some(metric)))
