@@ -5,7 +5,7 @@ extern crate fern;
 extern crate log;
 extern crate hopper;
 
-use cernan::filter::{Filter, ProgrammableFilterConfig};
+use cernan::filter::{DelayFilterConfig, Filter, ProgrammableFilterConfig};
 use cernan::metric;
 
 use cernan::sink::FirehoseConfig;
@@ -171,9 +171,9 @@ fn main() {
         }
     }
 
-    // // FILTERS
-    // //
-    mem::replace(&mut args.filters, None).map(
+    // FILTERS
+    //
+    mem::replace(&mut args.programmable_filters, None).map(
         |cfg_map| for config in cfg_map.values() {
             let c: ProgrammableFilterConfig = (*config).clone();
             let config_path = cfg_conf!(config);
@@ -191,6 +191,27 @@ fn main() {
             joins.push(thread::spawn(move || {
                 cernan::filter::ProgrammableFilter::new(c)
                     .run(flt_recv, downstream_sends);
+            }));
+        },
+    );
+
+    mem::replace(&mut args.delay_filters, None).map(
+        |cfg_map| for config in cfg_map.values() {
+            let c: DelayFilterConfig = (*config).clone();
+            let config_path = cfg_conf!(config);
+            let (flt_send, flt_recv) =
+                hopper::channel(&config_path, &args.data_directory).unwrap();
+            sends.insert(config_path.clone(), flt_send);
+            let mut downstream_sends = Vec::new();
+            populate_forwards(
+                &mut downstream_sends,
+                None,
+                &config.forwards,
+                &config.config_path.clone().expect("[INTERNAL ERROR] no config_path"),
+                &sends,
+            );
+            joins.push(thread::spawn(move || {
+                cernan::filter::DelayFilter::new(c).run(flt_recv, downstream_sends);
             }));
         },
     );

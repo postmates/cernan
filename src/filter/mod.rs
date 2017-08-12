@@ -4,7 +4,9 @@ use time;
 use util;
 
 mod programmable_filter;
+mod delay_filter;
 
+pub use self::delay_filter::{DelayFilter, DelayFilterConfig};
 pub use self::programmable_filter::{ProgrammableFilter, ProgrammableFilterConfig};
 
 #[derive(Debug)]
@@ -30,6 +32,7 @@ pub trait Filter {
         event: metric::Event,
         res: &mut Vec<metric::Event>,
     ) -> Result<(), FilterError>;
+
     fn run(
         &mut self,
         recv: hopper::Receiver<metric::Event>,
