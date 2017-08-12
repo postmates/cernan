@@ -121,7 +121,6 @@ impl Sink for Firehose {
                         report_full_telemetry(
                             "cernan.sinks.firehose.records.delivery",
                             1.0,
-                            None,
                             Some(vec![
                                 (
                                     "delivery_stream_name",
@@ -132,7 +131,6 @@ impl Sink for Firehose {
                         report_full_telemetry(
                             "cernan.sinks.firehose.records.total_delivered",
                             prbi.records.len() as f64,
-                            None,
                             Some(vec![
                                 (
                                     "delivery_stream_name",
@@ -145,7 +143,6 @@ impl Sink for Firehose {
                             report_full_telemetry(
                                 "cernan.sinks.firehose.records.total_failed",
                                 failed_put_count as f64,
-                                None,
                                 Some(vec![
                                     (
                                         "delivery_stream_name",
@@ -169,7 +166,6 @@ impl Sink for Firehose {
                                 report_full_telemetry(
                                     "cernan.sinks.firehose.error.resource_not_found",
                                     1.0,
-                                    None,
                                     Some(vec![
                                         (
                                             "delivery_stream_name",
@@ -187,7 +183,6 @@ impl Sink for Firehose {
                                 report_full_telemetry(
                                     "cernan.sinks.firehose.error.invalid_argument",
                                     1.0,
-                                    None,
                                     Some(vec![
                                         (
                                             "delivery_stream_name",
@@ -205,7 +200,6 @@ impl Sink for Firehose {
                                 report_full_telemetry(
                                     "cernan.sinks.firehose.error.http_dispatch",
                                     1.0,
-                                    None,
                                     Some(vec![
                                         (
                                             "delivery_stream_name",
@@ -220,7 +214,6 @@ impl Sink for Firehose {
                                 report_full_telemetry(
                                     "cernan.sinks.firehose.error.validation",
                                     1.0,
-                                    None,
                                     Some(vec![
                                         (
                                             "delivery_stream_name",
@@ -238,7 +231,6 @@ impl Sink for Firehose {
                                 report_full_telemetry(
                                     "cernan.sinks.firehose.error.unknown",
                                     1.0,
-                                    None,
                                     Some(vec![
                                         (
                                             "delivery_stream_name",
@@ -254,7 +246,6 @@ impl Sink for Firehose {
                                 report_full_telemetry(
                                     "cernan.sinks.firehose.error.credentials",
                                     1.0,
-                                    None,
                                     Some(vec![
                                         (
                                             "delivery_stream_name",
@@ -271,7 +262,6 @@ impl Sink for Firehose {
                                 report_full_telemetry(
                                     "cernan.sinks.firehose.error.service_unavailable",
                                     1.0,
-                                    None,
                                     Some(vec![
                                         (
                                             "delivery_stream_name",

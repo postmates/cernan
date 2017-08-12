@@ -1,9 +1,9 @@
-use buckets::Buckets;
+use buckets;
 use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
 use source::report_telemetry;
 use std::cmp;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write as IoWrite;
 use std::mem;
 use std::net::TcpStream;
@@ -16,15 +16,14 @@ pub struct Wavefront {
     host: String,
     port: u16,
     bin_width: i64,
-    aggrs: Buckets,
+    aggrs: buckets::Buckets,
     delivery_attempts: u32,
     percentiles: Vec<(String, f64)>,
     pub stats: String,
     flush_interval: u64,
     stream: Option<TcpStream>,
     flush_number: u32,
-    sustain: u32,
-    sustain_map: HashMap<u64, Sustain>,
+    last_seen: HashMap<u64, i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,7 +35,6 @@ pub struct WavefrontConfig {
     pub percentiles: Vec<(String, f64)>,
     pub tags: TagMap,
     pub flush_interval: u64,
-    pub sustain: u32,
 }
 
 impl Default for WavefrontConfig {
@@ -64,7 +62,6 @@ impl Default for WavefrontConfig {
             percentiles: percentiles,
             tags: TagMap::default(),
             flush_interval: 60,
-            sustain: 0,
         }
     }
 }
@@ -85,43 +82,91 @@ fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
     }
 }
 
-pub fn padding<I: Iterator<Item = Telemetry>>(xs: I, span: i64) -> Padding<I> {
-    Padding {
-        span: span,
-        orig: xs,
-        emit_q: Vec::new(),
+#[derive(Clone, Debug)]
+enum Pad<'a> {
+    Zero(&'a Telemetry, i64),
+    Telem(&'a Telemetry),
+}
+
+impl<'a> Pad<'a> {
+    pub fn hash(&self) -> u64 {
+        match *self {
+            Pad::Zero(x, _) => x.hash(),
+            Pad::Telem(x) => x.hash(),
+        }
+    }
+
+    pub fn zero_at(self, ts: i64) -> Pad<'a> {
+        match self {
+            Pad::Zero(x, _) => Pad::Zero(x, ts),
+            Pad::Telem(x) => Pad::Zero(x, ts),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn is_zeroed(&self) -> bool {
+        match *self {
+            Pad::Zero(_, _) => true,
+            Pad::Telem(x) => x.is_zeroed(),
+        }
+    }
+
+    pub fn is_pad_zero(&self) -> bool {
+        match *self {
+            Pad::Zero(_, _) => true,
+            Pad::Telem(_) => false,
+        }
+    }
+
+    pub fn timestamp(&self) -> i64 {
+        match *self {
+            Pad::Zero(_, ts) => ts,
+            Pad::Telem(x) => x.timestamp,
+        }
     }
 }
 
-pub struct Padding<I> {
+fn padding<'a>(
+    xs: buckets::Iter<'a>,
     span: i64,
-    orig: I,
-    emit_q: Vec<Telemetry>,
+    last_seen: &'a HashMap<u64, i64>,
+) -> Padding<'a> {
+    Padding {
+        span: span,
+        orig: xs,
+        last_seen: last_seen,
+        emit_q: Vec::new(),
+        last_hash: 0,
+        flush_padded: HashSet::default(),
+    }
 }
 
-impl<I> Iterator for Padding<I>
-where
-    I: Iterator<Item = Telemetry>,
-{
-    type Item = I::Item;
+struct Padding<'a> {
+    span: i64,
+    orig: buckets::Iter<'a>,
+    last_seen: &'a HashMap<u64, i64>,
+    emit_q: Vec<Pad<'a>>,
+    last_hash: u64,
+    flush_padded: HashSet<u64>,
+}
+
+impl<'a> Iterator for Padding<'a> {
+    type Item = Pad<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // To figure out what to do we have to know if there's a 'gap' in the
         // original iterator to be filled. This is complicated by emit_q which
         // we use to buffer points that we've read out of the initial iterator
-        // _and_ zero points that need to be emitted.
-        //
-        // We preferentially pull points from the emission queue. In the event
-        // that there are not enough, we go to the original iterator.
-        let next_x = if let Some(x) = self.emit_q.pop() {
-            Some(x)
-        } else {
-            self.orig.next()
+        // _and_ zero points that need to be emitted. We preferentially pull
+        // points from the emission queue. In the event that there are not
+        // enough, we go to the original iterator.
+        let next_x = match self.emit_q.pop() {
+            Some(x) => Some(x),
+            None => self.orig.next().map(|x| Pad::Telem(x)),
         };
-        let next_y = if let Some(y) = self.emit_q.pop() {
-            Some(y)
-        } else {
-            self.orig.next()
+        let next_y = match self.emit_q.pop() {
+            Some(x) => Some(x),
+            None => self.orig.next().map(|x| Pad::Telem(x)),
         };
         match (next_x, next_y) {
             (Some(x), Some(y)) => {
@@ -130,7 +175,32 @@ where
                 // is not part of our current sequence and it requires no
                 // padding.
                 if x.hash() == y.hash() {
-                    match (x.timestamp - y.timestamp).abs() / self.span {
+                    if x.is_pad_zero() {
+                        self.emit_q.push(y);
+                        return Some(x);
+                    }
+                    let flush_padded = self.flush_padded.contains(&x.hash());
+                    if !flush_padded {
+                        if let Some(ts) = self.last_seen.get(&x.hash()) {
+                            if x.timestamp() > *ts {
+                                self.flush_padded.insert(x.hash());
+                                if (x.timestamp() - ts) / self.span > 1 {
+                                    let sub_x = x.clone()
+                                        .zero_at(x.timestamp().saturating_sub(1));
+                                    let post_x =
+                                        x.clone().zero_at(ts.saturating_add(1));
+                                    self.emit_q.push(y);
+                                    self.emit_q.push(x);
+                                    self.emit_q.push(sub_x);
+                                    return Some(post_x);
+                                }
+                            } else {
+                                self.emit_q.push(y);
+                                return Some(x);
+                            }
+                        }
+                    }
+                    match (x.timestamp() - y.timestamp()).abs() / self.span {
                         0 | 1 => {
                             // In this case the next point, y, is within the
                             // span configured by the user. We stash it into
@@ -149,20 +219,13 @@ where
                             // If the value of x is zero we stash the next
                             // point. Else, we make our pad, stashing those
                             // points plus y.
-                            if x.value() == Some(0.0) {
-                                self.emit_q.push(y);
-                            } else {
-                                let sub_y = y.clone()
-                                    .timestamp(y.timestamp - 1)
-                                    .set_value(0.0);
-                                self.emit_q.push(y);
-                                self.emit_q.push(sub_y);
-                                self.emit_q.push(
-                                    x.clone()
-                                        .timestamp(x.timestamp + 1)
-                                        .set_value(0.0),
-                                );
-                            }
+                            let sub_y =
+                                y.clone().zero_at(y.timestamp().saturating_sub(1));
+                            let post_x =
+                                x.clone().zero_at(x.timestamp().saturating_add(1));
+                            self.emit_q.push(y);
+                            self.emit_q.push(sub_y);
+                            self.emit_q.push(post_x);
                             Some(x)
                         }
                     }
@@ -172,12 +235,27 @@ where
                 }
             }
             (Some(x), None) => {
+                self.last_hash = x.hash();
                 // end of sequence
+                let flush_padded = self.flush_padded.contains(&x.hash());
+                if !flush_padded {
+                    if let Some(ts) = self.last_seen.get(&x.hash()) {
+                        if x.timestamp() > *ts {
+                            self.flush_padded.insert(x.hash());
+                            if (x.timestamp() - ts) / self.span > 1 {
+                                let sub_x =
+                                    x.clone().zero_at(x.timestamp().saturating_sub(1));
+                                let post_x = x.clone().zero_at(ts.saturating_add(1));
+                                self.emit_q.push(x);
+                                self.emit_q.push(sub_x);
+                                return Some(post_x);
+                            }
+                        }
+                    }
+                }
                 Some(x)
             }
-            (None, _) => {
-                None
-            }
+            (None, _) => None,
         }
     }
 }
@@ -205,15 +283,13 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
             for ip in ips {
                 match TcpStream::connect(ip) {
                     Ok(stream) => return Some(stream),
-                    Err(e) => {
-                        info!(
-                            "Unable to connect to proxy at {} using addr {} with error \
-                             {}",
-                            host,
-                            ip,
-                            e
-                        )
-                    }
+                    Err(e) => info!(
+                        "Unable to connect to proxy at {} using addr {} with error \
+                         {}",
+                        host,
+                        ip,
+                        e
+                    ),
                 }
             }
             None
@@ -229,11 +305,6 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
     }
 }
 
-struct Sustain {
-    telem: Telemetry,
-    flush_number: u32,
-}
-
 impl Wavefront {
     pub fn new(config: WavefrontConfig) -> Result<Wavefront, String> {
         if config.host == "" {
@@ -244,15 +315,14 @@ impl Wavefront {
             host: config.host,
             port: config.port,
             bin_width: config.bin_width,
-            aggrs: Buckets::new(config.bin_width),
+            aggrs: buckets::Buckets::new(config.bin_width),
             delivery_attempts: 0,
             percentiles: config.percentiles,
             stats: String::with_capacity(8_192),
             stream: stream,
             flush_interval: config.flush_interval,
             flush_number: 0,
-            sustain: config.sustain,
-            sustain_map: HashMap::default(),
+            last_seen: HashMap::default(),
         })
     }
 
@@ -263,74 +333,80 @@ impl Wavefront {
         let mut count_cache: Vec<(usize, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
-        let aggrs = mem::replace(&mut self.aggrs, Buckets::default());
-        for value in
-            padding(aggrs.into_iter().filter(|x| x.is_zeroed()), self.bin_width)
-        {
-            {
-                let sustain =
-                    self.sustain_map.entry(value.hash()).or_insert(Sustain {
-                        telem: value.clone(), // NOTE boo-urns a clone
-                        flush_number: self.flush_number,
-                    });
-                sustain.flush_number = self.flush_number;
-            }
+        let mut tmp_last_seen = HashMap::new();
+        let mut aggrs = mem::replace(&mut self.aggrs, buckets::Buckets::default());
+        let mut last_seen = mem::replace(&mut self.last_seen, Default::default());
 
-            if value.persist {
-                let new_val = value.clone();
-                self.aggrs.add(new_val.timestamp(value.timestamp + 1));
-            }
-            match value.aggregation() {
-                AggregationMethod::Sum => {
-                    report_telemetry("cernan.sinks.wavefront.aggregation.sum", 1.0)
-                }
-                AggregationMethod::Set => {
-                    report_telemetry("cernan.sinks.wavefront.aggregation.set", 1.0)
-                }
-                AggregationMethod::Summarize => {
-                    report_telemetry(
-                        "cernan.sinks.wavefront.aggregation.summarize",
-                        1.0,
+        // for pad in padding(aggrs.iter(), self.bin_width, &last_seen) {
+        for pad in padding(aggrs.iter(), self.bin_width, &last_seen) {
+            // When we update the last_seen map we have to be sure that if the new
+            // telem has a point with a timestamp greater than the one we have
+            // stored we replace the timestamp. Else, we ignore.
+            tmp_last_seen.insert(pad.hash(), pad.timestamp());
+
+            match pad {
+                Pad::Zero(value, ts) => {
+                    let zero = value
+                        .clone()
+                        .thaw()
+                        .value(0.0)
+                        .harden()
+                        .unwrap()
+                        .timestamp(ts);
+                    self.fmt_val(
+                        &zero,
+                        &mut time_cache,
+                        &mut count_cache,
+                        &mut value_cache,
                     );
-                    report_telemetry(
-                        "cernan.sinks.wavefront.aggregation.\
-                         summarize.total_percentiles",
-                        self.percentiles.len() as f64,
+                }
+                Pad::Telem(value) => {
+                    if value.persist {
+                        let new_val = value.clone();
+                        self.aggrs.add(new_val.timestamp(value.timestamp + 1));
+                    }
+
+                    match value.kind() {
+                        AggregationMethod::Histogram => report_telemetry(
+                            "cernan.sinks.wavefront.aggregation.histogram",
+                            1.0,
+                        ),
+                        AggregationMethod::Sum => report_telemetry(
+                            "cernan.sinks.wavefront.aggregation.sum",
+                            1.0,
+                        ),
+                        AggregationMethod::Set => report_telemetry(
+                            "cernan.sinks.wavefront.aggregation.set",
+                            1.0,
+                        ),
+                        AggregationMethod::Summarize => {
+                            report_telemetry(
+                                "cernan.sinks.wavefront.aggregation.summarize",
+                                1.0,
+                            );
+                            report_telemetry(
+                                "cernan.sinks.wavefront.aggregation.\
+                                 summarize.total_percentiles",
+                                self.percentiles.len() as f64,
+                            );
+                        }
+                    };
+
+                    self.fmt_val(
+                        &value,
+                        &mut time_cache,
+                        &mut count_cache,
+                        &mut value_cache,
                     );
                 }
-            };
-            self.fmt_val(&value, &mut time_cache, &mut count_cache, &mut value_cache);
-        }
-        let mut empties = Vec::new();
-        let mut sustainers = Vec::new();
-        // Emit sustained telemetry. In the event that a value comes through the
-        // map with the same flush window as current then we've just seen it,
-        // above.
-        {
-            for (k, v) in &self.sustain_map {
-                if v.flush_number < (self.flush_number.saturating_sub(self.sustain)) {
-                    empties.push(*k);
-                    continue;
-                }
-                if v.flush_number < self.flush_number {
-                    let sustain_val = v.telem.clone().timestamp(
-                        v.telem.timestamp +
-                            self.flush_number.saturating_sub(self.sustain) as i64,
-                    );
-                    sustainers.push(sustain_val);
-                }
             }
         }
-        {
-            for k in empties {
-                self.sustain_map.remove(&k);
-            }
+        for (k, v) in tmp_last_seen {
+            last_seen.insert(k, v);
         }
-        {
-            for v in sustainers {
-                self.fmt_val(&v, &mut time_cache, &mut count_cache, &mut value_cache);
-            }
-        }
+        self.aggrs = aggrs;
+        self.aggrs.reset();
+        self.last_seen = last_seen;
     }
 
     fn fmt_val(
@@ -341,23 +417,36 @@ impl Wavefront {
         mut value_cache: &mut Vec<(f64, String)>,
     ) -> () {
         let mut tag_buf = String::with_capacity(1_024);
-        match value.aggregation() {
-            AggregationMethod::Sum | AggregationMethod::Set => {
-                if let Some(v) = value.value() {
-                    self.stats.push_str(&value.name);
-                    self.stats.push_str(" ");
-                    self.stats.push_str(get_from_cache(&mut value_cache, v));
-                    self.stats.push_str(" ");
-                    self.stats
-                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
-                    self.stats.push_str(" ");
-                    fmt_tags(&value.tags, &mut tag_buf);
-                    self.stats.push_str(&tag_buf);
-                    self.stats.push_str("\n");
-
-                    tag_buf.clear();
-                }
+        match value.kind() {
+            AggregationMethod::Histogram => {
+                unimplemented!();
             }
+            AggregationMethod::Sum => if let Some(v) = value.sum() {
+                self.stats.push_str(&value.name);
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut value_cache, v));
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
+                self.stats.push_str(" ");
+                fmt_tags(&value.tags, &mut tag_buf);
+                self.stats.push_str(&tag_buf);
+                self.stats.push_str("\n");
+
+                tag_buf.clear();
+            },
+            AggregationMethod::Set => if let Some(v) = value.set() {
+                self.stats.push_str(&value.name);
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut value_cache, v));
+                self.stats.push_str(" ");
+                self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
+                self.stats.push_str(" ");
+                fmt_tags(&value.tags, &mut tag_buf);
+                self.stats.push_str(&tag_buf);
+                self.stats.push_str("\n");
+
+                tag_buf.clear();
+            },
             AggregationMethod::Summarize => {
                 fmt_tags(&value.tags, &mut tag_buf);
                 for tup in &self.percentiles {
@@ -465,11 +554,88 @@ impl Sink for Wavefront {
 #[cfg(test)]
 mod test {
     use super::*;
+    use buckets::Buckets;
     use chrono::{TimeZone, Utc};
-    use metric::{TagMap, Telemetry};
+    use metric::{AggregationMethod, TagMap, Telemetry};
     use quickcheck::{QuickCheck, TestResult};
     use sink::Sink;
     use std::sync::Arc;
+
+    #[test]
+    fn test_pad_across_flush() {
+        let bin_width = 1;
+        let mut bucket = buckets::Buckets::new(bin_width);
+
+        let m0 = Telemetry::new()
+            .value(0.5)
+            .kind(AggregationMethod::Set)
+            .name("")
+            .harden()
+            .unwrap()
+            .timestamp(100);
+        let mut last_seen = HashMap::new();
+        last_seen.insert(m0.hash(), 10);
+
+        bucket.add(m0);
+
+        let mut telems = padding(bucket.iter(), bin_width, &last_seen);
+        assert!(telems.next().unwrap().is_zeroed()); // 11 at 0
+        assert!(telems.next().unwrap().is_zeroed()); // 99 at 0
+        assert!(!telems.next().unwrap().is_zeroed()); // 100 at 0.5
+        assert!(telems.next().is_none());
+    }
+
+    #[test]
+    fn test_pad_across_multiple_flush() {
+        let bin_width = 1;
+        let mut bucket = buckets::Buckets::new(bin_width);
+
+        let m0 = Telemetry::new()
+            .value(0.5)
+            .kind(AggregationMethod::Set)
+            .name("")
+            .harden()
+            .unwrap()
+            .timestamp(0);
+        let m1 = Telemetry::new()
+            .value(0.5)
+            .kind(AggregationMethod::Set)
+            .name("")
+            .harden()
+            .unwrap()
+            .timestamp(10);
+        let m2 = Telemetry::new()
+            .value(0.5)
+            .kind(AggregationMethod::Set)
+            .name("")
+            .harden()
+            .unwrap()
+            .timestamp(11);
+        let m3 = Telemetry::new()
+            .value(0.5)
+            .kind(AggregationMethod::Set)
+            .name("")
+            .harden()
+            .unwrap()
+            .timestamp(100);
+        let mut last_seen = HashMap::new();
+        last_seen.insert(m0.hash(), 10);
+
+        bucket.add(m0);
+        bucket.add(m1);
+        bucket.add(m2);
+        bucket.add(m3);
+
+        let mut telems = padding(bucket.iter(), bin_width, &last_seen);
+
+        assert!(!telems.next().unwrap().is_zeroed()); // m0
+        assert!(!telems.next().unwrap().is_zeroed()); // m1
+        assert!(!telems.next().unwrap().is_zeroed()); // m2
+        assert!(telems.next().unwrap().is_zeroed()); // m2_0
+        assert!(telems.next().unwrap().is_zeroed()); // m3_0
+        assert!(!telems.next().unwrap().is_zeroed()); // m3
+        assert!(telems.next().is_none());
+    }
 
     #[test]
     fn test_no_unpadded_gaps() {
@@ -477,20 +643,13 @@ mod test {
             if bin_width == 0 {
                 return TestResult::discard();
             }
-            // TODO
-            //
-            // The fact that I have to set a bucket here suggests that 'padding'
-            // might be sensible for inclusion as an interator on the
-            // Bucket. But! It doesn't have to be that way, if the
-            // Vec<Telemetry> is pre-prepped.
             let mut bucket = Buckets::new(bin_width as i64);
             for m in ms.clone() {
                 bucket.add(m);
             }
-            let mut padding = padding(
-                bucket.into_iter().filter(|x| x.is_zeroed()),
-                bin_width as i64,
-            ).peekable();
+            let last_seen = Default::default();
+            let mut padding =
+                padding(bucket.iter(), bin_width as i64, &last_seen).peekable();
 
             while let Some(t) = padding.next() {
                 if let Some(next_t) = padding.peek() {
@@ -504,13 +663,13 @@ mod test {
                     //     b. if both points are non-zero they must not be
                     //        more than one span apart
                     if t.hash() == next_t.hash() {
-                        let span = (t.timestamp - next_t.timestamp).abs() /
+                        let span = (t.timestamp() - next_t.timestamp()).abs() /
                             (bin_width as i64);
                         if span > 1 {
-                            assert_eq!(t.value(), Some(0.0));
-                            assert_eq!(next_t.value(), Some(0.0));
+                            assert!(t.is_zeroed());
+                            assert!(next_t.is_zeroed());
                         }
-                        if (t.value() != Some(0.0)) && (next_t.value() != Some(0.0)) {
+                        if !t.is_zeroed() && !next_t.is_zeroed() {
                             assert!(span <= 1);
                         }
                     } else {
@@ -542,15 +701,12 @@ mod test {
             }
 
             let mut total_zero_run = 0;
-            let padding = padding(
-                bucket.into_iter().filter(|x| x.is_zeroed()),
-                bin_width as i64,
-            );
+            let last_seen = Default::default();
+            let padding = padding(bucket.iter(), bin_width as i64, &last_seen);
             for val in padding {
-                if val.value() == Some(0.0) {
-                    total_zero_run += 1;
-                } else {
-                    total_zero_run = 0;
+                match val {
+                    Pad::Zero(_, _) => total_zero_run += 1,
+                    Pad::Telem(_) => total_zero_run = 0,
                 }
                 if total_zero_run > 2 {
                     return TestResult::failed();
@@ -574,19 +730,17 @@ mod test {
             }
 
             let mut total_non_zero = 0;
-            for val in bucket.clone().into_iter() {
-                if val.value() != Some(0.0) {
+            for val in bucket.clone().iter() {
+                if !val.is_zeroed() {
                     total_non_zero += 1;
                 }
             }
 
-            let padding = padding(
-                bucket.into_iter().filter(|x| x.is_zeroed()),
-                bin_width as i64,
-            );
+            let last_seen = Default::default();
+            let padding = padding(bucket.iter(), bin_width as i64, &last_seen);
             let mut total = 0;
             for val in padding {
-                if val.value() != Some(0.0) {
+                if !val.is_zeroed() {
                     total += 1;
                 }
             }
@@ -623,7 +777,6 @@ mod test {
             config_path: Some("sinks.wavefront".to_string()),
             tags: tags.clone(),
             percentiles: percentiles,
-            sustain: 0,
             flush_interval: 60,
         };
         let mut wavefront = Wavefront::new(config).unwrap();
@@ -631,69 +784,113 @@ mod test {
         let dt_1 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
         let dt_2 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.counter", -1.0)
+            Telemetry::new()
+                .name("test.counter")
+                .value(-1.0)
                 .timestamp(dt_0)
-                .aggr_sum()
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.counter", 2.0)
+            Telemetry::new()
+                .name("test.counter")
+                .value(2.0)
                 .timestamp(dt_0)
-                .aggr_sum()
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.counter", 3.0)
+            Telemetry::new()
+                .name("test.counter")
+                .value(3.0)
                 .timestamp(dt_1)
-                .aggr_sum()
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.gauge", 3.211)
+            Telemetry::new()
+                .name("test.gauge")
+                .value(3.211)
                 .timestamp(dt_0)
-                .aggr_set()
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.gauge", 4.322)
+            Telemetry::new()
+                .name("test.gauge")
+                .value(4.322)
                 .timestamp(dt_1)
-                .aggr_set()
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.gauge", 5.433)
+            Telemetry::new()
+                .name("test.gauge")
+                .value(5.433)
                 .timestamp(dt_2)
-                .aggr_set()
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.timer", 12.101)
+            Telemetry::new()
+                .name("test.timer")
+                .value(12.101)
                 .timestamp(dt_0)
-                .aggr_summarize()
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.timer", 1.101)
+            Telemetry::new()
+                .name("test.timer")
+                .value(1.101)
                 .timestamp(dt_0)
-                .aggr_summarize()
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.timer", 3.101)
+            Telemetry::new()
+                .name("test.timer")
+                .value(3.101)
                 .timestamp(dt_0)
-                .aggr_summarize()
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.raw", 1.0)
+            Telemetry::new()
+                .name("test.raw")
+                .value(1.0)
                 .timestamp(dt_0)
-                .aggr_set()
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.deliver(Arc::new(Some(
-            Telemetry::new("test.raw", 2.0)
+            Telemetry::new()
+                .name("test.raw")
+                .value(2.0)
                 .timestamp(dt_1)
-                .aggr_set()
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         wavefront.format_stats();

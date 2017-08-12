@@ -1,4 +1,4 @@
-// Copyright 2016, Postmates Inc. 
+// Copyright 2016, Postmates Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -6,10 +6,10 @@
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -27,9 +27,9 @@
 //
 //     [--------------------------------|~~~~~~~~~~ . . . ~~~~~~~~~~~~]
 //     ^                                ^
-//     u32, payload length in bytes     protobuf payload, of prefix len 
+//     u32, payload length in bytes     protobuf payload, of prefix len
 //
-// The protobuf payload conforms to the following definition. 
+// The protobuf payload conforms to the following definition.
 syntax = "proto2";
 
 package com.postmates.cernan;
@@ -52,8 +52,8 @@ message Payload {
 // first.
 message LogLine {
   optional string path = 1; // unique 'location' of the log line
-  optional string value = 2; // the line itself 
-  map<string, string> metadata = 3; // associated key/value metadata 
+  optional string value = 2; // the line itself
+  map<string, string> metadata = 3; // associated key/value metadata
   optional int64 timestamp_ms = 4; // milliseconds since the Unix epoch
 }
 
@@ -67,12 +67,13 @@ message LogLine {
 // structure over these samples but you may further choose aggregation
 // interpretations by setting AggregationMethod.
 message Telemetry {
-  optional string name = 1; // the unique name of the telemetry 
+  optional string name = 1; // the unique name of the telemetry
   repeated double samples = 2 [ packed = true ]; // telemetry samples present in timestamp_ms
-  optional bool persisted = 3 [ default = false ]; // persist metric across time windows 
-  optional AggregationMethod method = 4 [ default = SUMMARIZE ]; // see below 
-  map<string, string> metadata = 5; // associated key/value metadata 
+  optional bool persisted = 3 [ default = false ]; // persist metric across time windows
+  optional AggregationMethod method = 4 [ default = SUMMARIZE ]; // see below
+  map<string, string> metadata = 5; // associated key/value metadata
   optional int64 timestamp_ms = 6; // milliseconds since the Unix epoch
+  repeated double bin_bounds = 7; // BIN inclusive upper bounds
 }
 
 // 'AggregationMethod' - an interpretation signal
@@ -86,12 +87,14 @@ message Telemetry {
 enum AggregationMethod {
   // SUM keeps a sum of samples. This is often interpreted as a
   // per-window counter.
-  SUM = 1; 
+  SUM = 1;
   // SET preserves the last sample set into the Telemetry per time
-  // window. 
-  SET = 2;  
+  // window.
+  SET = 2;
   // SUMMARIZE produces a quantile summary of the input samples per time
   // window. This is the default behaviour.
   SUMMARIZE = 3;
+  // BIN produces a histogram summary of the input samples per time window. The
+  // user will specify the bins' upper bounds.
+  BIN = 4;
 }
-

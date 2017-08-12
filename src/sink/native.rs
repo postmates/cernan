@@ -63,15 +63,13 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
             for ip in ips {
                 match TcpStream::connect(ip) {
                     Ok(stream) => return Some(stream),
-                    Err(e) => {
-                        info!(
-                            "Unable to connect to proxy at {} using addr {} with error \
-                             {}",
-                            host,
-                            ip,
-                            e
-                        )
-                    }
+                    Err(e) => info!(
+                        "Unable to connect to proxy at {} using addr {} with error \
+                         {}",
+                        host,
+                        ip,
+                        e
+                    ),
                 }
             }
             None
@@ -115,16 +113,14 @@ impl Sink for Native {
                 Some(event) => {
                     attempts = 0;
                     match event {
-                        metric::Event::TimerFlush(idx) => {
-                            if idx > last_flush_idx {
-                                if let Some(flush_interval) = self.flush_interval() {
-                                    if idx % flush_interval == 0 {
-                                        self.flush();
-                                    }
+                        metric::Event::TimerFlush(idx) => if idx > last_flush_idx {
+                            if let Some(flush_interval) = self.flush_interval() {
+                                if idx % flush_interval == 0 {
+                                    self.flush();
                                 }
-                                last_flush_idx = idx;
                             }
-                        }
+                            last_flush_idx = idx;
+                        },
                         _ => self.buffer.push(event),
                     }
                 }
@@ -146,7 +142,8 @@ impl Sink for Native {
                     let mut m = sync::Arc::make_mut(&mut m).take().unwrap();
                     let mut telem = Telemetry::new();
                     telem.set_name(replace(&mut m.name, Default::default()));
-                    let method = match m.aggregation() {
+                    let method = match m.kind() {
+                        metric::AggregationMethod::Histogram => AggregationMethod::BIN,
                         metric::AggregationMethod::Sum => AggregationMethod::SUM,
                         metric::AggregationMethod::Set => AggregationMethod::SET,
                         metric::AggregationMethod::Summarize => {
@@ -166,8 +163,10 @@ impl Sink for Native {
                     }
                     telem.set_metadata(meta);
                     telem.set_timestamp_ms(m.timestamp * 1000); // FIXME #166
-                    telem.set_samples(m.into_vec());
-
+                    telem.set_samples(m.samples());
+                    // TODO set bin_bounds. What we do is set the counts for the
+                    // bins as set_samples above, then bin_bounds comes from
+                    // elsewhere
                     points.push(telem);
                 }
                 metric::Event::Log(mut l) => {

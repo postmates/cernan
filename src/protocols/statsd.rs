@@ -1,4 +1,5 @@
 use metric;
+use metric::AggregationMethod;
 use std::str::FromStr;
 use std::sync;
 use time;
@@ -38,10 +39,12 @@ pub fn parse_statsd(
                                 Ok(f) => f,
                                 Err(_) => return false,
                             };
-                        let mut metric =
-                            sync::Arc::make_mut(&mut metric.clone()).take().unwrap();
-                        metric = metric.set_name(name);
-                        metric = metric.set_value(val);
+                        let mut metric = sync::Arc::make_mut(&mut metric.clone())
+                            .take()
+                            .unwrap()
+                            .thaw();
+                        metric = metric.name(name);
+                        metric = metric.value(val);
                         metric = metric.timestamp(time::now());
                         let signed = match &src[offset..(offset + 1)] {
                             "+" | "-" => true,
@@ -61,13 +64,13 @@ pub fn parse_statsd(
                                             Ok(f) => f,
                                             Err(_) => return false,
                                         };
-                                        metric.persist = true;
+                                        metric = metric.persist(true);
                                         metric = if signed {
-                                            metric.aggr_sum()
+                                            metric.kind(AggregationMethod::Sum)
                                         } else {
-                                            metric.aggr_set()
+                                            metric.kind(AggregationMethod::Set)
                                         };
-                                        metric.set_value(val * (1.0 / sample))
+                                        metric.value(val * (1.0 / sample))
                                     }
                                     "c|" | "c" => {
                                         let sample = match f64::from_str(
@@ -76,8 +79,10 @@ pub fn parse_statsd(
                                             Ok(f) => f,
                                             Err(_) => return false,
                                         };
-                                        metric = metric.aggr_sum().ephemeral();
-                                        metric.set_value(val * (1.0 / sample))
+                                        metric = metric
+                                            .kind(AggregationMethod::Sum)
+                                            .persist(false);
+                                        metric.value(val * (1.0 / sample))
                                     }
                                     "ms" | "ms|" | "h" | "h|" => {
                                         let sample = match f64::from_str(
@@ -86,29 +91,33 @@ pub fn parse_statsd(
                                             Ok(f) => f,
                                             Err(_) => return false,
                                         };
-                                        metric = metric.aggr_summarize().ephemeral();
-                                        metric.set_value(val * (1.0 / sample))
+                                        metric = metric
+                                            .kind(AggregationMethod::Summarize)
+                                            .persist(false);
+                                        metric.value(val * (1.0 / sample))
                                     }
                                     _ => return false,
                                 }
                             }
-                            None => {
-                                match &src[offset..] {
-                                    "g" => {
-                                        metric.persist = true;
-                                        if signed {
-                                            metric.aggr_sum()
-                                        } else {
-                                            metric.aggr_set()
-                                        }
+                            None => match &src[offset..] {
+                                "g" => {
+                                    metric = metric.persist(true);
+                                    if signed {
+                                        metric.kind(AggregationMethod::Sum)
+                                    } else {
+                                        metric.kind(AggregationMethod::Set)
                                     }
-                                    "ms" | "h" => metric.aggr_summarize().ephemeral(),
-                                    "c" => metric.aggr_sum().ephemeral(),
-                                    _ => return false,
                                 }
-                            }
+                                "ms" | "h" => metric
+                                    .kind(AggregationMethod::Summarize)
+                                    .persist(false),
+                                "c" => {
+                                    metric.kind(AggregationMethod::Sum).persist(false)
+                                }
+                                _ => return false,
+                            },
                         };
-                        res.push(metric);
+                        res.push(metric.harden().unwrap());
                     }
                     None => return false,
                 }
@@ -273,7 +282,7 @@ mod tests {
                     if sline.sampled {
                         assert!(
                             (sline.value * (1.0 / sline.sample_rate) -
-                                 telem.value().unwrap())
+                                telem.value().unwrap())
                                 .abs() < 0.0001
                         );
                     } else {
@@ -281,25 +290,19 @@ mod tests {
                     }
                     match sline.aggregation {
                         StatsdAggregation::Counter => {
-                            assert_eq!(telem.aggregation(), AggregationMethod::Sum);
+                            assert_eq!(telem.kind(), AggregationMethod::Sum);
                             assert_eq!(telem.persist, false);
                         }
                         StatsdAggregation::Gauge => {
-                            assert_eq!(telem.aggregation(), AggregationMethod::Set);
+                            assert_eq!(telem.kind(), AggregationMethod::Set);
                             assert_eq!(telem.persist, true);
                         }
                         StatsdAggregation::Timer => {
-                            assert_eq!(
-                                telem.aggregation(),
-                                AggregationMethod::Summarize
-                            );
+                            assert_eq!(telem.kind(), AggregationMethod::Summarize);
                             assert_eq!(telem.persist, false);
                         }
                         StatsdAggregation::Histogram => {
-                            assert_eq!(
-                                telem.aggregation(),
-                                AggregationMethod::Summarize
-                            );
+                            assert_eq!(telem.kind(), AggregationMethod::Summarize);
                             assert_eq!(telem.persist, false);
                         }
                     }
@@ -324,15 +327,15 @@ mod tests {
             &mut res,
             metric
         ));
-        assert_eq!(res[0].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[0].kind(), AggregationMethod::Sum);
         assert_eq!(res[0].name, "a.b");
         assert_eq!(res[0].persist, false);
         assert_eq!(Some(3.1), res[0].value());
-        assert_eq!(res[1].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[1].kind(), AggregationMethod::Sum);
         assert_eq!(res[1].name, "a-b");
         assert_eq!(res[1].persist, false);
         assert_eq!(Some(40.0), res[1].value());
-        assert_eq!(res[2].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[2].kind(), AggregationMethod::Sum);
         assert_eq!(res[2].name, "a-b");
         assert_eq!(res[2].persist, false);
         assert_eq!(Some(26.0), res[2].value());
@@ -344,7 +347,7 @@ mod tests {
         let mut res = Vec::new();
         assert!(parse_statsd("fst:-1.1|ms\n", &mut res, metric));
 
-        assert_eq!(res[0].aggregation(), AggregationMethod::Summarize);
+        assert_eq!(res[0].kind(), AggregationMethod::Summarize);
         assert_eq!(res[0].name, "fst");
         assert_eq!(res[0].persist, false);
         assert_eq!(res[0].query(1.0), Some(-1.1));
@@ -356,7 +359,7 @@ mod tests {
         let mut res = Vec::new();
         assert!(parse_statsd("A=:1|ms\n", &mut res, metric));
 
-        assert_eq!(res[0].aggregation(), AggregationMethod::Summarize);
+        assert_eq!(res[0].kind(), AggregationMethod::Summarize);
         assert_eq!(res[0].name, "A=");
         assert_eq!(res[0].persist, false);
         assert_eq!(Some(1.0), res[0].query(1.0));
@@ -368,7 +371,7 @@ mod tests {
         let mut res = Vec::new();
         assert!(parse_statsd("A/:1|ms\n", &mut res, metric));
 
-        assert_eq!(res[0].aggregation(), AggregationMethod::Summarize);
+        assert_eq!(res[0].kind(), AggregationMethod::Summarize);
         assert_eq!(res[0].name, "A/");
         assert_eq!(res[0].persist, false);
         assert_eq!(Some(1.0), res[0].query(1.0));
@@ -384,25 +387,25 @@ mod tests {
             metric
         ));
         //                              0         A     F
-        assert_eq!(res[0].aggregation(), AggregationMethod::Set);
+        assert_eq!(res[0].kind(), AggregationMethod::Set);
         assert_eq!(res[0].name, "foo");
         assert_eq!(res[0].persist, true);
-        assert_eq!(Some(1.0 * (1.0 / 0.22)), res[0].query(1.0));
+        assert_eq!(Some(1.0 * (1.0 / 0.22)), res[0].set());
 
-        assert_eq!(res[1].aggregation(), AggregationMethod::Set);
+        assert_eq!(res[1].kind(), AggregationMethod::Set);
         assert_eq!(res[1].name, "bar");
         assert_eq!(res[1].persist, true);
-        assert_eq!(Some(101.0 * (1.0 / 2.0)), res[1].query(1.0));
+        assert_eq!(Some(101.0 * (1.0 / 2.0)), res[1].set());
 
-        assert_eq!(res[2].aggregation(), AggregationMethod::Set);
+        assert_eq!(res[2].kind(), AggregationMethod::Set);
         assert_eq!(res[2].name, "baz");
         assert_eq!(res[2].persist, true);
-        assert_eq!(Some(2.0 * (1.0 / 0.2)), res[2].query(1.0));
+        assert_eq!(Some(2.0 * (1.0 / 0.2)), res[2].set());
 
-        assert_eq!(res[3].aggregation(), AggregationMethod::Set);
+        assert_eq!(res[3].kind(), AggregationMethod::Set);
         assert_eq!(res[3].name, "qux");
         assert_eq!(res[3].persist, true);
-        assert_eq!(Some(4.0 * (1.0 / 0.1)), res[3].query(1.0));
+        assert_eq!(Some(4.0 * (1.0 / 0.1)), res[3].set());
     }
 
     #[test]
@@ -427,12 +430,12 @@ mod tests {
         assert!(parse_statsd("a.b:12.1|g\nb_c:13.2|c\n", &mut res, metric));
         assert_eq!(2, res.len());
 
-        assert_eq!(res[0].aggregation(), AggregationMethod::Set);
+        assert_eq!(res[0].kind(), AggregationMethod::Set);
         assert_eq!(res[0].name, "a.b");
         assert_eq!(res[0].persist, true);
         assert_eq!(Some(12.1), res[0].value());
 
-        assert_eq!(res[1].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[1].kind(), AggregationMethod::Sum);
         assert_eq!(res[1].name, "b_c");
         assert_eq!(res[1].persist, false);
         assert_eq!(Some(13.2), res[1].value());
@@ -445,12 +448,12 @@ mod tests {
         assert!(parse_statsd("a.b:12.1|g\nb_c:13.2|c", &mut res, metric));
         assert_eq!(2, res.len());
 
-        assert_eq!(res[0].aggregation(), AggregationMethod::Set);
+        assert_eq!(res[0].kind(), AggregationMethod::Set);
         assert_eq!(res[0].name, "a.b");
         assert_eq!(res[0].persist, true);
         assert_eq!(Some(12.1), res[0].value());
 
-        assert_eq!(res[1].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[1].kind(), AggregationMethod::Sum);
         assert_eq!(res[1].name, "b_c");
         assert_eq!(res[1].persist, false);
         assert_eq!(Some(13.2), res[1].value());
@@ -463,7 +466,7 @@ mod tests {
         let mut res = Vec::new();
         assert!(parse_statsd(pyld, &mut res, metric));
 
-        assert_eq!(res[0].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[0].kind(), AggregationMethod::Sum);
         assert_eq!(res[0].name, "zrth");
         assert_eq!(res[0].persist, true);
         assert_eq!(res[0].value(), Some(-1.0));
@@ -476,12 +479,12 @@ mod tests {
         let mut res = Vec::new();
         assert!(parse_statsd(pyld, &mut res, metric));
 
-        assert_eq!(res[0].aggregation(), AggregationMethod::Set);
+        assert_eq!(res[0].kind(), AggregationMethod::Set);
         assert_eq!(res[0].name, "zrth");
         assert_eq!(res[0].persist, true);
         assert_eq!(res[0].value(), Some(0.0));
 
-        assert_eq!(res[1].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[1].kind(), AggregationMethod::Sum);
         assert_eq!(res[1].name, "zrth");
         assert_eq!(res[1].persist, true);
         assert_eq!(res[1].value(), Some(-1.0));
@@ -512,42 +515,42 @@ mod tests {
         let mut res = Vec::new();
         assert!(parse_statsd(pyld, &mut res, metric));
 
-        assert_eq!(res[0].aggregation(), AggregationMethod::Set);
+        assert_eq!(res[0].kind(), AggregationMethod::Set);
         assert_eq!(res[0].name, "zrth");
         assert_eq!(res[0].persist, true);
         assert_eq!(res[0].value(), Some(0.0));
 
-        assert_eq!(res[1].aggregation(), AggregationMethod::Summarize);
+        assert_eq!(res[1].kind(), AggregationMethod::Summarize);
         assert_eq!(res[1].name, "fst");
         assert_eq!(res[1].persist, false);
         assert_eq!(res[1].query(1.0), Some(-1.1));
 
-        assert_eq!(res[2].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[2].kind(), AggregationMethod::Sum);
         assert_eq!(res[2].name, "snd");
         assert_eq!(res[2].persist, true);
         assert_eq!(res[2].value(), Some(2.2));
 
-        assert_eq!(res[3].aggregation(), AggregationMethod::Summarize);
+        assert_eq!(res[3].kind(), AggregationMethod::Summarize);
         assert_eq!(res[3].name, "thd");
         assert_eq!(res[3].persist, false);
         assert_eq!(res[3].query(1.0), Some(3.3));
 
-        assert_eq!(res[4].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[4].kind(), AggregationMethod::Sum);
         assert_eq!(res[4].name, "fth");
         assert_eq!(res[4].persist, false);
         assert_eq!(res[4].value(), Some(4.0));
 
-        assert_eq!(res[5].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[5].kind(), AggregationMethod::Sum);
         assert_eq!(res[5].name, "fvth");
         assert_eq!(res[5].persist, false);
         assert_eq!(res[5].value(), Some(55.0));
 
-        assert_eq!(res[6].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[6].kind(), AggregationMethod::Sum);
         assert_eq!(res[6].name, "sxth");
         assert_eq!(res[6].persist, true);
         assert_eq!(res[6].value(), Some(-6.6));
 
-        assert_eq!(res[7].aggregation(), AggregationMethod::Sum);
+        assert_eq!(res[7].kind(), AggregationMethod::Sum);
         assert_eq!(res[7].name, "svth");
         assert_eq!(res[7].persist, true);
         assert_eq!(res[7].value(), Some(7.77));

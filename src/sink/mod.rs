@@ -50,29 +50,23 @@ pub trait Sink {
                 Some(event) => {
                     attempts = 0;
                     match self.valve_state() {
-                        Valve::Open => {
-                            match event {
-                                Event::TimerFlush(idx) => {
-                                    if idx > last_flush_idx {
-                                        if let Some(flush_interval) =
-                                            self.flush_interval()
-                                        {
-                                            if idx % flush_interval == 0 {
-                                                self.flush();
-                                            }
-                                        }
-                                        last_flush_idx = idx;
+                        Valve::Open => match event {
+                            Event::TimerFlush(idx) => if idx > last_flush_idx {
+                                if let Some(flush_interval) = self.flush_interval() {
+                                    if idx % flush_interval == 0 {
+                                        self.flush();
                                     }
                                 }
-                                Event::Telemetry(metric) => {
-                                    self.deliver(metric);
-                                }
-
-                                Event::Log(line) => {
-                                    self.deliver_line(line);
-                                }
+                                last_flush_idx = idx;
+                            },
+                            Event::Telemetry(metric) => {
+                                self.deliver(metric);
                             }
-                        }
+
+                            Event::Log(line) => {
+                                self.deliver_line(line);
+                            }
+                        },
                         Valve::Closed => {
                             attempts += 1;
                             continue;

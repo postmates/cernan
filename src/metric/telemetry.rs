@@ -1,52 +1,194 @@
 use metric::TagMap;
 use metric::tagmap::cmp;
-use metric::value::Value;
+use quantiles::ckms::CKMS;
+use quantiles::histogram::{Histogram, Iter};
+#[cfg(test)]
+use quantiles::histogram::Bound;
 use std::cmp;
 use std::collections::hash_map::DefaultHasher;
-use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::mem;
 use std::ops::AddAssign;
 use std::sync;
 use time;
-
-#[derive(PartialEq, Serialize, Deserialize, Clone)]
-pub struct Telemetry {
-    pub name: String,
-    value: Value,
-    pub persist: bool,
-    pub tags: sync::Arc<TagMap>,
-    pub timestamp: i64, // seconds, see #166
-    pub timestamp_ns: u64,
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
 pub enum AggregationMethod {
     Sum,
     Set,
     Summarize,
+    Histogram,
+}
+
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
+pub enum Value {
+    Set(f64),
+    Sum(f64),
+    Histogram(Histogram<f64>),
+    Quantiles(CKMS<f64>),
+}
+
+pub struct SoftTelemetry {
+    name: Option<String>,
+    initial_value: Option<f64>,
+    thawed_value: Option<Value>,
+    kind: Option<AggregationMethod>,
+    error: Option<f64>,       // only needed for Summarize
+    bounds: Option<Vec<f64>>, // only needed for Histogram
+    timestamp: Option<i64>,
+    tags: Option<sync::Arc<TagMap>>,
+    persist: Option<bool>,
+}
+
+#[derive(PartialEq, Serialize, Deserialize, Debug, Clone)]
+pub struct Telemetry {
+    pub name: String,
+    value: Option<Value>,
+    pub persist: bool,
+    pub tags: sync::Arc<TagMap>,
+    pub timestamp: i64,
+}
+
+impl Value {
+    #[cfg(test)]
+    pub fn is_same_kind(&self, rhs: &Value) -> bool {
+        match (self, rhs) {
+            (&Value::Set(_), &Value::Set(_)) => true,
+            (&Value::Sum(_), &Value::Sum(_)) => true,
+            (&Value::Histogram(_), &Value::Histogram(_)) => true,
+            (&Value::Quantiles(_), &Value::Quantiles(_)) => true,
+            _ => false,
+        }
+    }
+
+    pub fn add(self, rhs: Value) -> Value {
+        match self {
+            Value::Set(x) => match rhs {
+                Value::Set(y) => Value::Set(y),
+                Value::Sum(y) => Value::Sum(x + y),
+                Value::Histogram(mut y) => {
+                    y.insert(x);
+                    Value::Histogram(y)
+                }
+                Value::Quantiles(mut y) => {
+                    y.insert(x);
+                    Value::Quantiles(y)
+                }
+            },
+            Value::Sum(x) => match rhs {
+                Value::Set(y) => Value::Set(y),
+                Value::Sum(y) => Value::Sum(x + y),
+                Value::Histogram(mut y) => {
+                    y.insert(x);
+                    Value::Histogram(y)
+                }
+                Value::Quantiles(mut y) => {
+                    y.insert(x);
+                    Value::Quantiles(y)
+                }
+            },
+            Value::Histogram(mut x) => match rhs {
+                Value::Set(y) => Value::Set(y),
+                Value::Sum(y) => Value::Sum(x.sum().unwrap_or(0.0) + y),
+                Value::Histogram(y) => {
+                    x += y;
+                    Value::Histogram(x)
+                }
+                Value::Quantiles(y) => Value::Quantiles(y),
+            },
+            Value::Quantiles(mut x) => match rhs {
+                Value::Set(y) => Value::Set(y),
+                Value::Sum(y) => Value::Sum(x.sum().unwrap_or(0.0) + y),
+                Value::Histogram(mut y) => {
+                    for v in x.into_vec() {
+                        y.insert(v);
+                    }
+                    Value::Histogram(y)
+                }
+                Value::Quantiles(y) => {
+                    x += y;
+                    Value::Quantiles(x)
+                }
+            },
+        }
+    }
+
+    pub fn sum(&self) -> Option<f64> {
+        match *self {
+            Value::Sum(x) => Some(x),
+            _ => None,
+        }
+    }
+
+    pub fn set(&self) -> Option<f64> {
+        match *self {
+            Value::Set(x) => Some(x),
+            _ => None,
+        }
+    }
+
+    pub fn query(&self, prcnt: f64) -> Option<f64> {
+        match *self {
+            Value::Quantiles(ref ckms) => ckms.query(prcnt).map(|x| x.1),
+            _ => None,
+        }
+    }
+
+    pub fn bins(&self) -> Option<Iter<f64>> {
+        match *self {
+            Value::Histogram(ref histo) => Some(histo.iter()),
+            _ => None,
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        match *self {
+            Value::Set(_) | Value::Sum(_) => 1,
+            Value::Histogram(ref histo) => histo.count(),
+            Value::Quantiles(ref ckms) => ckms.count(),
+        }
+    }
+
+    pub fn mean(&self) -> f64 {
+        match *self {
+            Value::Set(_) | Value::Sum(_) => 1.0,
+            Value::Histogram(ref histo) => if let Some(sum) = histo.sum() {
+                let count = histo.count();
+                assert!(count > 0);
+                sum / (count as f64)
+            } else {
+                0.0
+            },
+            Value::Quantiles(ref ckms) => ckms.cma().unwrap_or(0.0),
+        }
+    }
+
+    pub fn kind(&self) -> AggregationMethod {
+        match *self {
+            Value::Set(_) => AggregationMethod::Set,
+            Value::Sum(_) => AggregationMethod::Sum,
+            Value::Histogram(_) => AggregationMethod::Histogram,
+            Value::Quantiles(_) => AggregationMethod::Summarize,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn into_vec(self) -> Option<Vec<(Bound<f64>, usize)>> {
+        match self {
+            Value::Histogram(h) => Some(h.into_vec()),
+            _ => None,
+        }
+    }
 }
 
 impl AddAssign for Telemetry {
     fn add_assign(&mut self, rhs: Telemetry) {
+        let value = mem::replace(&mut self.value, Default::default());
+        self.value = Some(value.unwrap().add(rhs.value.unwrap()));
         // When we add two telemetries together what we gotta do is make sure
         // that if one side or the other is persisted then the resulting
         // Telemetry is persisted.
         self.persist = rhs.persist;
-        self.value += rhs.value;
-    }
-}
-
-impl fmt::Debug for Telemetry {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Telemetry {{ aggr_method: {:#?}, name: {}, timestamp: {}, \
-             value: {:?} }}",
-            self.value.kind(),
-            self.name,
-            self.timestamp,
-            self.value()
-        )
     }
 }
 
@@ -68,13 +210,237 @@ impl Default for Telemetry {
     fn default() -> Telemetry {
         Telemetry {
             name: String::from(""),
-            value: Value::new(),
+            value: Some(Value::Set(0.0)),
             persist: false,
             tags: sync::Arc::new(TagMap::default()),
             timestamp: time::now(),
-            timestamp_ns: time::now_ns(),
         }
     }
+}
+
+impl SoftTelemetry {
+    /// Set the name of the Telemetry
+    ///
+    /// The likelyhood is that there will be many Telemetry with the same
+    /// name. We might do fancy tricks with this in mind but, then again, we
+    /// might not.
+    pub fn name<S>(mut self, name: S) -> SoftTelemetry
+    where
+        S: Into<String>,
+    {
+        self.name = Some(name.into());
+        self
+    }
+
+    /// Set the initial value of Telemetry
+    ///
+    /// This value primes the pump of the Telemetry. There'll be more come in
+    /// but we've got to know where to start.
+    pub fn value(mut self, val: f64) -> SoftTelemetry {
+        self.thawed_value = None;
+        self.initial_value = Some(val);
+        self
+    }
+
+    /// Set the kind of Telemetry aggregation
+    ///
+    /// Telemetry provide different views into the stored data. The kind
+    /// controls, well, what kind of view is going to be used.
+    pub fn kind(mut self, aggr: AggregationMethod) -> SoftTelemetry {
+        self.kind = Some(aggr);
+        self
+    }
+
+    /// Set the error for quantile calculation
+    ///
+    /// This is only necessary if the kind has been set to
+    /// AggregationMethod::Summarize. It is an error to set this if the
+    /// aggregation method is not as previously specified.
+    pub fn error(mut self, error: f64) -> SoftTelemetry {
+        self.error = Some(error);
+        self
+    }
+
+    /// Set the bounds for histogram calculation
+    ///
+    /// This is only necessary if the kind has been set to
+    /// AggregationMethod::Histogram. It is an error to set this if the
+    /// aggregation method is not as previously specified.
+    pub fn bounds(mut self, mut bounds: Vec<f64>) -> SoftTelemetry {
+        bounds.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        self.bounds = Some(bounds);
+        self
+    }
+
+    /// Set the timestamp of the Telemetry
+    ///
+    /// This is the instant of time in seconds that the Telemetry is considered
+    /// to have happened.
+    pub fn timestamp(mut self, ts: i64) -> SoftTelemetry {
+        self.timestamp = Some(ts);
+        self
+    }
+
+    /// Set the tags of the Telemetry
+    ///
+    /// These are the tags associated with the Telemetry and help us determine
+    /// origin of report etc, depending on what the user has configured.
+    pub fn tags(mut self, tags: sync::Arc<TagMap>) -> SoftTelemetry {
+        self.tags = Some(tags);
+        self
+    }
+
+    /// Set the persist of the Telemetry
+    ///
+    /// This flag determines if the Telemetry persists across time bins. This is
+    /// a flag for aggregation implementation and may be ignored. If this is not
+    /// specified the Telemetry is considered to not persist.
+    pub fn persist(mut self, persist: bool) -> SoftTelemetry {
+        self.persist = Some(persist);
+        self
+    }
+
+    pub fn harden(self) -> Result<Telemetry, Error> {
+        if self.initial_value.is_some() && self.thawed_value.is_some() {
+            return Err(Error::CannotHaveTwoValues);
+        }
+        if self.initial_value.is_none() && self.thawed_value.is_none() {
+            return Err(Error::NoValue);
+        }
+        let name = if let Some(name) = self.name {
+            name
+        } else {
+            return Err(Error::NoName);
+        };
+        let kind = if let Some(kind) = self.kind {
+            kind
+        } else {
+            AggregationMethod::Set
+        };
+        let timestamp = if let Some(timestamp) = self.timestamp {
+            timestamp
+        } else {
+            time::now()
+        };
+        let tags = if let Some(tags) = self.tags {
+            tags
+        } else {
+            sync::Arc::new(TagMap::default())
+        };
+        let persist = if let Some(persist) = self.persist {
+            persist
+        } else {
+            false
+        };
+        match kind {
+            AggregationMethod::Summarize => {
+                if self.bounds.is_some() {
+                    return Err(Error::CannotSetBounds);
+                }
+                let error = if let Some(error) = self.error {
+                    if error >= 1.0 {
+                        return Err(Error::SummarizeErrorTooLarge);
+                    }
+                    error
+                } else {
+                    0.001
+                };
+                let value = match (self.initial_value, self.thawed_value) {
+                    (Some(iv), None) => {
+                        let mut ckms = CKMS::new(error);
+                        ckms.insert(iv);
+                        Value::Quantiles(ckms)
+                    }
+                    (None, Some(tv)) => tv,
+                    _ => unreachable!(),
+                };
+                Ok(Telemetry {
+                    name: name,
+                    value: Some(value),
+                    persist: persist,
+                    tags: tags,
+                    timestamp: timestamp,
+                })
+            }
+            AggregationMethod::Histogram => {
+                if self.error.is_some() {
+                    return Err(Error::CannotSetError);
+                }
+                let value = match (self.initial_value, self.thawed_value) {
+                    (Some(iv), None) => {
+                        let bounds = if let Some(bounds) = self.bounds {
+                            bounds
+                        } else {
+                            vec![1.0, 10.0, 100.0, 1000.0]
+                        };
+                        let mut histo = Histogram::new(bounds).unwrap();
+                        histo.insert(iv);
+                        Value::Histogram(histo)
+                    }
+                    (None, Some(tv)) => tv,
+                    _ => unreachable!(),
+                };
+                Ok(Telemetry {
+                    name: name,
+                    value: Some(value),
+                    persist: persist,
+                    tags: tags,
+                    timestamp: timestamp,
+                })
+            }
+            AggregationMethod::Set => {
+                if self.error.is_some() {
+                    return Err(Error::CannotSetError);
+                }
+                if self.bounds.is_some() {
+                    return Err(Error::CannotSetBounds);
+                }
+                let value = match (self.initial_value, self.thawed_value) {
+                    (Some(iv), None) => Value::Set(iv),
+                    (None, Some(tv)) => tv,
+                    _ => unreachable!(),
+                };
+                Ok(Telemetry {
+                    name: name,
+                    value: Some(value),
+                    persist: persist,
+                    tags: tags,
+                    timestamp: timestamp,
+                })
+            }
+            AggregationMethod::Sum => {
+                if self.error.is_some() {
+                    return Err(Error::CannotSetError);
+                }
+                if self.bounds.is_some() {
+                    return Err(Error::CannotSetBounds);
+                }
+                let value = match (self.initial_value, self.thawed_value) {
+                    (Some(iv), None) => Value::Sum(iv),
+                    (None, Some(tv)) => tv,
+                    _ => unreachable!(),
+                };
+                Ok(Telemetry {
+                    name: name,
+                    value: Some(value),
+                    persist: persist,
+                    tags: tags,
+                    timestamp: timestamp,
+                })
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    CannotHaveTwoValues,
+    CannotSetBounds,
+    CannotSetError,
+    NoInitialValue,
+    NoName,
+    NoValue,
+    SummarizeErrorTooLarge,
 }
 
 impl Telemetry {
@@ -89,25 +455,46 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,AggregationMethod};
     ///
-    /// let m = Telemetry::new("foo", 1.1);
+    /// let m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
-    /// assert_eq!(m.aggregation(), AggregationMethod::Set);
+    /// assert_eq!(m.kind(), AggregationMethod::Set);
     /// assert_eq!(m.name, "foo");
-    /// assert_eq!(m.value(), Some(1.1));
+    /// assert_eq!(m.set(), Some(1.1));
     /// ```
-    pub fn new<S>(name: S, value: f64) -> Telemetry
-    where
-        S: Into<String>,
-    {
-        let mut val = Value::new();
-        val.insert(value);
-        Telemetry {
-            name: name.into(),
-            tags: sync::Arc::new(TagMap::default()),
-            timestamp: time::now(),
-            timestamp_ns: time::now_ns(),
-            value: val,
-            persist: false,
+    pub fn new() -> SoftTelemetry {
+        SoftTelemetry {
+            name: None,
+            initial_value: None,
+            thawed_value: None,
+            kind: None,
+            error: None,
+            bounds: None,
+            timestamp: None,
+            tags: None,
+            persist: None,
+        }
+    }
+
+    pub fn thaw(self) -> SoftTelemetry {
+        let kind = self.kind();
+        SoftTelemetry {
+            name: Some(self.name),
+            initial_value: None,
+            thawed_value: Some(self.value.unwrap()),
+            kind: Some(kind),
+            error: None,
+            bounds: None,
+            timestamp: Some(self.timestamp),
+            tags: Some(self.tags),
+            persist: Some(self.persist),
+        }
+    }
+
+    pub fn kind(&self) -> AggregationMethod {
+        if let Some(ref v) = self.value {
+            v.kind()
+        } else {
+            unreachable!()
         }
     }
 
@@ -122,7 +509,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -151,7 +538,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,TagMap};
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -185,7 +572,7 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::{Telemetry,TagMap};
     ///
-    /// let mut m = Telemetry::new("foo", 1.1);
+    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
     /// assert!(m.tags.is_empty());
     ///
@@ -205,73 +592,124 @@ impl Telemetry {
         self
     }
 
-    /// Replace a Telemetry's value
-    ///
-    /// While it is sometimes still necessary to fiddle with the value of a
-    /// Telemetry directly--I'm looking at you, buckets.rs--ideally we'd use a
-    /// safe
-    /// API to do that fiddling.
-    ///
-    /// This function merely replaces the value. We could get fancy in the
-    /// future and do the Kind appropriate computation...
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::Telemetry;
-    ///
-    /// let m = Telemetry::new("foo", 1.1).set_value(10.10);
-    ///
-    /// assert_eq!(m.value(), Some(10.10));
-    /// ```
-    pub fn set_value(mut self, value: f64) -> Telemetry {
-        self.value.set(value);
+    pub fn insert(mut self, value: f64) -> Telemetry {
+        match self.value {
+            Some(Value::Set(_)) => {
+                self.value = Some(Value::Set(value));
+            }
+            Some(Value::Sum(x)) => {
+                self.value = Some(Value::Sum(x + value));
+            }
+            Some(Value::Histogram(ref mut histo)) => {
+                histo.insert(value);
+            }
+            Some(Value::Quantiles(ref mut ckms)) => {
+                ckms.insert(value);
+            }
+            None => unreachable!(),
+        }
         self
     }
 
-    pub fn set_name<S>(mut self, name: S) -> Telemetry
-    where
-        S: Into<String>,
-    {
-        self.name = name.into();
-        self
+    pub fn sum(&self) -> Option<f64> {
+        if let Some(ref v) = self.value {
+            v.sum()
+        } else {
+            None
+        }
     }
 
-    pub fn insert_value(mut self, value: f64) -> Telemetry {
-        self.value.insert(value);
-        self
+    pub fn set(&self) -> Option<f64> {
+        if let Some(ref v) = self.value {
+            v.set()
+        } else {
+            None
+        }
     }
 
+    pub fn query(&self, prcnt: f64) -> Option<f64> {
+        if let Some(ref v) = self.value {
+            v.query(prcnt)
+        } else {
+            None
+        }
+    }
+
+    pub fn bins(&self) -> Option<Iter<f64>> {
+        if let Some(ref v) = self.value {
+            v.bins()
+        } else {
+            None
+        }
+    }
+
+    /// Sum of all samples inserted into this Telemetry
+    pub fn samples_sum(&self) -> f64 {
+        unimplemented!();
+    }
+
+    pub fn count(&self) -> usize {
+        if let Some(ref v) = self.value {
+            v.count()
+        } else {
+            0
+        }
+    }
+
+    pub fn mean(&self) -> f64 {
+        if let Some(ref v) = self.value {
+            v.mean()
+        } else {
+            0.0
+        }
+    }
+
+    // TODO this function should be removed entirely in favor of the known-type
+    // functions: set, sum, etc etc
+    #[cfg(test)]
     pub fn value(&self) -> Option<f64> {
-        self.value.value()
+        match self.value {
+            Some(Value::Set(x)) => Some(x),
+            Some(Value::Sum(x)) => Some(x),
+            Some(Value::Quantiles(ref ckms)) => ckms.query(1.0).map(|x| x.1),
+            Some(Value::Histogram(ref histo)) => histo.sum(),
+            None => unreachable!(),
+        }
     }
 
-    pub fn into_vec(self) -> Vec<f64> {
-        self.value.clone().into_vec()
+    pub fn samples(&self) -> Vec<f64> {
+        match self.value {
+            Some(Value::Set(x)) => vec![x],
+            Some(Value::Sum(x)) => vec![x],
+            Some(Value::Quantiles(ref ckms)) => ckms.clone().into_vec(),
+            Some(Value::Histogram(ref histo)) => {
+                histo.clone().into_vec().iter().map(|x| x.1 as f64).collect()
+            }
+            None => unreachable!(),
+        }
     }
 
     pub fn within(&self, span: i64, other: &Telemetry) -> cmp::Ordering {
         match self.name.partial_cmp(&other.name) {
-            Some(cmp::Ordering::Equal) => {
-                match cmp(&self.tags, &other.tags) {
-                    Some(cmp::Ordering::Equal) => {
-                        let lhs_bin = self.timestamp / span;
-                        let rhs_bin = other.timestamp / span;
-                        lhs_bin.cmp(&rhs_bin)
-                    }
-                    other => other.unwrap(),
+            Some(cmp::Ordering::Equal) => match cmp(&self.tags, &other.tags) {
+                Some(cmp::Ordering::Equal) => {
+                    let lhs_bin = self.timestamp / span;
+                    let rhs_bin = other.timestamp / span;
+                    lhs_bin.cmp(&rhs_bin)
                 }
-            }
+                other => other.unwrap(),
+            },
             other => other.unwrap(),
         }
     }
 
     pub fn is_zeroed(&self) -> bool {
-        match self.value() {
-            None => false,
-            Some(n) => {
-                !(n == 0.0)
-            }
+        match self.value {
+            Some(Value::Set(x)) => x == 0.0,
+            Some(Value::Sum(x)) => x == 0.0,
+            Some(Value::Histogram(ref histo)) => histo.count() == 0,
+            Some(Value::Quantiles(ref ckms)) => ckms.count() == 0,
+            None => unreachable!(),
         }
     }
 
@@ -279,89 +717,40 @@ impl Telemetry {
         let mut hasher = DefaultHasher::new();
         self.name.hash(&mut hasher);
         self.tags.hash(&mut hasher);
-        self.value.kind().hash(&mut hasher);
+        self.kind().hash(&mut hasher);
         hasher.finish()
     }
 
-    pub fn persist(mut self) -> Telemetry {
-        self.persist = true;
-        self
-    }
-
-    pub fn ephemeral(mut self) -> Telemetry {
-        self.persist = false;
-        self
-    }
-
-    /// Set Telemetry aggregation to SET
-    ///
-    /// This function sets the telemetry aggregation method to set, meaning our
-    /// view into its values will be that of the last value inserted.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::Telemetry;
-    ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_set();
-    /// assert!(m.is_set());
-    /// ```
-    pub fn aggr_set(mut self) -> Telemetry {
-        self.value.set_kind(AggregationMethod::Set);
-        self
+    pub fn name_tag_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.name.hash(&mut hasher);
+        self.tags.hash(&mut hasher);
+        hasher.finish()
     }
 
     pub fn is_set(&self) -> bool {
-        self.value.kind() == AggregationMethod::Set
+        self.kind() == AggregationMethod::Set
+    }
+
+    pub fn is_histogram(&self) -> bool {
+        self.kind() == AggregationMethod::Histogram
     }
 
     pub fn aggregation(&self) -> AggregationMethod {
-        self.value.kind()
-    }
-
-    /// Set Telemetry aggregation to SUM
-    ///
-    /// This function sets the telemetry aggregation method to sum, meaning our
-    /// view into its values will be a summation of them in order of insertion.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::Telemetry;
-    ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_sum();
-    /// assert!(m.is_sum());
-    /// ```
-    pub fn aggr_sum(mut self) -> Telemetry {
-        self.value.set_kind(AggregationMethod::Sum);
-        self
+        self.kind()
     }
 
     pub fn is_sum(&self) -> bool {
-        self.value.kind() == AggregationMethod::Sum
-    }
-
-    /// Set Telemetry aggregation to SUMMARIZE
-    ///
-    /// This function sets the telemetry aggregation method to summarize,
-    /// meaning our view into its values will be a quantile structure over all
-    /// values inserted.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::Telemetry;
-    ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101).aggr_summarize();
-    /// assert!(m.is_summarize());
-    /// ```
-    pub fn aggr_summarize(mut self) -> Telemetry {
-        self.value.set_kind(AggregationMethod::Summarize);
-        self
+        self.kind() == AggregationMethod::Sum
     }
 
     pub fn is_summarize(&self) -> bool {
-        self.value.kind() == AggregationMethod::Summarize
+        self.kind() == AggregationMethod::Summarize
+    }
+
+    #[cfg(test)]
+    pub fn priv_value(&self) -> Value {
+        self.value.clone().unwrap()
     }
 
     /// Adjust Telemetry time
@@ -375,46 +764,14 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new("foo", 1.1).timestamp(10101);
+    /// let m = Telemetry::new().name("foo").value(1.1).harden().unwrap().
+    /// timestamp(10101);
     ///
     /// assert_eq!(10101, m.timestamp);
     /// ```
     pub fn timestamp(mut self, time: i64) -> Telemetry {
         self.timestamp = time;
         self
-    }
-
-    pub fn timestamp_ns(mut self, time_ns: u64) -> Telemetry {
-        self.timestamp_ns = time_ns;
-        self
-    }
-
-    pub fn timestamp_and_ns(mut self, sec: i64, ns: u32) -> Telemetry {
-        self.timestamp = sec;
-        let seconds = (sec as u64) * 1_000_000_000;
-        self.timestamp_ns = seconds.saturating_add(ns as u64);
-        self
-    }
-
-    pub fn query(&self, prcnt: f64) -> Option<f64> {
-        self.value.query(prcnt).map(|x| x.1)
-    }
-
-    pub fn count(&self) -> usize {
-        self.value.count()
-    }
-
-    pub fn mean(&self) -> f64 {
-        self.value.mean().unwrap()
-    }
-
-    pub fn sum(&self) -> f64 {
-        self.value.sum().unwrap()
-    }
-
-    #[cfg(test)]
-    pub fn priv_value(&self) -> Value {
-        self.value.clone()
     }
 }
 
@@ -427,24 +784,61 @@ mod tests {
 
     #[test]
     fn partial_ord_equal() {
-        let mc = Telemetry::new("l6", 0.7913855).aggr_sum().timestamp(47);
-        let mg = Telemetry::new("l6", 0.9683).aggr_set().timestamp(47);
+        let mc = Telemetry::new()
+            .name("l6")
+            .value(0.7913855)
+            .kind(AggregationMethod::Sum)
+            .harden()
+            .unwrap()
+            .timestamp(47);
+        let mg = Telemetry::new()
+            .name("l6")
+            .value(0.9683)
+            .kind(AggregationMethod::Set)
+            .harden()
+            .unwrap()
+            .timestamp(47);
 
         assert_eq!(Some(cmp::Ordering::Equal), mc.partial_cmp(&mg));
     }
 
     #[test]
     fn partial_ord_distinct() {
-        let mc = Telemetry::new("l6", 0.7913855).aggr_sum().timestamp(7);
-        let mg = Telemetry::new("l6", 0.9683).aggr_set().timestamp(47);
+        let mc = Telemetry::new()
+            .name("l6")
+            .value(0.7913855)
+            .kind(AggregationMethod::Sum)
+            .harden()
+            .unwrap()
+            .timestamp(7);
+        let mg = Telemetry::new()
+            .name("l6")
+            .value(0.9683)
+            .kind(AggregationMethod::Set)
+            .harden()
+            .unwrap()
+            .timestamp(47);
 
         assert_eq!(Some(cmp::Ordering::Less), mc.partial_cmp(&mg));
     }
 
     #[test]
     fn partial_ord_gauges() {
-        let mdg = Telemetry::new("l6", 0.7913855).aggr_set().persist().timestamp(47);
-        let mg = Telemetry::new("l6", 0.9683).aggr_set().timestamp(47);
+        let mdg = Telemetry::new()
+            .name("l6")
+            .value(0.7913855)
+            .kind(AggregationMethod::Set)
+            .persist(true)
+            .harden()
+            .unwrap()
+            .timestamp(47);
+        let mg = Telemetry::new()
+            .name("l6")
+            .value(0.9683)
+            .kind(AggregationMethod::Set)
+            .harden()
+            .unwrap()
+            .timestamp(47);
 
         assert_eq!(Some(cmp::Ordering::Equal), mg.partial_cmp(&mdg));
         assert_eq!(Some(cmp::Ordering::Equal), mdg.partial_cmp(&mg));
@@ -455,11 +849,12 @@ mod tests {
         where
             G: Gen,
         {
-            let i: usize = g.gen_range(0, 3);
+            let i: usize = g.gen_range(0, 4);
             match i {
                 0 => AggregationMethod::Sum,
                 1 => AggregationMethod::Set,
-                _ => AggregationMethod::Summarize,
+                2 => AggregationMethod::Summarize,
+                _ => AggregationMethod::Histogram,
             }
         }
     }
@@ -475,19 +870,16 @@ mod tests {
             let kind: AggregationMethod = AggregationMethod::arbitrary(g);
             let persist: bool = g.gen();
             let time: i64 = g.gen_range(0, 100);
-            let time_ns: u64 = (time as u64) * 1_000_000_000;
-            let mut mb =
-                Telemetry::new(name, val).timestamp(time).timestamp_ns(time_ns);
+            let mut mb = Telemetry::new().name(name).value(val).timestamp(time);
             mb = match kind {
-                AggregationMethod::Set => mb.aggr_set(),
-                AggregationMethod::Sum => mb.aggr_sum(),
-                AggregationMethod::Summarize => mb.aggr_summarize(),
+                AggregationMethod::Set => mb.kind(AggregationMethod::Set),
+                AggregationMethod::Sum => mb.kind(AggregationMethod::Sum),
+                AggregationMethod::Summarize => mb.kind(AggregationMethod::Summarize),
+                AggregationMethod::Histogram => mb.kind(AggregationMethod::Histogram)
+                    .bounds(vec![1.0, 10.0, 100.0, 1000.0]),
             };
-            if persist {
-                mb.persist()
-            } else {
-                mb
-            }
+            mb = if persist { mb.persist(true) } else { mb };
+            mb.harden().unwrap()
         }
     }
 
@@ -507,7 +899,7 @@ mod tests {
     #[test]
     fn test_metric_within() {
         fn inner(span: i64, lhs: Telemetry, rhs: Telemetry) -> TestResult {
-            if lhs.aggregation() != rhs.aggregation() {
+            if lhs.kind() != rhs.aggregation() {
                 return TestResult::discard();
             } else if lhs.name != rhs.name {
                 return TestResult::discard();
@@ -527,18 +919,10 @@ mod tests {
     #[test]
     fn test_metric_add_assign() {
         fn inner(lhs: f64, rhs: f64, kind: AggregationMethod) -> TestResult {
-            let mut mlhs = Telemetry::new("foo", lhs);
-            let mut mrhs = Telemetry::new("foo", rhs);
-            mlhs = match kind {
-                AggregationMethod::Sum => mlhs.aggr_sum(),
-                AggregationMethod::Set => mlhs.aggr_set(),
-                AggregationMethod::Summarize => mlhs.aggr_summarize(),
-            };
-            mrhs = match kind {
-                AggregationMethod::Sum => mrhs.aggr_sum(),
-                AggregationMethod::Set => mrhs.aggr_set(),
-                AggregationMethod::Summarize => mrhs.aggr_summarize(),
-            };
+            let mut mlhs =
+                Telemetry::new().name("foo").value(lhs).kind(kind).harden().unwrap();
+            let mrhs =
+                Telemetry::new().name("foo").value(rhs).kind(kind).harden().unwrap();
             let old_mlhs = mlhs.clone();
             let old_mrhs = mrhs.clone();
             mlhs += mrhs;
@@ -547,13 +931,16 @@ mod tests {
                     AggregationMethod::Set => rhs,
                     AggregationMethod::Sum => lhs + rhs,
                     AggregationMethod::Summarize => lhs.max(rhs),
+                    AggregationMethod::Histogram => lhs + rhs,
                 };
                 // println!("VAL: {:?} | EXPECTED: {:?}", val, expected);
                 match val.partial_cmp(&expected) {
                     Some(cmp::Ordering::Equal) => return TestResult::passed(),
                     _ => {
                         println!(
-                            "\n\nMLHS: {:?} | MRHS: {:?} | RES: {:?}\nEXPECTED: {:?} | VAL: {:?}",
+                            "\n\nLHS: {:?}\nRHS: {:?}\nMLHS: {:?}\nMRHS: {:?}\nRES: {:?}\nEXPECTED: {:?}\nVAL: {:?}",
+                            lhs,
+                            rhs,
                             old_mlhs,
                             old_mrhs,
                             mlhs,
@@ -575,18 +962,29 @@ mod tests {
 
     #[test]
     fn test_negative_timer() {
-        let m = Telemetry::new("timer", -1.0).aggr_summarize();
+        let m = Telemetry::new()
+            .name("timer")
+            .value(-1.0)
+            .kind(AggregationMethod::Summarize)
+            .harden()
+            .unwrap();
 
-        assert_eq!(m.aggregation(), AggregationMethod::Summarize);
+        assert_eq!(m.kind(), AggregationMethod::Summarize);
         assert_eq!(m.query(1.0), Some(-1.0));
         assert_eq!(m.name, "timer");
     }
 
     #[test]
     fn test_postive_delta_gauge() {
-        let m = Telemetry::new("dgauge", 1.0).persist().aggr_set();
+        let m = Telemetry::new()
+            .name("dgauge")
+            .value(1.0)
+            .persist(true)
+            .kind(AggregationMethod::Set)
+            .harden()
+            .unwrap();
 
-        assert_eq!(m.aggregation(), AggregationMethod::Set);
+        assert_eq!(m.kind(), AggregationMethod::Set);
         assert_eq!(m.value(), Some(1.0));
         assert_eq!(m.name, "dgauge");
     }

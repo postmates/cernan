@@ -198,14 +198,12 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 Some(pth) => {
                     let path = Path::new(pth.as_str().unwrap());
                     let fwds = match tbl.get("forwards") {
-                        Some(fwds) => {
-                            fwds.as_array()
-                                .expect("forwards must be an array")
-                                .to_vec()
-                                .iter()
-                                .map(|s| s.as_str().unwrap().to_string())
-                                .collect()
-                        }
+                        Some(fwds) => fwds.as_array()
+                            .expect("forwards must be an array")
+                            .to_vec()
+                            .iter()
+                            .map(|s| s.as_str().unwrap().to_string())
+                            .collect(),
                         None => Vec::new(),
                     };
                     let config_path = format!("filters.{}", name);
@@ -301,14 +299,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         u64
                 })
                 .unwrap_or(args.flush_interval);
-
-            res.sustain = snk.get("sustain")
-                .map(|fi| {
-                    fi.as_integer()
-                        .expect("could not parse sinks.wavefront.sustain") as
-                        u32
-                })
-                .unwrap_or(res.sustain);
 
             res.tags = global_tags.clone();
 
@@ -492,7 +482,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     .unwrap_or(res.batch_size);
 
                 res.region = match tbl.get("region")
-                    .map(|x| x.as_str().expect("region must be a string")) {
+                    .map(|x| x.as_str().expect("region must be a string"))
+                {
                     Some("ap-northeast-1") => Some(Region::ApNortheast1),
                     Some("ap-northeast-2") => Some(Region::ApNortheast2),
                     Some("ap-south-1") => Some(Region::ApSouth1),

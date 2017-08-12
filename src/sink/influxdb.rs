@@ -1,6 +1,7 @@
 use hyper::Client;
 use hyper::header;
 use metric::{LogLine, TagMap, Telemetry};
+use quantiles::histogram::Bound;
 use sink::{Sink, Valve};
 use source::report_telemetry;
 use std::cmp;
@@ -116,23 +117,88 @@ impl InfluxDB {
 
     /// Convert the slice into a payload that can be sent to InfluxDB
     fn format_stats(&self, mut buffer: &mut String, telems: &[Telemetry]) -> () {
+        use metric::AggregationMethod;
         let mut time_cache: Vec<(u64, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let mut tag_buf = String::with_capacity(1_024);
         for telem in telems.iter() {
-            if let Some(val) = telem.value() {
-                buffer.push_str(&telem.name);
-                buffer.push_str(",");
-                fmt_tags(&telem.tags, &mut tag_buf);
-                buffer.push_str(&tag_buf);
-                buffer.push_str(" ");
-                buffer.push_str("value=");
-                buffer.push_str(get_from_cache(&mut value_cache, val));
-                buffer.push_str(" ");
-                buffer.push_str(get_from_cache(&mut time_cache, telem.timestamp_ns));
-                buffer.push_str("\n");
-                tag_buf.clear();
+            match telem.kind() {
+                AggregationMethod::Sum => if let Some(val) = telem.sum() {
+                    buffer.push_str(&telem.name);
+                    buffer.push_str(",");
+                    fmt_tags(&telem.tags, &mut tag_buf);
+                    buffer.push_str(&tag_buf);
+                    buffer.push_str(" ");
+                    buffer.push_str("value=");
+                    buffer.push_str(get_from_cache(&mut value_cache, val));
+                    buffer.push_str(" ");
+                    buffer.push_str(get_from_cache(
+                        &mut time_cache,
+                        telem.timestamp.saturating_mul(1_000_000_000) as u64,
+                    ));
+                    buffer.push_str("\n");
+                    tag_buf.clear();
+                },
+                AggregationMethod::Set => if let Some(val) = telem.set() {
+                    buffer.push_str(&telem.name);
+                    buffer.push_str(",");
+                    fmt_tags(&telem.tags, &mut tag_buf);
+                    buffer.push_str(&tag_buf);
+                    buffer.push_str(" ");
+                    buffer.push_str("value=");
+                    buffer.push_str(get_from_cache(&mut value_cache, val));
+                    buffer.push_str(" ");
+                    buffer.push_str(get_from_cache(
+                        &mut time_cache,
+                        telem.timestamp.saturating_mul(1_000_000_000) as u64,
+                    ));
+                    buffer.push_str("\n");
+                    tag_buf.clear();
+                },
+                AggregationMethod::Histogram => if let Some(bin_iter) = telem.bins() {
+                    for &(bound, count) in bin_iter {
+                        let bound_name = match bound {
+                            Bound::Finite(x) => format!("le_{}", x),
+                            Bound::PosInf => format!("le_inf"),
+                        };
+                        buffer.push_str(&format!("{}.{}", &telem.name, bound_name));
+                        buffer.push_str(",");
+                        fmt_tags(&telem.tags, &mut tag_buf);
+                        buffer.push_str(&tag_buf);
+                        buffer.push_str(" ");
+                        buffer.push_str("value=");
+                        buffer
+                            .push_str(get_from_cache(&mut value_cache, count as f64));
+                        buffer.push_str(" ");
+                        buffer.push_str(get_from_cache(
+                            &mut time_cache,
+                            telem.timestamp.saturating_mul(1_000_000_000) as u64,
+                        ));
+                        buffer.push_str("\n");
+                        tag_buf.clear();
+                    }
+                },
+                AggregationMethod::Summarize => for percentile in
+                    &[0.25, 0.50, 0.75, 0.90, 0.99, 1.0]
+                {
+                    if let Some(val) = telem.query(*percentile) {
+                        buffer.push_str(&format!("{}.{}", &telem.name, percentile));
+                        buffer.push_str(",");
+                        fmt_tags(&telem.tags, &mut tag_buf);
+                        buffer.push_str(&tag_buf);
+                        buffer.push_str(" ");
+                        buffer.push_str("value=");
+                        buffer.push_str(get_from_cache(&mut value_cache, val));
+                        buffer.push_str(" ");
+                        buffer.push_str(get_from_cache(
+                            &mut time_cache,
+                            telem.timestamp.saturating_mul(1_000_000_000) as u64,
+                        ));
+                        buffer.push_str("\n");
+                        tag_buf.clear();
+                    }
+                },
             }
         }
     }
@@ -171,7 +237,8 @@ impl Sink for InfluxDB {
                 .post(self.uri.clone())
                 .header(header::Connection::keep_alive())
                 .body(&buffer)
-                .send() {
+                .send()
+            {
                 Err(e) => debug!("hyper error doing POST: {:?}", e),
                 Ok(resp) => {
                     // https://docs.influxdata.com/influxdb/v1.
@@ -228,6 +295,7 @@ mod test {
     use super::*;
     use chrono::{TimeZone, Utc};
     use metric::{TagMap, Telemetry};
+    use metric::AggregationMethod;
     use sink::Sink;
     use std::sync::Arc;
 
@@ -249,69 +317,113 @@ mod test {
         let dt_1 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00);
         let dt_2 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00);
         influxdb.deliver(Arc::new(Some(
-            Telemetry::new("test.counter", -1.0)
-                .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
-                .aggr_sum()
+            Telemetry::new()
+                .name("test.counter")
+                .value(-1.0)
+                .timestamp(dt_0.timestamp())
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         influxdb.deliver(Arc::new(Some(
-            Telemetry::new("test.counter", 2.0)
-                .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
-                .aggr_sum()
+            Telemetry::new()
+                .name("test.counter")
+                .value(2.0)
+                .timestamp(dt_0.timestamp())
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         influxdb.deliver(Arc::new(Some(
-            Telemetry::new("test.counter", 3.0)
-                .timestamp_and_ns(dt_1.timestamp(), dt_1.timestamp_subsec_nanos())
-                .aggr_sum()
+            Telemetry::new()
+                .name("test.counter")
+                .value(3.0)
+                .timestamp(dt_1.timestamp())
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         influxdb.deliver(Arc::new(Some(
-            Telemetry::new("test.gauge", 3.211)
-                .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
-                .aggr_set()
+            Telemetry::new()
+                .name("test.gauge")
+                .value(3.211)
+                .timestamp(dt_0.timestamp())
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         influxdb.deliver(Arc::new(Some(
-            Telemetry::new("test.gauge", 4.322)
-                .timestamp_and_ns(dt_1.timestamp(), dt_1.timestamp_subsec_nanos())
-                .aggr_set()
+            Telemetry::new()
+                .name("test.gauge")
+                .value(4.322)
+                .timestamp(dt_1.timestamp())
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         influxdb.deliver(Arc::new(Some(
-            Telemetry::new("test.gauge", 5.433)
-                .timestamp_and_ns(dt_2.timestamp(), dt_2.timestamp_subsec_nanos())
-                .aggr_set()
+            Telemetry::new()
+                .name("test.gauge")
+                .value(5.433)
+                .timestamp(dt_2.timestamp())
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         influxdb.deliver(Arc::new(Some(
-            Telemetry::new("test.timer", 12.101)
-                .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
-                .aggr_summarize()
+            Telemetry::new()
+                .name("test.timer")
+                .value(12.101)
+                .timestamp(dt_0.timestamp())
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         influxdb.deliver(Arc::new(Some(
-            Telemetry::new("test.timer", 1.101)
-                .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
-                .aggr_summarize()
+            Telemetry::new()
+                .name("test.timer")
+                .value(1.101)
+                .timestamp(dt_0.timestamp())
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         influxdb.deliver(Arc::new(Some(
-            Telemetry::new("test.timer", 3.101)
-                .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
-                .aggr_summarize()
+            Telemetry::new()
+                .name("test.timer")
+                .value(3.101)
+                .timestamp(dt_0.timestamp())
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         influxdb.deliver(Arc::new(Some(
-            Telemetry::new("test.raw", 1.0)
-                .timestamp_and_ns(dt_0.timestamp(), dt_0.timestamp_subsec_nanos())
-                .aggr_set()
+            Telemetry::new()
+                .name("test.raw")
+                .value(1.0)
+                .timestamp(dt_0.timestamp())
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         influxdb.deliver(Arc::new(Some(
-            Telemetry::new("test.raw", 2.0)
-                .timestamp_and_ns(dt_1.timestamp(), dt_1.timestamp_subsec_nanos())
-                .aggr_set()
+            Telemetry::new()
+                .name("test.raw")
+                .value(2.0)
+                .timestamp(dt_1.timestamp())
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
                 .overlay_tags_from_map(&tags),
         )));
         let mut buffer = String::new();
@@ -319,47 +431,37 @@ mod test {
         let lines: Vec<&str> = buffer.lines().collect();
 
         println!("{:?}", lines);
-        assert_eq!(11, lines.len());
-        assert!(
-            lines
-                .contains(&"test.counter,source=test-src value=-1 645181811000000000")
-        );
-        assert!(
-            lines.contains(&"test.counter,source=test-src value=2 645181811000000000")
-        );
-        assert!(
-            lines.contains(&"test.counter,source=test-src value=3 645181812000000000")
-        );
-        assert!(
-            lines
-                .contains(&"test.gauge,source=test-src value=3.211 645181811000000000")
-        );
-        assert!(
-            lines
-                .contains(&"test.gauge,source=test-src value=4.322 645181812000000000")
-        );
-        assert!(
-            lines
-                .contains(&"test.gauge,source=test-src value=5.433 645181813000000000")
-        );
-        assert!(
-            lines.contains(
-                &"test.timer,source=test-src value=12.101 645181811000000000"
-            )
-        );
-        assert!(
-            lines
-                .contains(&"test.timer,source=test-src value=1.101 645181811000000000")
-        );
-        assert!(
-            lines
-                .contains(&"test.timer,source=test-src value=3.101 645181811000000000")
-        );
-        assert!(
-            lines.contains(&"test.raw,source=test-src value=1 645181811000000000")
-        );
-        assert!(
-            lines.contains(&"test.raw,source=test-src value=2 645181812000000000")
-        );
+        let expected = [
+            "test.counter,source=test-src value=-1 645181811000000000",
+            "test.counter,source=test-src value=2 645181811000000000",
+            "test.counter,source=test-src value=3 645181812000000000",
+            "test.gauge,source=test-src value=3.211 645181811000000000",
+            "test.gauge,source=test-src value=4.322 645181812000000000",
+            "test.gauge,source=test-src value=5.433 645181813000000000",
+            "test.timer.0.25,source=test-src value=12.101 645181811000000000",
+            "test.timer.0.5,source=test-src value=12.101 645181811000000000",
+            "test.timer.0.75,source=test-src value=12.101 645181811000000000",
+            "test.timer.0.9,source=test-src value=12.101 645181811000000000",
+            "test.timer.0.99,source=test-src value=12.101 645181811000000000",
+            "test.timer.1,source=test-src value=12.101 645181811000000000",
+            "test.timer.0.25,source=test-src value=1.101 645181811000000000",
+            "test.timer.0.5,source=test-src value=1.101 645181811000000000",
+            "test.timer.0.75,source=test-src value=1.101 645181811000000000",
+            "test.timer.0.9,source=test-src value=1.101 645181811000000000",
+            "test.timer.0.99,source=test-src value=1.101 645181811000000000",
+            "test.timer.1,source=test-src value=1.101 645181811000000000",
+            "test.timer.0.25,source=test-src value=3.101 645181811000000000",
+            "test.timer.0.5,source=test-src value=3.101 645181811000000000",
+            "test.timer.0.75,source=test-src value=3.101 645181811000000000",
+            "test.timer.0.9,source=test-src value=3.101 645181811000000000",
+            "test.timer.0.99,source=test-src value=3.101 645181811000000000",
+            "test.timer.1,source=test-src value=3.101 645181811000000000",
+            "test.raw,source=test-src value=1 645181811000000000",
+            "test.raw,source=test-src value=2 645181812000000000",
+        ];
+        assert_eq!(expected.len(), lines.len());
+        for line in &expected {
+            assert!(lines.contains(line))
+        }
     }
 }

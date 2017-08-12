@@ -58,7 +58,7 @@ pub fn report_telemetry<S>(name: S, value: f64) -> ()
 where
     S: Into<String>,
 {
-    report_full_telemetry(name, value, None, None);
+    report_full_telemetry(name, value, None);
 }
 
 /// Push telemetry into the Internal queue
@@ -69,18 +69,18 @@ where
 pub fn report_full_telemetry<S>(
     name: S,
     value: f64,
-    aggr: Option<metric::AggregationMethod>,
     metadata: Option<Vec<(&str, &str)>>,
 ) -> ()
 where
     S: Into<String>,
 {
-    let mut telem = metric::Telemetry::new(name, value);
-    telem = match aggr {
-        Some(metric::AggregationMethod::Sum) | None => telem.aggr_sum(),
-        Some(metric::AggregationMethod::Set) => telem.aggr_set(),
-        Some(metric::AggregationMethod::Summarize) => telem.aggr_summarize(),
-    };
+    use metric::AggregationMethod;
+    let mut telem = metric::Telemetry::new()
+        .name(name)
+        .value(value)
+        .kind(AggregationMethod::Sum)
+        .harden()
+        .unwrap();
     telem = metadata
         .unwrap_or(vec![])
         .iter()
