@@ -3,7 +3,7 @@ use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
 use source::report_telemetry;
 use std::cmp;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write as IoWrite;
 use std::mem;
 use std::net::TcpStream;
@@ -111,6 +111,13 @@ impl<'a> Pad<'a> {
         }
     }
 
+    pub fn is_pad_zero(&self) -> bool {
+        match *self {
+            Pad::Zero(_, _) => true,
+            Pad::Telem(_) => false,
+        }
+    }
+
     pub fn timestamp(&self) -> i64 {
         match *self {
             Pad::Zero(_, ts) => ts,
@@ -130,6 +137,7 @@ fn padding<'a>(
         last_seen: last_seen,
         emit_q: Vec::new(),
         last_hash: 0,
+        flush_padded: HashSet::default(),
     }
 }
 
@@ -139,6 +147,7 @@ struct Padding<'a> {
     last_seen: &'a HashMap<u64, i64>,
     emit_q: Vec<Pad<'a>>,
     last_hash: u64,
+    flush_padded: HashSet<u64>,
 }
 
 impl<'a> Iterator for Padding<'a> {
@@ -151,52 +160,46 @@ impl<'a> Iterator for Padding<'a> {
         // _and_ zero points that need to be emitted. We preferentially pull
         // points from the emission queue. In the event that there are not
         // enough, we go to the original iterator.
-        if let Some(x) = self.emit_q.pop() {
-            if x.hash() == self.last_hash {
-                return Some(x);
-            } else {
-                self.emit_q.push(x);
-            }
-        }
-        // We have to determine if the first point we pull needs a pad before
-        // it. This will happen if the hash of x exists in last_seen and
-        // last_seen is within the span window.
-        let next = match self.emit_q.pop() {
+        let next_x = match self.emit_q.pop() {
             Some(x) => Some(x),
             None => self.orig.next().map(|x| Pad::Telem(x)),
         };
-        let next_x = if let Some(x) = next {
-            match self.last_seen.get(&x.hash()) {
-                Some(ts) => {
-                    if *ts > x.timestamp() {
-                        return Some(x);
-                    }
-                    match (x.timestamp() - ts) / self.span {
-                        0 | 1 => Some(x),
-                        _ => {
-                            let sub_x =
-                                x.clone().zero_at(x.timestamp().saturating_sub(1));
-                            let post_x = x.clone().zero_at(ts.saturating_add(1));
-                            self.emit_q.push(x);
-                            self.emit_q.push(sub_x);
-                            Some(post_x)
-                        }
-                    }
-                }
-                None => Some(x),
-            }
-        } else {
-            return None;
+        let next_y = match self.emit_q.pop() {
+            Some(x) => Some(x),
+            None => self.orig.next().map(|x| Pad::Telem(x)),
         };
-        let next_y = self.orig.next().map(|y| Pad::Telem(y));
         match (next_x, next_y) {
             (Some(x), Some(y)) => {
-                self.last_hash = x.hash();
                 // Telemetry hashes by considering name, timestamp and
                 // aggregation. If these three are different then the next point
                 // is not part of our current sequence and it requires no
                 // padding.
                 if x.hash() == y.hash() {
+                    if x.is_pad_zero() {
+                        self.emit_q.push(y);
+                        return Some(x);
+                    }
+                    let flush_padded = self.flush_padded.contains(&x.hash());
+                    if !flush_padded {
+                        if let Some(ts) = self.last_seen.get(&x.hash()) {
+                            if x.timestamp() > *ts {
+                                self.flush_padded.insert(x.hash());
+                                if (x.timestamp() - ts) / self.span > 1 {
+                                    let sub_x = x.clone()
+                                        .zero_at(x.timestamp().saturating_sub(1));
+                                    let post_x =
+                                        x.clone().zero_at(ts.saturating_add(1));
+                                    self.emit_q.push(y);
+                                    self.emit_q.push(x);
+                                    self.emit_q.push(sub_x);
+                                    return Some(post_x);
+                                }
+                            } else {
+                                self.emit_q.push(y);
+                                return Some(x);
+                            }
+                        }
+                    }
                     match (x.timestamp() - y.timestamp()).abs() / self.span {
                         0 | 1 => {
                             // In this case the next point, y, is within the
@@ -234,6 +237,22 @@ impl<'a> Iterator for Padding<'a> {
             (Some(x), None) => {
                 self.last_hash = x.hash();
                 // end of sequence
+                let flush_padded = self.flush_padded.contains(&x.hash());
+                if !flush_padded {
+                    if let Some(ts) = self.last_seen.get(&x.hash()) {
+                        if x.timestamp() > *ts {
+                            self.flush_padded.insert(x.hash());
+                            if (x.timestamp() - ts) / self.span > 1 {
+                                let sub_x =
+                                    x.clone().zero_at(x.timestamp().saturating_sub(1));
+                                let post_x = x.clone().zero_at(ts.saturating_add(1));
+                                self.emit_q.push(x);
+                                self.emit_q.push(sub_x);
+                                return Some(post_x);
+                            }
+                        }
+                    }
+                }
                 Some(x)
             }
             (None, _) => None,
@@ -543,39 +562,6 @@ mod test {
     use std::sync::Arc;
 
     #[test]
-    fn manual_test_no_unpadded_gaps() {
-        let bin_width = 1;
-        let mut bucket = buckets::Buckets::new(bin_width);
-
-        let m0 = Telemetry::new()
-            .value(0.5)
-            .kind(AggregationMethod::Set)
-            .name("")
-            .harden()
-            .unwrap()
-            .timestamp(44);
-        let m1 = Telemetry::new()
-            .value(0.88)
-            .kind(AggregationMethod::Set)
-            .name("")
-            .harden()
-            .unwrap()
-            .timestamp(9);
-
-        bucket.add(m0);
-        bucket.add(m1);
-
-        let last_seen = HashMap::default();
-        let mut telems = padding(bucket.iter(), bin_width, &last_seen);
-
-        assert!(!telems.next().unwrap().is_zeroed());
-        assert!(telems.next().unwrap().is_zeroed());
-        assert!(telems.next().unwrap().is_zeroed());
-        assert!(!telems.next().unwrap().is_zeroed());
-        assert!(telems.next().is_none());
-    }
-
-    #[test]
     fn test_pad_across_flush() {
         let bin_width = 1;
         let mut bucket = buckets::Buckets::new(bin_width);
@@ -593,9 +579,9 @@ mod test {
         bucket.add(m0);
 
         let mut telems = padding(bucket.iter(), bin_width, &last_seen);
-        assert!(telems.next().unwrap().is_zeroed());
-        assert!(telems.next().unwrap().is_zeroed());
-        assert!(!telems.next().unwrap().is_zeroed());
+        assert!(telems.next().unwrap().is_zeroed()); // 11 at 0
+        assert!(telems.next().unwrap().is_zeroed()); // 99 at 0
+        assert!(!telems.next().unwrap().is_zeroed()); // 100 at 0.5
         assert!(telems.next().is_none());
     }
 
@@ -649,67 +635,6 @@ mod test {
         assert!(telems.next().unwrap().is_zeroed()); // m3_0
         assert!(!telems.next().unwrap().is_zeroed()); // m3
         assert!(telems.next().is_none());
-    }
-
-
-    #[test]
-    fn test_manual_no_unpadded_gaps() {
-        let bin_width = 1;
-        let m0 = Telemetry::new().name("\u{8e231}\u{454b0}\u{4ff26}\u{4e17b}\u{873f6}\u{67684}\u{8920b}\u{b765f}\u{d2cd8}").value(0.3915207077806604).persist(true).kind(AggregationMethod::Sum).harden().unwrap().timestamp(51);
-        let m1 = Telemetry::new()
-            .name("")
-            .value(0.11634560004870509)
-            .persist(false)
-            .kind(AggregationMethod::Set)
-            .harden()
-            .unwrap()
-            .timestamp(99);
-        let m2 = Telemetry::new()
-            .name("")
-            .value(0.2923750702148473)
-            .persist(false)
-            .kind(AggregationMethod::Set)
-            .harden()
-            .unwrap()
-            .timestamp(21);
-
-        let mut bucket = Buckets::new(bin_width as i64);
-        bucket.add(m0);
-        bucket.add(m1);
-        bucket.add(m2);
-
-        let last_seen = Default::default();
-        let mut padding =
-            padding(bucket.iter(), bin_width as i64, &last_seen).peekable();
-
-        while let Some(t) = padding.next() {
-            if let Some(next_t) = padding.peek() {
-                // When we examine the next point in a series there are
-                // three possibilities:
-                //
-                //  1. the points don't hash the same, so we move on
-                //  2. the points do hash the same:
-                //     a. if their timestamps are greater than one span
-                //        apart then they are both zero
-                //     b. if both points are non-zero they must not be
-                //        more than one span apart
-                if t.hash() == next_t.hash() {
-                    let span = (t.timestamp() - next_t.timestamp()).abs() /
-                        (bin_width as i64);
-                    if span > 1 {
-                        assert!(t.is_zeroed());
-                        assert!(next_t.is_zeroed());
-                    }
-                    if !t.is_zeroed() && !next_t.is_zeroed() {
-                        assert!(span <= 1);
-                    }
-                } else {
-                    continue;
-                }
-            } else {
-                break;
-            }
-        }
     }
 
     #[test]
@@ -779,10 +704,9 @@ mod test {
             let last_seen = Default::default();
             let padding = padding(bucket.iter(), bin_width as i64, &last_seen);
             for val in padding {
-                if val.is_zeroed() {
-                    total_zero_run += 1;
-                } else {
-                    total_zero_run = 0;
+                match val {
+                    Pad::Zero(_, _) => total_zero_run += 1,
+                    Pad::Telem(_) => total_zero_run = 0,
                 }
                 if total_zero_run > 2 {
                     return TestResult::failed();
@@ -791,38 +715,6 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new().quickcheck(inner as fn(u8, Vec<Telemetry>) -> TestResult);
-    }
-
-    #[test]
-    fn test_manual_never_fewer_non_zero() {
-        let bin_width = 1;
-
-        let m0 = Telemetry::new().name("one").value(0.497).kind(AggregationMethod::Set).persist(false).harden().unwrap().timestamp(43);
-        let m1 = Telemetry::new().name("two").value(0.599).kind(AggregationMethod::Set).persist(false).harden().unwrap().timestamp(95);
-        let m2 = Telemetry::new().name("three").value(0.486).kind(AggregationMethod::Set).persist(true).harden().unwrap().timestamp(6);
-
-        let mut bucket = Buckets::new(bin_width as i64);
-        bucket.add(m0);
-        bucket.add(m1);
-        bucket.add(m2);
-
-        let mut total_non_zero = 0;
-        for val in bucket.clone().iter() {
-            if !val.is_zeroed() {
-                total_non_zero += 1;
-            }
-        }
-
-        let last_seen = Default::default();
-        let padding = padding(bucket.iter(), bin_width as i64, &last_seen);
-        let mut total = 0;
-        for val in padding {
-            if !val.is_zeroed() {
-                total += 1;
-            }
-        }
-
-        assert_eq!(total_non_zero, total);
     }
 
     #[test]
