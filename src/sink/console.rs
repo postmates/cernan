@@ -46,6 +46,7 @@ pub struct ConsoleConfig {
     /// Sets the bin width for Console's underlying
     /// [bucket](../buckets/struct.Bucket.html).
     pub bin_width: i64,
+    /// The sink specific `flush_interval`.
     pub flush_interval: u64,
 }
 
@@ -116,7 +117,7 @@ impl Sink for Console {
                     unimplemented!();
                 }
                 AggregationMethod::Sum => {
-                    let mut tgt = &mut sums;
+                    let tgt = &mut sums;
                     if let Some(f) = telem.sum() {
                         tgt.push_str("    ");
                         tgt.push_str(&telem.name);
@@ -128,7 +129,7 @@ impl Sink for Console {
                     }
                 }
                 AggregationMethod::Set => {
-                    let mut tgt = &mut sets;
+                    let tgt = &mut sets;
                     if let Some(f) = telem.set() {
                         tgt.push_str("    ");
                         tgt.push_str(&telem.name);
@@ -140,7 +141,7 @@ impl Sink for Console {
                     }
                 }
                 AggregationMethod::Summarize => {
-                    let mut tgt = &mut summaries;
+                    let tgt = &mut summaries;
                     for tup in &[
                         ("min", 0.0),
                         ("max", 1.0),

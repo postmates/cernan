@@ -12,6 +12,9 @@ use std::thread;
 use util;
 use util::send;
 
+/// Graphite protocol source
+///
+/// This source produces `metric::Telemetry` from the graphite protocol.
 pub struct Graphite {
     chans: util::Channel,
     host: String,
@@ -19,12 +22,19 @@ pub struct Graphite {
     tags: Arc<metric::TagMap>,
 }
 
+/// Configured for the `metric::Telemetry` source.
 #[derive(Debug, Deserialize, Clone)]
 pub struct GraphiteConfig {
+    /// The host that the source will listen on. May be an IP address or a DNS
+    /// hostname.
     pub host: String,
+    /// The port that the source will listen on.
     pub port: u16,
+    /// The tags that the source will apply to all Telemetry it creates.
     pub tags: metric::TagMap,
+    /// The forwards that the source will send all its Telemetry.
     pub forwards: Vec<String>,
+    /// The unique name of the source in the routing topology.
     pub config_path: Option<String>,
 }
 
@@ -41,6 +51,7 @@ impl Default for GraphiteConfig {
 }
 
 impl Graphite {
+    /// Create a new Graphite
     pub fn new(chans: util::Channel, config: GraphiteConfig) -> Graphite {
         Graphite {
             chans: chans,

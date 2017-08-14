@@ -1,7 +1,11 @@
+//! Handle the graphite protocol. Graphite is a timestamped, simple text-based
+//! protocol for telemetry.
+
 use metric::{AggregationMethod, Telemetry};
 use std::str::FromStr;
 use std::sync;
 
+/// Parse a string for graphite data into a `metric::Telemetry` if possible.
 pub fn parse_graphite(
     source: &str,
     res: &mut Vec<Telemetry>,

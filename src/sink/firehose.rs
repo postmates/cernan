@@ -17,12 +17,21 @@ use source::report_full_telemetry;
 use std::sync;
 use uuid::Uuid;
 
+/// Configuration struct for the Firehose sink
 #[derive(Debug, Clone)]
 pub struct FirehoseConfig {
+    /// Every firehose is identified by a `delivery_stream`. This name does not
+    /// need to be unique per sink.
     pub delivery_stream: Option<String>,
+    /// Control the batch size for firehose publishing. Amazon limits the
+    /// maximum number of objects in a submission but users may want to scale
+    /// down to avoid the need to re-publish.
     pub batch_size: usize,
+    /// Set the AWS region of the firehose.
     pub region: Option<Region>,
+    /// The sink's unique name in the routing topology.
     pub config_path: Option<String>,
+    /// The sink specific `flush_interval`.
     pub flush_interval: u64,
 }
 
@@ -38,6 +47,11 @@ impl Default for FirehoseConfig {
     }
 }
 
+/// The Firehose sink struct
+///
+/// This struct stores the information needed to publish safely to AWS
+/// Firehose. All fields are hidden because there's no need for external
+/// fiddling. See `FirehoseConfig` for knobs.
 pub struct Firehose {
     buffer: Vec<LogLine>,
     delivery_stream_name: String,
@@ -47,6 +61,22 @@ pub struct Firehose {
 }
 
 impl Firehose {
+    /// Create a new `Firehose`
+    ///
+    /// # Examples
+    /// ```
+    /// use cernan::sink::{Firehose, FirehoseConfig};
+    /// use rusoto_core::Region;
+    /// let config = FirehoseConfig {
+    ///                  delivery_stream: Some("a_stream".to_string()),
+    ///                  batch_size: 100,
+    ///                  region: Some(Region::UsEast1),
+    /// config_path:
+    /// Some("sinks.firehose.us_east_1".to_string()),
+    ///                  flush_interval: 2,
+    ///              };
+    /// let f = Firehose::new(config);
+    /// ```
     pub fn new(config: FirehoseConfig) -> Firehose {
         Firehose {
             buffer: Vec::new(),

@@ -1,23 +1,24 @@
+//! Collection of time utilities for cernan
+//!
+//! Time in cernan is not based strictly on wall-clock. We keep a global clock
+//! for cernan and update it ourselves periodically. See `update_time` in this
+//! module for more details.
+
 use chrono::offset::Utc;
 use std::{thread, time};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
 
 lazy_static! {
     static ref NOW: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(Utc::now().timestamp() as usize));
 }
 
-pub fn elapsed_ns(i: Instant) -> u64 {
-    let elapsed = i.elapsed();
-    (elapsed.as_secs().saturating_mul(1_000_000_000))
-        .saturating_add(elapsed.subsec_nanos() as u64)
-}
-
+/// Return the current time in epoch seconds
 pub fn now() -> i64 {
     NOW.load(Ordering::Relaxed) as i64
 }
 
+/// Update cernan's view of time every 500ms. Time is in UTC.
 pub fn update_time() {
     let dur = time::Duration::from_millis(500);
     loop {
@@ -28,6 +29,16 @@ pub fn update_time() {
     }
 }
 
+/// Pause a thread of execution
+///
+/// This function pauses the thread of execution for a fixed number of
+/// attempts. That input, attempts, is used to eponentially increase the length
+/// of delay, from 0 milliseconds to 512. A delay attempt of X will pause the
+/// thread of execution for:
+///
+///     - 0 = 0 ms
+///     - x, x >= 9 = 512 ms
+///     - x, x < 9 = 2**x ms
 #[inline]
 pub fn delay(attempts: u32) {
     let delay = match attempts {

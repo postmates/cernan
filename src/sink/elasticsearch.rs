@@ -12,13 +12,26 @@ use std::sync;
 use time;
 use uuid::Uuid;
 
+/// Configuration for the Elasticsearch sink
+///
+/// Elasticsearch is an open-source document indexing engine. It can be used for
+/// performing searches over corpus, which for cernan's use is
+/// `metric::LogLine`.
 #[derive(Debug, Clone)]
 pub struct ElasticsearchConfig {
+    /// The unique name of the sink in the routing topology
     pub config_path: Option<String>,
+    /// The Elasticsearch index prefix. This prefix will be added to the
+    /// automatically created date-based index of this sink.
     pub index_prefix: Option<String>,
+    /// Determines whether to use HTTP or HTTPS when publishing to
+    /// Elasticsearch.
     pub secure: bool, // whether http or https
+    /// The Elasticsearch host. May be an IP address or DNS hostname.
     pub host: String,
+    /// The Elasticsearch port.
     pub port: usize,
+    /// The sink's specific flush interval.
     pub flush_interval: u64,
 }
 
@@ -35,6 +48,9 @@ impl Default for ElasticsearchConfig {
     }
 }
 
+/// The elasticsearch sink struct.
+///
+/// Refer to the documentation on `ElasticsearchConfig` for more details.
 pub struct Elasticsearch {
     buffer: Vec<LogLine>,
     client: Client,
@@ -43,6 +59,9 @@ pub struct Elasticsearch {
 }
 
 impl Elasticsearch {
+    /// Construct a new Elasticsearch.
+    ///
+    /// Refer to the documentation on Elasticsearch for more details.
     pub fn new(config: ElasticsearchConfig) -> Elasticsearch {
         let proto = if config.secure { "https" } else { "http" };
         let params =
@@ -57,7 +76,7 @@ impl Elasticsearch {
         }
     }
 
-    fn bulk_body(&self, mut buffer: &mut String) -> () {
+    fn bulk_body(&self, buffer: &mut String) -> () {
         assert!(!self.buffer.is_empty());
         use serde_json::{to_string, Value};
         for m in &self.buffer {
@@ -77,7 +96,7 @@ impl Elasticsearch {
                 "payload": m.value.clone(),
                 "timestamp": format_time(m.time),
             });
-            let mut obj = payload.as_object_mut().unwrap();
+            let obj = payload.as_object_mut().unwrap();
             for &(ref k, ref v) in m.tags.iter() {
                 obj.insert(k.clone(), Value::String(v.clone()));
             }

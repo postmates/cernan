@@ -1,3 +1,10 @@
+//! Transform or create `metric::Event` from a stream of `metric::Event`.
+//!
+//! cernan filters are intended to input `metric::Event` and then adapt that
+//! stream, either by injecting new `metric::Event` or by transforming the
+//! stream members as they come through. Exact behaviour varies by filters. The
+//! filter receives on an input channel and outputs over its forwards.
+
 use hopper;
 use metric;
 use time;
@@ -11,8 +18,11 @@ pub use self::delay_filter::{DelayFilter, DelayFilterConfig};
 pub use self::flush_boundary_filter::{FlushBoundaryFilter, FlushBoundaryFilterConfig};
 pub use self::programmable_filter::{ProgrammableFilter, ProgrammableFilterConfig};
 
+/// Errors that can strike a Filter
 #[derive(Debug)]
 pub enum FilterError {
+    /// Specific to a ProgrammableFilter, means no function is available as
+    /// called in the script
     NoSuchFunction(&'static str, metric::Event),
 }
 
@@ -28,13 +38,27 @@ fn event_in_fe(fe: FilterError) -> metric::Event {
     }
 }
 
+/// The Filter trait
+///
+/// All filters take as input a stream of `metric::Event` and produce as output
+/// another `metric::Event` stream. That's it. The exact method by which each
+/// stream works depends on the implementation of the Filter.
 pub trait Filter {
+    /// Process a single `metric::Event`
+    ///
+    /// Individual Filters will implementat this function depending on their
+    /// mechanism. See individaul filters for details.
     fn process(
         &mut self,
         event: metric::Event,
         res: &mut Vec<metric::Event>,
     ) -> Result<(), FilterError>;
 
+    /// Run the Filter
+    ///
+    /// It is not expected that most Filters will re-implement this. If this is
+    /// done, take care to obey overload signals and interpret errors from
+    /// `Filter::process`.
     fn run(
         &mut self,
         recv: hopper::Receiver<metric::Event>,

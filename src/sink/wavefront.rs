@@ -12,6 +12,8 @@ use std::string;
 use std::sync;
 use time;
 
+/// The `wavefront` sink emits into [Wavefront](http://wavefront.com), a
+/// proprietary metric aggregation and alerting product.
 pub struct Wavefront {
     host: String,
     port: u16,
@@ -19,6 +21,8 @@ pub struct Wavefront {
     aggrs: buckets::Buckets,
     delivery_attempts: u32,
     percentiles: Vec<(String, f64)>,
+    /// Public ONLY FOR TESTING. Do not use. (If we could make fields public
+    /// only under test this would be.)
     pub stats: String,
     flush_interval: u64,
     stream: Option<TcpStream>,
@@ -26,14 +30,30 @@ pub struct Wavefront {
     last_seen: HashMap<u64, i64>,
 }
 
+/// Configuration for `wavefront`. The challenge of Wavefront is controlling
+/// point spreads emission and accuracy of aggregation. The knobs in this struct
+/// reflect that.
 #[derive(Debug, Deserialize)]
 pub struct WavefrontConfig {
+    /// The width of aggregation bins. A `bin_width` of N will consider points
+    /// with timestamps N seconds appart to have occured at the 'same time'.
     pub bin_width: i64,
+    /// The wavefront proxy to communicate with. May be an IP address or DNS
+    /// hostname.
     pub host: String,
+    /// The port of the wavefront proxy.
     pub port: u16,
+    /// The sink's unique name in the routing topology.
     pub config_path: Option<String>,
+    /// The percentiles that quantile aggregations will report. The quantile
+    /// method used by cernan supports arbitrary queries. See
+    /// `metric::AggregationMethod` for more details.
     pub percentiles: Vec<(String, f64)>,
+    /// The tags to be applied to all `metric::Event`s streaming through this
+    /// sink. These tags will overwrite any tags carried by the `metric::Event`
+    /// itself.
     pub tags: TagMap,
+    /// The sink specific `flush_interval`.
     pub flush_interval: u64,
 }
 
@@ -91,15 +111,13 @@ enum Pad<'a> {
 impl<'a> Pad<'a> {
     pub fn hash(&self) -> u64 {
         match *self {
-            Pad::Zero(x, _) => x.hash(),
-            Pad::Telem(x) => x.hash(),
+            Pad::Zero(x, _) | Pad::Telem(x) => x.hash(),
         }
     }
 
     pub fn zero_at(self, ts: i64) -> Pad<'a> {
         match self {
-            Pad::Zero(x, _) => Pad::Zero(x, ts),
-            Pad::Telem(x) => Pad::Zero(x, ts),
+            Pad::Zero(x, _) | Pad::Telem(x) => Pad::Zero(x, ts),
         }
     }
 
@@ -306,6 +324,7 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
 }
 
 impl Wavefront {
+    /// Create a new wavefront sink.
     pub fn new(config: WavefrontConfig) -> Result<Wavefront, String> {
         if config.host == "" {
             return Err("Host can not be empty".to_string());
@@ -393,7 +412,7 @@ impl Wavefront {
                     };
 
                     self.fmt_val(
-                        &value,
+                        value,
                         &mut time_cache,
                         &mut count_cache,
                         &mut value_cache,

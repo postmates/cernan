@@ -27,18 +27,44 @@ pub use self::null::{Null, NullConfig};
 pub use self::prometheus::{Prometheus, PrometheusConfig};
 pub use self::wavefront::{Wavefront, WavefrontConfig};
 
+/// Determine the state of a sink, whether open or closed.
+///
+/// Cernan is architected to be a push-based system. It copes with demand rushes
+/// by buffering to disk -- via the hopper queues -- and rejecting memory-based
+/// storage with overload signals. This signal, in particular, limits the amount
+/// of information delivered to a sink by declaring that said sink's input
+/// 'valve' is closed. Exactly how and why a sink declares its valve state is
+/// left to the sink implementation.
 pub enum Valve {
+    /// In the `Open` state a sink will accept new inputs
     Open,
+    /// In the `Closed` state a sink will reject new inputs, backing them up in
+    /// the communication queue.
     Closed,
 }
 
 /// A 'sink' is a sink for metrics.
 pub trait Sink {
+    /// Lookup the `Sink`'s specific flush interval. This determines how often a
+    /// sink will obey the periodic flush pulse.
     fn flush_interval(&self) -> Option<u64>;
+    /// Perform the `Sink` specific flush. The rate at which this occurs is
+    /// determined by the global `flush_interval` or the sink specific flush
+    /// interval. Pulses occur at a rate of once per second, subject to
+    /// communication delays in the routing topology.
     fn flush(&mut self) -> ();
+    /// Lookup the `Sink` valve state. See `Valve` documentation for more
+    /// information.
     fn valve_state(&self) -> Valve;
+    /// Deliver a `Telemetry` to the `Sink`. Exact behaviour varies by
+    /// implementation.
     fn deliver(&mut self, point: sync::Arc<Option<Telemetry>>) -> ();
+    /// Deliver a `LogLine` to the `Sink`. Exact behaviour varies by
+    /// implementation.
     fn deliver_line(&mut self, line: sync::Arc<Option<LogLine>>) -> ();
+    /// The run-loop of the `Sink`. It's expect that few sinks will ever need to
+    /// provide their own implementation. Please take care to obey `Valve`
+    /// states and `flush_interval` configurations.
     fn run(&mut self, recv: hopper::Receiver<Event>) {
         let mut attempts = 0;
         let mut recv = recv.into_iter();

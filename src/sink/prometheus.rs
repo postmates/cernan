@@ -12,6 +12,12 @@ use std::str;
 use std::sync;
 use std::sync::Mutex;
 
+/// The prometheus sink
+///
+/// Prometheus is an open-source aggregation server which pulls from its
+/// configured sources. Cernan overlaps some with Prometheus but is focused on
+/// push-based metrics. This sink allows for bridging push-based systems with
+/// pull-based.
 #[allow(dead_code)]
 pub struct Prometheus {
     aggrs: sync::Arc<Mutex<PrometheusAggr>>,
@@ -20,18 +26,21 @@ pub struct Prometheus {
     http_srv: Listening,
 }
 
+/// The configuration for Prometheus sink
 #[derive(Debug, Deserialize)]
 pub struct PrometheusConfig {
-    pub bin_width: i64,
+    /// The host to listen for prometheus. This will be used to bind an HTTP
+    /// server to the given host. Host may be an IP address or a DNS hostname.
     pub host: String,
+    /// The port to bind the listening host to.
     pub port: u16,
+    /// The unique name of the sink in the routing topology.
     pub config_path: Option<String>,
 }
 
 impl Default for PrometheusConfig {
     fn default() -> Self {
         PrometheusConfig {
-            bin_width: 1,
             host: "localhost".to_string(),
             port: 8086,
             config_path: None,
@@ -193,6 +202,9 @@ impl Handler for SenderHandler {
 }
 
 impl Prometheus {
+    /// Create a new prometheus sink
+    ///
+    /// Please see documentation on `PrometheusConfig` for more details.
     pub fn new(config: PrometheusConfig) -> Prometheus {
         let aggrs = sync::Arc::new(sync::Mutex::new(Default::default()));
         let srv_aggrs = aggrs.clone();
@@ -263,7 +275,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
             buf.push_str(&m.name);
             buf.push_str("{quantile=\"");
             buf.push_str(&q.to_string());
-            for (k, v) in m.tags.into_iter() {
+            for (k, v) in &(*m.tags) {
                 buf.push_str("\", ");
                 buf.push_str(k);
                 buf.push_str("=\"");
@@ -276,7 +288,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         buf.push_str(&m.name);
         buf.push_str("_sum ");
         buf.push_str("{");
-        for (k, v) in sum_tags.into_iter() {
+        for (k, v) in &(*sum_tags) {
             buf.push_str(k);
             buf.push_str("=\"");
             buf.push_str(v);
@@ -288,7 +300,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         buf.push_str(&m.name);
         buf.push_str("_count ");
         buf.push_str("{");
-        for (k, v) in count_tags.into_iter() {
+        for (k, v) in &(*count_tags) {
             buf.push_str(k);
             buf.push_str("=\"");
             buf.push_str(v);
@@ -451,7 +463,7 @@ mod test {
                     let new_t =
                         aggr.find_match(&telem).expect("could not find in test");
                     assert_eq!(other.name, new_t.name);
-                    assert_eq!(new_t.kind(), telem.aggregation());
+                    assert_eq!(new_t.kind(), telem.kind());
                     // TODO
                     //
                     // This will not longer function correctly. Previously we

@@ -1,6 +1,7 @@
 use metric::TagMap;
 use time;
 
+/// An unstructured piece of text, plus associated metadata
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct LogLine {
     /// The time that this `LogLine` occupies, in the units of time::now()
@@ -21,6 +22,9 @@ pub struct LogLine {
 /// A `LogLine` is intended to hold a bit of text in its 'value' that may or may
 /// not be structured. The field 'fields' is available for
 impl LogLine {
+    /// Create a new `LogLine`
+    ///
+    /// Please see `LogLine` struct documentation for more details.
     pub fn new<S>(path: S, value: S) -> LogLine
     where
         S: Into<String>,

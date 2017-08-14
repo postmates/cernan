@@ -6,7 +6,7 @@ extern crate chrono;
 
 use self::test::Bencher;
 use cernan::buckets;
-use cernan::metric::Telemetry;
+use cernan::metric::{AggregationMethod, Telemetry};
 
 use chrono::{TimeZone, Utc};
 
@@ -17,7 +17,15 @@ fn bench_single_timer(b: &mut Bencher) {
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+        bucket.add(
+            Telemetry::new()
+                .name("a")
+                .value(1.0)
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap()
+                .timestamp(dt_0),
+        );
     });
 }
 
@@ -29,7 +37,15 @@ fn bench_single_timer_100(b: &mut Bencher) {
         let mut bucket = buckets::Buckets::default();
 
         for _ in 0..100 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+            bucket.add(
+                Telemetry::new()
+                    .name("a")
+                    .value(1.0)
+                    .kind(AggregationMethod::Summarize)
+                    .harden()
+                    .unwrap()
+                    .timestamp(dt_0),
+            );
         }
     });
 }
@@ -42,7 +58,15 @@ fn bench_single_timer_1000(b: &mut Bencher) {
         let mut bucket = buckets::Buckets::default();
 
         for _ in 0..1000 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+            bucket.add(
+                Telemetry::new()
+                    .name("a")
+                    .value(1.0)
+                    .kind(AggregationMethod::Summarize)
+                    .harden()
+                    .unwrap()
+                    .timestamp(dt_0),
+            );
         }
     });
 }
@@ -54,8 +78,16 @@ fn bench_single_timer_10000(b: &mut Bencher) {
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
-        for _ in 0..10000 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+        for _ in 0..10_000 {
+            bucket.add(
+                Telemetry::new()
+                    .name("a")
+                    .value(1.0)
+                    .kind(AggregationMethod::Summarize)
+                    .harden()
+                    .unwrap()
+                    .timestamp(dt_0),
+            );
         }
     });
 }
@@ -67,7 +99,15 @@ fn bench_single_histogram(b: &mut Bencher) {
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+        bucket.add(
+            Telemetry::new()
+                .name("a")
+                .value(1.0)
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap()
+                .timestamp(dt_0),
+        );
     });
 }
 
@@ -79,7 +119,15 @@ fn bench_single_histogram_100(b: &mut Bencher) {
         let mut bucket = buckets::Buckets::default();
 
         for _ in 0..100 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+            bucket.add(
+                Telemetry::new()
+                    .name("a")
+                    .value(1.0)
+                    .kind(AggregationMethod::Summarize)
+                    .harden()
+                    .unwrap()
+                    .timestamp(dt_0),
+            );
         }
     });
 }
@@ -92,7 +140,15 @@ fn bench_single_histogram_1000(b: &mut Bencher) {
         let mut bucket = buckets::Buckets::default();
 
         for _ in 0..1_000 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+            bucket.add(
+                Telemetry::new()
+                    .name("a")
+                    .value(1.0)
+                    .kind(AggregationMethod::Summarize)
+                    .harden()
+                    .unwrap()
+                    .timestamp(dt_0),
+            );
         }
     });
 }
@@ -105,7 +161,15 @@ fn bench_single_histogram_10000(b: &mut Bencher) {
         let mut bucket = buckets::Buckets::default();
 
         for _ in 0..10_000 {
-            bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_summarize());
+            bucket.add(
+                Telemetry::new()
+                    .name("a")
+                    .value(1.0)
+                    .kind(AggregationMethod::Summarize)
+                    .harden()
+                    .unwrap()
+                    .timestamp(dt_0),
+            );
         }
     });
 }
@@ -123,8 +187,24 @@ fn bench_multi_counters(b: &mut Bencher) {
             // 7
             for i in &[-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0] {
                 // 11
-                bucket.add(Telemetry::new(*name, *i).timestamp(dt_0).aggr_sum());
-                bucket.add(Telemetry::new(*name, *i).timestamp(dt_1).aggr_sum());
+                bucket.add(
+                    Telemetry::new()
+                        .name(*name)
+                        .value(*i)
+                        .kind(AggregationMethod::Sum)
+                        .harden()
+                        .unwrap()
+                        .timestamp(dt_0),
+                );
+                bucket.add(
+                    Telemetry::new()
+                        .name(*name)
+                        .value(*i)
+                        .kind(AggregationMethod::Sum)
+                        .harden()
+                        .unwrap()
+                        .timestamp(dt_1),
+                );
             }
         }
         // total inserts 7 * 11 * 2 * 3 = 462
@@ -138,7 +218,15 @@ fn bench_single_counter(b: &mut Bencher) {
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_sum());
+        bucket.add(
+            Telemetry::new()
+                .name("a")
+                .value(1.0)
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
+                .timestamp(dt_0),
+        );
     });
 }
 
@@ -154,8 +242,24 @@ fn bench_multi_gauges(b: &mut Bencher) {
             // 7
             for i in &[-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0] {
                 // 11
-                bucket.add(Telemetry::new(*name, *i).timestamp(dt_0).aggr_set());
-                bucket.add(Telemetry::new(*name, *i).timestamp(dt_1).aggr_set());
+                bucket.add(
+                    Telemetry::new()
+                        .name(*name)
+                        .value(*i)
+                        .kind(AggregationMethod::Set)
+                        .harden()
+                        .unwrap()
+                        .timestamp(dt_0),
+                );
+                bucket.add(
+                    Telemetry::new()
+                        .name(*name)
+                        .value(*i)
+                        .kind(AggregationMethod::Set)
+                        .harden()
+                        .unwrap()
+                        .timestamp(dt_1),
+                );
             }
         }
         // total inserts 7 * 11 * 2 = 154
@@ -169,6 +273,14 @@ fn bench_single_gauge(b: &mut Bencher) {
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
-        bucket.add(Telemetry::new("a", 1.0).timestamp(dt_0).aggr_set());
+        bucket.add(
+            Telemetry::new()
+                .name("a")
+                .value(1.0)
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
+                .timestamp(dt_0),
+        );
     });
 }
