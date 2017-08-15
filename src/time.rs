@@ -36,9 +36,9 @@ pub fn update_time() {
 /// of delay, from 0 milliseconds to 512. A delay attempt of X will pause the
 /// thread of execution for:
 ///
-///     - 0 = 0 ms
-///     - x, x >= 9 = 512 ms
-///     - x, x < 9 = 2**x ms
+/// - 0 = 0 ms
+/// - x, x >= 9 = 512 ms
+/// - x, x < 9 = 2**x ms
 #[inline]
 pub fn delay(attempts: u32) {
     let delay = match attempts {

@@ -1,3 +1,5 @@
+#![allow(unknown_lints)]
+
 extern crate chrono;
 extern crate cernan;
 extern crate fern;

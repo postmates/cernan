@@ -63,20 +63,7 @@ pub struct Firehose {
 impl Firehose {
     /// Create a new `Firehose`
     ///
-    /// # Examples
-    /// ```
-    /// use cernan::sink::{Firehose, FirehoseConfig};
-    /// use rusoto_core::Region;
-    /// let config = FirehoseConfig {
-    ///                  delivery_stream: Some("a_stream".to_string()),
-    ///                  batch_size: 100,
-    ///                  region: Some(Region::UsEast1),
-    /// config_path:
-    /// Some("sinks.firehose.us_east_1".to_string()),
-    ///                  flush_interval: 2,
-    ///              };
-    /// let f = Firehose::new(config);
-    /// ```
+    /// See documentation on `FirehoseConfig` for further details.
     pub fn new(config: FirehoseConfig) -> Firehose {
         Firehose {
             buffer: Vec::new(),
