@@ -16,6 +16,7 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 use filter::DelayFilterConfig;
 use filter::ProgrammableFilterConfig;
+use filter::FlushBoundaryFilterConfig;
 
 use sink::ConsoleConfig;
 use sink::ElasticsearchConfig;
@@ -58,6 +59,7 @@ pub struct Args {
     // filters
     pub programmable_filters: Option<HashMap<String, ProgrammableFilterConfig>>,
     pub delay_filters: Option<HashMap<String, DelayFilterConfig>>,
+    pub flush_boundary_filters: Option<HashMap<String, FlushBoundaryFilterConfig>>,
     // sinks
     pub console: Option<ConsoleConfig>,
     pub null: Option<NullConfig>,
@@ -86,6 +88,7 @@ impl Default for Args {
             // filters
             programmable_filters: None,
             delay_filters: None,
+            flush_boundary_filters: None,
             // sinks
             console: None,
             null: None,
@@ -214,6 +217,36 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         let config_path = format!("filters.delay.{}", name);
                         let config = DelayFilterConfig {
                             tolerance: tolerance,
+                            forwards: fwds,
+                            config_path: Some(config_path.clone()),
+                        };
+                        filters.insert(config_path, config);
+                    }
+                    None => continue,
+                }
+            }
+            filters
+        });
+
+        args.flush_boundary_filters = filters.get("flush_boundary").map(|fltr| {
+            let mut filters: HashMap<String, FlushBoundaryFilterConfig> = HashMap::new();
+            for (name, tbl) in fltr.as_table().unwrap().iter() {
+                match tbl.get("tolerance") {
+                    Some(tol) => {
+                        let tolerance =
+                            tol.as_integer().expect("tolerance must be an integer");
+                        let fwds = match tbl.get("forwards") {
+                            Some(fwds) => fwds.as_array()
+                                .expect("forwards must be an array")
+                                .to_vec()
+                                .iter()
+                                .map(|s| s.as_str().unwrap().to_string())
+                                .collect(),
+                            None => Vec::new(),
+                        };
+                        let config_path = format!("filters.flush_boundary.{}", name);
+                        let config = FlushBoundaryFilterConfig {
+                            tolerance: tolerance as usize,
                             forwards: fwds,
                             config_path: Some(config_path.clone()),
                         };
@@ -1019,6 +1052,26 @@ scripts-directory = "/foo/bar"
         let config1 = graphites.get("sources.graphite.higher").unwrap();
         assert_eq!(config1.port, 2004);
         assert_eq!(config1.forwards, vec!["sinks.wavefront".to_string()]);
+    }
+
+    #[test]
+    fn config_filters_flush_boundary() {
+        let config = r#"
+    [filters]
+      [filters.flush_boundary.ten_seconds]
+      tolerance = 10
+      forwards = ["sinks.console"]
+    "#;
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.flush_boundary_filters.is_some());
+        let filters = args.flush_boundary_filters.unwrap();
+
+        let config0: &FlushBoundaryFilterConfig =
+            filters.get("filters.flush_boundary.ten_seconds").unwrap();
+        assert_eq!(config0.tolerance, 10);
+        assert_eq!(config0.forwards, vec!["sinks.console"]);
     }
 
     #[test]
