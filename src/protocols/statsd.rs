@@ -1,3 +1,7 @@
+//! The statsd protocol. Statsd is a text-based protocol with many subtlties and
+//! no control over time. It is, uh, well it's kind of ad hoc and also totally
+//! ubiquitous.
+
 use metric;
 use metric::AggregationMethod;
 use std::str::FromStr;

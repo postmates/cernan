@@ -5,11 +5,14 @@ use std::time::Duration;
 use util;
 use util::send;
 
+/// The source of all flush pulses. See `FlushTimer::run` for more details.
 pub struct FlushTimer {
     chans: util::Channel,
 }
 
 impl FlushTimer {
+    /// Create a new FlushTimer. This will not produce a new thread, that must
+    /// be managed by the end-user.
     pub fn new(chans: util::Channel) -> FlushTimer {
         FlushTimer { chans: chans }
     }

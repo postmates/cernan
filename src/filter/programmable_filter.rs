@@ -403,6 +403,10 @@ const PAYLOAD_LIB: [(&'static str, Function); 16] = [
     ("metric_name", Some(Payload::lua_metric_name)),
 ];
 
+/// A filter programmable by end-users, in Lua.
+///
+/// The programmable filter is a general purpose filter that can be programmed
+/// by end-users with a lua script.
 pub struct ProgrammableFilter {
     state: lua::State,
     path: String,
@@ -410,12 +414,18 @@ pub struct ProgrammableFilter {
     last_flush_idx: u64,
 }
 
+/// Configuration for `ProgrammableFilter`.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ProgrammableFilterConfig {
+    /// Path on-disk for cernan to find scripts and script supporting libraries.
     pub scripts_directory: Option<PathBuf>,
+    /// The script to load as a filter.
     pub script: Option<PathBuf>,
+    /// The forwards to emit `metric::Event` stream into
     pub forwards: Vec<String>,
+    /// The unique name of the filter in the routing topology.
     pub config_path: Option<String>,
+    /// The tags that the filter may overlay on all its input `metric::Event`s.
     pub tags: metric::TagMap,
 }
 
@@ -432,6 +442,7 @@ impl Default for ProgrammableFilterConfig {
 }
 
 impl ProgrammableFilter {
+    /// Create a new ProgrammableFilter
     pub fn new(config: ProgrammableFilterConfig) -> ProgrammableFilter {
         let mut state = lua::State::new();
         state.open_libs();

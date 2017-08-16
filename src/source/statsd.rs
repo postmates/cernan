@@ -9,6 +9,11 @@ use std::thread;
 use util;
 use util::send;
 
+/// The statsd source
+///
+/// Statsd is a collection of protocols, originally spawned by the telemetering
+/// work done out of Etsy. Cernan tries to support a cow-path subset of the
+/// statsd protocol family.
 pub struct Statsd {
     chans: util::Channel,
     host: String,
@@ -16,14 +21,19 @@ pub struct Statsd {
     tags: sync::Arc<metric::TagMap>,
 }
 
+/// Configuration for the statsd source.
 #[derive(Debug, Deserialize, Clone)]
 pub struct StatsdConfig {
+    /// The host for the statsd protocol to bind to.
     pub host: String,
+    /// The port for the statsd source to listen on.
     pub port: u16,
+    /// The tagmap that statsd will apply to all of its created Telemetry.
     pub tags: metric::TagMap,
+    /// The forwards that statsd will send its telemetry on to.
     pub forwards: Vec<String>,
+    /// The unique name for the source in the routing topology.
     pub config_path: Option<String>,
-    pub delete_gauges: bool,
 }
 
 impl Default for StatsdConfig {
@@ -34,12 +44,12 @@ impl Default for StatsdConfig {
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
             config_path: None,
-            delete_gauges: false,
         }
     }
 }
 
 impl Statsd {
+    /// Create a new statsd
     pub fn new(chans: util::Channel, config: StatsdConfig) -> Statsd {
         Statsd {
             chans: chans,
@@ -63,7 +73,7 @@ fn handle_udp(
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
             Ok(r) => r,
-            Err(_) => panic!("Could not read UDP socket."),
+            Err(e) => panic!(format!("Could not read UDP socket with error {:?}", e)),
         };
         match str::from_utf8(&buf[..len]) {
             Ok(val) => if parse_statsd(val, &mut metrics, basic_metric.clone()) {

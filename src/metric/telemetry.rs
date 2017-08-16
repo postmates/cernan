@@ -8,23 +8,43 @@ use std::cmp;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::mem;
+use std::ops::Add;
 use std::ops::AddAssign;
 use std::sync;
 use time;
 
+/// The available aggregations for `Telemetry`.
+///
+/// This enumeration signals the way in which `Telemetry` values will be
+/// aggregated. The exact descriptions are detailed below.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
 pub enum AggregationMethod {
+    /// Cumulatively add `Telemetry` objects. That is, we store only the
+    /// summation of all like-points.
     Sum,
+    /// Store only the last value of the `Telemetry` aggregation. The exact
+    /// ordering within a bin will depend on order of receipt by cernan.
     Set,
+    /// Produce a quantile query structure over the `Telemetry` stream. The
+    /// method is `quantiles::CKMS`, a summarization that is cheap in write and
+    /// read time and has guaranteed error bounds on queries.
     Summarize,
+    /// Produce a binned histogram over the `Telemetry` stream. The method used
+    /// is that of `quantiles::Histogram`, unequal bins with a preference for
+    /// write over read speed.
     Histogram,
 }
 
+/// DO NOT USE - PUBLIC FOR TESTING ONLY
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub enum Value {
+    /// DO NOT USE - PUBLIC FOR TESTING ONLY
     Set(f64),
+    /// DO NOT USE - PUBLIC FOR TESTING ONLY
     Sum(f64),
+    /// DO NOT USE - PUBLIC FOR TESTING ONLY
     Histogram(Histogram<f64>),
+    /// DO NOT USE - PUBLIC FOR TESTING ONLY
     Quantiles(CKMS<f64>),
 }
 
@@ -40,42 +60,38 @@ pub struct SoftTelemetry {
     persist: Option<bool>,
 }
 
+/// A Telemetry is a name, tagmap, timestamp and aggregated, point-in-time
+/// value, as outlined in the cernan native protocol.
 #[derive(PartialEq, Serialize, Deserialize, Debug, Clone)]
 pub struct Telemetry {
+    /// The name of the Telemetry. This is user-provided and will vary by input
+    /// protocol.
     pub name: String,
     value: Option<Value>,
+    /// Determine whether the Telemetry will persist across time bins.
     pub persist: bool,
+    /// The Telemetry specific metadata tags.
     pub tags: sync::Arc<TagMap>,
+    /// The time of Telemetry, measured in seconds.
     pub timestamp: i64,
 }
 
-impl Value {
-    #[cfg(test)]
-    pub fn is_same_kind(&self, rhs: &Value) -> bool {
-        match (self, rhs) {
-            (&Value::Set(_), &Value::Set(_)) => true,
-            (&Value::Sum(_), &Value::Sum(_)) => true,
-            (&Value::Histogram(_), &Value::Histogram(_)) => true,
-            (&Value::Quantiles(_), &Value::Quantiles(_)) => true,
-            _ => false,
-        }
-    }
+impl Add for Value {
+    type Output = Value;
 
-    pub fn add(self, rhs: Value) -> Value {
+    /// Add two Telemetry
+    ///
+    /// The exact result here depends on the aggregation set inside each
+    /// Telemetry. The left hand side aggregation will be set to the right hand
+    /// side aggregation, with appropriate conversion between. For instance,
+    /// addition of a SET and an SUM will result in a sum with the value of the
+    /// SET added to the SUM. Note that some additions WILL LOSE DATA.
+    ///
+    /// It is expected in practice that conversion between aggregation kinds
+    /// will be rare.
+    fn add(self, rhs: Value) -> Value {
         match self {
-            Value::Set(x) => match rhs {
-                Value::Set(y) => Value::Set(y),
-                Value::Sum(y) => Value::Sum(x + y),
-                Value::Histogram(mut y) => {
-                    y.insert(x);
-                    Value::Histogram(y)
-                }
-                Value::Quantiles(mut y) => {
-                    y.insert(x);
-                    Value::Quantiles(y)
-                }
-            },
-            Value::Sum(x) => match rhs {
+            Value::Set(x) | Value::Sum(x) => match rhs {
                 Value::Set(y) => Value::Set(y),
                 Value::Sum(y) => Value::Sum(x + y),
                 Value::Histogram(mut y) => {
@@ -110,6 +126,19 @@ impl Value {
                     Value::Quantiles(x)
                 }
             },
+        }
+    }
+}
+
+impl Value {
+    #[cfg(test)]
+    pub fn is_same_kind(&self, rhs: &Value) -> bool {
+        match (self, rhs) {
+            (&Value::Set(_), &Value::Set(_)) => true,
+            (&Value::Sum(_), &Value::Sum(_)) => true,
+            (&Value::Histogram(_), &Value::Histogram(_)) => true,
+            (&Value::Quantiles(_), &Value::Quantiles(_)) => true,
+            _ => false,
         }
     }
 
@@ -475,6 +504,12 @@ impl Telemetry {
         }
     }
 
+    /// Unfreeze a Telemetry into a SoftTelemetry
+    ///
+    /// Telemetry is a central type to cernan. There's a great deal of
+    /// validation that needs to happen whenever we change one of these things
+    /// and, well, there's a lot of changing going on. For the most part
+    /// Telemetry is a read-only type and it must be 'unfrozen' to be changed.
     pub fn thaw(self) -> SoftTelemetry {
         let kind = self.kind();
         SoftTelemetry {
@@ -490,6 +525,11 @@ impl Telemetry {
         }
     }
 
+    /// Return the kind of the Telemetry
+    ///
+    /// This method is useful for determing the available operations over
+    /// Telemetry, creating partitions of streams or for any other instance
+    /// where you need to know what kind of aggregation is happening.
     pub fn kind(&self) -> AggregationMethod {
         if let Some(ref v) = self.value {
             v.kind()
@@ -592,6 +632,10 @@ impl Telemetry {
         self
     }
 
+    /// Insert a value into the Telemetry
+    ///
+    /// The inserted value will be subject to the Telemetry's aggregation
+    /// method.
     pub fn insert(mut self, value: f64) -> Telemetry {
         match self.value {
             Some(Value::Set(_)) => {
@@ -611,6 +655,7 @@ impl Telemetry {
         self
     }
 
+    /// Return the sum value of a SUM, None otherwise
     pub fn sum(&self) -> Option<f64> {
         if let Some(ref v) = self.value {
             v.sum()
@@ -619,6 +664,7 @@ impl Telemetry {
         }
     }
 
+    /// Return the set value of a SET, None otherwise
     pub fn set(&self) -> Option<f64> {
         if let Some(ref v) = self.value {
             v.set()
@@ -627,6 +673,7 @@ impl Telemetry {
         }
     }
 
+    /// Query a CKMS for a percentile, return None if not SUMMARIZE
     pub fn query(&self, prcnt: f64) -> Option<f64> {
         if let Some(ref v) = self.value {
             v.query(prcnt)
@@ -635,6 +682,7 @@ impl Telemetry {
         }
     }
 
+    /// Retrieve the bins of a BIN, None if not BIN
     pub fn bins(&self) -> Option<Iter<f64>> {
         if let Some(ref v) = self.value {
             v.bins()
@@ -648,6 +696,7 @@ impl Telemetry {
         unimplemented!();
     }
 
+    /// Return the total count of Telemetry aggregated into this Telemetry.
     pub fn count(&self) -> usize {
         if let Some(ref v) = self.value {
             v.count()
@@ -656,6 +705,7 @@ impl Telemetry {
         }
     }
 
+    /// Return the mean value of all Telemetry aggregated in this Telemetry.
     pub fn mean(&self) -> f64 {
         if let Some(ref v) = self.value {
             v.mean()
@@ -677,10 +727,15 @@ impl Telemetry {
         }
     }
 
+    /// Return a vector of stored Telemetry values
+    ///
+    /// This method is subject to data loss. Consider aggregating into a
+    /// SET. The Telemetry is allowed to retain only one value -- the last --
+    /// and calling samples in that case will return only the last value
+    /// aggregated into the Telemetry.
     pub fn samples(&self) -> Vec<f64> {
         match self.value {
-            Some(Value::Set(x)) => vec![x],
-            Some(Value::Sum(x)) => vec![x],
+            Some(Value::Set(x)) | Some(Value::Sum(x)) => vec![x],
             Some(Value::Quantiles(ref ckms)) => ckms.clone().into_vec(),
             Some(Value::Histogram(ref histo)) => {
                 histo.clone().into_vec().iter().map(|x| x.1 as f64).collect()
@@ -689,6 +744,11 @@ impl Telemetry {
         }
     }
 
+    /// Determine if two Telemetry are within one 'span' of one another.
+    ///
+    /// This method determines if 1. two telemetry are 'alike' by name, tags and
+    /// aggregation and 2. if their timestamps are within one span bound of one
+    /// another.
     pub fn within(&self, span: i64, other: &Telemetry) -> cmp::Ordering {
         match self.name.partial_cmp(&other.name) {
             Some(cmp::Ordering::Equal) => match cmp(&self.tags, &other.tags) {
@@ -703,16 +763,20 @@ impl Telemetry {
         }
     }
 
+    /// Determine if the Telemetry's contained aggregation is valued zero.
     pub fn is_zeroed(&self) -> bool {
         match self.value {
-            Some(Value::Set(x)) => x == 0.0,
-            Some(Value::Sum(x)) => x == 0.0,
+            Some(Value::Set(x)) | Some(Value::Sum(x)) => x == 0.0,
             Some(Value::Histogram(ref histo)) => histo.count() == 0,
             Some(Value::Quantiles(ref ckms)) => ckms.count() == 0,
             None => unreachable!(),
         }
     }
 
+    /// Return a hash of the Telemetry
+    ///
+    /// The hash of a telemetry is based on its 'alike' fields. That is, its
+    /// name, tags and aggregation kind.
     pub fn hash(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.name.hash(&mut hasher);
@@ -721,6 +785,12 @@ impl Telemetry {
         hasher.finish()
     }
 
+    /// Return a hash only of name and tags
+    ///
+    /// This method is very near to `Telemetry::hash` but that aggregation kind
+    /// is ignored. This is useful for producing a hash for storage in some
+    /// kinds of lookup maps, say `flush_boundary_filter` where only storage
+    /// takes place, not aggregation.
     pub fn name_tag_hash(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.name.hash(&mut hasher);
@@ -728,22 +798,22 @@ impl Telemetry {
         hasher.finish()
     }
 
+    /// Returns true if aggregation method is SET
     pub fn is_set(&self) -> bool {
         self.kind() == AggregationMethod::Set
     }
 
+    /// Returns true if aggregation method is BINS
     pub fn is_histogram(&self) -> bool {
         self.kind() == AggregationMethod::Histogram
     }
 
-    pub fn aggregation(&self) -> AggregationMethod {
-        self.kind()
-    }
-
+    /// Returns true if aggregation method is SUM
     pub fn is_sum(&self) -> bool {
         self.kind() == AggregationMethod::Sum
     }
 
+    /// Returns true if aggregation method is SUMMARIZE
     pub fn is_summarize(&self) -> bool {
         self.kind() == AggregationMethod::Summarize
     }
@@ -899,7 +969,7 @@ mod tests {
     #[test]
     fn test_metric_within() {
         fn inner(span: i64, lhs: Telemetry, rhs: Telemetry) -> TestResult {
-            if lhs.kind() != rhs.aggregation() {
+            if lhs.kind() != rhs.kind() {
                 return TestResult::discard();
             } else if lhs.name != rhs.name {
                 return TestResult::discard();

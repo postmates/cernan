@@ -12,7 +12,11 @@ use std::sync;
 #[bench]
 fn bench_merge_tags_from_map(b: &mut Bencher) {
     b.iter(|| {
-        let m0 = Telemetry::new("one", 1.0)
+        let m0 = Telemetry::new()
+            .name("one")
+            .value(1.0)
+            .harden()
+            .unwrap()
             .overlay_tag("one", "1")
             .overlay_tag("two", "2")
             .overlay_tag("three", "3");

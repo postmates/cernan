@@ -116,7 +116,7 @@ impl InfluxDB {
     }
 
     /// Convert the slice into a payload that can be sent to InfluxDB
-    fn format_stats(&self, mut buffer: &mut String, telems: &[Telemetry]) -> () {
+    fn format_stats(&self, buffer: &mut String, telems: &[Telemetry]) -> () {
         use metric::AggregationMethod;
         let mut time_cache: Vec<(u64, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
@@ -160,7 +160,7 @@ impl InfluxDB {
                     for &(bound, count) in bin_iter {
                         let bound_name = match bound {
                             Bound::Finite(x) => format!("le_{}", x),
-                            Bound::PosInf => format!("le_inf"),
+                            Bound::PosInf => "le_inf".to_string(),
                         };
                         buffer.push_str(&format!("{}.{}", &telem.name, bound_name));
                         buffer.push_str(",");

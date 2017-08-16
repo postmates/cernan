@@ -15,11 +15,8 @@
 //!
 //! If you'd like to learn more, please do have a look in
 //! our [wiki](https://github.com/postmates/cernan/wiki/).
-#![deny(trivial_numeric_casts,
-// missing_docs,
-        unstable_features,
-        unused_import_braces,
-)]
+#![allow(unknown_lints)]
+#![deny(trivial_numeric_casts, missing_docs, unstable_features, unused_import_braces)]
 extern crate byteorder;
 extern crate chrono;
 extern crate clap;

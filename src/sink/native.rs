@@ -13,6 +13,13 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::sync;
 use time;
 
+/// The native sink
+///
+/// This sink is the pair to the native source. The native source/sink use or
+/// consume cernan's native protocol, defined
+/// `resources/protobufs/native.proto`. Clients may use the native protocol
+/// without having to obey the translation required in other sources or
+/// operators may set up cernan to cernan communication.
 pub struct Native {
     port: u16,
     host: String,
@@ -22,11 +29,17 @@ pub struct Native {
     stream: Option<TcpStream>,
 }
 
+/// Configuration for the native sink
 #[derive(Debug, Deserialize)]
 pub struct NativeConfig {
+    /// The port to communicate with the native host
     pub port: u16,
+    /// The native cernan host to communicate with. May be an IP address or DNS
+    /// hostname.
     pub host: String,
+    /// The sink's unique name in the routing topology.
     pub config_path: Option<String>,
+    /// The sink's specific flush interval.
     pub flush_interval: u64,
 }
 
@@ -42,6 +55,9 @@ impl Default for NativeConfig {
 }
 
 impl Native {
+    /// Create a new native sink
+    ///
+    /// Please see the documentation of NativeConfig for further details.
     pub fn new(config: NativeConfig) -> Native {
         let stream = connect(&config.host, config.port);
         Native {
@@ -158,7 +174,7 @@ impl Sink for Native {
                     //
                     // Learn how to consume bits of the metric without having to
                     // clone like crazy
-                    for (k, v) in m.tags.into_iter() {
+                    for (k, v) in &(*m.tags) {
                         meta.insert(k.clone(), v.clone());
                     }
                     telem.set_metadata(meta);

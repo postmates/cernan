@@ -15,8 +15,8 @@ use toml;
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 use filter::DelayFilterConfig;
-use filter::ProgrammableFilterConfig;
 use filter::FlushBoundaryFilterConfig;
+use filter::ProgrammableFilterConfig;
 
 use sink::ConsoleConfig;
 use sink::ElasticsearchConfig;
@@ -49,31 +49,61 @@ fn default_version() -> String {
     VERSION.unwrap().to_string()
 }
 
+/// Big configuration struct for cernan executable
+///
+/// This struct is what we construct from parsing the cernan configuration. It
+/// is not intended to be created by external clients. Please see documentation
+/// on `parse_args` in this module for more details.
 #[derive(Debug)]
 pub struct Args {
+    /// The location on-disk where cernan will store its private files. This
+    /// directory MUST be solely owned by cernan.
     pub data_directory: PathBuf,
+    /// The location on-disk where cernan will search for programmable filter
+    /// scripts.
     pub scripts_directory: PathBuf,
+    /// The global flush interval. This value is inherited by all sinks which do
+    /// not specify their own.
     pub flush_interval: u64,
+    /// The verbosity setting of cernan. The higher the value the more chatty
+    /// cernan gets.
     pub verbose: u64,
+    /// Cernan version string. This is set automatically.
     pub version: String,
-    // filters
+    /// The programmable filters to use in this cernan run. See
+    /// `filters::ProgrammableFilter` for more.
     pub programmable_filters: Option<HashMap<String, ProgrammableFilterConfig>>,
+    /// The delay filters to use in this cernan run. See `filters::DelayFilter`
+    /// for more.
     pub delay_filters: Option<HashMap<String, DelayFilterConfig>>,
+    /// The flush boundaryfilters to use in this cernan run. See
+    /// `filters::FlushBoundaryFilter` for more.
     pub flush_boundary_filters: Option<HashMap<String, FlushBoundaryFilterConfig>>,
-    // sinks
+    /// See `sinks::Console` for more.
     pub console: Option<ConsoleConfig>,
+    /// See `sinks::Null` for more.
     pub null: Option<NullConfig>,
+    /// See `sinks::Wavefront` for more.
     pub wavefront: Option<WavefrontConfig>,
+    /// See `sinks::InfluxDB` for more.
     pub influxdb: Option<InfluxDBConfig>,
+    /// See `sinks::Native` for more.
     pub native_sink_config: Option<NativeConfig>,
+    /// See `sinks::Prometheus` for more.
     pub prometheus: Option<PrometheusConfig>,
+    /// See `sinks::Elasticsearch` for more.
     pub elasticsearch: Option<ElasticsearchConfig>,
+    /// See `sinks::Firehose` for more.
     pub firehosen: Option<Vec<FirehoseConfig>>,
-    // sources
+    /// See `sources::FileServer` for more.
     pub files: Option<Vec<FileServerConfig>>,
+    /// See `sources::Internal` for more.
     pub internal: InternalConfig,
+    /// See `sources::Graphite` for more.
     pub graphites: Option<HashMap<String, GraphiteConfig>>,
+    /// See `sources::Native` for more.
     pub native_server_config: Option<HashMap<String, NativeServerConfig>>,
+    /// See `sources::Statsd` for more.
     pub statsds: Option<HashMap<String, StatsdConfig>>,
 }
 
@@ -108,6 +138,11 @@ impl Default for Args {
     }
 }
 
+/// Parse the cernan configuration arguments
+///
+/// This function will read the environment arguments and construct an
+/// `Args`. Most cernan configuration will be stored in an on-disk file. See
+/// `cernan --help` for more information.
 pub fn parse_args() -> Args {
     let args = App::new("cernan")
         .version(VERSION.unwrap_or("unknown"))
@@ -150,6 +185,11 @@ pub fn parse_args() -> Args {
     }
 }
 
+/// Parse the cernan configuration file.
+///
+/// Please see the cernan wiki for details on the configuration file
+/// format. Examples are also available in this repository under
+/// `examples/configs`.
 pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     let mut args = Args::default();
     let value: toml::Value =
@@ -229,7 +269,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
         });
 
         args.flush_boundary_filters = filters.get("flush_boundary").map(|fltr| {
-            let mut filters: HashMap<String, FlushBoundaryFilterConfig> = HashMap::new();
+            let mut filters: HashMap<String, FlushBoundaryFilterConfig> =
+                HashMap::new();
             for (name, tbl) in fltr.as_table().unwrap().iter() {
                 match tbl.get("tolerance") {
                     Some(tol) => {
@@ -435,13 +476,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         .to_string()
                 })
                 .unwrap_or(res.host);
-
-            res.bin_width = snk.get("bin_width")
-                .map(|bw| {
-                    bw.as_integer()
-                        .expect("could not parse sinks.prometheus.bin_width")
-                })
-                .unwrap_or(res.bin_width);
 
             res
         });
@@ -650,12 +684,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                                 .to_string()
                         })
                         .unwrap_or(res.host);
-
-                    res.delete_gauges = tbl.get("delete-gauges")
-                        .map(|p| {
-                            p.as_bool().expect("could not parse statsd delete-gauges")
-                        })
-                        .unwrap_or(res.delete_gauges);
 
                     res.forwards = tbl.get("forwards")
                         .map(|fwd| {
@@ -945,7 +973,6 @@ scripts-directory = "/foo/bar"
   enabled = true
   host = "localhost"
   port = 1024
-  delete-gauges = true
   forwards = ["sinks.console", "sinks.null"]
 "#;
 
@@ -955,7 +982,6 @@ scripts-directory = "/foo/bar"
         let statsds = args.statsds.unwrap();
 
         let config0 = statsds.get("sources.statsd.primary").unwrap();
-        assert_eq!(config0.delete_gauges, true);
         assert_eq!(config0.host, "localhost");
         assert_eq!(config0.port, 1024);
         assert_eq!(
@@ -971,7 +997,6 @@ scripts-directory = "/foo/bar"
   [sources.statsd.lower]
   enabled = true
   port = 1024
-  delete-gauges = true
   forwards = ["sinks.console", "sinks.null"]
 
   [sources.statsd.higher]
@@ -987,7 +1012,6 @@ scripts-directory = "/foo/bar"
 
         let config0 = statsds.get("sources.statsd.lower").unwrap();
         assert_eq!(config0.port, 1024);
-        assert_eq!(config0.delete_gauges, true);
         assert_eq!(
             config0.forwards,
             vec!["sinks.console".to_string(), "sinks.null".to_string()]
@@ -995,7 +1019,6 @@ scripts-directory = "/foo/bar"
 
         let config1 = statsds.get("sources.statsd.higher").unwrap();
         assert_eq!(config1.port, 4048);
-        assert_eq!(config1.delete_gauges, false);
         assert_eq!(config1.forwards, vec!["sinks.wavefront".to_string()]);
     }
 
@@ -1220,7 +1243,6 @@ scripts-directory = "/foo/bar"
       [sinks.prometheus]
       port = 3131
       host = "example.com"
-      bin_width = 9
     "#;
 
         let args = parse_config_file(config, 4);
@@ -1229,7 +1251,6 @@ scripts-directory = "/foo/bar"
         let prometheus = args.prometheus.unwrap();
         assert_eq!(prometheus.host, String::from("example.com"));
         assert_eq!(prometheus.port, 3131);
-        assert_eq!(prometheus.bin_width, 9);
     }
 
     #[test]

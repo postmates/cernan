@@ -39,6 +39,7 @@ impl Default for Buckets {
     }
 }
 
+/// Iteration struct for the bucket. Created by `Buckets.iter()`.
 pub struct Iter<'a> {
     buckets: &'a Buckets,
     key_index: usize,
@@ -59,14 +60,12 @@ impl<'a> Iterator for Iter<'a> {
                     self.value_index = None;
                     self.key_index += 1;
                 }
+            } else if !self.buckets.values[self.key_index].is_empty() {
+                let v = &self.buckets.values[self.key_index][0];
+                self.value_index = Some(1);
+                return Some(v);
             } else {
-                if !self.buckets.values[self.key_index].is_empty() {
-                    let v = &self.buckets.values[self.key_index][0];
-                    self.value_index = Some(1);
-                    return Some(v);
-                } else {
-                    return None;
-                }
+                return None;
             }
         }
         None
@@ -74,6 +73,10 @@ impl<'a> Iterator for Iter<'a> {
 }
 
 impl Buckets {
+    /// Create a new bucket. The `bin_width` controls the aggregation width of
+    /// the bucket. If `bin_width` is set to N then two `Telemetry` will be
+    /// considered as happening at the 'same' time if their timestamps are
+    /// within N seconds of one another.
     pub fn new(bin_width: i64) -> Buckets {
         let mut b = Buckets::default();
         b.bin_width = bin_width;
@@ -117,6 +120,15 @@ impl Buckets {
         }
     }
 
+    /// Determine if a bucket has no stored points.
+    ///
+    /// # Examples
+    /// ```
+    /// extern crate cernan;
+    ///
+    /// let bucket = cernan::buckets::Buckets::default();
+    /// assert!(bucket.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.count == 0
     }
@@ -134,7 +146,7 @@ impl Buckets {
     /// bucket.add(metric);
     /// ```
     pub fn add(&mut self, value: Telemetry) {
-        let mut hsh = match self.keys.binary_search_by(
+        let hsh = match self.keys.binary_search_by(
             |probe| probe.partial_cmp(&value.name_tag_hash()).unwrap(),
         ) {
             Ok(hsh_idx) => self.values.index_mut(hsh_idx),
@@ -176,14 +188,26 @@ impl Buckets {
         }
     }
 
+    /// Determine the number of `Telemetry` stored in the bucket.
+    ///
+    /// This function returns the total number of `Telemetry` stored in the
+    /// bucket. This is distinct from the value returned by `Buckets::len` which
+    /// measures the total number of `Telemetry` _names_ received by the bucket.
     pub fn count(&self) -> usize {
         self.count as usize
     }
 
+    /// Determine the number of `Telemetry` names stored in the bucket.
+    ///
+    /// This function returns the total number of `Telemetry` names stored in
+    /// the bucket. This is distinct from the value returned by `Buckets::count`
+    /// which measures the total number of `Telemetry` received by the bucket.
     pub fn len(&self) -> usize {
         self.keys.len()
     }
 
+    /// Create an iterator for the bucket. See documentation on `buckets::Iter`
+    /// for more details.
     pub fn iter(&mut self) -> Iter {
         Iter {
             buckets: self,
@@ -204,6 +228,7 @@ mod test {
     use quickcheck::{QuickCheck, TestResult};
     use std::cmp::Ordering;
     use std::collections::{HashMap, HashSet};
+    use std::ops::Add;
 
     fn within(width: i64, lhs: i64, rhs: i64) -> bool {
         (lhs / width) == (rhs / width)

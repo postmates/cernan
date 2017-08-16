@@ -32,7 +32,8 @@ mod benches {
                         protocol_counter-TCPFastOpenActive";
 
             b.iter(|| {
-                let metric = metric::Telemetry::new(orig, 12.0);
+                let metric =
+                    metric::Telemetry::new().name(orig).value(12.0).harden().unwrap();
                 let event = metric::Event::new_telemetry(metric);
                 let mut events = Vec::new();
                 let res = cs.process(event, &mut events);

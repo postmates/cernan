@@ -41,6 +41,7 @@ impl Default for InternalConfig {
 }
 
 impl Internal {
+    /// Create a new Internal
     pub fn new(chans: util::Channel, config: InternalConfig) -> Internal {
         Internal {
             chans: chans,
@@ -82,7 +83,7 @@ where
         .harden()
         .unwrap();
     telem = metadata
-        .unwrap_or(vec![])
+        .unwrap_or_default()
         .iter()
         .fold(telem, |acc, &(k, v)| acc.overlay_tag(k, v));
     Q.lock().unwrap().push_back(telem);

@@ -11,6 +11,13 @@ use std::str;
 use std::thread;
 use util;
 
+/// The native source
+///
+/// This source is the pair to the native sink. The native source/sink use or
+/// consume cernan's native protocol, defined
+/// `resources/protobufs/native.proto`. Clients may use the native protocol
+/// without having to obey the translation required in other sources or
+/// operators may set up cernan to cernan communication.
 pub struct NativeServer {
     chans: util::Channel,
     ip: String,
@@ -18,12 +25,19 @@ pub struct NativeServer {
     tags: metric::TagMap,
 }
 
+/// Configuration for the native source
 #[derive(Debug, Clone, Deserialize)]
 pub struct NativeServerConfig {
+    /// The IP address the native source will bind to.
     pub ip: String,
+    /// The port the source will listen on.
     pub port: u16,
+    /// The tags the Native source will associate with every Telemetry it
+    /// creates.
     pub tags: metric::TagMap,
+    /// The forwards for the native source to send its Telemetry along.
     pub forwards: Vec<String>,
+    /// The unique name for the source in the routing topology.
     pub config_path: Option<String>,
 }
 
@@ -40,6 +54,7 @@ impl Default for NativeServerConfig {
 }
 
 impl NativeServer {
+    /// Create a new NativeServer
     pub fn new(
         chans: Vec<hopper::Sender<metric::Event>>,
         config: NativeServerConfig,

@@ -1,3 +1,5 @@
+#![allow(unknown_lints)]
+
 extern crate chrono;
 extern crate cernan;
 extern crate fern;
@@ -5,7 +7,8 @@ extern crate fern;
 extern crate log;
 extern crate hopper;
 
-use cernan::filter::{DelayFilterConfig, Filter, ProgrammableFilterConfig, FlushBoundaryFilterConfig};
+use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
+                     ProgrammableFilterConfig};
 use cernan::metric;
 
 use cernan::sink::Sink;
@@ -51,6 +54,7 @@ macro_rules! cfg_conf {
     }
 }
 
+#[allow(cyclomatic_complexity)]
 fn main() {
     let mut args = cernan::config::parse_args();
 
@@ -81,7 +85,8 @@ fn main() {
     info!("cernan - {}", args.version);
     let mut joins = Vec::new();
     let mut senders: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
-    let mut receivers: HashMap<String, hopper::Receiver<metric::Event>> = HashMap::new();
+    let mut receivers: HashMap<String, hopper::Receiver<metric::Event>> =
+        HashMap::new();
     let mut flush_sends = HashSet::new();
 
     let mut config_topology: HashMap<String, Vec<String>> = HashMap::new();
@@ -168,7 +173,8 @@ fn main() {
     // FILTERS
     if let Some(ref configs) = args.programmable_filters {
         for (config_path, config) in configs {
-            let (send, recv) = hopper::channel(&config_path, &args.data_directory).unwrap();
+            let (send, recv) =
+                hopper::channel(config_path, &args.data_directory).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
@@ -176,7 +182,8 @@ fn main() {
     }
     if let Some(ref configs) = args.delay_filters {
         for (config_path, config) in configs {
-            let (send, recv) = hopper::channel(&config_path, &args.data_directory).unwrap();
+            let (send, recv) =
+                hopper::channel(config_path, &args.data_directory).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
@@ -184,7 +191,8 @@ fn main() {
     }
     if let Some(ref configs) = args.flush_boundary_filters {
         for (config_path, config) in configs {
-            let (send, recv) = hopper::channel(&config_path, &args.data_directory).unwrap();
+            let (send, recv) =
+                hopper::channel(config_path, &args.data_directory).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
@@ -197,13 +205,14 @@ fn main() {
         }
     }
     {
-    let ref internal_config = args.internal;
-    config_topology.insert(cfg_conf!(internal_config), internal_config.forwards.clone());
-    if let Some(ref configs) = args.statsds {
-        for (config_path, config) in configs {
-            config_topology.insert(config_path.clone(), config.forwards.clone());
+        let internal_config = &args.internal;
+        config_topology
+            .insert(cfg_conf!(internal_config), internal_config.forwards.clone());
+        if let Some(ref configs) = args.statsds {
+            for (config_path, config) in configs {
+                config_topology.insert(config_path.clone(), config.forwards.clone());
+            }
         }
-    }
     }
     if let Some(ref configs) = args.graphites {
         for (config_path, config) in configs {
@@ -219,7 +228,7 @@ fn main() {
     // Now we validate the topology. We search the outer keys and assert that
     // for every forward there's another key in the map. If not, invalid.
     {
-        for (key, forwards) in config_topology.iter() {
+        for (key, forwards) in &config_topology {
             for forward in forwards {
                 if config_topology.get(forward).is_none() {
                     error!(
@@ -232,7 +241,7 @@ fn main() {
             }
         }
     }
-        
+
 
     // SINKS
     //
@@ -244,9 +253,9 @@ fn main() {
     }
     if let Some(config) = mem::replace(&mut args.console, None) {
         let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
-        joins.push(thread::spawn(move || {
-            cernan::sink::Console::new(config).run(recv);
-        }));
+        joins.push(thread::spawn(
+            move || { cernan::sink::Console::new(config).run(recv); },
+        ));
     }
     if let Some(config) = mem::replace(&mut args.wavefront, None) {
         let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
@@ -264,21 +273,21 @@ fn main() {
     }
     if let Some(config) = mem::replace(&mut args.prometheus, None) {
         let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
-        joins.push(thread::spawn(move || {
-            cernan::sink::Prometheus::new(config).run(recv);
-        }));
+        joins.push(thread::spawn(
+            move || { cernan::sink::Prometheus::new(config).run(recv); },
+        ));
     }
     if let Some(config) = mem::replace(&mut args.influxdb, None) {
         let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
-        joins.push(thread::spawn(move || {
-            cernan::sink::InfluxDB::new(config).run(recv);
-        }));
+        joins.push(thread::spawn(
+            move || { cernan::sink::InfluxDB::new(config).run(recv); },
+        ));
     }
     if let Some(config) = mem::replace(&mut args.native_sink_config, None) {
         let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
-        joins.push(thread::spawn(move || {
-            cernan::sink::Native::new(config).run(recv);
-        }));
+        joins.push(thread::spawn(
+            move || { cernan::sink::Native::new(config).run(recv); },
+        ));
     }
 
     if let Some(config) = mem::replace(&mut args.elasticsearch, None) {
@@ -291,9 +300,9 @@ fn main() {
     if let Some(cfgs) = mem::replace(&mut args.firehosen, None) {
         for config in cfgs {
             let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
-            joins.push(thread::spawn(move || {
-                cernan::sink::Firehose::new(config).run(recv);
-            }));
+            joins.push(thread::spawn(
+                move || { cernan::sink::Firehose::new(config).run(recv); },
+            ));
         }
     }
 
@@ -312,8 +321,7 @@ fn main() {
                 &senders,
             );
             joins.push(thread::spawn(move || {
-                cernan::filter::ProgrammableFilter::new(c)
-                    .run(recv, downstream_sends);
+                cernan::filter::ProgrammableFilter::new(c).run(recv, downstream_sends);
             }));
         },
     );
@@ -349,7 +357,8 @@ fn main() {
                 &senders,
             );
             joins.push(thread::spawn(move || {
-                cernan::filter::FlushBoundaryFilter::new(c).run(recv, downstream_sends);
+                cernan::filter::FlushBoundaryFilter::new(c)
+                    .run(recv, downstream_sends);
             }));
         },
     );
