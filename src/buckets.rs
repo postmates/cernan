@@ -396,7 +396,7 @@ mod test {
                 match mp.binary_search_by(|probe| probe.within(bin_width, &m)) {
                     Ok(idx) => mp[idx] += m,
                     Err(idx) => {
-                        if m.persist && idx > 0 && mp[idx - 1].name == m.name {
+                        if m.persist && idx > 0 && mp[idx - 1].name() == m.name() {
                             let mut cur = mp[idx - 1]
                                 .clone()
                                 .timestamp(m.timestamp)
@@ -418,7 +418,7 @@ mod test {
                 let time = v.timestamp;
                 let mut found_one = false;
                 for m in &mp {
-                    if (m.name == v.name) && (&m.kind() == kind) &&
+                    if (m.name() == v.name()) && (&m.kind() == kind) &&
                         within(bin_width, m.timestamp, time)
                     {
                         assert_eq!(Ordering::Equal, m.within(bin_width, &v));
@@ -785,12 +785,12 @@ mod test {
 
             let cnts: HashSet<String> =
                 ms.iter().fold(HashSet::default(), |mut acc, ref m| {
-                    acc.insert(m.name.clone());
+                    acc.insert(m.name().as_ref().clone());
                     acc
                 });
             let b_cnts: HashSet<String> =
                 bucket.iter().fold(HashSet::default(), |mut acc, v| {
-                    acc.insert(v.name.clone());
+                    acc.insert(v.name().as_ref().clone());
                     acc
                 });
             assert_eq!(cnts, b_cnts);
@@ -811,7 +811,7 @@ mod test {
 
             let mut coll: HashMap<String, HashSet<i64>> = HashMap::new();
             for m in ms {
-                let name = m.name;
+                let name = m.name().as_ref().to_string();
                 let time = m.timestamp;
 
                 let entry = coll.entry(name).or_insert(HashSet::new());
@@ -952,7 +952,7 @@ mod test {
 
             let mut cnts: HashMap<String, Vec<(i64, Value)>> = HashMap::default();
             for m in ms {
-                let c = cnts.entry(m.name.clone()).or_insert(vec![]);
+                let c = cnts.entry(m.name().as_ref().to_string()).or_insert(vec![]);
                 match c.binary_search_by_key(&m.timestamp, |&(a, _)| a) {
                     Ok(idx) => {
                         let val = c[idx].1.clone();
@@ -972,7 +972,7 @@ mod test {
             assert_eq!(len_cnts, bucket.count());
 
             for val in bucket.iter() {
-                if let Some(c_vs) = cnts.get(&val.name) {
+                if let Some(c_vs) = cnts.get(val.name().as_ref()) {
                     match c_vs.binary_search_by_key(
                         &val.timestamp,
                         |&(c_ts, _)| c_ts,

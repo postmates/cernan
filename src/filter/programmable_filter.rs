@@ -6,6 +6,7 @@ use lua::{Function, State, ThreadStatus};
 use lua::ffi::lua_State;
 use metric;
 use std::path::PathBuf;
+use std::ops::IndexMut;
 use std::sync;
 
 struct Payload<'a> {
@@ -65,7 +66,7 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
-        state.push_string(&(*pyld).metrics[idx].name);
+        state.push_string((*pyld).metrics[idx].name().as_ref());
         1
     }
 
@@ -83,7 +84,7 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
-        (*pyld).metrics[idx].name = state.check_string(3).into();
+        (*pyld).metrics.index_mut(idx).set_name(state.check_string(3));
         0
     }
 
@@ -518,7 +519,7 @@ impl filter::Filter for ProgrammableFilter {
                 self.state.get_global("process_metric");
                 if !self.state.is_fn(-1) {
                     let filter_telem = metric::Telemetry::new()
-                        .name(format!(
+                        .name(&format!(
                             "cernan.filter.{}.\
                              process_metric.failure",
                             self.path
@@ -565,7 +566,7 @@ impl filter::Filter for ProgrammableFilter {
                 if !self.state.is_fn(-1) {
                     let fail = metric::Event::new_telemetry(
                         metric::Telemetry::new()
-                            .name(format!(
+                            .name(&format!(
                                 "cernan.filter.\
                                  {}.tick.failure",
                                 self.path
@@ -602,7 +603,7 @@ impl filter::Filter for ProgrammableFilter {
                 if !self.state.is_fn(-1) {
                     let fail = metric::Event::new_telemetry(
                         metric::Telemetry::new()
-                            .name(format!(
+                            .name(&format!(
                                 "cernan.filter.\
                                  {}.process_log.\
                                  failure",

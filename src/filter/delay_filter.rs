@@ -45,7 +45,7 @@ impl filter::Filter for DelayFilter {
     ) -> Result<(), filter::FilterError> {
         match event {
             metric::Event::Telemetry(m) => {
-                report_telemetry(format!("{}.telemetry", self.config_path), 1.0);
+                report_telemetry(&format!("{}.telemetry", self.config_path), 1.0);
                 if let Some(ref telem) = *m {
                     let telem = telem.clone();
                     if (telem.timestamp - time::now()).abs() < self.tolerance {
@@ -54,14 +54,14 @@ impl filter::Filter for DelayFilter {
                 }
             }
             metric::Event::Log(l) => if let Some(ref log) = *l {
-                report_telemetry(format!("{}.log", self.config_path), 1.0);
+                report_telemetry(&format!("{}.log", self.config_path), 1.0);
                 let log = log.clone();
                 if (log.time - time::now()).abs() < self.tolerance {
                     res.push(metric::Event::new_log(log));
                 }
             },
             metric::Event::TimerFlush(f) => {
-                report_telemetry(format!("{}.flush", self.config_path), 1.0);
+                report_telemetry(&format!("{}.flush", self.config_path), 1.0);
                 res.push(metric::Event::TimerFlush(f));
             }
         }

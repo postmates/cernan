@@ -49,7 +49,7 @@ pub enum Value {
 }
 
 pub struct SoftTelemetry {
-    name: Option<String>,
+    name: Option<u64>,
     initial_value: Option<f64>,
     thawed_value: Option<Value>,
     kind: Option<AggregationMethod>,
@@ -64,9 +64,7 @@ pub struct SoftTelemetry {
 /// value, as outlined in the cernan native protocol.
 #[derive(PartialEq, Serialize, Deserialize, Debug, Clone)]
 pub struct Telemetry {
-    /// The name of the Telemetry. This is user-provided and will vary by input
-    /// protocol.
-    pub name: String,
+    name: u64,
     value: Option<Value>,
     /// Determine whether the Telemetry will persist across time bins.
     pub persist: bool,
@@ -237,8 +235,10 @@ impl PartialOrd for Telemetry {
 
 impl Default for Telemetry {
     fn default() -> Telemetry {
+        use cache::string::store;
+
         Telemetry {
-            name: String::from(""),
+            name: store(""),
             value: Some(Value::Set(0.0)),
             persist: false,
             tags: sync::Arc::new(TagMap::default()),
@@ -253,11 +253,10 @@ impl SoftTelemetry {
     /// The likelyhood is that there will be many Telemetry with the same
     /// name. We might do fancy tricks with this in mind but, then again, we
     /// might not.
-    pub fn name<S>(mut self, name: S) -> SoftTelemetry
-    where
-        S: Into<String>,
+    pub fn name(mut self, name: &str) -> SoftTelemetry
     {
-        self.name = Some(name.into());
+        use cache::string::store;
+        self.name = Some(store(name));
         self
     }
 
@@ -487,7 +486,7 @@ impl Telemetry {
     /// let m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
     /// assert_eq!(m.kind(), AggregationMethod::Set);
-    /// assert_eq!(m.name, "foo");
+    /// assert_eq!(m.name().as_ref(), "foo");
     /// assert_eq!(m.set(), Some(1.1));
     /// ```
     pub fn new() -> SoftTelemetry {
@@ -502,6 +501,24 @@ impl Telemetry {
             tags: None,
             persist: None,
         }
+    }
+
+    /// The name of the Telemetry. This is user-provided and will vary by input
+    /// protocol.
+    pub fn name(&self) -> sync::Arc<String> {
+        use cache::string::get;
+
+        get(self.name).unwrap().clone()
+    }
+
+    /// Set the name of a telemetry
+    ///
+    /// This method should ONLY be used when you cannot claim ownership over the
+    /// Telemetry. Prefer instead SoftTelemetry for most cases as changes to a
+    /// Telemetry is subject to validation.
+    pub fn set_name(&mut self, name: &str) -> () {
+        use cache::string::store;
+        self.name = store(name);
     }
 
     /// Unfreeze a Telemetry into a SoftTelemetry
@@ -940,7 +957,7 @@ mod tests {
             let kind: AggregationMethod = AggregationMethod::arbitrary(g);
             let persist: bool = g.gen();
             let time: i64 = g.gen_range(0, 100);
-            let mut mb = Telemetry::new().name(name).value(val).timestamp(time);
+            let mut mb = Telemetry::new().name(&name).value(val).timestamp(time);
             mb = match kind {
                 AggregationMethod::Set => mb.kind(AggregationMethod::Set),
                 AggregationMethod::Sum => mb.kind(AggregationMethod::Sum),
@@ -1041,7 +1058,7 @@ mod tests {
 
         assert_eq!(m.kind(), AggregationMethod::Summarize);
         assert_eq!(m.query(1.0), Some(-1.0));
-        assert_eq!(m.name, "timer");
+        assert_eq!(m.name().as_ref(), "timer");
     }
 
     #[test]
@@ -1056,6 +1073,6 @@ mod tests {
 
         assert_eq!(m.kind(), AggregationMethod::Set);
         assert_eq!(m.value(), Some(1.0));
-        assert_eq!(m.name, "dgauge");
+        assert_eq!(m.name().as_ref(), "dgauge");
     }
 }

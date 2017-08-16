@@ -441,7 +441,7 @@ impl Wavefront {
                 unimplemented!();
             }
             AggregationMethod::Sum => if let Some(v) = value.sum() {
-                self.stats.push_str(&value.name);
+                self.stats.push_str(value.name().as_ref());
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut value_cache, v));
                 self.stats.push_str(" ");
@@ -454,7 +454,7 @@ impl Wavefront {
                 tag_buf.clear();
             },
             AggregationMethod::Set => if let Some(v) = value.set() {
-                self.stats.push_str(&value.name);
+                self.stats.push_str(value.name().as_ref());
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut value_cache, v));
                 self.stats.push_str(" ");
@@ -471,7 +471,7 @@ impl Wavefront {
                 for tup in &self.percentiles {
                     let stat: &String = &tup.0;
                     let quant: f64 = tup.1;
-                    self.stats.push_str(&value.name);
+                    self.stats.push_str(value.name().as_ref());
                     self.stats.push_str(".");
                     self.stats.push_str(stat);
                     self.stats.push_str(" ");
@@ -487,7 +487,7 @@ impl Wavefront {
                     self.stats.push_str("\n");
                 }
                 let count = value.count();
-                self.stats.push_str(&value.name);
+                self.stats.push_str(value.name().as_ref());
                 self.stats.push_str(".count");
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut count_cache, count));
@@ -498,7 +498,7 @@ impl Wavefront {
                 self.stats.push_str("\n");
 
                 let mean = value.mean();
-                self.stats.push_str(&value.name);
+                self.stats.push_str(value.name().as_ref());
                 self.stats.push_str(".mean");
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut value_cache, mean));

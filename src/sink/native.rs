@@ -8,7 +8,6 @@ use protocols::native::{AggregationMethod, LogLine, Payload, Telemetry};
 use sink::{Sink, Valve};
 use std::collections::HashMap;
 use std::io::BufWriter;
-use std::mem::replace;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync;
 use time;
@@ -155,9 +154,9 @@ impl Sink for Native {
         for ev in self.buffer.drain(..) {
             match ev {
                 metric::Event::Telemetry(mut m) => {
-                    let mut m = sync::Arc::make_mut(&mut m).take().unwrap();
+                    let m = sync::Arc::make_mut(&mut m).take().unwrap();
                     let mut telem = Telemetry::new();
-                    telem.set_name(replace(&mut m.name, Default::default()));
+                    telem.set_name(m.name().to_string());
                     let method = match m.kind() {
                         metric::AggregationMethod::Histogram => AggregationMethod::BIN,
                         metric::AggregationMethod::Sum => AggregationMethod::SUM,

@@ -282,7 +282,7 @@ mod tests {
             if parse_statsd(&lines, &mut res, metric) {
                 assert_eq!(res.len(), pyld.lines.len());
                 for (sline, telem) in pyld.lines.iter().zip(res.iter()) {
-                    assert_eq!(sline.name, telem.name);
+                    assert_eq!(&sline.name, telem.name().as_ref());
                     if sline.sampled {
                         assert!(
                             (sline.value * (1.0 / sline.sample_rate) -
@@ -332,15 +332,15 @@ mod tests {
             metric
         ));
         assert_eq!(res[0].kind(), AggregationMethod::Sum);
-        assert_eq!(res[0].name, "a.b");
+        assert_eq!(res[0].name().as_ref(), "a.b");
         assert_eq!(res[0].persist, false);
         assert_eq!(Some(3.1), res[0].value());
         assert_eq!(res[1].kind(), AggregationMethod::Sum);
-        assert_eq!(res[1].name, "a-b");
+        assert_eq!(res[1].name().as_ref(), "a-b");
         assert_eq!(res[1].persist, false);
         assert_eq!(Some(40.0), res[1].value());
         assert_eq!(res[2].kind(), AggregationMethod::Sum);
-        assert_eq!(res[2].name, "a-b");
+        assert_eq!(res[2].name().as_ref(), "a-b");
         assert_eq!(res[2].persist, false);
         assert_eq!(Some(26.0), res[2].value());
     }
@@ -352,7 +352,7 @@ mod tests {
         assert!(parse_statsd("fst:-1.1|ms\n", &mut res, metric));
 
         assert_eq!(res[0].kind(), AggregationMethod::Summarize);
-        assert_eq!(res[0].name, "fst");
+        assert_eq!(res[0].name().as_ref(), "fst");
         assert_eq!(res[0].persist, false);
         assert_eq!(res[0].query(1.0), Some(-1.1));
     }
@@ -364,7 +364,7 @@ mod tests {
         assert!(parse_statsd("A=:1|ms\n", &mut res, metric));
 
         assert_eq!(res[0].kind(), AggregationMethod::Summarize);
-        assert_eq!(res[0].name, "A=");
+        assert_eq!(res[0].name().as_ref(), "A=");
         assert_eq!(res[0].persist, false);
         assert_eq!(Some(1.0), res[0].query(1.0));
     }
@@ -376,7 +376,7 @@ mod tests {
         assert!(parse_statsd("A/:1|ms\n", &mut res, metric));
 
         assert_eq!(res[0].kind(), AggregationMethod::Summarize);
-        assert_eq!(res[0].name, "A/");
+        assert_eq!(res[0].name().as_ref(), "A/");
         assert_eq!(res[0].persist, false);
         assert_eq!(Some(1.0), res[0].query(1.0));
     }
@@ -392,22 +392,22 @@ mod tests {
         ));
         //                              0         A     F
         assert_eq!(res[0].kind(), AggregationMethod::Set);
-        assert_eq!(res[0].name, "foo");
+        assert_eq!(res[0].name().as_ref(), "foo");
         assert_eq!(res[0].persist, true);
         assert_eq!(Some(1.0 * (1.0 / 0.22)), res[0].set());
 
         assert_eq!(res[1].kind(), AggregationMethod::Set);
-        assert_eq!(res[1].name, "bar");
+        assert_eq!(res[1].name().as_ref(), "bar");
         assert_eq!(res[1].persist, true);
         assert_eq!(Some(101.0 * (1.0 / 2.0)), res[1].set());
 
         assert_eq!(res[2].kind(), AggregationMethod::Set);
-        assert_eq!(res[2].name, "baz");
+        assert_eq!(res[2].name().as_ref(), "baz");
         assert_eq!(res[2].persist, true);
         assert_eq!(Some(2.0 * (1.0 / 0.2)), res[2].set());
 
         assert_eq!(res[3].kind(), AggregationMethod::Set);
-        assert_eq!(res[3].name, "qux");
+        assert_eq!(res[3].name().as_ref(), "qux");
         assert_eq!(res[3].persist, true);
         assert_eq!(Some(4.0 * (1.0 / 0.1)), res[3].set());
     }
@@ -435,12 +435,12 @@ mod tests {
         assert_eq!(2, res.len());
 
         assert_eq!(res[0].kind(), AggregationMethod::Set);
-        assert_eq!(res[0].name, "a.b");
+        assert_eq!(res[0].name().as_ref(), "a.b");
         assert_eq!(res[0].persist, true);
         assert_eq!(Some(12.1), res[0].value());
 
         assert_eq!(res[1].kind(), AggregationMethod::Sum);
-        assert_eq!(res[1].name, "b_c");
+        assert_eq!(res[1].name().as_ref(), "b_c");
         assert_eq!(res[1].persist, false);
         assert_eq!(Some(13.2), res[1].value());
     }
@@ -453,12 +453,12 @@ mod tests {
         assert_eq!(2, res.len());
 
         assert_eq!(res[0].kind(), AggregationMethod::Set);
-        assert_eq!(res[0].name, "a.b");
+        assert_eq!(res[0].name().as_ref(), "a.b");
         assert_eq!(res[0].persist, true);
         assert_eq!(Some(12.1), res[0].value());
 
         assert_eq!(res[1].kind(), AggregationMethod::Sum);
-        assert_eq!(res[1].name, "b_c");
+        assert_eq!(res[1].name().as_ref(), "b_c");
         assert_eq!(res[1].persist, false);
         assert_eq!(Some(13.2), res[1].value());
     }
@@ -471,7 +471,7 @@ mod tests {
         assert!(parse_statsd(pyld, &mut res, metric));
 
         assert_eq!(res[0].kind(), AggregationMethod::Sum);
-        assert_eq!(res[0].name, "zrth");
+        assert_eq!(res[0].name().as_ref(), "zrth");
         assert_eq!(res[0].persist, true);
         assert_eq!(res[0].value(), Some(-1.0));
     }
@@ -484,12 +484,12 @@ mod tests {
         assert!(parse_statsd(pyld, &mut res, metric));
 
         assert_eq!(res[0].kind(), AggregationMethod::Set);
-        assert_eq!(res[0].name, "zrth");
+        assert_eq!(res[0].name().as_ref(), "zrth");
         assert_eq!(res[0].persist, true);
         assert_eq!(res[0].value(), Some(0.0));
 
         assert_eq!(res[1].kind(), AggregationMethod::Sum);
-        assert_eq!(res[1].name, "zrth");
+        assert_eq!(res[1].name().as_ref(), "zrth");
         assert_eq!(res[1].persist, true);
         assert_eq!(res[1].value(), Some(-1.0));
     }
@@ -520,42 +520,42 @@ mod tests {
         assert!(parse_statsd(pyld, &mut res, metric));
 
         assert_eq!(res[0].kind(), AggregationMethod::Set);
-        assert_eq!(res[0].name, "zrth");
+        assert_eq!(res[0].name().as_ref(), "zrth");
         assert_eq!(res[0].persist, true);
         assert_eq!(res[0].value(), Some(0.0));
 
         assert_eq!(res[1].kind(), AggregationMethod::Summarize);
-        assert_eq!(res[1].name, "fst");
+        assert_eq!(res[1].name().as_ref(), "fst");
         assert_eq!(res[1].persist, false);
         assert_eq!(res[1].query(1.0), Some(-1.1));
 
         assert_eq!(res[2].kind(), AggregationMethod::Sum);
-        assert_eq!(res[2].name, "snd");
+        assert_eq!(res[2].name().as_ref(), "snd");
         assert_eq!(res[2].persist, true);
         assert_eq!(res[2].value(), Some(2.2));
 
         assert_eq!(res[3].kind(), AggregationMethod::Summarize);
-        assert_eq!(res[3].name, "thd");
+        assert_eq!(res[3].name().as_ref(), "thd");
         assert_eq!(res[3].persist, false);
         assert_eq!(res[3].query(1.0), Some(3.3));
 
         assert_eq!(res[4].kind(), AggregationMethod::Sum);
-        assert_eq!(res[4].name, "fth");
+        assert_eq!(res[4].name().as_ref(), "fth");
         assert_eq!(res[4].persist, false);
         assert_eq!(res[4].value(), Some(4.0));
 
         assert_eq!(res[5].kind(), AggregationMethod::Sum);
-        assert_eq!(res[5].name, "fvth");
+        assert_eq!(res[5].name().as_ref(), "fvth");
         assert_eq!(res[5].persist, false);
         assert_eq!(res[5].value(), Some(55.0));
 
         assert_eq!(res[6].kind(), AggregationMethod::Sum);
-        assert_eq!(res[6].name, "sxth");
+        assert_eq!(res[6].name().as_ref(), "sxth");
         assert_eq!(res[6].persist, true);
         assert_eq!(res[6].value(), Some(-6.6));
 
         assert_eq!(res[7].kind(), AggregationMethod::Sum);
-        assert_eq!(res[7].name, "svth");
+        assert_eq!(res[7].name().as_ref(), "svth");
         assert_eq!(res[7].persist, true);
         assert_eq!(res[7].value(), Some(7.77));
     }

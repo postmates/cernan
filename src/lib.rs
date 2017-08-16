@@ -61,3 +61,4 @@ pub mod source;
 pub mod filter;
 pub mod util;
 pub mod protocols;
+pub mod cache;

@@ -115,7 +115,7 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         if smpls.is_empty() {
                             continue;
                         }
-                        let mut metric = metric::Telemetry::new().name(name);
+                        let mut metric = metric::Telemetry::new().name(&name);
                         metric = metric.value(smpls[0]);
                         metric = match aggr_type {
                             AggregationMethod::SET => {

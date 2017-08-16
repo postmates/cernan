@@ -125,7 +125,7 @@ impl InfluxDB {
         for telem in telems.iter() {
             match telem.kind() {
                 AggregationMethod::Sum => if let Some(val) = telem.sum() {
-                    buffer.push_str(&telem.name);
+                    buffer.push_str(telem.name().as_ref());
                     buffer.push_str(",");
                     fmt_tags(&telem.tags, &mut tag_buf);
                     buffer.push_str(&tag_buf);
@@ -141,7 +141,7 @@ impl InfluxDB {
                     tag_buf.clear();
                 },
                 AggregationMethod::Set => if let Some(val) = telem.set() {
-                    buffer.push_str(&telem.name);
+                    buffer.push_str(telem.name().as_ref());
                     buffer.push_str(",");
                     fmt_tags(&telem.tags, &mut tag_buf);
                     buffer.push_str(&tag_buf);
@@ -162,7 +162,7 @@ impl InfluxDB {
                             Bound::Finite(x) => format!("le_{}", x),
                             Bound::PosInf => "le_inf".to_string(),
                         };
-                        buffer.push_str(&format!("{}.{}", &telem.name, bound_name));
+                        buffer.push_str(&format!("{}.{}", telem.name().as_ref(), bound_name));
                         buffer.push_str(",");
                         fmt_tags(&telem.tags, &mut tag_buf);
                         buffer.push_str(&tag_buf);
@@ -183,7 +183,7 @@ impl InfluxDB {
                     &[0.25, 0.50, 0.75, 0.90, 0.99, 1.0]
                 {
                     if let Some(val) = telem.query(*percentile) {
-                        buffer.push_str(&format!("{}.{}", &telem.name, percentile));
+                        buffer.push_str(&format!("{}.{}", telem.name().as_ref(), percentile));
                         buffer.push_str(",");
                         fmt_tags(&telem.tags, &mut tag_buf);
                         buffer.push_str(&tag_buf);

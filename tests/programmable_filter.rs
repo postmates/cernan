@@ -422,7 +422,7 @@ mod integration {
             match events[1] {
                 metric::Event::Telemetry(ref mut m) => {
                     let p = ::std::sync::Arc::make_mut(m).take().unwrap();
-                    assert_eq!(p.name, "count_per_tick");
+                    assert_eq!(p.name().as_ref(), "count_per_tick");
                     assert_eq!(p.set(), Some(5.0));
                 }
                 _ => {
@@ -452,7 +452,7 @@ mod integration {
             match events[1] {
                 metric::Event::Telemetry(ref mut m) => {
                     let p = ::std::sync::Arc::make_mut(m).take().unwrap();
-                    assert_eq!(p.name, "count_per_tick");
+                    assert_eq!(p.name().as_ref(), "count_per_tick");
                     assert_eq!(p.set(), Some(2.0));
                 }
                 _ => {
@@ -506,7 +506,7 @@ mod integration {
                 match event {
                     metric::Event::Telemetry(mut m) => {
                         let met = Arc::make_mut(&mut m).take().unwrap();
-                        assert_eq!(met.name, expected);
+                        assert_eq!(met.name().as_ref(), expected);
                     }
                     _ => {
                         assert!(false);
@@ -552,7 +552,7 @@ mod integration {
                 match event {
                     metric::Event::Telemetry(mut m) => {
                         let met = Arc::make_mut(&mut m).take().unwrap();
-                        assert_eq!(met.name, expected);
+                        assert_eq!(met.name().as_ref(), expected);
                     }
                     _ => {
                         assert!(false);
