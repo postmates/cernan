@@ -4,13 +4,17 @@
 //! automatic deref or the like. Clients are responsible for maintaining the ID
 //! we hand out from `store` and giving it back to us for lookups.
 
+use seahash::SeaHasher;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::hash::BuildHasherDefault;
 use std::sync::{Arc, RwLock};
 
+type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<SeaHasher>>;
+
 lazy_static! {
-    static ref STRING: Arc<RwLock<HashMap<u64, Arc<String>>>> = Arc::new(RwLock::default());
+    static ref STRING: Arc<RwLock<HashMapFnv<u64, Arc<String>>>> = Arc::new(RwLock::default());
 }
 
 /// Store a str into the string cache

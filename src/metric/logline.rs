@@ -1,7 +1,8 @@
+
+use cache::string::{get, store};
 use metric::TagMap;
-use time;
 use std::sync;
-use cache::string::{store,get};
+use time;
 
 /// An unstructured piece of text, plus associated metadata
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
@@ -27,8 +28,7 @@ impl LogLine {
     /// Create a new `LogLine`
     ///
     /// Please see `LogLine` struct documentation for more details.
-    pub fn new(path: &str, value: &str) -> LogLine
-    {
+    pub fn new(path: &str, value: &str) -> LogLine {
         let id = store(path);
         LogLine {
             path: id,

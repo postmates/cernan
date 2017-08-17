@@ -1,4 +1,3 @@
-
 use cache::string::get;
 use hyper::server::{Handler, Listening, Request, Response, Server};
 use metric;

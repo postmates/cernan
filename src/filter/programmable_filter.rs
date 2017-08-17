@@ -1,4 +1,3 @@
-
 use cache::string::{get, store};
 use filter;
 use libc::c_int;
