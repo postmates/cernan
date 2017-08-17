@@ -88,16 +88,18 @@ impl Default for WavefrontConfig {
 
 #[inline]
 fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
+    use cache::string::get;
+
     let mut iter = tags.iter();
-    if let Some(&(ref fk, ref fv)) = iter.next() {
-        s.push_str(fk);
+    if let Some(&(fk, fv)) = iter.next() {
+        s.push_str(get(fk).unwrap().as_ref());
         s.push_str("=");
-        s.push_str(fv);
-        for &(ref k, ref v) in iter {
+        s.push_str(get(fv).unwrap().as_ref());
+        for &(k, v) in iter {
             s.push_str(" ");
-            s.push_str(k);
+            s.push_str(get(k).unwrap().as_ref());
             s.push_str("=");
-            s.push_str(v);
+            s.push_str(get(v).unwrap().as_ref());
         }
     }
 }

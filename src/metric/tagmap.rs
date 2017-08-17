@@ -3,6 +3,7 @@
 //! associated metadata is to distinguish identially named events that come from
 //! other sources or have been otherwise manipulated by the user in a filter.
 
+use cache::string::store;
 use std::cmp;
 use std::hash::{Hash, Hasher};
 use std::slice::Iter;
@@ -11,19 +12,11 @@ use std::slice::Iter;
 /// `std::collections::HashMap` but with a specialize implementation for fast
 /// searching over a small collection.
 #[derive(Clone, Debug, Eq, Serialize, Deserialize)]
-pub struct TagMap<K, V>
-where
-    K: Hash,
-    V: Hash,
-{
-    inner: Vec<(K, V)>,
+pub struct TagMap {
+    inner: Vec<(u64, u64)>,
 }
 
-impl<K, V> Hash for TagMap<K, V>
-where
-    K: Hash + cmp::Ord,
-    V: Hash + cmp::Ord,
-{
+impl Hash for TagMap {
     fn hash<H: Hasher>(&self, state: &mut H) {
         for &(ref k, ref v) in self.iter() {
             k.hash(state);
@@ -32,16 +25,14 @@ where
     }
 }
 
-impl<K, V> PartialEq for TagMap<K, V>
-where
-    K: Hash + PartialEq,
-    V: Hash + PartialEq,
-{
-    fn eq(&self, other: &TagMap<K, V>) -> bool {
+impl PartialEq for TagMap {
+    fn eq(&self, other: &TagMap) -> bool {
         if self.inner.len() != other.inner.len() {
             false
         } else {
-            for (&(ref k, ref v), &(ref o_k, ref o_v)) in self.inner.iter().zip(other.inner.iter()) {
+            for (&(ref k, ref v), &(ref o_k, ref o_v)) in
+                self.inner.iter().zip(other.inner.iter())
+            {
                 if (k != o_k) || (v != o_v) {
                     return false;
                 }
@@ -53,22 +44,14 @@ where
 
 /// Iteration over a `TagMap`. Behaves as you'd expect a key, value map to
 /// behave.
-pub struct TagMapIterator<'a, K, V>
-where
-    V: 'a + Hash,
-    K: 'a + Hash,
-{
-    tagmap: &'a TagMap<K, V>,
+pub struct TagMapIterator<'a> {
+    tagmap: &'a TagMap,
     index: usize,
 }
 
-impl<'a, K, V> IntoIterator for &'a TagMap<K, V>
-where
-    K: Hash,
-    V: Hash,
-{
-    type Item = (&'a K, &'a V);
-    type IntoIter = TagMapIterator<'a, K, V>;
+impl<'a> IntoIterator for &'a TagMap {
+    type Item = (&'a u64, &'a u64);
+    type IntoIter = TagMapIterator<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         TagMapIterator {
@@ -78,13 +61,9 @@ where
     }
 }
 
-impl<'a, K, V> Iterator for TagMapIterator<'a, K, V>
-where
-    K: Hash,
-    V: Hash,
-{
-    type Item = (&'a K, &'a V);
-    fn next(&mut self) -> Option<(&'a K, &'a V)> {
+impl<'a> Iterator for TagMapIterator<'a> {
+    type Item = (&'a u64, &'a u64);
+    fn next(&mut self) -> Option<(&'a u64, &'a u64)> {
         let result = if self.index < self.tagmap.inner.len() {
             let (ref k, ref v) = self.tagmap.inner[self.index];
             Some((k, v))
@@ -96,18 +75,14 @@ where
     }
 }
 
-impl<K, V> TagMap<K, V>
-where
-    K: cmp::Ord + Hash,
-    V: Hash,
-{
+impl TagMap {
     /// Create a `tagmap::Iter`.
-    pub fn iter(&self) -> Iter<(K, V)> {
+    pub fn iter(&self) -> Iter<(u64, u64)> {
         self.inner.iter()
     }
 
     /// Get a value from the tagmap, if it exists.
-    pub fn get(&self, key: &K) -> Option<&V> {
+    pub fn get(&self, key: &u64) -> Option<&u64> {
         match self.inner.binary_search_by_key(&key, |&(ref k, _)| k) {
             Ok(idx) => Some(&self.inner[idx].1),
             Err(_) => None,
@@ -116,9 +91,12 @@ where
 
     /// Remove a value from the tagmap. The value will be returned if it
     /// existed.
-    pub fn remove(&mut self, key: &K) -> Option<V> {
+    pub fn remove(&mut self, key: &u64) -> Option<u64> {
         match self.inner.binary_search_by_key(&key, |&(ref k, _)| k) {
-            Ok(idx) => Some(self.inner.remove(idx).1),
+            Ok(idx) => {
+                let id = self.inner.remove(idx).1;
+                Some(id)
+            }
             Err(_) => None,
         }
     }
@@ -133,16 +111,12 @@ where
     /// This method will overwrite values in the map with values from
     /// `other`. If the key / value in `other` does not exist in self it will be
     /// created in self.
-    pub fn merge(&mut self, other: &TagMap<K, V>)
-    where
-        K: Clone,
-        V: Clone,
-    {
+    pub fn merge(&mut self, other: &TagMap) {
         for &(ref key, ref val) in &other.inner {
             match self.inner.binary_search_by(|probe| probe.0.cmp(key)) {
                 Ok(_) => {}
                 Err(idx) => {
-                    self.inner.insert(idx, (key.clone(), val.clone()));
+                    self.inner.insert(idx, (*key, *val));
                 }
             }
         }
@@ -152,15 +126,17 @@ where
     ///
     /// This method will return the value previously stored under the given key,
     /// if there was such a value.
-    pub fn insert(&mut self, key: K, val: V) -> Option<V> {
-        match self.inner.binary_search_by(|probe| probe.0.cmp(&key)) {
+    pub fn insert(&mut self, key: &str, val: &str) -> Option<u64> {
+        let hsh_k = store(key);
+        let hsh_v = store(val);
+        match self.inner.binary_search_by(|probe| probe.0.cmp(&hsh_k)) {
             Ok(idx) => {
-                self.inner.push((key, val));
+                self.inner.push((hsh_k, hsh_v));
                 let old = self.inner.swap_remove(idx);
                 Some(old.1)
             }
             Err(idx) => {
-                self.inner.insert(idx, (key, val));
+                self.inner.insert(idx, (hsh_k, hsh_v));
                 None
             }
         }
@@ -173,12 +149,8 @@ where
     }
 }
 
-impl<K, V> Default for TagMap<K, V>
-where
-    K: Hash,
-    V: Hash,
-{
-    fn default() -> TagMap<K, V> {
+impl Default for TagMap {
+    fn default() -> TagMap {
         TagMap {
             inner: Vec::with_capacity(15),
         }
@@ -190,11 +162,7 @@ where
 /// This function is used to define an ordering over `TagMap`. This is done by
 /// comparing the key / value pairs of each map. The exist method of comparison
 /// is undefined.
-pub fn cmp<K, V>(left: &TagMap<K, V>, right: &TagMap<K, V>) -> Option<cmp::Ordering>
-where
-    K: cmp::Ord + Hash,
-    V: cmp::Ord + Hash,
-{
+pub fn cmp(left: &TagMap, right: &TagMap) -> Option<cmp::Ordering> {
     if left.len() != right.len() {
         left.len().partial_cmp(&right.len())
     } else {

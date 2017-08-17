@@ -55,8 +55,7 @@ impl Internal {
 /// Given a name and value, construct a Telemetry with Sum aggregation and push
 /// into Internal's queue. This queue will then be drained into operator
 /// configured forwards.
-pub fn report_telemetry(name: &str, value: f64) -> ()
-{
+pub fn report_telemetry(name: &str, value: f64) -> () {
     report_full_telemetry(name, value, None);
 }
 
@@ -69,8 +68,7 @@ pub fn report_full_telemetry(
     name: &str,
     value: f64,
     metadata: Option<Vec<(&str, &str)>>,
-) -> ()
-{
+) -> () {
     use metric::AggregationMethod;
     let mut telem = metric::Telemetry::new()
         .name(name)

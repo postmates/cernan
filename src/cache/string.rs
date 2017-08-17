@@ -4,16 +4,16 @@
 //! automatic deref or the like. Clients are responsible for maintaining the ID
 //! we hand out from `store` and giving it back to us for lookups.
 
-use std::sync::{Arc, RwLock};
-use std::collections::HashMap; 
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::sync::{Arc, RwLock};
 
 lazy_static! {
     static ref STRING: Arc<RwLock<HashMap<u64, Arc<String>>>> = Arc::new(RwLock::default());
 }
 
-/// Store a str into the string cache 
+/// Store a str into the string cache
 ///
 /// A new String will be allocated from the str if the map does not already
 /// contain str. Otherwise, this operation pays the cost of a lookup and not

@@ -1,11 +1,11 @@
+
+use cache::string::get;
 use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
 use elastic::error::Result;
 use elastic::prelude::*;
-
 use metric::{LogLine, Telemetry};
-
 use sink::{Sink, Valve};
 use source::report_telemetry;
 use std::sync;
@@ -92,16 +92,22 @@ impl Elasticsearch {
             buffer.push('\n');
             let mut payload: Value = json!({
                 "uuid": uuid,
-                "path": m.path.clone(),
+                "path": m.path().to_string(),
                 "payload": m.value.clone(),
                 "timestamp": format_time(m.time),
             });
             let obj = payload.as_object_mut().unwrap();
-            for &(ref k, ref v) in m.tags.iter() {
-                obj.insert(k.clone(), Value::String(v.clone()));
+            for &(k, v) in m.tags.iter() {
+                obj.insert(
+                    get(k).unwrap().as_ref().to_string(),
+                    Value::String(get(v).unwrap().as_ref().to_string()),
+                );
             }
-            for &(ref k, ref v) in m.fields.iter() {
-                obj.insert(k.clone(), Value::String(v.clone()));
+            for &(k, v) in m.fields.iter() {
+                obj.insert(
+                    get(k).unwrap().as_ref().to_string(),
+                    Value::String(get(v).unwrap().as_ref().to_string()),
+                );
             }
             buffer.push_str(&to_string(&obj).unwrap());
             buffer.push('\n');

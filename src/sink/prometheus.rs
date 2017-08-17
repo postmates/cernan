@@ -1,3 +1,5 @@
+
+use cache::string::get;
 use hyper::server::{Handler, Listening, Request, Response, Server};
 use metric;
 use protobuf::Message;
@@ -235,10 +237,10 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
         metric_family.set_name(m.name().to_string());
         let mut metric = Metric::new();
         let mut label_pairs = Vec::with_capacity(8);
-        for &(ref k, ref v) in m.tags.iter() {
+        for &(k, v) in m.tags.iter() {
             let mut lp = LabelPair::new();
-            lp.set_name(k.clone());
-            lp.set_value(v.clone());
+            lp.set_name(get(k).unwrap().as_ref().to_string());
+            lp.set_value(get(v).unwrap().as_ref().to_string());
             label_pairs.push(lp);
         }
         metric.set_label(RepeatedField::from_vec(label_pairs));
@@ -277,9 +279,9 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
             buf.push_str(&q.to_string());
             for (k, v) in &(*m.tags) {
                 buf.push_str("\", ");
-                buf.push_str(k);
+                buf.push_str(get(*k).unwrap().as_ref());
                 buf.push_str("=\"");
-                buf.push_str(v);
+                buf.push_str(get(*v).unwrap().as_ref());
             }
             buf.push_str("\"} ");
             buf.push_str(&m.query(*q).unwrap().to_string());
@@ -289,9 +291,9 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         buf.push_str("_sum ");
         buf.push_str("{");
         for (k, v) in &(*sum_tags) {
-            buf.push_str(k);
+            buf.push_str(get(*k).unwrap().as_ref());
             buf.push_str("=\"");
-            buf.push_str(v);
+            buf.push_str(get(*v).unwrap().as_ref());
             buf.push_str("\", ");
         }
         buf.push_str("} ");
@@ -301,9 +303,9 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         buf.push_str("_count ");
         buf.push_str("{");
         for (k, v) in &(*count_tags) {
-            buf.push_str(k);
+            buf.push_str(get(*k).unwrap().as_ref());
             buf.push_str("=\"");
-            buf.push_str(v);
+            buf.push_str(get(*v).unwrap().as_ref());
             buf.push_str("\", ");
         }
         buf.push_str("} ");
@@ -344,9 +346,8 @@ fn sanitize(metric: metric::Telemetry) -> metric::Telemetry {
     }
     metric
         .thaw()
-        .name(
-            &String::from_utf8(new_name).expect("wait, we bungled the conversion"),
-        )
+        .name(&String::from_utf8(new_name)
+            .expect("wait, we bungled the conversion"))
         .kind(metric::AggregationMethod::Summarize)
         .harden()
         .unwrap()

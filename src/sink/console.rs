@@ -101,7 +101,7 @@ impl Sink for Console {
     fn flush(&mut self) {
         println!("Flushing lines: {}", Utc::now().to_rfc3339());
         for line in &self.buffer {
-            println!("{} {}: {}", format_time(line.time), line.path, line.value);
+            println!("{} {}: {}", format_time(line.time), line.path(), line.value);
         }
         self.buffer.clear();
 

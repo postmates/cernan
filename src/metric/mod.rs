@@ -8,10 +8,9 @@ mod telemetry;
 
 pub use self::event::Event;
 pub use self::logline::LogLine;
+
+pub use self::tagmap::TagMap;
 pub use self::telemetry::{AggregationMethod, Telemetry};
 
 #[cfg(test)]
 pub use self::telemetry::Value;
-
-/// `TagMap` = `tagmap::TagMap<String, String>`
-pub type TagMap = self::tagmap::TagMap<String, String>;
