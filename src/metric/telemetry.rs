@@ -1,3 +1,4 @@
+use cache::string::get;
 use metric::TagMap;
 use metric::tagmap::cmp;
 use quantiles::ckms::CKMS;
@@ -49,7 +50,7 @@ pub enum Value {
 }
 
 pub struct SoftTelemetry {
-    name: Option<String>,
+    name: Option<u64>,
     initial_value: Option<f64>,
     thawed_value: Option<Value>,
     kind: Option<AggregationMethod>,
@@ -64,9 +65,7 @@ pub struct SoftTelemetry {
 /// value, as outlined in the cernan native protocol.
 #[derive(PartialEq, Serialize, Deserialize, Debug, Clone)]
 pub struct Telemetry {
-    /// The name of the Telemetry. This is user-provided and will vary by input
-    /// protocol.
-    pub name: String,
+    name: u64,
     value: Option<Value>,
     /// Determine whether the Telemetry will persist across time bins.
     pub persist: bool,
@@ -237,8 +236,10 @@ impl PartialOrd for Telemetry {
 
 impl Default for Telemetry {
     fn default() -> Telemetry {
+        use cache::string::store;
+
         Telemetry {
-            name: String::from(""),
+            name: store(""),
             value: Some(Value::Set(0.0)),
             persist: false,
             tags: sync::Arc::new(TagMap::default()),
@@ -253,11 +254,9 @@ impl SoftTelemetry {
     /// The likelyhood is that there will be many Telemetry with the same
     /// name. We might do fancy tricks with this in mind but, then again, we
     /// might not.
-    pub fn name<S>(mut self, name: S) -> SoftTelemetry
-    where
-        S: Into<String>,
-    {
-        self.name = Some(name.into());
+    pub fn name(mut self, name: &str) -> SoftTelemetry {
+        use cache::string::store;
+        self.name = Some(store(name));
         self
     }
 
@@ -478,18 +477,6 @@ impl Telemetry {
     /// This function returns a TelemetryBuidler with a name set. A metric must
     /// have _at least_ a name and a value but values may be delayed behind
     /// names.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::{Telemetry,AggregationMethod};
-    ///
-    /// let m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
-    ///
-    /// assert_eq!(m.kind(), AggregationMethod::Set);
-    /// assert_eq!(m.name, "foo");
-    /// assert_eq!(m.set(), Some(1.1));
-    /// ```
     pub fn new() -> SoftTelemetry {
         SoftTelemetry {
             name: None,
@@ -502,6 +489,24 @@ impl Telemetry {
             tags: None,
             persist: None,
         }
+    }
+
+    /// The name of the Telemetry. This is user-provided and will vary by input
+    /// protocol.
+    pub fn name(&self) -> sync::Arc<String> {
+        use cache::string::get;
+
+        get(self.name).unwrap().clone()
+    }
+
+    /// Set the name of a telemetry
+    ///
+    /// This method should ONLY be used when you cannot claim ownership over the
+    /// Telemetry. Prefer instead SoftTelemetry for most cases as changes to a
+    /// Telemetry is subject to validation.
+    pub fn set_name(&mut self, name: &str) -> () {
+        use cache::string::store;
+        self.name = store(name);
     }
 
     /// Unfreeze a Telemetry into a SoftTelemetry
@@ -543,27 +548,8 @@ impl Telemetry {
     /// This insert a key / value pair into the metric's tag map. If the key was
     /// already present in the tag map the value will be replaced, else it will
     /// be inserted.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::Telemetry;
-    ///
-    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
-    ///
-    /// assert!(m.tags.is_empty());
-    ///
-    /// m = m.overlay_tag("foo", "bar");
-    /// assert_eq!(Some(&"bar".into()), m.tags.get(&String::from("foo")));
-    ///
-    /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    /// ```
-    pub fn overlay_tag<S>(mut self, key: S, val: S) -> Telemetry
-    where
-        S: Into<String>,
-    {
-        sync::Arc::make_mut(&mut self.tags).insert(key.into(), val.into());
+    pub fn overlay_tag(mut self, key: &str, val: &str) -> Telemetry {
+        sync::Arc::make_mut(&mut self.tags).insert(key, val);
         self
     }
 
@@ -572,30 +558,10 @@ impl Telemetry {
     /// This inserts a map of key / value pairs over the top of metric's
     /// existing tag map. Any new keys will be inserted while existing keys will
     /// be overwritten.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::{Telemetry,TagMap};
-    ///
-    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
-    ///
-    /// assert!(m.tags.is_empty());
-    ///
-    /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    ///
-    /// let mut tag_map = TagMap::default();
-    /// tag_map.insert("foo".into(), "bar".into());
-    /// tag_map.insert("oof".into(), "rab".into());
-    ///
-    /// m = m.overlay_tags_from_map(&tag_map);
-    /// assert_eq!(Some(&"bar".into()), m.tags.get(&String::from("foo")));
-    /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
-    /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Telemetry {
-        for &(ref k, ref v) in map.iter() {
-            sync::Arc::make_mut(&mut self.tags).insert(k.clone(), v.clone());
+        for &(k, v) in map.iter() {
+            sync::Arc::make_mut(&mut self.tags)
+                .insert(get(k).unwrap().as_ref(), get(v).unwrap().as_ref());
         }
         self
     }
@@ -606,27 +572,6 @@ impl Telemetry {
     /// inserting keys if and only if the key does not already exist
     /// in-map. This is the information-preserving partner to
     /// overlay_tags_from_map.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::{Telemetry,TagMap};
-    ///
-    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
-    ///
-    /// assert!(m.tags.is_empty());
-    ///
-    /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    ///
-    /// let mut tag_map = TagMap::default();
-    /// tag_map.insert("foo".into(), "bar".into());
-    /// tag_map.insert("oof".into(), "rab".into());
-    ///
-    /// m = m.merge_tags_from_map(&tag_map);
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
-    /// ```
     pub fn merge_tags_from_map(mut self, map: &TagMap) -> Telemetry {
         sync::Arc::make_mut(&mut self.tags).merge(map);
         self
@@ -828,17 +773,6 @@ impl Telemetry {
     /// This sets the metric time to the specified value, taken to be UTC
     /// seconds since the Unix Epoch. If this is not set the metric will default
     /// to `cernan::time::now()`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::Telemetry;
-    ///
-    /// let m = Telemetry::new().name("foo").value(1.1).harden().unwrap().
-    /// timestamp(10101);
-    ///
-    /// assert_eq!(10101, m.timestamp);
-    /// ```
     pub fn timestamp(mut self, time: i64) -> Telemetry {
         self.timestamp = time;
         self
@@ -940,7 +874,7 @@ mod tests {
             let kind: AggregationMethod = AggregationMethod::arbitrary(g);
             let persist: bool = g.gen();
             let time: i64 = g.gen_range(0, 100);
-            let mut mb = Telemetry::new().name(name).value(val).timestamp(time);
+            let mut mb = Telemetry::new().name(&name).value(val).timestamp(time);
             mb = match kind {
                 AggregationMethod::Set => mb.kind(AggregationMethod::Set),
                 AggregationMethod::Sum => mb.kind(AggregationMethod::Sum),
@@ -1041,7 +975,7 @@ mod tests {
 
         assert_eq!(m.kind(), AggregationMethod::Summarize);
         assert_eq!(m.query(1.0), Some(-1.0));
-        assert_eq!(m.name, "timer");
+        assert_eq!(m.name().as_ref(), "timer");
     }
 
     #[test]
@@ -1056,6 +990,6 @@ mod tests {
 
         assert_eq!(m.kind(), AggregationMethod::Set);
         assert_eq!(m.value(), Some(1.0));
-        assert_eq!(m.name, "dgauge");
+        assert_eq!(m.name().as_ref(), "dgauge");
     }
 }

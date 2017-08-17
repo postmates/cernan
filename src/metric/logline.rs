@@ -1,4 +1,7 @@
+
+use cache::string::{get, store};
 use metric::TagMap;
+use std::sync;
 use time;
 
 /// An unstructured piece of text, plus associated metadata
@@ -8,7 +11,7 @@ pub struct LogLine {
     pub time: i64,
     /// The path that this `LogLine` originated from. May be a unix path or not,
     /// depending on origin.
-    pub path: String,
+    path: u64,
     /// The line read from the `LogLine` path
     pub value: String,
     /// Fields that may have been parsed out of the value, a key/value structure
@@ -25,17 +28,20 @@ impl LogLine {
     /// Create a new `LogLine`
     ///
     /// Please see `LogLine` struct documentation for more details.
-    pub fn new<S>(path: S, value: S) -> LogLine
-    where
-        S: Into<String>,
-    {
+    pub fn new(path: &str, value: &str) -> LogLine {
+        let id = store(path);
         LogLine {
-            path: path.into(),
-            value: value.into(),
+            path: id,
+            value: value.to_string(),
             time: time::now(),
             tags: Default::default(),
             fields: Default::default(),
         }
+    }
+
+    /// Return the path
+    pub fn path(&self) -> sync::Arc<String> {
+        get(self.path).unwrap().clone()
     }
 
     /// Set the time of the Logline
@@ -63,11 +69,8 @@ impl LogLine {
     /// supporting sinks. For instance, the firehose sink will put the field
     /// _into_ the payload where tags will be associated metadata that define
     /// groups of related LogLines.
-    pub fn insert_field<S>(mut self, key: S, val: S) -> LogLine
-    where
-        S: Into<String>,
-    {
-        self.fields.insert(key.into(), val.into());
+    pub fn insert_field(mut self, key: &str, val: &str) -> LogLine {
+        self.fields.insert(key, val);
         self
     }
 
@@ -75,11 +78,8 @@ impl LogLine {
     ///
     /// This function inserts a new key and value into the LogLine's tags. If
     /// the key was already present the old value is replaced.
-    pub fn overlay_tag<S>(mut self, key: S, val: S) -> LogLine
-    where
-        S: Into<String>,
-    {
-        self.tags.insert(key.into(), val.into());
+    pub fn overlay_tag(mut self, key: &str, val: &str) -> LogLine {
+        self.tags.insert(key, val);
         self
     }
 
@@ -88,8 +88,9 @@ impl LogLine {
     /// This function overlays a TagMap onto the LogLine's existing tags. If a
     /// key is present in both TagMaps the one from 'map' will be preferred.
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> LogLine {
-        for &(ref k, ref v) in map.iter() {
-            self.tags.insert(k.clone(), v.clone());
+        use cache::string::get;
+        for &(k, v) in map.iter() {
+            self.tags.insert(get(k).unwrap().as_ref(), get(v).unwrap().as_ref());
         }
         self
     }

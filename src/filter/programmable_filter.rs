@@ -1,10 +1,11 @@
+use cache::string::{get, store};
 use filter;
 use libc::c_int;
-
 use lua;
 use lua::{Function, State, ThreadStatus};
 use lua::ffi::lua_State;
 use metric;
+use std::ops::IndexMut;
 use std::path::PathBuf;
 use std::sync;
 
@@ -65,7 +66,7 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
-        state.push_string(&(*pyld).metrics[idx].name);
+        state.push_string((*pyld).metrics[idx].name().as_ref());
         1
     }
 
@@ -83,7 +84,7 @@ impl<'a> Payload<'a> {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
-        (*pyld).metrics[idx].name = state.check_string(3).into();
+        (*pyld).metrics.index_mut(idx).set_name(state.check_string(3));
         0
     }
 
@@ -164,14 +165,17 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => match (*pyld).logs[idx].tags.get(&key) {
-                Some(v) => {
-                    state.push_string(v);
+            Some(key) => {
+                let id = store(&key);
+                match (*pyld).logs[idx].tags.get(&id) {
+                    Some(v) => {
+                        state.push_string(get(*v).unwrap().as_ref());
+                    }
+                    None => {
+                        state.push_nil();
+                    }
                 }
-                None => {
-                    state.push_nil();
-                }
-            },
+            }
             None => {
                 error!("[log_tag_value] no key provided");
                 state.push_nil();
@@ -186,14 +190,17 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => match (*pyld).logs[idx].fields.get(&key) {
-                Some(v) => {
-                    state.push_string(v);
+            Some(key) => {
+                let id = store(&key);
+                match (*pyld).logs[idx].fields.get(&id) {
+                    Some(v) => {
+                        state.push_string(get(*v).unwrap().as_ref());
+                    }
+                    None => {
+                        state.push_nil();
+                    }
                 }
-                None => {
-                    state.push_nil();
-                }
-            },
+            }
             None => {
                 error!("[log_tag_value] no key provided");
                 state.push_nil();
@@ -208,14 +215,17 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => match (*pyld).metrics[idx].tags.get(&key) {
-                Some(v) => {
-                    state.push_string(v);
+            Some(key) => {
+                let id = store(&key);
+                match (*pyld).metrics[idx].tags.get(&id) {
+                    Some(v) => {
+                        state.push_string(get(*v).unwrap().as_ref());
+                    }
+                    None => {
+                        state.push_nil();
+                    }
                 }
-                None => {
-                    state.push_nil();
-                }
-            },
+            }
             None => {
                 error!("[log_tag_value] no key provided");
                 state.push_nil();
@@ -233,10 +243,10 @@ impl<'a> Payload<'a> {
             Some(key) => match state.to_str(4).map(|v| v.to_owned()) {
                 Some(val) => match sync::Arc::make_mut(
                     &mut (*pyld).metrics[idx].tags,
-                ).insert(key, val)
+                ).insert(&key, &val)
                 {
                     Some(old_v) => {
-                        state.push_string(&old_v);
+                        state.push_string(get(old_v).unwrap().as_ref());
                     }
                     None => {
                         state.push_nil();
@@ -262,9 +272,9 @@ impl<'a> Payload<'a> {
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => match state.to_str(4).map(|v| v.to_owned()) {
-                Some(val) => match (*pyld).logs[idx].tags.insert(key, val) {
+                Some(val) => match (*pyld).logs[idx].tags.insert(&key, &val) {
                     Some(old_v) => {
-                        state.push_string(&old_v);
+                        state.push_string(get(old_v).unwrap().as_ref());
                     }
                     None => {
                         state.push_nil();
@@ -290,9 +300,9 @@ impl<'a> Payload<'a> {
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => match state.to_str(4).map(|v| v.to_owned()) {
-                Some(val) => match (*pyld).logs[idx].fields.insert(key, val) {
+                Some(val) => match (*pyld).logs[idx].fields.insert(&key, &val) {
                     Some(old_v) => {
-                        state.push_string(&old_v);
+                        state.push_string(get(old_v).unwrap().as_ref());
                     }
                     None => {
                         state.push_nil();
@@ -317,16 +327,17 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags)
-                .remove(&key)
-            {
-                Some(old_v) => {
-                    state.push_string(&old_v);
+            Some(key) => {
+                let id = store(&key);
+                match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags).remove(&id) {
+                    Some(old_v) => {
+                        state.push_string(get(old_v).unwrap().as_ref());
+                    }
+                    None => {
+                        state.push_nil();
+                    }
                 }
-                None => {
-                    state.push_nil();
-                }
-            },
+            }
             None => {
                 error!("[metric_remove_tag] no val provided");
                 state.push_nil();
@@ -341,14 +352,17 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => match (*pyld).logs[idx].tags.remove(&key) {
-                Some(old_v) => {
-                    state.push_string(&old_v);
+            Some(key) => {
+                let id = store(&key);
+                match (*pyld).logs[idx].tags.remove(&id) {
+                    Some(old_v) => {
+                        state.push_string(get(old_v).unwrap().as_ref());
+                    }
+                    None => {
+                        state.push_nil();
+                    }
                 }
-                None => {
-                    state.push_nil();
-                }
-            },
+            }
             None => {
                 error!("[log_remove_tag] no val provided");
                 state.push_nil();
@@ -518,7 +532,7 @@ impl filter::Filter for ProgrammableFilter {
                 self.state.get_global("process_metric");
                 if !self.state.is_fn(-1) {
                     let filter_telem = metric::Telemetry::new()
-                        .name(format!(
+                        .name(&format!(
                             "cernan.filter.{}.\
                              process_metric.failure",
                             self.path
@@ -565,7 +579,7 @@ impl filter::Filter for ProgrammableFilter {
                 if !self.state.is_fn(-1) {
                     let fail = metric::Event::new_telemetry(
                         metric::Telemetry::new()
-                            .name(format!(
+                            .name(&format!(
                                 "cernan.filter.\
                                  {}.tick.failure",
                                 self.path
@@ -602,7 +616,7 @@ impl filter::Filter for ProgrammableFilter {
                 if !self.state.is_fn(-1) {
                     let fail = metric::Event::new_telemetry(
                         metric::Telemetry::new()
-                            .name(format!(
+                            .name(&format!(
                                 "cernan.filter.\
                                  {}.process_log.\
                                  failure",

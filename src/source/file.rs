@@ -275,7 +275,7 @@ impl Source for FileServer {
                                 if sz > 0 {
                                     lines_read += 1;
                                     buffer.pop();
-                                    let path_name = file.path
+                                    let path_name: &str = file.path
                                         .to_str()
                                         .expect("could not make path_name");
                                     report_full_telemetry(

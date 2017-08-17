@@ -88,16 +88,18 @@ impl Default for WavefrontConfig {
 
 #[inline]
 fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
+    use cache::string::get;
+
     let mut iter = tags.iter();
-    if let Some(&(ref fk, ref fv)) = iter.next() {
-        s.push_str(fk);
+    if let Some(&(fk, fv)) = iter.next() {
+        s.push_str(get(fk).unwrap().as_ref());
         s.push_str("=");
-        s.push_str(fv);
-        for &(ref k, ref v) in iter {
+        s.push_str(get(fv).unwrap().as_ref());
+        for &(k, v) in iter {
             s.push_str(" ");
-            s.push_str(k);
+            s.push_str(get(k).unwrap().as_ref());
             s.push_str("=");
-            s.push_str(v);
+            s.push_str(get(v).unwrap().as_ref());
         }
     }
 }
@@ -441,7 +443,7 @@ impl Wavefront {
                 unimplemented!();
             }
             AggregationMethod::Sum => if let Some(v) = value.sum() {
-                self.stats.push_str(&value.name);
+                self.stats.push_str(value.name().as_ref());
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut value_cache, v));
                 self.stats.push_str(" ");
@@ -454,7 +456,7 @@ impl Wavefront {
                 tag_buf.clear();
             },
             AggregationMethod::Set => if let Some(v) = value.set() {
-                self.stats.push_str(&value.name);
+                self.stats.push_str(value.name().as_ref());
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut value_cache, v));
                 self.stats.push_str(" ");
@@ -471,7 +473,7 @@ impl Wavefront {
                 for tup in &self.percentiles {
                     let stat: &String = &tup.0;
                     let quant: f64 = tup.1;
-                    self.stats.push_str(&value.name);
+                    self.stats.push_str(value.name().as_ref());
                     self.stats.push_str(".");
                     self.stats.push_str(stat);
                     self.stats.push_str(" ");
@@ -487,7 +489,7 @@ impl Wavefront {
                     self.stats.push_str("\n");
                 }
                 let count = value.count();
-                self.stats.push_str(&value.name);
+                self.stats.push_str(value.name().as_ref());
                 self.stats.push_str(".count");
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut count_cache, count));
@@ -498,7 +500,7 @@ impl Wavefront {
                 self.stats.push_str("\n");
 
                 let mean = value.mean();
-                self.stats.push_str(&value.name);
+                self.stats.push_str(value.name().as_ref());
                 self.stats.push_str(".mean");
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut value_cache, mean));

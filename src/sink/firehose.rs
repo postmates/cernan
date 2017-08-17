@@ -83,6 +83,8 @@ impl Sink for Firehose {
     }
 
     fn flush(&mut self) {
+        use cache::string::get;
+
         let provider = DefaultCredentialsProvider::new().unwrap();
         let dispatcher = default_tls_client().unwrap();
         let client = KinesisFirehoseClient::new(dispatcher, provider, self.region);
@@ -101,7 +103,7 @@ impl Sink for Firehose {
                         let mut pyld = Map::new();
                         pyld.insert(
                             String::from("Path"),
-                            Value::String((*m.path).to_string()),
+                            Value::String((*m.path()).to_string()),
                         );
                         pyld.insert(
                             String::from("Payload"),
@@ -115,11 +117,17 @@ impl Sink for Firehose {
                             String::from("Uuid"),
                             Value::String(Uuid::new_v4().hyphenated().to_string()),
                         );
-                        for &(ref k, ref v) in m.tags.iter() {
-                            pyld.insert(k.clone(), Value::String(v.clone()));
+                        for &(k, v) in m.tags.iter() {
+                            pyld.insert(
+                                get(k).unwrap().as_ref().to_string(),
+                                Value::String(get(v).unwrap().as_ref().to_string()),
+                            );
                         }
-                        for &(ref k, ref v) in m.fields.iter() {
-                            pyld.insert(k.clone(), Value::String(v.clone()));
+                        for &(k, v) in m.fields.iter() {
+                            pyld.insert(
+                                get(k).unwrap().as_ref().to_string(),
+                                Value::String(get(v).unwrap().as_ref().to_string()),
+                            );
                         }
                         Record {
                             data: serde_json::ser::to_vec(&pyld).unwrap(),

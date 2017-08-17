@@ -8,7 +8,6 @@ use protocols::native::{AggregationMethod, LogLine, Payload, Telemetry};
 use sink::{Sink, Valve};
 use std::collections::HashMap;
 use std::io::BufWriter;
-use std::mem::replace;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync;
 use time;
@@ -149,15 +148,17 @@ impl Sink for Native {
     }
 
     fn flush(&mut self) {
+        use cache::string::get;
+
         let mut points = Vec::with_capacity(1024);
         let mut lines = Vec::with_capacity(1024);
 
         for ev in self.buffer.drain(..) {
             match ev {
                 metric::Event::Telemetry(mut m) => {
-                    let mut m = sync::Arc::make_mut(&mut m).take().unwrap();
+                    let m = sync::Arc::make_mut(&mut m).take().unwrap();
                     let mut telem = Telemetry::new();
-                    telem.set_name(replace(&mut m.name, Default::default()));
+                    telem.set_name(m.name().to_string());
                     let method = match m.kind() {
                         metric::AggregationMethod::Histogram => AggregationMethod::BIN,
                         metric::AggregationMethod::Sum => AggregationMethod::SUM,
@@ -175,7 +176,10 @@ impl Sink for Native {
                     // Learn how to consume bits of the metric without having to
                     // clone like crazy
                     for (k, v) in &(*m.tags) {
-                        meta.insert(k.clone(), v.clone());
+                        meta.insert(
+                            get(*k).unwrap().as_ref().to_string(),
+                            get(*v).unwrap().as_ref().to_string(),
+                        );
                     }
                     telem.set_metadata(meta);
                     telem.set_timestamp_ms(m.timestamp * 1000); // FIXME #166
@@ -188,7 +192,7 @@ impl Sink for Native {
                 metric::Event::Log(mut l) => {
                     let l = sync::Arc::make_mut(&mut l).take().unwrap();
                     let mut ll = LogLine::new();
-                    ll.set_path(l.path);
+                    ll.set_path(l.path().to_string());
                     ll.set_value(l.value);
                     let mut meta = HashMap::new();
                     // TODO
@@ -196,7 +200,10 @@ impl Sink for Native {
                     // Learn how to consume bits of the metric without having to
                     // clone like crazy
                     for (k, v) in &l.tags {
-                        meta.insert(k.clone(), v.clone());
+                        meta.insert(
+                            get(*k).unwrap().as_ref().to_string(),
+                            get(*v).unwrap().as_ref().to_string(),
+                        );
                     }
                     ll.set_metadata(meta);
                     ll.set_timestamp_ms(l.time * 1000); // FIXME #166

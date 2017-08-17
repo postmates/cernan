@@ -225,10 +225,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             let mut tags = TagMap::default();
             let ttbl = tbl.as_table().unwrap();
             for (k, v) in ttbl.iter() {
-                tags.insert(
-                    String::from(k.clone()),
-                    String::from(v.as_str().unwrap().to_string()),
-                );
+                tags.insert(k.as_str(), v.as_str().unwrap());
             }
             tags
         }

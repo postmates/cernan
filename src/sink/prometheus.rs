@@ -1,3 +1,4 @@
+use cache::string::get;
 use hyper::server::{Handler, Listening, Request, Response, Server};
 use metric;
 use protobuf::Message;
@@ -83,7 +84,7 @@ fn prometheus_cmp(
     l: &metric::Telemetry,
     r: &metric::Telemetry,
 ) -> Option<::std::cmp::Ordering> {
-    match l.name.partial_cmp(&r.name) {
+    match l.name().partial_cmp(&r.name()) {
         Some(::std::cmp::Ordering::Equal) => ::metric::tagmap::cmp(&l.tags, &r.tags),
         other => other,
     }
@@ -232,13 +233,13 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
     let mut res = res.start().unwrap();
     for m in aggrs {
         let mut metric_family = MetricFamily::new();
-        metric_family.set_name(m.name.clone());
+        metric_family.set_name(m.name().to_string());
         let mut metric = Metric::new();
         let mut label_pairs = Vec::with_capacity(8);
-        for &(ref k, ref v) in m.tags.iter() {
+        for &(k, v) in m.tags.iter() {
             let mut lp = LabelPair::new();
-            lp.set_name(k.clone());
-            lp.set_value(v.clone());
+            lp.set_name(get(k).unwrap().as_ref().to_string());
+            lp.set_value(get(v).unwrap().as_ref().to_string());
             label_pairs.push(lp);
         }
         metric.set_label(RepeatedField::from_vec(label_pairs));
@@ -272,38 +273,38 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         let sum_tags = m.tags.clone();
         let count_tags = m.tags.clone();
         for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-            buf.push_str(&m.name);
+            buf.push_str(m.name().as_ref());
             buf.push_str("{quantile=\"");
             buf.push_str(&q.to_string());
             for (k, v) in &(*m.tags) {
                 buf.push_str("\", ");
-                buf.push_str(k);
+                buf.push_str(get(*k).unwrap().as_ref());
                 buf.push_str("=\"");
-                buf.push_str(v);
+                buf.push_str(get(*v).unwrap().as_ref());
             }
             buf.push_str("\"} ");
             buf.push_str(&m.query(*q).unwrap().to_string());
             buf.push_str("\n");
         }
-        buf.push_str(&m.name);
+        buf.push_str(m.name().as_ref());
         buf.push_str("_sum ");
         buf.push_str("{");
         for (k, v) in &(*sum_tags) {
-            buf.push_str(k);
+            buf.push_str(get(*k).unwrap().as_ref());
             buf.push_str("=\"");
-            buf.push_str(v);
+            buf.push_str(get(*v).unwrap().as_ref());
             buf.push_str("\", ");
         }
         buf.push_str("} ");
         buf.push_str(&m.samples_sum().to_string());
         buf.push_str("\n");
-        buf.push_str(&m.name);
+        buf.push_str(m.name().as_ref());
         buf.push_str("_count ");
         buf.push_str("{");
         for (k, v) in &(*count_tags) {
-            buf.push_str(k);
+            buf.push_str(get(*k).unwrap().as_ref());
             buf.push_str("=\"");
-            buf.push_str(v);
+            buf.push_str(get(*v).unwrap().as_ref());
             buf.push_str("\", ");
         }
         buf.push_str("} ");
@@ -333,8 +334,8 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
 /// In addition, we want to make sure nothing goofy happens to our metrics and
 /// so set the kind to Summarize. The prometheus sink _does not_ respect source
 /// metadata and stores everything as quantiles.
-fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
-    let name: String = mem::replace(&mut metric.name, Default::default());
+fn sanitize(metric: metric::Telemetry) -> metric::Telemetry {
+    let name: String = metric.name().to_string();
     let mut new_name: Vec<u8> = Vec::with_capacity(128);
     for c in name.as_bytes() {
         match *c {
@@ -344,9 +345,8 @@ fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
     }
     metric
         .thaw()
-        .name(
-            String::from_utf8(new_name).expect("wait, we bungled the conversion"),
-        )
+        .name(&String::from_utf8(new_name)
+            .expect("wait, we bungled the conversion"))
         .kind(metric::AggregationMethod::Summarize)
         .harden()
         .unwrap()
@@ -462,7 +462,7 @@ mod test {
                     assert_eq!(cur_cnt, aggr.count());
                     let new_t =
                         aggr.find_match(&telem).expect("could not find in test");
-                    assert_eq!(other.name, new_t.name);
+                    assert_eq!(other.name().as_ref(), new_t.name().as_ref());
                     assert_eq!(new_t.kind(), telem.kind());
                     // TODO
                     //
@@ -474,7 +474,6 @@ mod test {
                     // That's okay. In the future we'll be obeying the
                     // aggregation of the input Telemetry and then this will
                     // work.
-                    //
                     // assert_eq!(other.value(), new_t.value());
                 }
                 None => return TestResult::discard(),
@@ -511,7 +510,7 @@ mod test {
     fn test_sanitization() {
         fn inner(metric: metric::Telemetry) -> TestResult {
             let metric = sanitize(metric);
-            for c in metric.name.chars() {
+            for c in metric.name().as_ref().chars() {
                 match c {
                     'a'...'z' | 'A'...'Z' | '0'...'9' | ':' | '_' => continue,
                     _ => return TestResult::failed(),

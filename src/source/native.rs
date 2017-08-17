@@ -115,7 +115,7 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         if smpls.is_empty() {
                             continue;
                         }
-                        let mut metric = metric::Telemetry::new().name(name);
+                        let mut metric = metric::Telemetry::new().name(&name);
                         metric = metric.value(smpls[0]);
                         metric = match aggr_type {
                             AggregationMethod::SET => {
@@ -136,7 +136,7 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         let mut metric = metric.harden().unwrap(); // todo don't unwrap
                         metric = metric.overlay_tags_from_map(&tags);
                         for (key, value) in meta.drain() {
-                            metric = metric.overlay_tag(key, value);
+                            metric = metric.overlay_tag(&key, &value);
                         }
                         for smpl in &smpls[1..] {
                             metric = metric.insert(*smpl);
@@ -150,11 +150,11 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                         // FIXME #166
                         let ts: i64 = (line.get_timestamp_ms() as f64 * 0.001) as i64;
 
-                        let mut logline = metric::LogLine::new(path, value);
+                        let mut logline = metric::LogLine::new(&path, &value);
                         logline = logline.time(ts);
                         logline = logline.overlay_tags_from_map(&tags);
                         for (key, value) in meta.drain() {
-                            logline = logline.overlay_tag(key, value);
+                            logline = logline.overlay_tag(&key, &value);
                         }
                         util::send(&mut chans, metric::Event::new_log(logline));
 

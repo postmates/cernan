@@ -21,8 +21,8 @@ fn bench_merge_tags_from_map(b: &mut Bencher) {
             .overlay_tag("two", "2")
             .overlay_tag("three", "3");
         let mut tm: TagMap = Default::default();
-        tm.insert(String::from("two"), String::from("22"));
-        tm.insert(String::from("four"), String::from("4"));
+        tm.insert("two", "22");
+        tm.insert("four", "4");
         m0.merge_tags_from_map(&tm);
     });
 }

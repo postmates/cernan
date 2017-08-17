@@ -101,7 +101,7 @@ impl Sink for Console {
     fn flush(&mut self) {
         println!("Flushing lines: {}", Utc::now().to_rfc3339());
         for line in &self.buffer {
-            println!("{} {}: {}", format_time(line.time), line.path, line.value);
+            println!("{} {}: {}", format_time(line.time), line.path(), line.value);
         }
         self.buffer.clear();
 
@@ -120,7 +120,7 @@ impl Sink for Console {
                     let tgt = &mut sums;
                     if let Some(f) = telem.sum() {
                         tgt.push_str("    ");
-                        tgt.push_str(&telem.name);
+                        tgt.push_str(telem.name().as_ref());
                         tgt.push_str("(");
                         tgt.push_str(&telem.timestamp.to_string());
                         tgt.push_str("): ");
@@ -132,7 +132,7 @@ impl Sink for Console {
                     let tgt = &mut sets;
                     if let Some(f) = telem.set() {
                         tgt.push_str("    ");
-                        tgt.push_str(&telem.name);
+                        tgt.push_str(telem.name().as_ref());
                         tgt.push_str("(");
                         tgt.push_str(&telem.timestamp.to_string());
                         tgt.push_str("): ");
@@ -154,7 +154,7 @@ impl Sink for Console {
                         let quant: f64 = tup.1;
                         if let Some(f) = telem.query(quant) {
                             tgt.push_str("    ");
-                            tgt.push_str(&telem.name);
+                            tgt.push_str(telem.name().as_ref());
                             tgt.push_str(": ");
                             tgt.push_str(stat);
                             tgt.push_str(" ");
