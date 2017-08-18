@@ -1,8 +1,7 @@
-use util;
 use filter;
 use metric;
-use source::report_telemetry;
 use time;
+use util;
 
 /// Filter streams to within a bounded interval of current time.
 ///
@@ -11,7 +10,6 @@ use time;
 /// for some time `T`, `(T - time::now()).abs() > tolerance` the item associated
 /// with `T` will be rejected.
 pub struct DelayFilter {
-    config_path: String,
     tolerance: i64,
 }
 
@@ -30,9 +28,6 @@ impl DelayFilter {
     /// Create a new DelayFilter
     pub fn new(config: DelayFilterConfig) -> DelayFilter {
         DelayFilter {
-            config_path: config
-                .config_path
-                .expect("must supply config_path for delay filter"),
             tolerance: config.tolerance,
         }
     }
@@ -49,24 +44,19 @@ impl filter::Filter for DelayFilter {
         res: &mut Vec<metric::Event>,
     ) -> Result<(), filter::FilterError> {
         match event {
-            metric::Event::Telemetry(m) => {
-                report_telemetry(format!("{}.telemetry", self.config_path), 1.0);
-                if let Some(ref telem) = *m {
-                    let telem = telem.clone();
-                    if (telem.timestamp - time::now()).abs() < self.tolerance {
-                        res.push(metric::Event::new_telemetry(telem));
-                    }
+            metric::Event::Telemetry(m) => if let Some(ref telem) = *m {
+                let telem = telem.clone();
+                if (telem.timestamp - time::now()).abs() < self.tolerance {
+                    res.push(metric::Event::new_telemetry(telem));
                 }
-            }
+            },
             metric::Event::Log(l) => if let Some(ref log) = *l {
-                report_telemetry(format!("{}.log", self.config_path), 1.0);
                 let log = log.clone();
                 if (log.time - time::now()).abs() < self.tolerance {
                     res.push(metric::Event::new_log(log));
                 }
             },
             metric::Event::TimerFlush(f) => {
-                report_telemetry(format!("{}.flush", self.config_path), 1.0);
                 res.push(metric::Event::TimerFlush(f));
             }
         }

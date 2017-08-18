@@ -1,12 +1,17 @@
+use coco::Stack;
 use metric;
+use metric::{AggregationMethod, Telemetry};
+use source;
+use sink;
 use source::Source;
-use std::collections::VecDeque;
+use std;
 use std::sync;
+use std::sync::atomic::Ordering;
 use time;
 use util;
 
 lazy_static! {
-    static ref Q: sync::Mutex<VecDeque<metric::Telemetry>> = sync::Mutex::new(VecDeque::new());
+    static ref Q: Stack<metric::Telemetry> = Stack::new();
 }
 
 /// 'Internal' is a Source which is meant to allow cernan to
@@ -52,29 +57,14 @@ impl Internal {
 
 /// Push telemetry into the Internal queue
 ///
-/// Given a name and value, construct a Telemetry with Sum aggregation and push
-/// into Internal's queue. This queue will then be drained into operator
-/// configured forwards.
-pub fn report_telemetry<S>(name: S, value: f64) -> ()
-where
-    S: Into<String>,
-{
-    report_full_telemetry(name, value, None);
-}
-
-/// Push telemetry into the Internal queue
-///
 /// Given a name, value, possible aggregation and possible metadata construct a
 /// Telemetry with said aggregation and push into Internal's queue. This queue
 /// will then be drained into operator configured forwards.
-pub fn report_full_telemetry<S>(
-    name: S,
+pub fn report_full_telemetry(
+    name: &str,
     value: f64,
     metadata: Option<Vec<(&str, &str)>>,
-) -> ()
-where
-    S: Into<String>,
-{
+) -> () {
     use metric::AggregationMethod;
     let mut telem = metric::Telemetry::new()
         .name(name)
@@ -86,7 +76,25 @@ where
         .unwrap_or_default()
         .iter()
         .fold(telem, |acc, &(k, v)| acc.overlay_tag(k, v));
-    Q.lock().unwrap().push_back(telem);
+    Q.push(telem);
+}
+
+macro_rules! atom_non_zero_telem {
+    ($name:expr, $atom:expr, $tags:expr, $chans:expr) => {
+        let now = time::now();
+        let value = $atom.swap(0, Ordering::Acquire);
+        if value != 0 {
+            let telem = Telemetry::new()
+                .name($name)
+                .value(value as f64)
+                .timestamp(now)
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap()
+                .overlay_tags_from_map(&$tags);
+            util::send(&mut $chans, metric::Event::new_telemetry(telem));
+        }
+    }
 }
 
 /// Internal as Source
@@ -97,23 +105,186 @@ where
 /// floor.
 impl Source for Internal {
     fn run(&mut self) {
-        let mut attempts: u32 = 0;
+        let slp = std::time::Duration::from_millis(1_000);
         loop {
-            if let Some(mut telem) = Q.lock().unwrap().pop_front() {
-                attempts = attempts.saturating_sub(1);
-                if !self.chans.is_empty() {
-                    telem = telem.overlay_tags_from_map(&self.tags);
-                    util::send(&mut self.chans, metric::Event::new_telemetry(telem));
-                } else {
-                    // do nothing, intentionally
+            std::thread::sleep(slp);
+            if !self.chans.is_empty() {
+                // source::graphite
+                atom_non_zero_telem!(
+                    "cernan.graphite.new_peer",
+                    source::graphite::GRAPHITE_NEW_PEER,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.graphite.packet",
+                    source::graphite::GRAPHITE_GOOD_PACKET,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.graphite.bad_packet",
+                    source::graphite::GRAPHITE_BAD_PACKET,
+                    self.tags,
+                    self.chans
+                );
+                // source::statsd
+                atom_non_zero_telem!(
+                    "cernan.statsd.packet",
+                    source::statsd::STATSD_GOOD_PACKET,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.statsd.bad_packet",
+                    source::statsd::STATSD_BAD_PACKET,
+                    self.tags,
+                    self.chans
+                );
+                // sink::elasticsearch
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.records.delivery",
+                    sink::elasticsearch::ELASTIC_RECORDS_DELIVERY,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.records.total_delivered",
+                    sink::elasticsearch::ELASTIC_RECORDS_TOTAL_DELIVERED,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.records.total_failed",
+                    sink::elasticsearch::ELASTIC_RECORDS_TOTAL_FAILED,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.attempts",
+                    sink::elasticsearch::ELASTIC_ERROR_ATTEMPTS,
+                    self.tags,
+                    self.chans
+                );
+                // sink::wavefront
+                atom_non_zero_telem!(
+                    "cernan.sinks.wavefront.aggregation.histogram",
+                    sink::wavefront::WAVEFRONT_AGGR_HISTO,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.wavefront.aggregation.sum",
+                    sink::wavefront::WAVEFRONT_AGGR_SUM,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.wavefront.aggregation.set",
+                    sink::wavefront::WAVEFRONT_AGGR_SET,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.wavefront.aggregation.summarize",
+                    sink::wavefront::WAVEFRONT_AGGR_SUMMARIZE,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.wavefront.aggregation.summarize.total_percentiles",
+                    sink::wavefront::WAVEFRONT_AGGR_TOT_PERCENT,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.wavefront.delivery_attempts",
+                    sink::wavefront::WAVEFRONT_DELIVERY_ATTEMPTS,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.wavefront.value.closed",
+                    sink::wavefront::WAVEFRONT_VALVE_CLOSED,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.wavefront.value.open",
+                    sink::wavefront::WAVEFRONT_VALVE_OPEN,
+                    self.tags,
+                    self.chans
+                );
+                // sink::prometheus
+                atom_non_zero_telem!(
+                    "cernan.sinks.prometheus.aggregation.reportable",
+                    sink::prometheus::PROMETHEUS_AGGR_REPORTABLE,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.prometheus.aggregation.remaining",
+                    sink::prometheus::PROMETHEUS_AGGR_REMAINING,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.prometheus.write.binary",
+                    sink::prometheus::PROMETHEUS_WRITE_BINARY,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.prometheus.write.text",
+                    sink::prometheus::PROMETHEUS_WRITE_TEXT,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.prometheus.report_error",
+                    sink::prometheus::PROMETHEUS_REPORT_ERROR,
+                    self.tags,
+                    self.chans
+                );
+                // sink::influxdb
+                atom_non_zero_telem!(
+                    "cernan.sinks.influxdb.delivery_attempts",
+                    sink::influxdb::INFLUX_DELIVERY_ATTEMPTS,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.influxdb.success",
+                    sink::influxdb::INFLUX_SUCCESS,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.influxdb.failure.client_error",
+                    sink::influxdb::INFLUX_FAILURE_CLIENT,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.influxdb.failure.server_error",
+                    sink::influxdb::INFLUX_FAILURE_SERVER,
+                    self.tags,
+                    self.chans
+                );
+                while let Some(mut telem) = Q.pop() {
+                    if !self.chans.is_empty() {
+                        telem = telem.overlay_tags_from_map(&self.tags);
+                        util::send(&mut self.chans,
+                                   metric::Event::new_telemetry(telem));
+                    } else {
+                        // do nothing, intentionally
+                    }
                 }
             } else {
-                // We mod by an arbitrary constant. We don't want to wait _too_
-                // long between polls of the queue but neither do we want to
-                // burn up our CPU.
-                attempts = (attempts + 1) % 10;
+                // do nothing, intentionally
             }
-            time::delay(attempts);
+
+
         }
     }
 }

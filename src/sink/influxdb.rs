@@ -1,14 +1,27 @@
+//! InfluxDB is a telemetry database.
 use hyper::Client;
 use hyper::header;
 use metric::{LogLine, TagMap, Telemetry};
 use quantiles::histogram::Bound;
 use sink::{Sink, Valve};
-use source::report_telemetry;
 use std::cmp;
 use std::string;
 use std::sync;
 use time;
 use url::Url;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+lazy_static! {
+    /// total delivery attempts made by this sink 
+    pub static ref INFLUX_DELIVERY_ATTEMPTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// total successful delivery attempts made by this sink 
+    pub static ref INFLUX_SUCCESS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// total failed delivery attempts because of client error
+    pub static ref INFLUX_FAILURE_CLIENT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// total failed delivery attempts because of server error
+    pub static ref INFLUX_FAILURE_SERVER: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+}
 
 /// The `InfluxDB` structure
 ///
@@ -227,10 +240,7 @@ impl Sink for InfluxDB {
             // delivery_attempts_0 waits. The idea is that a failure that
             // happens to succeed may succeed against a degraded system; we
             // should not assume full health.
-            report_telemetry(
-                "cernan.sinks.influxdb.delivery_attempts",
-                self.delivery_attempts as f64,
-            );
+            INFLUX_DELIVERY_ATTEMPTS.fetch_add(self.delivery_attempts as usize, Ordering::Release);
             time::delay(self.delivery_attempts);
 
             match self.client
@@ -244,7 +254,7 @@ impl Sink for InfluxDB {
                     // https://docs.influxdata.com/influxdb/v1.
                     // 2/guides/writing_data/#http-response-summary
                     if resp.status.is_success() {
-                        report_telemetry("cernan.sinks.influxdb.success", 1.0);
+                        INFLUX_SUCCESS.fetch_add(1, Ordering::Release);
                         buffer.clear();
                         self.delivery_attempts =
                             self.delivery_attempts.saturating_sub(1);
@@ -252,17 +262,11 @@ impl Sink for InfluxDB {
                     } else if resp.status.is_client_error() {
                         self.delivery_attempts =
                             self.delivery_attempts.saturating_add(1);
-                        report_telemetry(
-                            "cernan.sinks.influxdb.failure.client_error",
-                            1.0,
-                        );
+                        INFLUX_FAILURE_CLIENT.fetch_add(1, Ordering::Release);
                     } else if resp.status.is_server_error() {
                         self.delivery_attempts =
                             self.delivery_attempts.saturating_add(1);
-                        report_telemetry(
-                            "cernan.sinks.influxdb.failure.server_error",
-                            1.0,
-                        );
+                        INFLUX_FAILURE_SERVER.fetch_add(1, Ordering::Release);
                     }
                 }
             }

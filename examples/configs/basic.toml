@@ -8,21 +8,22 @@ source = "cernan"
 
 [sources]
   [sources.internal]
-  # forwards = ["filters.delay.two_seconds"]
   forwards = ["sinks.console"]
 
   [sources.graphite.primary]
   port = 2004
-  forwards = ["filters.delay.two_seconds"]
+  forwards = ["filters.delay.smallish"]
+  # forwards = ["sinks.console"]
 
 [filters]
-  [filters.delay.two_seconds]
+  [filters.delay.smallish]
   tolerance = 2
   forwards = ["sinks.console"]
+  # forwards = ["filters.flush_boundary.smallish"]
 
-#   [filters.flush_boundary.four_seconds]
-#   tolerance = 4
-#   forwards = ["sinks.console", "sinks.null"]
+  # [filters.flush_boundary.smallish]
+  # tolerance = 4
+  # forwards = ["sinks.console"]
 
 [sinks]
   [sinks.console]

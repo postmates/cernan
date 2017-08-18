@@ -1,16 +1,33 @@
+//! Prometheus is a pull-based aggregation server
+
 use hyper::server::{Handler, Listening, Request, Response, Server};
 use metric;
 use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protocols::prometheus::*;
 use sink::{Sink, Valve};
-use source::report_telemetry;
 use std::io;
 use std::io::Write;
 use std::mem;
 use std::str;
 use std::sync;
 use std::sync::Mutex;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+lazy_static! {
+    /// Total reportable metrics
+    pub static ref PROMETHEUS_AGGR_REPORTABLE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total remaining metrics in aggr
+    pub static ref PROMETHEUS_AGGR_REMAINING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total writes to binary 
+    pub static ref PROMETHEUS_WRITE_BINARY: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total writes to text 
+    pub static ref PROMETHEUS_WRITE_TEXT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total report errors 
+    pub static ref PROMETHEUS_REPORT_ERROR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+}
+
 
 /// The prometheus sink
 ///
@@ -158,14 +175,8 @@ impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
         let mut aggr = self.aggr.lock().unwrap();
         let reportable: Vec<metric::Telemetry> = aggr.reportable();
-        report_telemetry(
-            "cernan.sinks.prometheus.aggregation.reportable",
-            reportable.len() as f64,
-        );
-        report_telemetry(
-            "cernan.sinks.prometheus.aggregation.remaining",
-            aggr.count() as f64,
-        );
+        PROMETHEUS_AGGR_REPORTABLE.fetch_add(reportable.len(), Ordering::Release);
+        PROMETHEUS_AGGR_REMAINING.fetch_add(aggr.count(), Ordering::Release);
         // Typed hyper::mime is challenging to use. In particular, matching does
         // not seem to work like I expect and handling all other MIME cases in
         // the existing enum strikes me as a fool's errand, on account of there
@@ -188,14 +199,14 @@ impl Handler for SenderHandler {
             }
         }
         let res = if accept_proto {
-            report_telemetry("cernan.sinks.prometheus.write.binary", 1.0);
+            PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Release);
             write_binary(&reportable, res)
         } else {
-            report_telemetry("cernan.sinks.prometheus.write.text", 1.0);
+            PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Release);
             write_text(&reportable, res)
         };
         if res.is_err() {
-            report_telemetry("cernan.sinks.prometheus.report_error", 1.0);
+            PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Release);
             aggr.recombine(reportable);
         }
     }

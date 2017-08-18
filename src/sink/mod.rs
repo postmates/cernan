@@ -13,11 +13,11 @@ use util::Valve;
 mod console;
 mod firehose;
 mod null;
-mod wavefront;
+pub mod wavefront;
 mod native;
-mod influxdb;
-mod prometheus;
-mod elasticsearch;
+pub mod influxdb;
+pub mod prometheus;
+pub mod elasticsearch;
 
 pub use self::console::{Console, ConsoleConfig};
 pub use self::elasticsearch::{Elasticsearch, ElasticsearchConfig};
@@ -58,33 +58,31 @@ pub trait Sink {
             time::delay(attempts);
             match recv.next() {
                 None => attempts += 1,
-                Some(event) => {
-                    match self.valve_state() {
-                        Valve::Open => match event {
-                            Event::TimerFlush(idx) => if idx > last_flush_idx {
-                                if let Some(flush_interval) = self.flush_interval() {
-                                    if idx % flush_interval == 0 {
-                                        self.flush();
-                                    }
+                Some(event) => match self.valve_state() {
+                    Valve::Open => match event {
+                        Event::TimerFlush(idx) => if idx > last_flush_idx {
+                            if let Some(flush_interval) = self.flush_interval() {
+                                if idx % flush_interval == 0 {
+                                    self.flush();
                                 }
-                                last_flush_idx = idx;
-                            },
-                            Event::Telemetry(metric) => {
-                                attempts = attempts.saturating_sub(1);
-                                self.deliver(metric);
                             }
-
-                            Event::Log(line) => {
-                                attempts = attempts.saturating_sub(1);
-                                self.deliver_line(line);
-                            }
+                            last_flush_idx = idx;
                         },
-                        Valve::Closed => {
-                            attempts += 1;
-                            continue;
+                        Event::Telemetry(metric) => {
+                            attempts = attempts.saturating_sub(1);
+                            self.deliver(metric);
                         }
+
+                        Event::Log(line) => {
+                            attempts = attempts.saturating_sub(1);
+                            self.deliver_line(line);
+                        }
+                    },
+                    Valve::Closed => {
+                        attempts += 1;
+                        continue;
                     }
-                }
+                },
             }
         }
     }

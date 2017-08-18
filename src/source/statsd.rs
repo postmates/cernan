@@ -1,13 +1,19 @@
 use metric;
 use protocols::statsd::parse_statsd;
 use source::Source;
-use source::internal::report_telemetry;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::str;
 use std::sync;
 use std::thread;
 use util;
 use util::send;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+lazy_static! {
+    pub static ref STATSD_GOOD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    pub static ref STATSD_BAD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+}
 
 /// The statsd source
 ///
@@ -80,9 +86,9 @@ fn handle_udp(
                 for m in metrics.drain(..) {
                     send(&mut chans, metric::Event::new_telemetry(m));
                 }
-                report_telemetry("cernan.statsd.packet", 1.0);
+                STATSD_GOOD_PACKET.fetch_add(1, Ordering::Release);
             } else {
-                report_telemetry("cernan.statsd.bad_packet", 1.0);
+                STATSD_BAD_PACKET.fetch_add(1, Ordering::Release);
                 error!("BAD PACKET: {:?}", val);
             },
             Err(e) => {

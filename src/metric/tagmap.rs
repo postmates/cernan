@@ -41,7 +41,9 @@ where
         if self.inner.len() != other.inner.len() {
             false
         } else {
-            for (&(ref k, ref v), &(ref o_k, ref o_v)) in self.inner.iter().zip(other.inner.iter()) {
+            for (&(ref k, ref v), &(ref o_k, ref o_v)) in
+                self.inner.iter().zip(other.inner.iter())
+            {
                 if (k != o_k) || (v != o_v) {
                     return false;
                 }
