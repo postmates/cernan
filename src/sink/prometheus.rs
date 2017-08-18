@@ -11,8 +11,8 @@ use std::io::Write;
 use std::mem;
 use std::str;
 use std::sync;
-use std::sync::Mutex;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 lazy_static! {
@@ -20,11 +20,11 @@ lazy_static! {
     pub static ref PROMETHEUS_AGGR_REPORTABLE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total remaining metrics in aggr
     pub static ref PROMETHEUS_AGGR_REMAINING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total writes to binary 
+    /// Total writes to binary
     pub static ref PROMETHEUS_WRITE_BINARY: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total writes to text 
+    /// Total writes to text
     pub static ref PROMETHEUS_WRITE_TEXT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total report errors 
+    /// Total report errors
     pub static ref PROMETHEUS_REPORT_ERROR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
@@ -175,8 +175,8 @@ impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
         let mut aggr = self.aggr.lock().unwrap();
         let reportable: Vec<metric::Telemetry> = aggr.reportable();
-        PROMETHEUS_AGGR_REPORTABLE.fetch_add(reportable.len(), Ordering::Release);
-        PROMETHEUS_AGGR_REMAINING.fetch_add(aggr.count(), Ordering::Release);
+        PROMETHEUS_AGGR_REPORTABLE.fetch_add(reportable.len(), Ordering::Relaxed);
+        PROMETHEUS_AGGR_REMAINING.fetch_add(aggr.count(), Ordering::Relaxed);
         // Typed hyper::mime is challenging to use. In particular, matching does
         // not seem to work like I expect and handling all other MIME cases in
         // the existing enum strikes me as a fool's errand, on account of there
@@ -199,14 +199,14 @@ impl Handler for SenderHandler {
             }
         }
         let res = if accept_proto {
-            PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Release);
+            PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
             write_binary(&reportable, res)
         } else {
-            PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Release);
+            PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
             write_text(&reportable, res)
         };
         if res.is_err() {
-            PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Release);
+            PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
             aggr.recombine(reportable);
         }
     }

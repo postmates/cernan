@@ -1,9 +1,9 @@
 use coco::Stack;
+use filter;
 use metric;
 use metric::{AggregationMethod, Telemetry};
-use source;
-use filter;
 use sink;
+use source;
 use source::Source;
 use std;
 use std::sync;
@@ -83,7 +83,7 @@ pub fn report_full_telemetry(
 macro_rules! atom_non_zero_telem {
     ($name:expr, $atom:expr, $tags:expr, $chans:expr) => {
         let now = time::now();
-        let value = $atom.swap(0, Ordering::Acquire);
+        let value = $atom.swap(0, Ordering::Relaxed);
         if value != 0 {
             let telem = Telemetry::new()
                 .name($name)
@@ -105,6 +105,7 @@ macro_rules! atom_non_zero_telem {
 /// channels. If no channels are configured we toss the Telemetry onto the
 /// floor.
 impl Source for Internal {
+    #[allow(cyclomatic_complexity)]
     fn run(&mut self) {
         let slp = std::time::Duration::from_millis(1_000);
         loop {
@@ -306,8 +307,10 @@ impl Source for Internal {
                 while let Some(mut telem) = Q.pop() {
                     if !self.chans.is_empty() {
                         telem = telem.overlay_tags_from_map(&self.tags);
-                        util::send(&mut self.chans,
-                                   metric::Event::new_telemetry(telem));
+                        util::send(
+                            &mut self.chans,
+                            metric::Event::new_telemetry(telem),
+                        );
                     } else {
                         // do nothing, intentionally
                     }

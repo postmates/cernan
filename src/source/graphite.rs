@@ -76,7 +76,7 @@ fn handle_tcp(
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || for stream in listner.incoming() {
         if let Ok(stream) = stream {
-            GRAPHITE_NEW_PEER.fetch_add(1, Ordering::Release);
+            GRAPHITE_NEW_PEER.fetch_add(1, Ordering::Relaxed);
             debug!(
                 "new peer at {:?} | local addr for peer {:?}",
                 stream.peer_addr(),
@@ -106,14 +106,14 @@ fn handle_stream(
             if len > 0 {
                 if parse_graphite(&line, &mut res, basic_metric.clone()) {
                     assert!(!res.is_empty());
-                    GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Release);
-                    GRAPHITE_TELEM.fetch_add(res.len(), Ordering::Release);
+                    GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
+                    GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
                     for m in res.drain(..) {
                         send(&mut chans, metric::Event::Telemetry(Arc::new(Some(m))));
                     }
                     line.clear();
                 } else {
-                    GRAPHITE_BAD_PACKET.fetch_add(1, Ordering::Release);
+                    GRAPHITE_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
                     error!("bad packet: {:?}", line);
                     line.clear();
                 }

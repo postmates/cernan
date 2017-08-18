@@ -4,11 +4,11 @@ use source::Source;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::str;
 use std::sync;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use util;
 use util::send;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 lazy_static! {
     pub static ref STATSD_GOOD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
@@ -86,9 +86,9 @@ fn handle_udp(
                 for m in metrics.drain(..) {
                     send(&mut chans, metric::Event::new_telemetry(m));
                 }
-                STATSD_GOOD_PACKET.fetch_add(1, Ordering::Release);
+                STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
             } else {
-                STATSD_BAD_PACKET.fetch_add(1, Ordering::Release);
+                STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
                 error!("BAD PACKET: {:?}", val);
             },
             Err(e) => {
