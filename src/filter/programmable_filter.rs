@@ -1,6 +1,6 @@
 use filter;
 use libc::c_int;
-
+use util;
 use lua;
 use lua::{Function, State, ThreadStatus};
 use lua::ffi::lua_State;
@@ -508,6 +508,10 @@ impl ProgrammableFilter {
 }
 
 impl filter::Filter for ProgrammableFilter {
+    fn valve_state(&self) -> util::Valve {
+        util::Valve::Open
+    }
+
     fn process(
         &mut self,
         event: metric::Event,

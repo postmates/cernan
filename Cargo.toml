@@ -21,7 +21,7 @@ fern = "0.4"
 elastic = "0.13"
 elastic_types = "0.19"
 glob = "0.2.11"
-hopper = "0.3"
+hopper = { git = "https://github.com/postmates/hopper.git", branch = "removed_unbounded_member" }
 hyper = "0.10"
 hyper-native-tls = "0.2"
 lazy_static = "0.2.1"

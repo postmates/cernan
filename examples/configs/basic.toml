@@ -8,60 +8,21 @@ source = "cernan"
 
 [sources]
   [sources.internal]
-  forwards = ["sinks.console", "sinks.null"]
-
-  [sources.statsd.primary]
-  enabled = true
-  port = 8125
-  forwards = ["sinks.console", "sinks.null", "sinks.influxdb", "sinks.prometheus"]
-
-  [sources.native.primary]
-  ip = "127.0.0.1"
-  port = 1972
-  forwards = ["sinks.console", "sinks.null", "sinks.influxdb", "sinks.prometheus"]
+  # forwards = ["filters.delay.two_seconds"]
+  forwards = ["sinks.console"]
 
   [sources.graphite.primary]
-  enabled = true
   port = 2004
-  forwards = ["filters.collectd_scrub"]
-
-  [sources.files]
-  [sources.files.example_log]
-  path = "example.log"
-  forwards = ["sinks.firehose.stream_two"]
-
-  [sources.files.foo_log]
-  path = "foo.log"
-  forwards = ["sinks.firehose.stream_two"]
+  forwards = ["filters.delay.two_seconds"]
 
 [filters]
-  [filters.collectd_scrub]
-  script = "collectd_scrub.lua"
-  forwards = ["sinks.console", "sinks.null", "sinks.influxdb", "sinks.prometheus"]
+  [filters.delay.two_seconds]
+  tolerance = 2
+  forwards = ["sinks.console"]
+
+#   [filters.flush_boundary.four_seconds]
+#   tolerance = 4
+#   forwards = ["sinks.console", "sinks.null"]
 
 [sinks]
   [sinks.console]
-  bin_width = 1
-
-  [sinks.null]
-
-  # [sinks.wavefront]
-  # port = 2878
-  # host = "127.0.0.1"
-  # bin_width = 1
-
-  [sinks.influxdb]
-  port = 8089
-  host = "127.0.0.1"
-  bin_width = 1
-
-  [sinks.prometheus]
-  port = 8080
-  host = "127.0.0.1"
-  bin_width = 1
-
-  [sinks.firehose.stream_two]
-  delivery_stream = "stream_two"
-  batch_size = 800
-  region = "us-east-1"
-

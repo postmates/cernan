@@ -1,6 +1,8 @@
 use filter;
 use metric;
 use std::mem;
+use util;
+use source;
 
 /// Buffer events for a set period of flushes
 ///
@@ -51,9 +53,24 @@ impl FlushBoundaryFilter {
             holds: Vec::new(),
         }
     }
+
+    /// Count the number of stored events in the filter
+    pub fn count(&self) -> usize {
+        self.holds.iter().fold(0, |acc, ref hld| acc + hld.events.len())
+    }
 }
 
 impl filter::Filter for FlushBoundaryFilter {
+    fn valve_state(&self) -> util::Valve {
+        if self.count() > 1000 {
+            source::report_telemetry("cernan.filter.flush_boundary.valve.closed", 1.0);
+            util::Valve::Closed
+        } else {
+            source::report_telemetry("cernan.filter.flush_boundary.valve.open", 1.0);
+            util::Valve::Open
+        }
+    }
+
     fn process(
         &mut self,
         event: metric::Event,

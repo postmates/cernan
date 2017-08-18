@@ -563,8 +563,10 @@ impl Sink for Wavefront {
 
     fn valve_state(&self) -> Valve {
         if self.aggrs.len() > 10_000 {
+            report_telemetry("cernan.sink.wavefront.valve.closed", 1.0);
             Valve::Closed
         } else {
+            report_telemetry("cernan.sink.wavefront.valve.open", 1.0);
             Valve::Open
         }
     }

@@ -1,3 +1,4 @@
+use util;
 use filter;
 use metric;
 use source::report_telemetry;
@@ -38,6 +39,10 @@ impl DelayFilter {
 }
 
 impl filter::Filter for DelayFilter {
+    fn valve_state(&self) -> util::Valve {
+        util::Valve::Open
+    }
+
     fn process(
         &mut self,
         event: metric::Event,
