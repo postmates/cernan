@@ -11,7 +11,7 @@ use time;
 use util;
 
 mod programmable_filter;
-mod delay_filter;
+pub mod delay_filter;
 mod flush_boundary_filter;
 
 pub use self::delay_filter::{DelayFilter, DelayFilterConfig};

@@ -15,6 +15,7 @@ use util::send;
 lazy_static! {
     pub static ref GRAPHITE_NEW_PEER: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     pub static ref GRAPHITE_GOOD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    pub static ref GRAPHITE_TELEM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     pub static ref GRAPHITE_BAD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
@@ -104,7 +105,9 @@ fn handle_stream(
         while let Some(len) = line_reader.read_line(&mut line).ok() {
             if len > 0 {
                 if parse_graphite(&line, &mut res, basic_metric.clone()) {
+                    assert!(!res.is_empty());
                     GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Release);
+                    GRAPHITE_TELEM.fetch_add(res.len(), Ordering::Release);
                     for m in res.drain(..) {
                         send(&mut chans, metric::Event::Telemetry(Arc::new(Some(m))));
                     }

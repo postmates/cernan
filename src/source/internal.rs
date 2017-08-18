@@ -2,6 +2,7 @@ use coco::Stack;
 use metric;
 use metric::{AggregationMethod, Telemetry};
 use source;
+use filter;
 use sink;
 use source::Source;
 use std;
@@ -119,6 +120,12 @@ impl Source for Internal {
                 atom_non_zero_telem!(
                     "cernan.graphite.packet",
                     source::graphite::GRAPHITE_GOOD_PACKET,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.graphite.telemetry.received",
+                    source::graphite::GRAPHITE_TELEM,
                     self.tags,
                     self.chans
                 );
@@ -268,6 +275,31 @@ impl Source for Internal {
                 atom_non_zero_telem!(
                     "cernan.sinks.influxdb.failure.server_error",
                     sink::influxdb::INFLUX_FAILURE_SERVER,
+                    self.tags,
+                    self.chans
+                );
+                // filter::delay_filter
+                atom_non_zero_telem!(
+                    "cernan.filters.delay.telemetry.accept",
+                    filter::delay_filter::DELAY_TELEM_ACCEPT,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.filters.delay.telemetry.reject",
+                    filter::delay_filter::DELAY_TELEM_REJECT,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.filters.delay.log.reject",
+                    filter::delay_filter::DELAY_LOG_REJECT,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.filters.delay.log.accept",
+                    filter::delay_filter::DELAY_LOG_ACCEPT,
                     self.tags,
                     self.chans
                 );
