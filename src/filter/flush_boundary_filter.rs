@@ -52,20 +52,11 @@ impl FlushBoundaryFilter {
             holds: Vec::new(),
         }
     }
-
-    /// Count the number of stored events in the filter
-    pub fn count(&self) -> usize {
-        self.holds.iter().fold(0, |acc, hld| acc + hld.events.len())
-    }
 }
 
 impl filter::Filter for FlushBoundaryFilter {
     fn valve_state(&self) -> util::Valve {
-        if self.count() > 10_000 {
-            util::Valve::Closed
-        } else {
-            util::Valve::Open
-        }
+        util::Valve::Open
     }
 
     fn process(
