@@ -1,7 +1,8 @@
+//! Wavefront is a proprietary aggregation and alerting product
+
 use buckets;
 use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
-use source::report_telemetry;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::io::Write as IoWrite;
@@ -10,7 +11,28 @@ use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::string;
 use std::sync;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use time;
+
+lazy_static! {
+    /// Total histograms emitted
+    pub static ref WAVEFRONT_AGGR_HISTO: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total sums emitted
+    pub static ref WAVEFRONT_AGGR_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total sets emitted
+    pub static ref WAVEFRONT_AGGR_SET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total summarize emitted
+    pub static ref WAVEFRONT_AGGR_SUMMARIZE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total percentiles for summarize emitted
+    pub static ref WAVEFRONT_AGGR_TOT_PERCENT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total delivery attempts made
+    pub static ref WAVEFRONT_DELIVERY_ATTEMPTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total valve closed
+    pub static ref WAVEFRONT_VALVE_CLOSED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total valve open
+    pub static ref WAVEFRONT_VALVE_OPEN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+}
 
 /// The `wavefront` sink emits into [Wavefront](http://wavefront.com), a
 /// proprietary metric aggregation and alerting product.
@@ -386,28 +408,16 @@ impl Wavefront {
                     }
 
                     match value.kind() {
-                        AggregationMethod::Histogram => report_telemetry(
-                            "cernan.sinks.wavefront.aggregation.histogram",
-                            1.0,
-                        ),
-                        AggregationMethod::Sum => report_telemetry(
-                            "cernan.sinks.wavefront.aggregation.sum",
-                            1.0,
-                        ),
-                        AggregationMethod::Set => report_telemetry(
-                            "cernan.sinks.wavefront.aggregation.set",
-                            1.0,
-                        ),
+                        AggregationMethod::Histogram => {
+                            WAVEFRONT_AGGR_HISTO.fetch_add(1, Ordering::Relaxed)
+                        }
+                        AggregationMethod::Sum | AggregationMethod::Set => {
+                            WAVEFRONT_AGGR_SUM.fetch_add(1, Ordering::Relaxed)
+                        }
                         AggregationMethod::Summarize => {
-                            report_telemetry(
-                                "cernan.sinks.wavefront.aggregation.summarize",
-                                1.0,
-                            );
-                            report_telemetry(
-                                "cernan.sinks.wavefront.aggregation.\
-                                 summarize.total_percentiles",
-                                self.percentiles.len() as f64,
-                            );
+                            WAVEFRONT_AGGR_SUMMARIZE.fetch_add(1, Ordering::Relaxed);
+                            WAVEFRONT_AGGR_TOT_PERCENT
+                                .fetch_add(self.percentiles.len(), Ordering::Relaxed)
                         }
                     };
 
@@ -522,10 +532,6 @@ impl Sink for Wavefront {
     fn flush(&mut self) {
         self.format_stats();
         loop {
-            report_telemetry(
-                "cernan.sinks.wavefront.delivery_attempts",
-                self.delivery_attempts as f64,
-            );
             if self.delivery_attempts > 0 {
                 debug!("delivery attempts: {}", self.delivery_attempts);
             }
@@ -539,6 +545,7 @@ impl Sink for Wavefront {
                     self.flush_number += 1;
                     return;
                 } else {
+                    WAVEFRONT_DELIVERY_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
                     self.delivery_attempts = self.delivery_attempts.saturating_add(1);
                     delivery_failure = true;
                 }
@@ -563,8 +570,10 @@ impl Sink for Wavefront {
 
     fn valve_state(&self) -> Valve {
         if self.aggrs.len() > 10_000 {
+            WAVEFRONT_VALVE_CLOSED.fetch_add(1, Ordering::Relaxed);
             Valve::Closed
         } else {
+            WAVEFRONT_VALVE_OPEN.fetch_add(1, Ordering::Relaxed);
             Valve::Open
         }
     }

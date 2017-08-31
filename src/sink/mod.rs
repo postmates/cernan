@@ -8,15 +8,16 @@ use hopper;
 use metric::{Event, LogLine, Telemetry};
 use std::sync;
 use time;
+use util::Valve;
 
 mod console;
 mod firehose;
 mod null;
-mod wavefront;
+pub mod wavefront;
 mod native;
-mod influxdb;
-mod prometheus;
-mod elasticsearch;
+pub mod influxdb;
+pub mod prometheus;
+pub mod elasticsearch;
 
 pub use self::console::{Console, ConsoleConfig};
 pub use self::elasticsearch::{Elasticsearch, ElasticsearchConfig};
@@ -26,22 +27,6 @@ pub use self::native::{Native, NativeConfig};
 pub use self::null::{Null, NullConfig};
 pub use self::prometheus::{Prometheus, PrometheusConfig};
 pub use self::wavefront::{Wavefront, WavefrontConfig};
-
-/// Determine the state of a sink, whether open or closed.
-///
-/// Cernan is architected to be a push-based system. It copes with demand rushes
-/// by buffering to disk -- via the hopper queues -- and rejecting memory-based
-/// storage with overload signals. This signal, in particular, limits the amount
-/// of information delivered to a sink by declaring that said sink's input
-/// 'valve' is closed. Exactly how and why a sink declares its valve state is
-/// left to the sink implementation.
-pub enum Valve {
-    /// In the `Open` state a sink will accept new inputs
-    Open,
-    /// In the `Closed` state a sink will reject new inputs, backing them up in
-    /// the communication queue.
-    Closed,
-}
 
 /// A 'sink' is a sink for metrics.
 pub trait Sink {
@@ -73,32 +58,31 @@ pub trait Sink {
             time::delay(attempts);
             match recv.next() {
                 None => attempts += 1,
-                Some(event) => {
-                    attempts = 0;
-                    match self.valve_state() {
-                        Valve::Open => match event {
-                            Event::TimerFlush(idx) => if idx > last_flush_idx {
-                                if let Some(flush_interval) = self.flush_interval() {
-                                    if idx % flush_interval == 0 {
-                                        self.flush();
-                                    }
+                Some(event) => match self.valve_state() {
+                    Valve::Open => match event {
+                        Event::TimerFlush(idx) => if idx > last_flush_idx {
+                            if let Some(flush_interval) = self.flush_interval() {
+                                if idx % flush_interval == 0 {
+                                    self.flush();
                                 }
-                                last_flush_idx = idx;
-                            },
-                            Event::Telemetry(metric) => {
-                                self.deliver(metric);
                             }
-
-                            Event::Log(line) => {
-                                self.deliver_line(line);
-                            }
+                            last_flush_idx = idx;
                         },
-                        Valve::Closed => {
-                            attempts += 1;
-                            continue;
+                        Event::Telemetry(metric) => {
+                            attempts = attempts.saturating_sub(1);
+                            self.deliver(metric);
                         }
+
+                        Event::Log(line) => {
+                            attempts = attempts.saturating_sub(1);
+                            self.deliver_line(line);
+                        }
+                    },
+                    Valve::Closed => {
+                        attempts += 1;
+                        continue;
                     }
-                }
+                },
             }
         }
     }

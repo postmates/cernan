@@ -43,7 +43,7 @@ impl Default for Buckets {
 pub struct Iter<'a> {
     buckets: &'a Buckets,
     key_index: usize,
-    value_index: Option<usize>,
+    value_index: usize,
 }
 
 impl<'a> Iterator for Iter<'a> {
@@ -51,21 +51,13 @@ impl<'a> Iterator for Iter<'a> {
 
     fn next(&mut self) -> Option<&'a Telemetry> {
         while self.key_index < self.buckets.keys.len() {
-            if let Some(value_index) = self.value_index {
-                if value_index < self.buckets.values[self.key_index].len() {
-                    let v = &self.buckets.values[self.key_index][value_index];
-                    self.value_index = Some(value_index + 1);
-                    return Some(v);
-                } else {
-                    self.value_index = None;
-                    self.key_index += 1;
-                }
-            } else if !self.buckets.values[self.key_index].is_empty() {
-                let v = &self.buckets.values[self.key_index][0];
-                self.value_index = Some(1);
+            if self.value_index < self.buckets.values[self.key_index].len() {
+                let v = &self.buckets.values[self.key_index][self.value_index];
+                self.value_index += 1;
                 return Some(v);
             } else {
-                return None;
+                self.value_index = 0;
+                self.key_index += 1;
             }
         }
         None
@@ -212,7 +204,7 @@ impl Buckets {
         Iter {
             buckets: self,
             key_index: 0,
-            value_index: None,
+            value_index: 0,
         }
     }
 }
@@ -827,6 +819,40 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new().quickcheck(inner as fn(Vec<Telemetry>) -> TestResult);
+    }
+
+    #[test]
+    fn same_names_in_and_out() {
+        fn inner(ms: Vec<Telemetry>, loops: usize) -> TestResult {
+            if loops == 0 {
+                return TestResult::discard()
+            }
+
+            let mut bucket = Buckets::new(1);
+
+            let mut expected_names: HashSet<String> = HashSet::new();
+            for m in ms.clone() {
+                expected_names.insert(m.name);
+            }
+            if expected_names.len() == 1 {
+                return TestResult::discard()
+            }
+
+            for _ in 0..loops {
+                for m in ms.clone() {
+                    bucket.add(m);
+                }
+                let mut names: HashSet<String> = HashSet::new();
+                for telem in bucket.iter() {
+                    names.insert(telem.name.clone());
+                }
+                bucket.reset();
+                assert_eq!(expected_names, names);
+            }
+
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(inner as fn(Vec<Telemetry>, usize) -> TestResult);
     }
 
     #[test]

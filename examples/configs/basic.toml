@@ -13,17 +13,17 @@ source = "cernan"
   [sources.statsd.primary]
   enabled = true
   port = 8125
-  forwards = ["sinks.console", "sinks.null", "sinks.influxdb", "sinks.prometheus"]
+  forwards = ["sinks.console", "filters.delay.two_seconds"]
 
   [sources.native.primary]
   ip = "127.0.0.1"
   port = 1972
-  forwards = ["sinks.console", "sinks.null", "sinks.influxdb", "sinks.prometheus"]
+  forwards = ["filters.delay.two_seconds"]
 
   [sources.graphite.primary]
   enabled = true
   port = 2004
-  forwards = ["filters.collectd_scrub"]
+  forwards = ["filters.programmable.collectd_scrub"]
 
   [sources.files]
   [sources.files.example_log]
@@ -35,8 +35,16 @@ source = "cernan"
   forwards = ["sinks.firehose.stream_two"]
 
 [filters]
-  [filters.collectd_scrub]
+  [filters.programmable.collectd_scrub]
   script = "collectd_scrub.lua"
+  forwards = ["filters.delay.two_seconds"]
+
+  [filters.delay.two_seconds]
+  tolerance = 2
+  forwards = ["filters.flush_boundary.two_seconds"]
+
+  [filters.flush_boundary.two_seconds]
+  tolerance = 2
   forwards = ["sinks.console", "sinks.null", "sinks.influxdb", "sinks.prometheus"]
 
 [sinks]
@@ -64,4 +72,3 @@ source = "cernan"
   delivery_stream = "stream_two"
   batch_size = 800
   region = "us-east-1"
-

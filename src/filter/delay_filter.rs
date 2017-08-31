@@ -1,7 +1,27 @@
+//! Filter streams to within a bounded interval of current time.
+//!
+//! This filter is intended to remove items from the stream which are too old,
+//! as defined by the current time and the configured `tolerance`. That is, if
+//! for some time `T`, `(T - time::now()).abs() > tolerance` the item associated
+//! with `T` will be rejected.
+
 use filter;
 use metric;
-use source::report_telemetry;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use time;
+use util;
+
+lazy_static! {
+    /// Total number of telemetry rejected for age
+    pub static ref DELAY_TELEM_REJECT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of telemetry accepted for age
+    pub static ref DELAY_TELEM_ACCEPT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of logline rejected for age
+    pub static ref DELAY_LOG_REJECT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of logline accepted for age
+    pub static ref DELAY_LOG_ACCEPT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+}
 
 /// Filter streams to within a bounded interval of current time.
 ///
@@ -10,7 +30,6 @@ use time;
 /// for some time `T`, `(T - time::now()).abs() > tolerance` the item associated
 /// with `T` will be rejected.
 pub struct DelayFilter {
-    config_path: String,
     tolerance: i64,
 }
 
@@ -29,39 +48,41 @@ impl DelayFilter {
     /// Create a new DelayFilter
     pub fn new(config: DelayFilterConfig) -> DelayFilter {
         DelayFilter {
-            config_path: config
-                .config_path
-                .expect("must supply config_path for delay filter"),
             tolerance: config.tolerance,
         }
     }
 }
 
 impl filter::Filter for DelayFilter {
+    fn valve_state(&self) -> util::Valve {
+        util::Valve::Open
+    }
+
     fn process(
         &mut self,
         event: metric::Event,
         res: &mut Vec<metric::Event>,
     ) -> Result<(), filter::FilterError> {
         match event {
-            metric::Event::Telemetry(m) => {
-                report_telemetry(format!("{}.telemetry", self.config_path), 1.0);
-                if let Some(ref telem) = *m {
-                    let telem = telem.clone();
-                    if (telem.timestamp - time::now()).abs() < self.tolerance {
-                        res.push(metric::Event::new_telemetry(telem));
-                    }
+            metric::Event::Telemetry(m) => if let Some(ref telem) = *m {
+                let telem = telem.clone();
+                if (telem.timestamp - time::now()).abs() < self.tolerance {
+                    DELAY_TELEM_ACCEPT.fetch_add(1, Ordering::Relaxed);
+                    res.push(metric::Event::new_telemetry(telem));
+                } else {
+                    DELAY_TELEM_REJECT.fetch_add(1, Ordering::Relaxed);
                 }
-            }
+            },
             metric::Event::Log(l) => if let Some(ref log) = *l {
-                report_telemetry(format!("{}.log", self.config_path), 1.0);
                 let log = log.clone();
                 if (log.time - time::now()).abs() < self.tolerance {
+                    DELAY_LOG_ACCEPT.fetch_add(1, Ordering::Relaxed);
                     res.push(metric::Event::new_log(log));
+                } else {
+                    DELAY_LOG_REJECT.fetch_add(1, Ordering::Relaxed);
                 }
             },
             metric::Event::TimerFlush(f) => {
-                report_telemetry(format!("{}.flush", self.config_path), 1.0);
                 res.push(metric::Event::TimerFlush(f));
             }
         }

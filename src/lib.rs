@@ -31,6 +31,7 @@ extern crate rusoto_core;
 extern crate rusoto_firehose;
 extern crate seahash;
 extern crate serde;
+extern crate coco;
 #[macro_use]
 extern crate serde_json;
 extern crate toml;
