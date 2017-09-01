@@ -825,7 +825,7 @@ mod test {
     fn same_names_in_and_out() {
         fn inner(ms: Vec<Telemetry>, loops: usize) -> TestResult {
             if loops == 0 {
-                return TestResult::discard()
+                return TestResult::discard();
             }
 
             let mut bucket = Buckets::new(1);
@@ -835,7 +835,7 @@ mod test {
                 expected_names.insert(m.name);
             }
             if expected_names.len() == 1 {
-                return TestResult::discard()
+                return TestResult::discard();
             }
 
             for _ in 0..loops {
