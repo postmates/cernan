@@ -7,6 +7,7 @@ use clap::{App, Arg};
 use metric::TagMap;
 use rusoto_core::Region;
 use std::collections::HashMap;
+use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -226,9 +227,25 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             let mut tags = TagMap::default();
             let ttbl = tbl.as_table().unwrap();
             for (k, v) in ttbl.iter() {
+                let val = match v.as_str() {
+                    Some(s) => {
+                        s.to_string()
+                    },
+                    None => {
+                        let ktbl = v.as_table().expect("tag must be a string or a table");
+                        if ktbl.get("environment").map_or(false, |ev| ev.as_bool().unwrap_or(false)) {
+                            let env_key = ktbl.get("value").expect("must have a value key").as_str().expect("value key must be string");
+                            env::var_os(env_key).expect("value could not be read from the environment").into_string().expect("value read from environment is not a rust string")
+                        } else {
+                            use std::process::exit;
+                            println!("environment variable table must have environment / value keys");
+                            exit(1);
+                        }
+                    }
+                };
                 tags.insert(
                     String::from(k.clone()),
-                    String::from(v.as_str().unwrap().to_string()),
+                    String::from(val),
                 );
             }
             tags
