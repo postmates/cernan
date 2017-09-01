@@ -26,6 +26,7 @@ use sink::NativeConfig;
 use sink::NullConfig;
 use sink::PrometheusConfig;
 use sink::WavefrontConfig;
+use sink::wavefront::PadControl;
 
 use source::FileServerConfig;
 use source::GraphiteConfig;
@@ -367,6 +368,15 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
         args.wavefront = sinks.get("wavefront").map(|snk| {
             let mut res = WavefrontConfig::default();
             res.config_path = Some("sinks.wavefront".to_string());
+
+            res.pad_control = snk.get("padding").and_then(|t| t.as_table()).map(|tbl| {
+                PadControl {
+                    set: tbl.get("set").map_or(false, |v| v.as_bool().expect("could not parse padding.set as boolean")),
+                    sum: tbl.get("sum").map_or(false, |v| v.as_bool().expect("could not parse padding.sum as boolean")),
+                    summarize: tbl.get("summarize").map_or(false, |v| v.as_bool().expect("could not parse padding.summarize as boolean")),
+                    histogram: tbl.get("histogram").map_or(false, |v| v.as_bool().expect("could not parse padding.histogram as boolean")),
+                }
+            }).unwrap_or(res.pad_control);
 
             res.percentiles = snk.get("percentiles")
                 .and_then(|t| t.as_table())
@@ -1211,6 +1221,36 @@ scripts-directory = "/foo/bar"
         assert_eq!(wavefront.percentiles[0], ("max".to_string(), 1.0));
         assert_eq!(wavefront.percentiles[1], ("median".to_string(), 0.5));
         assert_eq!(wavefront.percentiles[2], ("min".to_string(), 0.0));
+    }
+
+    #[test]
+    fn config_file_wavefront_padding_control() {
+        let config = r#"
+    [sinks]
+      [sinks.wavefront]
+      port = 3131
+      host = "example.com"
+      bin_width = 9
+
+      [sinks.wavefront.padding]
+      set = true
+      sum = false
+      summarize = false
+      histogram = true
+    "#;
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.wavefront.is_some());
+        let wavefront = args.wavefront.unwrap();
+        assert_eq!(wavefront.host, String::from("example.com"));
+        assert_eq!(wavefront.port, 3131);
+        assert_eq!(wavefront.bin_width, 9);
+
+        assert_eq!(wavefront.pad_control.set, true);
+        assert_eq!(wavefront.pad_control.sum, false);
+        assert_eq!(wavefront.pad_control.summarize, false);
+        assert_eq!(wavefront.pad_control.histogram, true);
     }
 
     #[test]

@@ -34,6 +34,23 @@ lazy_static! {
     pub static ref WAVEFRONT_VALVE_OPEN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
+/// Controls which aggregrations will be padded
+pub struct PadControl {
+    /// DO pad SET Telemetry if the value is true, DO NOT pad if the value is
+    /// false.
+    pub set: bool,
+    /// DO pad SUM Telemetry if the value is true, DO NOT pad if the value is
+    /// false.
+    pub sum: bool,
+    /// DO pad SUMMARIZE Telemetry if the value is true, DO NOT pad if the value is
+    /// false.
+    pub summarize: bool,
+    /// DO pad HISTOGRAM Telemetry if the value is true, DO NOT pad if the value is
+    /// false.
+    pub histogram: bool,
+}
+
 /// The `wavefront` sink emits into [Wavefront](http://wavefront.com), a
 /// proprietary metric aggregation and alerting product.
 pub struct Wavefront {
@@ -50,6 +67,7 @@ pub struct Wavefront {
     stream: Option<TcpStream>,
     flush_number: u32,
     last_seen: HashMap<u64, i64>,
+    pad_control: PadControl,
 }
 
 /// Configuration for `wavefront`. The challenge of Wavefront is controlling
@@ -77,6 +95,9 @@ pub struct WavefrontConfig {
     pub tags: TagMap,
     /// The sink specific `flush_interval`.
     pub flush_interval: u64,
+    /// Determine if we will or will not pad an aggregation, disregard ephemeral
+    /// status
+    pub pad_control: PadControl,
 }
 
 impl Default for WavefrontConfig {
@@ -104,6 +125,7 @@ impl Default for WavefrontConfig {
             percentiles: percentiles,
             tags: TagMap::default(),
             flush_interval: 60,
+            pad_control: PadControl::default(),
         }
     }
 }
@@ -151,10 +173,15 @@ impl<'a> Pad<'a> {
         }
     }
 
-    pub fn is_pad_zero(&self) -> bool {
+    pub fn skip_pad(&self, pad_control: &PadControl) -> bool {
         match *self {
             Pad::Zero(_, _) => true,
-            Pad::Telem(_) => false,
+            Pad::Telem(x) => match x.kind() {
+                AggregationMethod::Histogram => !pad_control.histogram,
+                AggregationMethod::Set => !pad_control.set,
+                AggregationMethod::Sum => !pad_control.sum,
+                AggregationMethod::Summarize => !pad_control.summarize,
+            },
         }
     }
 
@@ -170,6 +197,7 @@ fn padding<'a>(
     xs: buckets::Iter<'a>,
     span: i64,
     last_seen: &'a HashMap<u64, i64>,
+    pad_control: PadControl,
 ) -> Padding<'a> {
     Padding {
         span: span,
@@ -178,6 +206,7 @@ fn padding<'a>(
         emit_q: Vec::new(),
         last_hash: 0,
         flush_padded: HashSet::default(),
+        pad_control: pad_control,
     }
 }
 
@@ -188,6 +217,7 @@ struct Padding<'a> {
     emit_q: Vec<Pad<'a>>,
     last_hash: u64,
     flush_padded: HashSet<u64>,
+    pad_control: PadControl,
 }
 
 impl<'a> Iterator for Padding<'a> {
@@ -215,7 +245,7 @@ impl<'a> Iterator for Padding<'a> {
                 // is not part of our current sequence and it requires no
                 // padding.
                 if x.hash() == y.hash() {
-                    if x.is_pad_zero() {
+                    if x.skip_pad(&self.pad_control) {
                         self.emit_q.push(y);
                         return Some(x);
                     }
@@ -364,6 +394,7 @@ impl Wavefront {
             flush_interval: config.flush_interval,
             flush_number: 0,
             last_seen: HashMap::default(),
+            pad_control: config.pad_control,
         })
     }
 
@@ -378,8 +409,9 @@ impl Wavefront {
         let mut aggrs = mem::replace(&mut self.aggrs, buckets::Buckets::default());
         let mut last_seen = mem::replace(&mut self.last_seen, Default::default());
 
-        // for pad in padding(aggrs.iter(), self.bin_width, &last_seen) {
-        for pad in padding(aggrs.iter(), self.bin_width, &last_seen) {
+        for pad in
+            padding(aggrs.iter(), self.bin_width, &last_seen, self.pad_control)
+        {
             // When we update the last_seen map we have to be sure that if the new
             // telem has a point with a timestamp greater than the one we have
             // stored we replace the timestamp. Else, we ignore.
@@ -604,9 +636,16 @@ mod test {
         let mut last_seen = HashMap::new();
         last_seen.insert(m0.hash(), 10);
 
+        let pad_control = PadControl {
+            set: true,
+            sum: true,
+            summarize: true,
+            histogram: true,
+        };
+
         bucket.add(m0);
 
-        let mut telems = padding(bucket.iter(), bin_width, &last_seen);
+        let mut telems = padding(bucket.iter(), bin_width, &last_seen, pad_control);
         assert!(telems.next().unwrap().is_zeroed()); // 11 at 0
         assert!(telems.next().unwrap().is_zeroed()); // 99 at 0
         assert!(!telems.next().unwrap().is_zeroed()); // 100 at 0.5
@@ -654,7 +693,14 @@ mod test {
         bucket.add(m2);
         bucket.add(m3);
 
-        let mut telems = padding(bucket.iter(), bin_width, &last_seen);
+        let pad_control = PadControl {
+            set: true,
+            sum: true,
+            summarize: true,
+            histogram: true,
+        };
+
+        let mut telems = padding(bucket.iter(), bin_width, &last_seen, pad_control);
 
         assert!(!telems.next().unwrap().is_zeroed()); // m0
         assert!(!telems.next().unwrap().is_zeroed()); // m1
@@ -663,6 +709,41 @@ mod test {
         assert!(telems.next().unwrap().is_zeroed()); // m3_0
         assert!(!telems.next().unwrap().is_zeroed()); // m3
         assert!(telems.next().is_none());
+    }
+
+    #[test]
+    fn test_pad_is_identity_with_no_pads() {
+        // The iteration order is not specified. As a result what we'll do here
+        // is make sure that the bucket iterator and padding iterator both
+        // return the same number of items.
+        fn inner(bin_width: u8, ms: Vec<Telemetry>) -> TestResult {
+            if bin_width == 0 {
+                return TestResult::discard();
+            }
+            let mut bucket = Buckets::new(bin_width as i64);
+            for m in ms.clone() {
+                bucket.add(m);
+            }
+            let last_seen = Default::default();
+            let pad_control = PadControl {
+                set: false,
+                sum: false,
+                summarize: false,
+                histogram: false,
+            };
+            let expected = bucket.count();
+            let mut padding =
+                padding(bucket.iter(), bin_width as i64, &last_seen, pad_control);
+
+            let mut found = 0;
+            while let Some(_) = padding.next() {
+                found += 1;
+            }
+            assert_eq!(expected, found);
+
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(inner as fn(u8, Vec<Telemetry>) -> TestResult);
     }
 
     #[test]
@@ -676,8 +757,15 @@ mod test {
                 bucket.add(m);
             }
             let last_seen = Default::default();
+            let pad_control = PadControl {
+                set: true,
+                sum: true,
+                summarize: true,
+                histogram: true,
+            };
             let mut padding =
-                padding(bucket.iter(), bin_width as i64, &last_seen).peekable();
+                padding(bucket.iter(), bin_width as i64, &last_seen, pad_control)
+                    .peekable();
 
             while let Some(t) = padding.next() {
                 if let Some(next_t) = padding.peek() {
@@ -730,7 +818,14 @@ mod test {
 
             let mut total_zero_run = 0;
             let last_seen = Default::default();
-            let padding = padding(bucket.iter(), bin_width as i64, &last_seen);
+            let pad_control = PadControl {
+                set: true,
+                sum: true,
+                summarize: true,
+                histogram: true,
+            };
+            let padding =
+                padding(bucket.iter(), bin_width as i64, &last_seen, pad_control);
             for val in padding {
                 match val {
                     Pad::Zero(_, _) => total_zero_run += 1,
@@ -765,7 +860,14 @@ mod test {
             }
 
             let last_seen = Default::default();
-            let padding = padding(bucket.iter(), bin_width as i64, &last_seen);
+            let pad_control = PadControl {
+                set: true,
+                sum: true,
+                summarize: true,
+                histogram: true,
+            };
+            let padding =
+                padding(bucket.iter(), bin_width as i64, &last_seen, pad_control);
             let mut total = 0;
             for val in padding {
                 if !val.is_zeroed() {
@@ -798,6 +900,12 @@ mod test {
             ("99".to_string(), 0.99),
             ("999".to_string(), 0.999),
         ];
+        let pad_control = PadControl {
+            set: true,
+            sum: true,
+            summarize: true,
+            histogram: true,
+        };
         let config = WavefrontConfig {
             bin_width: 1,
             host: "127.0.0.1".to_string(),
@@ -806,6 +914,7 @@ mod test {
             tags: tags.clone(),
             percentiles: percentiles,
             flush_interval: 60,
+            pad_control: pad_control,
         };
         let mut wavefront = Wavefront::new(config).unwrap();
         let dt_0 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
