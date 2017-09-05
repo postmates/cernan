@@ -307,6 +307,9 @@ impl<'a> Iterator for Padding<'a> {
             (Some(x), None) => {
                 self.last_hash = x.hash();
                 // end of sequence
+                if x.skip_pad(&self.pad_control) {
+                    return Some(x);
+                }
                 let flush_padded = self.flush_padded.contains(&x.hash());
                 if !flush_padded {
                     if let Some(ts) = self.last_seen.get(&x.hash()) {
@@ -648,6 +651,35 @@ mod test {
         let mut telems = padding(bucket.iter(), bin_width, &last_seen, pad_control);
         assert!(telems.next().unwrap().is_zeroed()); // 11 at 0
         assert!(telems.next().unwrap().is_zeroed()); // 99 at 0
+        assert!(!telems.next().unwrap().is_zeroed()); // 100 at 0.5
+        assert!(telems.next().is_none());
+    }
+
+    #[test]
+    fn test_no_pad_across_flush() {
+        let bin_width = 1;
+        let mut bucket = buckets::Buckets::new(bin_width);
+
+        let m0 = Telemetry::new()
+            .value(0.5)
+            .kind(AggregationMethod::Set)
+            .name("")
+            .harden()
+            .unwrap()
+            .timestamp(100);
+        let mut last_seen = HashMap::new();
+        last_seen.insert(m0.hash(), 10);
+
+        let pad_control = PadControl {
+            set: false,
+            sum: false,
+            summarize: false,
+            histogram: false,
+        };
+
+        bucket.add(m0);
+
+        let mut telems = padding(bucket.iter(), bin_width, &last_seen, pad_control);
         assert!(!telems.next().unwrap().is_zeroed()); // 100 at 0.5
         assert!(telems.next().is_none());
     }
