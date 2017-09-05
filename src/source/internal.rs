@@ -316,10 +316,10 @@ impl Source for Internal {
                     }
                 }
             } else {
-                // do nothing, intentionally
+                while let Some(_) = Q.pop() {
+                    // do nothing, intentionally
+                }
             }
-
-
         }
     }
 }
