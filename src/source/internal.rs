@@ -316,6 +316,9 @@ impl Source for Internal {
                     }
                 }
             } else {
+                // There are no chans available. In this case we want to drain
+                // and deallocate any internal telemetry that may have made it
+                // to Q.
                 while let Some(_) = Q.pop() {
                     // do nothing, intentionally
                 }
