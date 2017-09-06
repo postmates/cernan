@@ -291,7 +291,6 @@ impl Sink for Firehose {
                         }
                     }
                 }
-
             }
         }
         self.buffer.clear();

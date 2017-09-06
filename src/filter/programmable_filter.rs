@@ -48,7 +48,6 @@ impl<'a> Payload<'a> {
             global_tags: tags,
             path: path,
         }
-
     }
 
     fn blank(tags: &'a metric::TagMap, path: &'a str) -> Payload<'a> {
@@ -231,9 +230,8 @@ impl<'a> Payload<'a> {
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => match state.to_str(4).map(|v| v.to_owned()) {
-                Some(val) => match sync::Arc::make_mut(
-                    &mut (*pyld).metrics[idx].tags,
-                ).insert(key, val)
+                Some(val) => match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags)
+                    .insert(key, val)
                 {
                     Some(old_v) => {
                         state.push_string(&old_v);

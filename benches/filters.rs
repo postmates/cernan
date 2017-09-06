@@ -2,8 +2,8 @@
 
 mod benches {
     mod programmable_filter {
-        extern crate test;
         extern crate cernan;
+        extern crate test;
 
 
         use self::cernan::filter::{Filter, ProgrammableFilter,

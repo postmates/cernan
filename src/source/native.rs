@@ -157,7 +157,6 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
                             logline = logline.overlay_tag(key, value);
                         }
                         util::send(&mut chans, metric::Event::new_log(logline));
-
                     }
                 }
                 Err(err) => {

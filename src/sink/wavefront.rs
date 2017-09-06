@@ -43,10 +43,12 @@ pub struct PadControl {
     /// DO pad SUM Telemetry if the value is true, DO NOT pad if the value is
     /// false.
     pub sum: bool,
-    /// DO pad SUMMARIZE Telemetry if the value is true, DO NOT pad if the value is
+    /// DO pad SUMMARIZE Telemetry if the value is true, DO NOT pad if the
+    /// value is
     /// false.
     pub summarize: bool,
-    /// DO pad HISTOGRAM Telemetry if the value is true, DO NOT pad if the value is
+    /// DO pad HISTOGRAM Telemetry if the value is true, DO NOT pad if the
+    /// value is
     /// false.
     pub histogram: bool,
 }
@@ -412,8 +414,7 @@ impl Wavefront {
         let mut aggrs = mem::replace(&mut self.aggrs, buckets::Buckets::default());
         let mut last_seen = mem::replace(&mut self.last_seen, Default::default());
 
-        for pad in
-            padding(aggrs.iter(), self.bin_width, &last_seen, self.pad_control)
+        for pad in padding(aggrs.iter(), self.bin_width, &last_seen, self.pad_control)
         {
             // When we update the last_seen map we have to be sure that if the new
             // telem has a point with a timestamp greater than the one we have

@@ -79,11 +79,9 @@ pub trait Filter {
                     attempts = 0;
                     match self.valve_state() {
                         util::Valve::Open => match self.process(event, &mut events) {
-                            Ok(()) => {
-                            for ev in events.drain(..) {
+                            Ok(()) => for ev in events.drain(..) {
                                 util::send(&mut chans, ev)
-                            }
-                        }
+                            },
                             Err(fe) => {
                                 error!(
                                     "Failed to run filter with error: {:?}",
@@ -99,7 +97,6 @@ pub trait Filter {
                         }
                     }
                 }
-
             }
         }
     }

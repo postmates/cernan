@@ -20,6 +20,8 @@
 extern crate byteorder;
 extern crate chrono;
 extern crate clap;
+extern crate coco;
+extern crate elastic;
 extern crate glob;
 extern crate hopper;
 extern crate hyper;
@@ -30,16 +32,11 @@ extern crate quantiles;
 extern crate rusoto_core;
 extern crate rusoto_firehose;
 extern crate seahash;
-extern crate serde;
-extern crate coco;
 #[macro_use]
 extern crate serde_json;
 extern crate toml;
-extern crate uuid;
 extern crate url;
-
-extern crate elastic_types;
-extern crate elastic;
+extern crate uuid;
 
 #[macro_use]
 extern crate log;

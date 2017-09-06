@@ -999,10 +999,8 @@ mod test {
 
             for val in bucket.iter() {
                 if let Some(c_vs) = cnts.get(&val.name) {
-                    match c_vs.binary_search_by_key(
-                        &val.timestamp,
-                        |&(c_ts, _)| c_ts,
-                    ) {
+                    match c_vs.binary_search_by_key(&val.timestamp, |&(c_ts, _)| c_ts)
+                    {
                         Ok(idx) => {
                             let c_v = &c_vs[idx];
 
@@ -1039,7 +1037,6 @@ mod test {
                         }
                         Err(_) => return TestResult::failed(),
                     }
-
                 } else {
                     return TestResult::failed();
                 }

@@ -227,26 +227,30 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             let mut tags = TagMap::default();
             let ttbl = tbl.as_table().unwrap();
             for (k, v) in ttbl.iter() {
-                let val = match v.as_str() {
-                    Some(s) => {
-                        s.to_string()
-                    },
-                    None => {
-                        let ktbl = v.as_table().expect("tag must be a string or a table");
-                        if ktbl.get("environment").map_or(false, |ev| ev.as_bool().unwrap_or(false)) {
-                            let env_key = ktbl.get("value").expect("must have a value key").as_str().expect("value key must be string");
-                            env::var_os(env_key).expect("value could not be read from the environment").into_string().expect("value read from environment is not a rust string")
-                        } else {
-                            use std::process::exit;
-                            println!("environment variable table must have environment / value keys");
-                            exit(1);
+                let val =
+                    match v.as_str() {
+                        Some(s) => s.to_string(),
+                        None => {
+                            let ktbl =
+                                v.as_table().expect("tag must be a string or a table");
+                            if ktbl.get("environment")
+                                .map_or(false, |ev| ev.as_bool().unwrap_or(false))
+                            {
+                                let env_key = ktbl.get("value")
+                                    .expect("must have a value key")
+                                    .as_str()
+                                    .expect("value key must be string");
+                                env::var_os(env_key).expect("value could not be read from the environment").into_string().expect("value read from environment is not a rust string")
+                            } else {
+                                use std::process::exit;
+                                println!(
+                                    "environment variable table must have environment / value keys"
+                                );
+                                exit(1);
+                            }
                         }
-                    }
-                };
-                tags.insert(
-                    String::from(k.clone()),
-                    String::from(val),
-                );
+                    };
+                tags.insert(String::from(k.clone()), String::from(val));
             }
             tags
         }
@@ -386,14 +390,29 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             let mut res = WavefrontConfig::default();
             res.config_path = Some("sinks.wavefront".to_string());
 
-            res.pad_control = snk.get("padding").and_then(|t| t.as_table()).map(|tbl| {
-                PadControl {
-                    set: tbl.get("set").map_or(false, |v| v.as_bool().expect("could not parse padding.set as boolean")),
-                    sum: tbl.get("sum").map_or(false, |v| v.as_bool().expect("could not parse padding.sum as boolean")),
-                    summarize: tbl.get("summarize").map_or(false, |v| v.as_bool().expect("could not parse padding.summarize as boolean")),
-                    histogram: tbl.get("histogram").map_or(false, |v| v.as_bool().expect("could not parse padding.histogram as boolean")),
-                }
-            }).unwrap_or(res.pad_control);
+            res.pad_control = snk.get("padding")
+                .and_then(|t| t.as_table())
+                .map(|tbl| {
+                    PadControl {
+                        set: tbl.get("set").map_or(false, |v| {
+                            v.as_bool()
+                                .expect("could not parse padding.set as boolean")
+                        }),
+                        sum: tbl.get("sum").map_or(false, |v| {
+                            v.as_bool()
+                                .expect("could not parse padding.sum as boolean")
+                        }),
+                        summarize: tbl.get("summarize").map_or(false, |v| {
+                            v.as_bool()
+                                .expect("could not parse padding.summarize as boolean")
+                        }),
+                        histogram: tbl.get("histogram").map_or(false, |v| {
+                            v.as_bool()
+                                .expect("could not parse padding.histogram as boolean")
+                        }),
+                    }
+                })
+                .unwrap_or(res.pad_control);
 
             res.percentiles = snk.get("percentiles")
                 .and_then(|t| t.as_table())

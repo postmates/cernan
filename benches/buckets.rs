@@ -1,8 +1,8 @@
 #![feature(test)]
 
-extern crate test;
 extern crate cernan;
 extern crate chrono;
+extern crate test;
 
 use self::test::Bencher;
 use cernan::buckets;
