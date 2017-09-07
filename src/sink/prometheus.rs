@@ -7,9 +7,12 @@ use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protocols::prometheus::*;
 use quantiles::histogram::Bound;
+use seahash::SeaHasher;
 use sink::{Sink, Valve};
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::f64;
+use std::hash::BuildHasherDefault;
 use std::io;
 use std::io::Write;
 use std::mem;
@@ -50,6 +53,9 @@ pub struct Prometheus {
 /// The configuration for Prometheus sink
 #[derive(Debug, Deserialize)]
 pub struct PrometheusConfig {
+    /// Configure how many seconds worth of Telemetry the Prometheus aggregation
+    /// will retain. Values only expire as new values come in to push them out.
+    pub retain_limit: usize,
     /// The host to listen for prometheus. This will be used to bind an HTTP
     /// server to the given host. Host may be an IP address or a DNS hostname.
     pub host: String,
@@ -62,6 +68,7 @@ pub struct PrometheusConfig {
 impl Default for PrometheusConfig {
     fn default() -> Self {
         PrometheusConfig {
+            retain_limit: 10,
             host: "localhost".to_string(),
             port: 8086,
             config_path: None,
@@ -87,6 +94,7 @@ struct SenderHandler {
 /// establish the above invariants.
 #[derive(Clone, Debug)]
 struct PrometheusAggr {
+    retain_limit: usize,
     // The approach we take is unique in cernan: we drop all timestamps and _do
     // not bin_. This is driven by the following comment in Prometheus' doc /
     // our own experience trying to set explict timestamps:
@@ -96,18 +104,12 @@ struct PrometheusAggr {
     //     then you probably need the pushgateway (without timestamps) instead.
     //
     // Prometheus has a certain view of the world -- and that's fine -- so we
-    // need to meet it there.
-    inner: Vec<metric::Telemetry>,
-}
-
-fn prometheus_cmp(
-    l: &metric::Telemetry,
-    r: &metric::Telemetry,
-) -> Option<::std::cmp::Ordering> {
-    match l.name.partial_cmp(&r.name) {
-        Some(::std::cmp::Ordering::Equal) => ::metric::tagmap::cmp(&l.tags, &r.tags),
-        other => other,
-    }
+    // need to meet it there. But! We can't just drop metrics as soon as they're
+    // read, apparently, since prometheus expects to be able to re-read multiple
+    // times and get roughly similar results. What we do, then, is store a
+    // sliding window of metrics per hash, keeping only ten values per
+    // timestamp. We sum these values up at report time.
+    inner: HashMap<u64, Vec<metric::Telemetry>, BuildHasherDefault<SeaHasher>>,
 }
 
 impl PrometheusAggr {
@@ -115,11 +117,19 @@ impl PrometheusAggr {
     /// Telemetry
     #[cfg(test)]
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
-        match self.inner.binary_search_by(|probe| {
-            prometheus_cmp(probe, &telem).expect("could not compare")
-        }) {
-            Ok(idx) => Some(self.inner[idx].clone()),
-            Err(_) => None,
+        if let Some(vs) = self.inner.get(&telem.hash()) {
+            let mut iter = vs.iter();
+            if let Some(fst) = iter.next() {
+                let mut base = fst.clone();
+                for x in iter {
+                    base += x.clone();
+                }
+                Some(base)
+            } else {
+                None
+            }
+        } else {
+            None
         }
     }
 
@@ -129,7 +139,18 @@ impl PrometheusAggr {
     /// for shipping to Prometheus. Shipping a point to Prometheus drops that
     /// point from memory, once it's gone over the wire.
     fn reportable(&mut self) -> Vec<metric::Telemetry> {
-        mem::replace(&mut self.inner, Default::default())
+        let mut ret = Vec::new();
+        for v in self.inner.values() {
+            let mut iter = v.iter();
+            if let Some(fst) = iter.next() {
+                let mut base = fst.clone();
+                for x in iter {
+                    base += x.clone();
+                }
+                ret.push(base);
+            }
+        }
+        ret
     }
 
     /// Insert a Telemetry into the aggregation
@@ -138,11 +159,15 @@ impl PrometheusAggr {
     /// PrometheusAggr. Timestamps are _not_ respected. Distinctions between
     /// Telemetry of the same name are only made if their tagmaps are distinct.
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
-        match self.inner.binary_search_by(|probe| {
-            prometheus_cmp(probe, &telem).expect("could not compare")
-        }) {
-            Ok(idx) => self.inner[idx] += telem,
-            Err(idx) => self.inner.insert(idx, telem),
+        let ts_vec = self.inner.entry(telem.hash()).or_insert(vec![]);
+        match (*ts_vec).binary_search_by(|probe| probe.timestamp.cmp(&telem.timestamp))
+        {
+            Ok(idx) => ts_vec[idx] += telem,
+            Err(idx) => ts_vec.insert(idx, telem),
+        }
+        if ts_vec.len() > self.retain_limit {
+            let overage = ts_vec.len() - self.retain_limit;
+            let _ = ts_vec.drain(0..overage);
         }
         true
     }
@@ -165,11 +190,11 @@ impl PrometheusAggr {
     fn count(&self) -> usize {
         self.inner.len()
     }
-}
 
-impl Default for PrometheusAggr {
-    fn default() -> PrometheusAggr {
+    /// Create a new PrometheusAggr
+    fn new(retain_limit: usize) -> PrometheusAggr {
         PrometheusAggr {
+            retain_limit: retain_limit,
             inner: Default::default(),
         }
     }
@@ -221,8 +246,9 @@ impl Prometheus {
     ///
     /// Please see documentation on `PrometheusConfig` for more details.
     pub fn new(config: PrometheusConfig) -> Prometheus {
-        let aggrs = sync::Arc::new(sync::Mutex::new(Default::default()));
-        let srv_aggrs = sync::Arc::clone(&aggrs);
+        let aggrs =
+            sync::Arc::new(sync::Mutex::new(PrometheusAggr::new(config.retain_limit)));
+        let srv_aggrs = aggrs.clone();
         let listener = Server::http((config.host.as_str(), config.port))
             .unwrap()
             .handle_threads(SenderHandler { aggr: srv_aggrs }, 1)
@@ -580,9 +606,30 @@ mod test {
         where
             G: Gen,
         {
-            let mut inner: Vec<metric::Telemetry> = Arbitrary::arbitrary(g);
-            inner.sort_by(|a, b| prometheus_cmp(a, b).unwrap());
-            PrometheusAggr { inner: inner }
+            let retain_limit: usize = match Arbitrary::arbitrary(g) {
+                0 => 1,
+                n => n,
+            };
+            let limit: usize = Arbitrary::arbitrary(g);
+            let mut inner: HashMap<
+                u64,
+                Vec<metric::Telemetry>,
+                BuildHasherDefault<SeaHasher>,
+            > = Default::default();
+            for _ in 0..limit {
+                let telem: metric::Telemetry = Arbitrary::arbitrary(g);
+                let ts_vec = inner.entry(telem.hash()).or_insert(vec![]);
+                match (*ts_vec)
+                    .binary_search_by(|probe| probe.timestamp.cmp(&telem.timestamp))
+                {
+                    Ok(idx) => ts_vec[idx] += telem,
+                    Err(idx) => ts_vec.insert(idx, telem),
+                }
+            }
+            PrometheusAggr {
+                retain_limit: retain_limit,
+                inner: inner,
+            }
         }
     }
 
@@ -622,7 +669,6 @@ mod test {
             let reportable = aggr.reportable();
 
             assert_eq!(cur_cnt, reportable.len());
-            assert_eq!(0, aggr.count());
 
             TestResult::passed()
         }
