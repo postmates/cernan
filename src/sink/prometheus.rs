@@ -2,10 +2,14 @@
 
 use hyper::server::{Handler, Listening, Request, Response, Server};
 use metric;
+use metric::AggregationMethod;
 use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protocols::prometheus::*;
+use quantiles::histogram::Bound;
 use sink::{Sink, Valve};
+use std::collections::HashSet;
+use std::f64;
 use std::io;
 use std::io::Write;
 use std::mem;
@@ -241,37 +245,119 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
         ],
     );
     let mut res = res.start().unwrap();
-    for m in aggrs {
-        let mut metric_family = MetricFamily::new();
-        metric_family.set_name(m.name.clone());
-        let mut metric = Metric::new();
-        let mut label_pairs = Vec::with_capacity(8);
-        for &(ref k, ref v) in m.tags.iter() {
-            let mut lp = LabelPair::new();
-            lp.set_name(k.clone());
-            lp.set_value(v.clone());
-            label_pairs.push(lp);
+    for value in aggrs {
+        match value.kind() {
+            AggregationMethod::Sum => if let Some(v) = value.sum() {
+                let mut metric_family = MetricFamily::new();
+                metric_family.set_name(value.name.clone());
+                let mut metric = Metric::new();
+                let mut label_pairs = Vec::with_capacity(8);
+                for &(ref k, ref v) in value.tags.iter() {
+                    let mut lp = LabelPair::new();
+                    lp.set_name(k.clone());
+                    lp.set_value(v.clone());
+                    label_pairs.push(lp);
+                }
+                metric.set_label(RepeatedField::from_vec(label_pairs));
+                let mut counter = Counter::new();
+                counter.set_value(v);
+                metric.set_counter(counter);
+                metric_family.set_field_type(MetricType::COUNTER);
+                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
+                metric_family
+                    .write_length_delimited_to_writer(res.by_ref())
+                    .expect("FAILED TO WRITE TO HTTP RESPONSE");
+            },
+            AggregationMethod::Set => if let Some(v) = value.set() {
+                let mut metric_family = MetricFamily::new();
+                metric_family.set_name(value.name.clone());
+                let mut metric = Metric::new();
+                let mut label_pairs = Vec::with_capacity(8);
+                for &(ref k, ref v) in value.tags.iter() {
+                    let mut lp = LabelPair::new();
+                    lp.set_name(k.clone());
+                    lp.set_value(v.clone());
+                    label_pairs.push(lp);
+                }
+                metric.set_label(RepeatedField::from_vec(label_pairs));
+                let mut gauge = Gauge::new();
+                gauge.set_value(v);
+                metric.set_gauge(gauge);
+                metric_family.set_field_type(MetricType::GAUGE);
+                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
+                metric_family
+                    .write_length_delimited_to_writer(res.by_ref())
+                    .expect("FAILED TO WRITE TO HTTP RESPONSE");
+            },
+            AggregationMethod::Summarize => {
+                let mut metric_family = MetricFamily::new();
+                metric_family.set_name(value.name.clone());
+                let mut metric = Metric::new();
+                let mut label_pairs = Vec::with_capacity(8);
+                for &(ref k, ref v) in value.tags.iter() {
+                    let mut lp = LabelPair::new();
+                    lp.set_name(k.clone());
+                    lp.set_value(v.clone());
+                    label_pairs.push(lp);
+                }
+                metric.set_label(RepeatedField::from_vec(label_pairs));
+                let mut summary = Summary::new();
+                summary.set_sample_count(value.count() as u64);
+                summary.set_sample_sum(value.samples_sum());
+                let mut quantiles = Vec::with_capacity(9);
+                for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
+                    let mut quantile = Quantile::new();
+                    quantile.set_quantile(*q);
+                    quantile.set_value(value.query(*q).unwrap());
+                    quantiles.push(quantile);
+                }
+                summary.set_quantile(RepeatedField::from_vec(quantiles));
+                metric.set_summary(summary);
+                metric_family.set_field_type(MetricType::SUMMARY);
+                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
+                metric_family
+                    .write_length_delimited_to_writer(res.by_ref())
+                    .expect("FAILED TO WRITE TO HTTP RESPONSE");
+            }
+            AggregationMethod::Histogram => {
+                let mut metric_family = MetricFamily::new();
+                metric_family.set_name(value.name.clone());
+                let mut metric = Metric::new();
+                let mut label_pairs = Vec::with_capacity(8);
+                for &(ref k, ref v) in value.tags.iter() {
+                    let mut lp = LabelPair::new();
+                    lp.set_name(k.clone());
+                    lp.set_value(v.clone());
+                    label_pairs.push(lp);
+                }
+                metric.set_label(RepeatedField::from_vec(label_pairs));
+                let mut histogram = Histogram::new();
+                histogram.set_sample_count(value.count() as u64);
+                histogram.set_sample_sum(value.samples_sum());
+                let mut buckets = Vec::with_capacity(16);
+                if let Some(bin_iter) = value.bins() {
+                    let mut cummulative: u64 = 0;
+                    for &(bound, val) in bin_iter {
+                        let bnd = match bound {
+                            Bound::Finite(bnd) => bnd,
+                            Bound::PosInf => f64::INFINITY,
+                        };
+                        cummulative += val as u64;
+                        let mut bucket = Bucket::new();
+                        bucket.set_cumulative_count(cummulative);
+                        bucket.set_upper_bound(bnd);
+                        buckets.push(bucket);
+                    }
+                }
+                histogram.set_bucket(RepeatedField::from_vec(buckets));
+                metric.set_histogram(histogram);
+                metric_family.set_field_type(MetricType::HISTOGRAM);
+                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
+                metric_family
+                    .write_length_delimited_to_writer(res.by_ref())
+                    .expect("FAILED TO WRITE TO HTTP RESPONSE");
+            }
         }
-        metric.set_label(RepeatedField::from_vec(label_pairs));
-        let mut summary = Summary::new();
-        summary.set_sample_count(m.count() as u64);
-        if let Some(smpl_sum) = m.samples_sum() {
-            summary.set_sample_sum(smpl_sum);
-        }
-        let mut quantiles = Vec::with_capacity(9);
-        for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-            let mut quantile = Quantile::new();
-            quantile.set_quantile(*q);
-            quantile.set_value(m.query(*q).unwrap());
-            quantiles.push(quantile);
-        }
-        summary.set_quantile(RepeatedField::from_vec(quantiles));
-        metric.set_summary(summary);
-        metric_family.set_field_type(MetricType::SUMMARY);
-        metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-        metric_family
-            .write_length_delimited_to_writer(res.by_ref())
-            .expect("FAILED TO WRITE TO HTTP RESPONSE");
     }
     res.end()
 }
@@ -281,47 +367,137 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         .set_raw("content-type", vec![b"text/plain; version=0.0.4".to_vec()]);
     let mut buf = String::with_capacity(1024);
     let mut res = res.start().unwrap();
-    for m in aggrs {
-        let sum_tags = sync::Arc::clone(&m.tags);
-        let count_tags = sync::Arc::clone(&m.tags);
-        for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-            buf.push_str(&m.name);
-            buf.push_str("{quantile=\"");
-            buf.push_str(&q.to_string());
-            for (k, v) in &(*m.tags) {
-                buf.push_str("\", ");
-                buf.push_str(k);
-                buf.push_str("=\"");
-                buf.push_str(v);
+    let mut seen = HashSet::new();
+    for value in aggrs {
+        match value.kind() {
+            AggregationMethod::Sum => if let Some(v) = value.sum() {
+                if seen.insert(&value.name) {
+                    buf.push_str("# TYPE counter\n");
+                }
+                buf.push_str(&value.name);
+                buf.push_str("{");
+                for (k, v) in &(*value.tags) {
+                    buf.push_str("\", ");
+                    buf.push_str(k);
+                    buf.push_str("=\"");
+                    buf.push_str(v);
+                }
+                buf.push_str("\"} ");
+                buf.push_str(&v.to_string());
+                buf.push_str("\n");
+            },
+            AggregationMethod::Set => if let Some(v) = value.set() {
+                if seen.insert(&value.name) {
+                    buf.push_str("# TYPE gauge\n");
+                }
+                buf.push_str(&value.name);
+                buf.push_str("{");
+                for (k, v) in &(*value.tags) {
+                    buf.push_str("\", ");
+                    buf.push_str(k);
+                    buf.push_str("=\"");
+                    buf.push_str(v);
+                }
+                buf.push_str("\"} ");
+                buf.push_str(&v.to_string());
+                buf.push_str("\n");
+            },
+            AggregationMethod::Histogram => if let Some(bin_iter) = value.bins() {
+                if seen.insert(&value.name) {
+                    buf.push_str("# TYPE histogram\n");
+                }
+                for &(bound, val) in bin_iter {
+                    buf.push_str(&value.name);
+                    buf.push_str("{le=\"");
+                    match bound {
+                        Bound::Finite(bnd) => {
+                            buf.push_str(&bnd.to_string());
+                        }
+                        Bound::PosInf => {
+                            buf.push_str("+Inf");
+                        }
+                    }
+                    for (k, v) in &(*value.tags) {
+                        buf.push_str("\", ");
+                        buf.push_str(k);
+                        buf.push_str("=\"");
+                        buf.push_str(v);
+                    }
+                    buf.push_str("\"} ");
+                    buf.push_str(&val.to_string());
+                    buf.push_str("\n");
+                }
+                buf.push_str(&value.name);
+                buf.push_str("_sum ");
+                buf.push_str("{");
+                for (k, v) in &(*value.tags) {
+                    buf.push_str(k);
+                    buf.push_str("=\"");
+                    buf.push_str(v);
+                    buf.push_str("\", ");
+                }
+                buf.push_str("} ");
+                buf.push_str(&value.sum().unwrap_or(0.0).to_string());
+                buf.push_str("\n");
+                buf.push_str(&value.name);
+                buf.push_str("_count ");
+                buf.push_str("{");
+                for (k, v) in &(*value.tags) {
+                    buf.push_str(k);
+                    buf.push_str("=\"");
+                    buf.push_str(v);
+                    buf.push_str("\", ");
+                }
+                buf.push_str("} ");
+                buf.push_str(&value.count().to_string());
+                buf.push_str("\n");
+            },
+            AggregationMethod::Summarize => {
+                if seen.insert(&value.name) {
+                    buf.push_str("# TYPE summary\n");
+                }
+                let sum_tags = value.tags.clone();
+                let count_tags = value.tags.clone();
+                for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
+                    buf.push_str(&value.name);
+                    buf.push_str("{quantile=\"");
+                    buf.push_str(&q.to_string());
+                    for (k, v) in &(*value.tags) {
+                        buf.push_str("\", ");
+                        buf.push_str(k);
+                        buf.push_str("=\"");
+                        buf.push_str(v);
+                    }
+                    buf.push_str("\"} ");
+                    buf.push_str(&value.query(*q).unwrap().to_string());
+                    buf.push_str("\n");
+                }
+                buf.push_str(&value.name);
+                buf.push_str("_sum ");
+                buf.push_str("{");
+                for (k, v) in &(*sum_tags) {
+                    buf.push_str(k);
+                    buf.push_str("=\"");
+                    buf.push_str(v);
+                    buf.push_str("\", ");
+                }
+                buf.push_str("} ");
+                buf.push_str(&value.samples_sum().to_string());
+                buf.push_str("\n");
+                buf.push_str(&value.name);
+                buf.push_str("_count ");
+                buf.push_str("{");
+                for (k, v) in &(*count_tags) {
+                    buf.push_str(k);
+                    buf.push_str("=\"");
+                    buf.push_str(v);
+                    buf.push_str("\", ");
+                }
+                buf.push_str("} ");
+                buf.push_str(&value.count().to_string());
+                buf.push_str("\n");
             }
-            buf.push_str("\"} ");
-            buf.push_str(&m.query(*q).unwrap().to_string());
-            buf.push_str("\n");
         }
-        buf.push_str(&m.name);
-        buf.push_str("_sum ");
-        buf.push_str("{");
-        for (k, v) in &(*sum_tags) {
-            buf.push_str(k);
-            buf.push_str("=\"");
-            buf.push_str(v);
-            buf.push_str("\", ");
-        }
-        buf.push_str("} ");
-        buf.push_str(&m.samples_sum().unwrap_or(0.0).to_string());
-        buf.push_str("\n");
-        buf.push_str(&m.name);
-        buf.push_str("_count ");
-        buf.push_str("{");
-        for (k, v) in &(*count_tags) {
-            buf.push_str(k);
-            buf.push_str("=\"");
-            buf.push_str(v);
-            buf.push_str("\", ");
-        }
-        buf.push_str("} ");
-        buf.push_str(&m.count().to_string());
-        buf.push_str("\n");
         res.write_all(buf.as_bytes()).expect(
             "FAILED TO WRITE BUFFER INTO HTTP
     STREAMING RESPONSE",
