@@ -381,7 +381,7 @@ fn main() {
         },
     );
 
-    let internal_config = args.internal;
+    let internal_config = mem::replace(&mut args.internal, Default::default());
     let mut internal_send = Vec::new();
     populate_forwards(
         &mut internal_send,
@@ -456,10 +456,17 @@ fn main() {
                 }
             }
         }
+        drop(flush_sends);
+        drop(senders);
         cernan::source::FlushTimer::new(flush_channels).run();
     }));
 
     joins.push(thread::spawn(move || { cernan::time::update_time(); }));
+
+    drop(args);
+    drop(config_topology);
+    drop(level);
+    drop(receivers);
 
     for jh in joins {
         // TODO Having sub-threads panic will not cause a bubble-up if that
