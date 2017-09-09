@@ -690,13 +690,13 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         //
                         // Someday a static analysis system will flag this as
                         // unsafe. Welcome.
-                        fl.max_read_lines = tbl.get("max_read_lines")
+                        fl.max_lines_read = tbl.get("max_read_lines")
                             .map(|mrl| {
                                 mrl.as_integer()
                                     .expect("could not parse sinks.wavefront.port") as
                                     usize
                             })
-                            .unwrap_or(fl.max_read_lines);
+                            .unwrap_or(fl.max_lines_read);
 
                         files.push(fl)
                     }
@@ -1406,7 +1406,7 @@ scripts-directory = "/foo/bar"
 
         assert_eq!(files[0].path, Some(PathBuf::from("/foo/bar.txt")));
         assert_eq!(files[0].forwards, vec!["sink.blech"]);
-        assert_eq!(files[0].max_read_lines, 10_000);
+        assert_eq!(files[0].max_lines_read, 10_000);
     }
 
     #[test]
@@ -1433,7 +1433,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(files[0].forwards, vec!["sink.bar.blech"]);
 
         assert_eq!(files[1].path, Some(PathBuf::from("/foo/bar.txt")));
-        assert_eq!(files[1].max_read_lines, 10);
+        assert_eq!(files[1].max_lines_read, 10);
         assert_eq!(files[1].forwards, vec!["sink.blech"]);
     }
 }
