@@ -8,6 +8,7 @@ use std::fs;
 use std::hash::BuildHasherDefault;
 use std::io;
 use std::io::prelude::*;
+use std::mem;
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::str;
@@ -118,7 +119,7 @@ impl FileWatcher {
         }
     }
 
-    fn reset_from_md(&mut self) -> bool {
+    fn reset_from_md(&mut self) -> io::Result<bool> {
         if let Ok(metadata) = fs::metadata(&self.path) {
             let dev = metadata.dev();
             let ino = metadata.ino();
@@ -138,11 +139,12 @@ impl FileWatcher {
                     self.file_id = (dev, ino);
                     self.reader = io::BufReader::new(f);
                     self.offset = 0;
-                    return true;
+                    return Ok(true);
                 }
             }
+            return Ok(false);
         }
-        false
+        Err(io::Error::last_os_error())
     }
 
     /// Read a single line from the underlying file
@@ -168,10 +170,15 @@ impl FileWatcher {
                     // zero. That's not success for our purposes and so we
                     // potentially reset from metadata and, if no, go ahead and
                     // back up to the last known good offset.
-                    if !self.reset_from_md() {
-                        let seek: bool =
-                            self.reader.seek(io::SeekFrom::Start(self.offset)).is_ok();
-                        assert!(seek);
+                    if let Ok(res) = self.reset_from_md() {
+                        if !res {
+                            let seek: bool = self.reader
+                                .seek(io::SeekFrom::Start(self.offset))
+                                .is_ok();
+                            assert!(seek);
+                        }
+                    } else {
+                        return Err(io::Error::last_os_error());
                     }
                 }
                 Ok(sz) => {
@@ -186,8 +193,10 @@ impl FileWatcher {
                 Err(_) => {
                     // Similar situation to Ok(0) above excepting that there's a
                     // real, honest IO error to bubble up to the glob loop.
-                    if !self.reset_from_md() {
-                        return Err(io::Error::last_os_error());
+                    if let Ok(res) = self.reset_from_md() {
+                        if !res {
+                            return Err(io::Error::last_os_error());
+                        }
                     }
                 }
             }
@@ -220,6 +229,7 @@ impl FileWatcher {
 impl Source for FileServer {
     fn run(&mut self) {
         let mut fp_map: HashMapFnv<PathBuf, FileWatcher> = HashMapFnv::default();
+        let mut fp_map_alt: HashMapFnv<PathBuf, FileWatcher> = HashMapFnv::default();
         let glob_delay = Duration::from_secs(60);
         let mut buffer = String::new();
 
@@ -266,7 +276,8 @@ impl Source for FileServer {
                 } else {
                     time::delay(attempts);
                 }
-                for file in fp_map.values_mut() {
+                for (path, mut file) in fp_map.drain() {
+                    let retain: bool;
                     loop {
                         let mut lines_read = 0;
                         match file.read_line(&mut buffer) {
@@ -290,24 +301,37 @@ impl Source for FileServer {
                                     );
                                     buffer.clear();
                                     if lines_read > self.max_read_lines {
+                                        retain = true;
                                         break;
                                     }
                                 }
                             }
                             Err(e) => {
                                 match e.kind() {
-                                    io::ErrorKind::TimedOut => {}
-                                    _ => trace!("read-line error: {}", e),
+                                    io::ErrorKind::TimedOut => {
+                                        retain = true;
+                                    }
+                                    io::ErrorKind::NotFound => {
+                                        retain = false;
+                                    }
+                                    _ => {
+                                        retain = true;
+                                        trace!("read-line error: {}", e);
+                                    }
                                 }
                                 attempts = (attempts + 1) % 10;
                                 break;
                             }
                         }
                     }
+                    if retain {
+                        fp_map_alt.insert(path, file);
+                    }
                     for l in lines.drain(..) {
                         send(&mut self.chans, metric::Event::new_log(l));
                     }
                 }
+                mem::swap(&mut fp_map, &mut fp_map_alt);
                 if start.elapsed() >= glob_delay {
                     break;
                 }

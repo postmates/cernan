@@ -465,7 +465,6 @@ fn main() {
 
     drop(args);
     drop(config_topology);
-    drop(level);
     drop(receivers);
 
     for jh in joins {
