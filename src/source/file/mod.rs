@@ -86,12 +86,28 @@ mod test {
                 }
 
                 let mut buf = String::new();
+                let mut attempts = 0;
                 while !expected_read.is_empty() {
+                    if fw.dead() {
+                        break;
+                    }
                     match fw.read_line(&mut buf) {
                         Ok(0) => {
-                            continue;
+                            attempts += 1;
+                            if attempts > 512 {
+                                break;
+                            }
+                            // It's possible that we've written a blank
+                            // string. Here we check to see if that is the
+                            // case. `exp` will be empty in that case.
+                            let exp =
+                                expected_read.pop().expect("must be a read here");
+                            if !exp.is_empty() {
+                                expected_read.push(exp);
+                            }
                         }
                         Ok(sz) => {
+                            attempts = 0;
                             let exp =
                                 expected_read.pop().expect("must be a read here");
                             assert_eq!(buf, *exp);
