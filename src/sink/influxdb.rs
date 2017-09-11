@@ -296,8 +296,6 @@ impl Sink for InfluxDB {
 
 #[cfg(test)]
 mod test {
-    extern crate quickcheck;
-
     use super::*;
     use chrono::{TimeZone, Utc};
     use metric::{TagMap, Telemetry};
