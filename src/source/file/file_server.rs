@@ -118,28 +118,21 @@ impl Source for FileServer {
             // line polling
             for (path, mut watcher) in fp_map.drain() {
                 let mut lines_read: usize = 0;
-                loop {
-                    match watcher.read_line(&mut buffer) {
-                        Ok(sz) => {
-                            if sz > 0 {
-                                lines_read += 1;
-                                lines.push(
-                                    metric::LogLine::new(
-                                        path.to_str().expect("not a valid path"),
-                                        &buffer,
-                                    ).overlay_tags_from_map(&self.tags),
-                                );
-                                buffer.clear();
-                            } else {
-                                break;
-                            }
-                            if lines_read > self.max_lines_read {
-                                break;
-                            }
-                        }
-                        _ => {
-                            break;
-                        }
+                while let Ok(sz) = watcher.read_line(&mut buffer) {
+                    if sz > 0 {
+                        lines_read += 1;
+                        lines.push(
+                            metric::LogLine::new(
+                                path.to_str().expect("not a valid path"),
+                                &buffer,
+                            ).overlay_tags_from_map(&self.tags),
+                        );
+                        buffer.clear();
+                    } else {
+                        break;
+                    }
+                    if lines_read > self.max_lines_read {
+                        break;
                     }
                 }
                 report_full_telemetry(

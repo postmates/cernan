@@ -96,10 +96,8 @@ impl FileWatcher {
     /// up to some maximum but unspecified amount of time. `read_line` will open
     /// a new file handler at need, transparently to the caller.
     pub fn read_line(&mut self, mut buffer: &mut String) -> io::Result<usize> {
-        if self.reopen {
-            if self.file_id() != self.file_id {
-                self.open_at_start();
-            }
+        if self.reopen && self.file_id() != self.file_id {
+            self.open_at_start();
         }
         if let Some(ref mut reader) = self.reader {
             // match here on error, if metadata doesn't match up open_at_start
@@ -115,11 +113,8 @@ impl FileWatcher {
                     Ok(buffer.len())
                 }
                 Err(e) => {
-                    match e.kind() {
-                        io::ErrorKind::NotFound => {
-                            self.reopen = true;
-                        }
-                        _ => {}
+                    if let io::ErrorKind::NotFound = e.kind() {
+                        self.reopen = true;
                     }
                     Err(e)
                 }
