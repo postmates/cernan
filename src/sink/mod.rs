@@ -57,7 +57,12 @@ pub trait Sink {
         loop {
             time::delay(attempts);
             match recv.next() {
-                None => attempts += 1,
+                None => {
+                    attempts += 1;
+                    if let Valve::Closed = self.valve_state() {
+                        self.flush();
+                    }
+                },
                 Some(event) => match self.valve_state() {
                     Valve::Open => match event {
                         Event::TimerFlush(idx) => if idx > last_flush_idx {
@@ -80,6 +85,7 @@ pub trait Sink {
                     },
                     Valve::Closed => {
                         attempts += 1;
+                        self.flush();
                         continue;
                     }
                 },
