@@ -107,7 +107,7 @@ fn main() {
     // SINKS
     if let Some(ref config) = args.null {
         let (send, recv) =
-            hopper::channel(&config.config_path, &args.data_directory).unwrap();
+            hopper::channel_with_max_bytes(&config.config_path, &args.data_directory, args.max_hopper_queue_bytes).unwrap();
         senders.insert(config.config_path.clone(), send);
         receivers.insert(config.config_path.clone(), recv);
         config_topology.insert(config.config_path.clone(), Default::default());
@@ -115,7 +115,7 @@ fn main() {
     if let Some(ref config) = args.console {
         let config_path = cfg_conf!(config);
         let (send, recv) =
-            hopper::channel(&config_path, &args.data_directory).unwrap();
+            hopper::channel_with_max_bytes(&config_path, &args.data_directory, args.max_hopper_queue_bytes).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -123,7 +123,7 @@ fn main() {
     if let Some(ref config) = args.wavefront {
         let config_path = cfg_conf!(config);
         let (send, recv) =
-            hopper::channel(&config_path, &args.data_directory).unwrap();
+            hopper::channel_with_max_bytes(&config_path, &args.data_directory, args.max_hopper_queue_bytes).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -131,7 +131,7 @@ fn main() {
     if let Some(ref config) = args.prometheus {
         let config_path = cfg_conf!(config);
         let (send, recv) =
-            hopper::channel(&config_path, &args.data_directory).unwrap();
+            hopper::channel_with_max_bytes(&config_path, &args.data_directory, args.max_hopper_queue_bytes).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -139,7 +139,7 @@ fn main() {
     if let Some(ref config) = args.influxdb {
         let config_path = cfg_conf!(config);
         let (send, recv) =
-            hopper::channel(&config_path, &args.data_directory).unwrap();
+            hopper::channel_with_max_bytes(&config_path, &args.data_directory, args.max_hopper_queue_bytes).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -147,7 +147,7 @@ fn main() {
     if let Some(ref config) = args.native_sink_config {
         let config_path = cfg_conf!(config);
         let (send, recv) =
-            hopper::channel(&config_path, &args.data_directory).unwrap();
+            hopper::channel_with_max_bytes(&config_path, &args.data_directory, args.max_hopper_queue_bytes).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -155,7 +155,7 @@ fn main() {
     if let Some(ref config) = args.elasticsearch {
         let config_path = cfg_conf!(config);
         let (send, recv) =
-            hopper::channel(&config_path, &args.data_directory).unwrap();
+            hopper::channel_with_max_bytes(&config_path, &args.data_directory, args.max_hopper_queue_bytes).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -164,7 +164,7 @@ fn main() {
         for config in configs {
             let config_path = cfg_conf!(config);
             let (send, recv) =
-                hopper::channel(&config_path, &args.data_directory).unwrap();
+                hopper::channel_with_max_bytes(&config_path, &args.data_directory, args.max_hopper_queue_bytes).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), Default::default());
@@ -174,7 +174,7 @@ fn main() {
     if let Some(ref configs) = args.programmable_filters {
         for (config_path, config) in configs {
             let (send, recv) =
-                hopper::channel(config_path, &args.data_directory).unwrap();
+                hopper::channel_with_max_bytes(config_path, &args.data_directory, args.max_hopper_queue_bytes).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
@@ -183,7 +183,7 @@ fn main() {
     if let Some(ref configs) = args.delay_filters {
         for (config_path, config) in configs {
             let (send, recv) =
-                hopper::channel(config_path, &args.data_directory).unwrap();
+                hopper::channel_with_max_bytes(config_path, &args.data_directory, args.max_hopper_queue_bytes).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
@@ -192,7 +192,7 @@ fn main() {
     if let Some(ref configs) = args.flush_boundary_filters {
         for (config_path, config) in configs {
             let (send, recv) =
-                hopper::channel(config_path, &args.data_directory).unwrap();
+                hopper::channel_with_max_bytes(config_path, &args.data_directory, args.max_hopper_queue_bytes).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
