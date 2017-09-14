@@ -58,6 +58,9 @@ fn default_version() -> String {
 /// on `parse_args` in this module for more details.
 #[derive(Debug)]
 pub struct Args {
+    /// The maximum size -- in bytes -- that a hopper queue may grow to before
+    /// being cycled.
+    pub max_hopper_queue_bytes: usize,
     /// The location on-disk where cernan will store its private files. This
     /// directory MUST be solely owned by cernan.
     pub data_directory: PathBuf,
@@ -112,6 +115,7 @@ pub struct Args {
 impl Default for Args {
     fn default() -> Self {
         Args {
+            max_hopper_queue_bytes: 1_048_576 * 100,
             data_directory: default_data_directory(),
             scripts_directory: default_scripts_directory(),
             flush_interval: 60,
@@ -198,6 +202,13 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
         toml::from_str(buffer).expect("could not parse config file");
 
     args.verbose = verbosity;
+
+    args.max_hopper_queue_bytes = value
+        .get("max-hopper-queue-bytes")
+        .map(|s| {
+            s.as_integer().expect("could not parse max-hopper-queue-bytes") as usize
+        })
+        .unwrap_or(args.max_hopper_queue_bytes);
 
     args.data_directory = value
         .get("data-directory")
@@ -890,6 +901,15 @@ data-directory = "/foo/bar"
         let dir = Path::new("/foo/bar").to_path_buf();
 
         assert_eq!(args.data_directory, dir);
+    }
+
+    #[test]
+    fn config_max_hopper_queue_bytes() {
+        let config = r#"
+max-hopper-queue-bytes = 10
+"#;
+        let args = parse_config_file(config, 4);
+        assert_eq!(args.max_hopper_queue_bytes, 10);
     }
 
     #[test]
