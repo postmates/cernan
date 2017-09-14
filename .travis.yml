@@ -5,9 +5,20 @@ rust:
   - beta
   - nightly
 
+before_script:
+  - |
+      if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then
+        ( ( cargo install clippy && export CLIPPY=true ) || export CLIPPY=false );
+      fi
+  - export PATH=$PATH:~/.cargo/bin
+
 script:
   - cargo build
   - cargo test
+  - |
+      if [[ "$TRAVIS_RUST_VERSION" == "nightly" && $CLIPPY ]]; then
+        cargo clippy
+      fi
 
 matrix:
   allow_failures:
@@ -19,6 +30,10 @@ before_install:
 install:
   - PATH=$PATH:/home/travis/.cargo/bin
 
+env:
+  global:
+  - RUSTFLAGS="-C link-dead-code"
+
 addons:
   apt:
     packages:
@@ -28,18 +43,23 @@ addons:
       - cmake
       - gcc
       - binutils-dev
+      - libiberty-dev
 
-after_success: |
-  wget https://github.com/SimonKagstrom/kcov/archive/v33.tar.gz && 
-  tar xzf v33.tar.gz &&
-  cd kcov-33 &&
-  mkdir build &&
-  cd build &&
-  cmake .. &&
-  make &&
-  sudo make install &&
-  cd ../.. &&
-  rm -rf kcov-master &&
-  for file in target/debug/cernan-*; do mkdir -p "target/cov/$(basename $file)"; kcov --exclude-pattern=/.cargo,/usr/lib --verify "target/cov/$(basename $file)" "$file"; done &&
-  bash <(curl -s https://codecov.io/bash) &&
-  echo "Uploaded code coverage"
+after_success:
+  # Coverage report
+  - |
+      if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_RUST_VERSION" == "stable" ]]; then
+        wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
+        tar xzf master.tar.gz &&
+        cd kcov-master &&
+        mkdir build &&
+        cd build &&
+        cmake .. &&
+        make &&
+        sudo make install &&
+        cd ../.. &&
+        rm -rf kcov-master &&
+        for file in target/debug/cernan-*[^\.d]; do mkdir -p "target/cov/$(basename $file)"; kcov --exclude-pattern=/.cargo,/usr/lib --verify "target/cov/$(basename $file)" "$file"; done &&
+        bash <(curl -s https://codecov.io/bash) &&
+        echo "Uploaded code coverage"
+      fi
