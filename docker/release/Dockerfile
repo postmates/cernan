@@ -10,12 +10,12 @@ RUN apk add --no-cache --update \
   llvm-libunwind@testing \ 
   openssl && \
   update-ca-certificates && \
-  rm -rf /var/cache/apk/*
+  rm -rf /var/cache/apk/* && \
+  mkdir -p /etc/cernan/scripts
 
-COPY docker/release/confd /etc/confd
 COPY docker/release/entrypoint.sh /entrypoint.sh
-COPY target/bindir/confd-bin /usr/bin/confd
 COPY target/release/cernan /usr/bin/cernan
+COPY examples/configs/quickstart.toml /etc/cernan/cernan.toml
 
 ENV STATSD_PORT 8125
 
