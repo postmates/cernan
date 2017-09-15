@@ -38,6 +38,7 @@ addons:
       - cmake
       - gcc
       - binutils-dev
+      - libbfd-dev
       - libiberty-dev
 
 after_success:
