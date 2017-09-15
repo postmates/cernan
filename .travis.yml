@@ -6,10 +6,6 @@ rust:
   - nightly
 
 before_script:
-  - |
-      if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then
-        ( ( cargo install clippy && export CLIPPY=true ) || export CLIPPY=false );
-      fi
   - export PATH=$PATH:~/.cargo/bin
 
 script:
