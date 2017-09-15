@@ -1,5 +1,6 @@
 language: rust
 cache: cargo
+dist: trusty
 rust:
   - stable
   - beta
@@ -9,6 +10,7 @@ before_script:
   - export PATH=$PATH:~/.cargo/bin
 
 script:
+  - cargo clean
   - cargo test
   - |
       if [[ "$TRAVIS_RUST_VERSION" == "nightly" && $CLIPPY ]]; then
@@ -38,7 +40,6 @@ addons:
       - cmake
       - gcc
       - binutils-dev
-      - libbfd-dev
       - libiberty-dev
 
 after_success:
