@@ -13,7 +13,6 @@ before_script:
   - export PATH=$PATH:~/.cargo/bin
 
 script:
-  - cargo build
   - cargo test
   - |
       if [[ "$TRAVIS_RUST_VERSION" == "nightly" && $CLIPPY ]]; then
