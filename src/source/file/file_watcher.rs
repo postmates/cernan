@@ -1,4 +1,3 @@
-
 use source::internal::report_full_telemetry;
 use std::fs;
 use std::io;

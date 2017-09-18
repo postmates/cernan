@@ -692,8 +692,14 @@ impl Telemetry {
     }
 
     /// Sum of all samples inserted into this Telemetry
-    pub fn samples_sum(&self) -> f64 {
-        unimplemented!();
+    pub fn samples_sum(&self) -> Option<f64> {
+        match self.value {
+            Some(Value::Set(_)) => None,
+            Some(Value::Sum(_)) => None,
+            Some(Value::Histogram(ref histo)) => histo.sum(),
+            Some(Value::Quantiles(ref ckms)) => ckms.sum(),
+            None => None,
+        }
     }
 
     /// Return the total count of Telemetry aggregated into this Telemetry.
