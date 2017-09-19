@@ -6,7 +6,7 @@ rust:
   - nightly
 
 script:
-  - cargo build
+  - cargo clean
   - cargo test
 
 matrix:
@@ -30,7 +30,7 @@ addons:
       - binutils-dev
 
 after_success: |
-  wget https://github.com/SimonKagstrom/kcov/archive/v33.tar.gz && 
+  wget https://github.com/SimonKagstrom/kcov/archive/v33.tar.gz &&
   tar xzf v33.tar.gz &&
   cd kcov-33 &&
   mkdir build &&

@@ -18,9 +18,9 @@ byteorder = "1.0"
 chrono = "0.4"
 clap = "2.20.5"
 coco = "0.2.0"
-fern = "0.4"
 elastic = "0.13"
 elastic_types = "0.19"
+fern = "0.4"
 glob = "0.2.11"
 hopper = "0.3.2"
 hyper = "0.10"
@@ -29,8 +29,11 @@ lazy_static = "0.2.1"
 libc = "0.2"
 log = "0.3.6"
 lua = { git = "https://github.com/blt/rust-lua53.git", branch = "master" }
+openssl-probe = "0.1"
 protobuf = "1.2"
 quantiles = { version = "0.6", features = ["serde_support"] }
+rusoto_core = {version = "0.25.0"}
+rusoto_firehose = {version = "0.25.0"}
 seahash = "3.0"
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
@@ -38,8 +41,6 @@ serde_json = "1.0"
 toml = "0.4"
 url = "1.4.0"
 uuid = {version = "0.5", features = ["v4"]}
-rusoto_core = {version = "0.25.0"}
-rusoto_firehose = {version = "0.25.0"}
 
 [dev-dependencies]
 tempdir = "0.3"

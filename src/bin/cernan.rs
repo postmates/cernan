@@ -6,6 +6,7 @@ extern crate fern;
 extern crate hopper;
 #[macro_use]
 extern crate log;
+extern crate openssl_probe;
 
 use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
                      ProgrammableFilterConfig};
@@ -56,6 +57,8 @@ macro_rules! cfg_conf {
 
 #[allow(cyclomatic_complexity)]
 fn main() {
+    openssl_probe::init_ssl_cert_env_vars();
+
     let mut args = cernan::config::parse_args();
 
     let level = match args.verbose {
