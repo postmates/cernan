@@ -1,4 +1,16 @@
 //! Prometheus is a pull-based aggregation server
+//!
+//! This sink emits all cernan aggregations into prometheus according to the
+//! following method:
+//!
+//!   - SET -> gauge
+//!   - SUM -> counter
+//!   - QUANTILES -> summary 
+//!   - HISTOGRAM -> histogram
+//!
+//! All points are retained in a sliding window defined by
+//! `retain_limit`. Points will persist indefinately unless new points come
+//! behind them to push them out of the `retain_limit` window.
 
 use hyper::server::{Handler, Listening, Request, Response, Server};
 use metric;
