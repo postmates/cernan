@@ -36,6 +36,7 @@ lazy_static! {
 }
 
 
+
 /// The prometheus sink
 ///
 /// Prometheus is an open-source aggregation server which pulls from its
@@ -136,8 +137,7 @@ impl PrometheusAggr {
     /// Return all 'reportable' Telemetry
     ///
     /// This function returns all the stored Telemetry points that are available
-    /// for shipping to Prometheus. Shipping a point to Prometheus drops that
-    /// point from memory, once it's gone over the wire.
+    /// for shipping to Prometheus. 
     fn reportable(&mut self) -> Vec<metric::Telemetry> {
         let mut ret = Vec::new();
         for v in self.inner.values() {
@@ -402,39 +402,53 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
         match value.kind() {
             AggregationMethod::Sum => if let Some(v) = value.sum() {
                 if seen.insert(&value.name) {
-                    buf.push_str("# TYPE counter\n");
+                    buf.push_str("# TYPE ");
+                    buf.push_str(&value.name);
+                    buf.push_str(" counter\n");
                 }
                 buf.push_str(&value.name);
-                buf.push_str("{");
-                for (k, v) in &(*value.tags) {
-                    buf.push_str("\", ");
-                    buf.push_str(k);
-                    buf.push_str("=\"");
-                    buf.push_str(v);
+                if !value.tags.is_empty() {
+                    buf.push_str("{");
+                    for (k, v) in &(*value.tags) {
+                        buf.push_str("\", ");
+                        buf.push_str(k);
+                        buf.push_str("=\"");
+                        buf.push_str(v);
+                    }
+                    buf.push_str("\"} ");
+                } else {
+                    buf.push_str(" ");
                 }
-                buf.push_str("\"} ");
                 buf.push_str(&v.to_string());
                 buf.push_str("\n");
             },
             AggregationMethod::Set => if let Some(v) = value.set() {
                 if seen.insert(&value.name) {
-                    buf.push_str("# TYPE gauge\n");
+                    buf.push_str("# TYPE ");
+                    buf.push_str(&value.name);
+                    buf.push_str(" gauge\n");
                 }
                 buf.push_str(&value.name);
-                buf.push_str("{");
-                for (k, v) in &(*value.tags) {
-                    buf.push_str("\", ");
-                    buf.push_str(k);
-                    buf.push_str("=\"");
-                    buf.push_str(v);
-                }
-                buf.push_str("\"} ");
+                if !value.tags.is_empty() {
+                    buf.push_str("{");
+                    for (k, v) in &(*value.tags) {
+                        buf.push_str("\", ");
+                        buf.push_str(k);
+                        buf.push_str("=\"");
+                        buf.push_str(v);
+                    }
+                    buf.push_str("\"} ");
+                } else {
+                    buf.push_str(" ");
+                }                    
                 buf.push_str(&v.to_string());
                 buf.push_str("\n");
             },
             AggregationMethod::Histogram => if let Some(bin_iter) = value.bins() {
                 if seen.insert(&value.name) {
-                    buf.push_str("# TYPE histogram\n");
+                    buf.push_str("# TYPE ");
+                    buf.push_str(&value.name);
+                    buf.push_str(" histogram\n");
                 }
                 for &(bound, val) in bin_iter {
                     buf.push_str(&value.name);
@@ -459,32 +473,38 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
                 }
                 buf.push_str(&value.name);
                 buf.push_str("_sum ");
-                buf.push_str("{");
-                for (k, v) in &(*value.tags) {
-                    buf.push_str(k);
-                    buf.push_str("=\"");
-                    buf.push_str(v);
-                    buf.push_str("\", ");
+                if !value.tags.is_empty() {
+                    buf.push_str("{");
+                    for (k, v) in &(*value.tags) {
+                        buf.push_str(k);
+                        buf.push_str("=\"");
+                        buf.push_str(v);
+                        buf.push_str("\", ");
+                    }
+                    buf.push_str("} ");
                 }
-                buf.push_str("} ");
                 buf.push_str(&value.sum().unwrap_or(0.0).to_string());
                 buf.push_str("\n");
                 buf.push_str(&value.name);
                 buf.push_str("_count ");
-                buf.push_str("{");
-                for (k, v) in &(*value.tags) {
-                    buf.push_str(k);
-                    buf.push_str("=\"");
-                    buf.push_str(v);
-                    buf.push_str("\", ");
+                if !value.tags.is_empty() {
+                    buf.push_str("{");
+                    for (k, v) in &(*value.tags) {
+                        buf.push_str(k);
+                        buf.push_str("=\"");
+                        buf.push_str(v);
+                        buf.push_str("\", ");
+                    }
+                    buf.push_str("} ");
                 }
-                buf.push_str("} ");
                 buf.push_str(&value.count().to_string());
                 buf.push_str("\n");
             },
             AggregationMethod::Summarize => {
                 if seen.insert(&value.name) {
-                    buf.push_str("# TYPE summary\n");
+                    buf.push_str("# TYPE ");
+                    buf.push_str(&value.name);
+                    buf.push_str(" summary\n");
                 }
                 let sum_tags = value.tags.clone();
                 let count_tags = value.tags.clone();
@@ -504,26 +524,30 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
                 }
                 buf.push_str(&value.name);
                 buf.push_str("_sum ");
-                buf.push_str("{");
-                for (k, v) in &(*sum_tags) {
-                    buf.push_str(k);
-                    buf.push_str("=\"");
-                    buf.push_str(v);
-                    buf.push_str("\", ");
+                if !sum_tags.is_empty() {
+                    buf.push_str("{");
+                    for (k, v) in &(*sum_tags) {
+                        buf.push_str(k);
+                        buf.push_str("=\"");
+                        buf.push_str(v);
+                        buf.push_str("\", ");
+                    }
+                    buf.push_str("} ");
                 }
-                buf.push_str("} ");
                 buf.push_str(&value.samples_sum().unwrap_or(0.0).to_string());
                 buf.push_str("\n");
                 buf.push_str(&value.name);
                 buf.push_str("_count ");
-                buf.push_str("{");
-                for (k, v) in &(*count_tags) {
-                    buf.push_str(k);
-                    buf.push_str("=\"");
-                    buf.push_str(v);
-                    buf.push_str("\", ");
+                if !count_tags.is_empty() {
+                    buf.push_str("{");
+                    for (k, v) in &(*count_tags) {
+                        buf.push_str(k);
+                        buf.push_str("=\"");
+                        buf.push_str(v);
+                        buf.push_str("\", ");
+                    }
+                    buf.push_str("} ");
                 }
-                buf.push_str("} ");
                 buf.push_str(&value.count().to_string());
                 buf.push_str("\n");
             }
