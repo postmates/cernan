@@ -171,7 +171,7 @@ impl PrometheusAggr {
     /// PrometheusAggr. Timestamps are _not_ respected. Distinctions between
     /// Telemetry of the same name are only made if their tagmaps are distinct.
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
-        let ts_vec = self.inner.entry(telem.hash()).or_insert(vec![]);
+        let ts_vec = self.inner.entry(telem.hash()).or_insert_with(|| vec![]);
         match (*ts_vec).binary_search_by(|probe| probe.timestamp.cmp(&telem.timestamp))
         {
             Ok(idx) => ts_vec[idx] += telem,
@@ -404,6 +404,7 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
     res.end()
 }
 
+#[allow(cyclomatic_complexity)]
 fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
     res.headers_mut()
         .set_raw("content-type", vec![b"text/plain; version=0.0.4".to_vec()]);
