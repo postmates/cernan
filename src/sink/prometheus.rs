@@ -255,7 +255,9 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
         metric.set_label(RepeatedField::from_vec(label_pairs));
         let mut summary = Summary::new();
         summary.set_sample_count(m.count() as u64);
-        summary.set_sample_sum(m.samples_sum());
+        if let Some(smpl_sum) = m.samples_sum() {
+            summary.set_sample_sum(smpl_sum);
+        }
         let mut quantiles = Vec::with_capacity(9);
         for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
             let mut quantile = Quantile::new();
@@ -306,7 +308,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
             buf.push_str("\", ");
         }
         buf.push_str("} ");
-        buf.push_str(&m.samples_sum().to_string());
+        buf.push_str(&m.samples_sum().unwrap_or(0.0).to_string());
         buf.push_str("\n");
         buf.push_str(&m.name);
         buf.push_str("_count ");

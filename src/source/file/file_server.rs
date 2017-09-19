@@ -125,7 +125,9 @@ impl Source for FileServer {
                             metric::LogLine::new(
                                 path.to_str().expect("not a valid path"),
                                 &buffer,
-                            ).overlay_tags_from_map(&self.tags),
+                            ).overlay_tags_from_map(
+                                &self.tags,
+                            ),
                         );
                         buffer.clear();
                     } else {

@@ -62,7 +62,7 @@ pub trait Sink {
                     if let Valve::Closed = self.valve_state() {
                         self.flush();
                     }
-                },
+                }
                 Some(event) => match self.valve_state() {
                     Valve::Open => match event {
                         Event::TimerFlush(idx) => if idx > last_flush_idx {
