@@ -329,7 +329,9 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
                 metric.set_label(RepeatedField::from_vec(label_pairs));
                 let mut summary = Summary::new();
                 summary.set_sample_count(value.count() as u64);
-                summary.set_sample_sum(value.samples_sum());
+                if let Some(val) = value.samples_sum() {
+                    summary.set_sample_sum(val);
+                }
                 let mut quantiles = Vec::with_capacity(9);
                 for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
                     let mut quantile = Quantile::new();
@@ -359,7 +361,9 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
                 metric.set_label(RepeatedField::from_vec(label_pairs));
                 let mut histogram = Histogram::new();
                 histogram.set_sample_count(value.count() as u64);
-                histogram.set_sample_sum(value.samples_sum());
+                if let Some(val) = value.samples_sum() {
+                    histogram.set_sample_sum(val)
+                }
                 let mut buckets = Vec::with_capacity(16);
                 if let Some(bin_iter) = value.bins() {
                     let mut cummulative: u64 = 0;
@@ -508,7 +512,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
                     buf.push_str("\", ");
                 }
                 buf.push_str("} ");
-                buf.push_str(&value.samples_sum().to_string());
+                buf.push_str(&value.samples_sum().unwrap_or(0.0).to_string());
                 buf.push_str("\n");
                 buf.push_str(&value.name);
                 buf.push_str("_count ");
