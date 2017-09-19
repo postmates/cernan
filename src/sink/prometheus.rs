@@ -120,8 +120,8 @@ struct PrometheusAggr {
     // need to meet it there. But! We can't just drop metrics as soon as they're
     // read, apparently, since prometheus expects to be able to re-read multiple
     // times and get roughly similar results. What we do, then, is store a
-    // sliding window of metrics per hash, keeping only ten values per
-    // timestamp. We sum these values up at report time.
+    // sliding window of metrics per hash, keeping only retain_limit per
+    // time series. We sum these values up at report time.
     inner: HashMap<u64, Vec<metric::Telemetry>, BuildHasherDefault<SeaHasher>>,
 }
 
