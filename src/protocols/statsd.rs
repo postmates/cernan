@@ -285,8 +285,8 @@ mod tests {
                     assert_eq!(sline.name, telem.name);
                     if sline.sampled {
                         assert!(
-                            (sline.value * (1.0 / sline.sample_rate) -
-                                telem.value().unwrap())
+                            (sline.value * (1.0 / sline.sample_rate)
+                                - telem.value().unwrap())
                                 .abs() < 0.0001
                         );
                     } else {

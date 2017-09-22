@@ -11,7 +11,6 @@ extern crate openssl_probe;
 use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
                      ProgrammableFilterConfig};
 use cernan::metric;
-
 use cernan::sink::Sink;
 use cernan::source::Source;
 use cernan::util;
@@ -283,15 +282,15 @@ fn main() {
     //
     if let Some(config) = mem::replace(&mut args.null, None) {
         let recv = receivers.remove(&config.config_path).unwrap();
-        joins.push(thread::spawn(
-            move || { cernan::sink::Null::new(config).run(recv); },
-        ));
+        joins.push(thread::spawn(move || {
+            cernan::sink::Null::new(config).run(recv);
+        }));
     }
     if let Some(config) = mem::replace(&mut args.console, None) {
         let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
-        joins.push(thread::spawn(
-            move || { cernan::sink::Console::new(config).run(recv); },
-        ));
+        joins.push(thread::spawn(move || {
+            cernan::sink::Console::new(config).run(recv);
+        }));
     }
     if let Some(config) = mem::replace(&mut args.wavefront, None) {
         let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
@@ -309,21 +308,21 @@ fn main() {
     }
     if let Some(config) = mem::replace(&mut args.prometheus, None) {
         let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
-        joins.push(thread::spawn(
-            move || { cernan::sink::Prometheus::new(config).run(recv); },
-        ));
+        joins.push(thread::spawn(move || {
+            cernan::sink::Prometheus::new(config).run(recv);
+        }));
     }
     if let Some(config) = mem::replace(&mut args.influxdb, None) {
         let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
-        joins.push(thread::spawn(
-            move || { cernan::sink::InfluxDB::new(config).run(recv); },
-        ));
+        joins.push(thread::spawn(move || {
+            cernan::sink::InfluxDB::new(config).run(recv);
+        }));
     }
     if let Some(config) = mem::replace(&mut args.native_sink_config, None) {
         let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
-        joins.push(thread::spawn(
-            move || { cernan::sink::Native::new(config).run(recv); },
-        ));
+        joins.push(thread::spawn(move || {
+            cernan::sink::Native::new(config).run(recv);
+        }));
     }
 
     if let Some(config) = mem::replace(&mut args.elasticsearch, None) {
@@ -336,9 +335,9 @@ fn main() {
     if let Some(cfgs) = mem::replace(&mut args.firehosen, None) {
         for config in cfgs {
             let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
-            joins.push(thread::spawn(
-                move || { cernan::sink::Firehose::new(config).run(recv); },
-            ));
+            joins.push(thread::spawn(move || {
+                cernan::sink::Firehose::new(config).run(recv);
+            }));
         }
     }
 
@@ -497,7 +496,9 @@ fn main() {
         cernan::source::FlushTimer::new(flush_channels).run();
     }));
 
-    joins.push(thread::spawn(move || { cernan::time::update_time(); }));
+    joins.push(thread::spawn(move || {
+        cernan::time::update_time();
+    }));
 
     drop(args);
     drop(config_topology);

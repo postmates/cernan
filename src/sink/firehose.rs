@@ -2,13 +2,11 @@ use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
 use metric::{LogLine, Telemetry};
-
 use rusoto_core::{DefaultCredentialsProvider, Region};
 use rusoto_core::default_tls_client;
 use rusoto_firehose::{KinesisFirehose, KinesisFirehoseClient, PutRecordBatchInput,
                       Record};
 use rusoto_firehose::PutRecordBatchError::*;
-
 use serde_json;
 use serde_json::Map;
 use serde_json::value::Value;

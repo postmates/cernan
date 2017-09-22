@@ -410,8 +410,8 @@ mod test {
                 let time = v.timestamp;
                 let mut found_one = false;
                 for m in &mp {
-                    if (m.name == v.name) && (&m.kind() == kind) &&
-                        within(bin_width, m.timestamp, time)
+                    if (m.name == v.name) && (&m.kind() == kind)
+                        && within(bin_width, m.timestamp, time)
                     {
                         assert_eq!(Ordering::Equal, m.within(bin_width, &v));
                         found_one = true;
@@ -1011,20 +1011,20 @@ mod test {
                             assert_eq!(lhs.count(), rhs.count());
                             match lhs.kind() {
                                 AggregationMethod::Set => assert!(
-                                    (lhs.set().unwrap() - rhs.set().unwrap()).abs() <
-                                        0.0001
+                                    (lhs.set().unwrap() - rhs.set().unwrap()).abs()
+                                        < 0.0001
                                 ),
                                 AggregationMethod::Sum => assert!(
-                                    (lhs.sum().unwrap() - rhs.sum().unwrap()).abs() <
-                                        0.0001
+                                    (lhs.sum().unwrap() - rhs.sum().unwrap()).abs()
+                                        < 0.0001
                                 ),
                                 AggregationMethod::Summarize => {
                                     for prcnt in &[0.5, 0.75, 0.99, 0.999] {
                                         assert!(
-                                            (lhs.query(*prcnt).unwrap() -
-                                                rhs.query(*prcnt).unwrap())
-                                                .abs() <
-                                                0.0001
+                                            (lhs.query(*prcnt).unwrap()
+                                                - rhs.query(*prcnt).unwrap())
+                                                .abs()
+                                                < 0.0001
                                         )
                                     }
                                 }

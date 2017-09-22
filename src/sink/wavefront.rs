@@ -812,8 +812,8 @@ mod test {
                     //     b. if both points are non-zero they must not be
                     //        more than one span apart
                     if t.hash() == next_t.hash() {
-                        let span = (t.timestamp() - next_t.timestamp()).abs() /
-                            (bin_width as i64);
+                        let span = (t.timestamp() - next_t.timestamp()).abs()
+                            / (bin_width as i64);
                         if span > 1 {
                             assert!(t.is_zeroed());
                             assert!(next_t.is_zeroed());

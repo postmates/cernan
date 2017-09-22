@@ -84,7 +84,9 @@ fn handle_tcp(
             );
             let tags = tags.clone();
             let chans = chans.clone();
-            thread::spawn(move || { handle_stream(chans, tags, stream); });
+            thread::spawn(move || {
+                handle_stream(chans, tags, stream);
+            });
         }
     })
 }

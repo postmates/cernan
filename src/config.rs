@@ -18,7 +18,6 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 use filter::DelayFilterConfig;
 use filter::FlushBoundaryFilterConfig;
 use filter::ProgrammableFilterConfig;
-
 use sink::ConsoleConfig;
 use sink::ElasticsearchConfig;
 use sink::FirehoseConfig;
@@ -28,7 +27,6 @@ use sink::NullConfig;
 use sink::PrometheusConfig;
 use sink::WavefrontConfig;
 use sink::wavefront::PadControl;
-
 use source::FileServerConfig;
 use source::GraphiteConfig;
 use source::InternalConfig;
@@ -389,8 +387,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             res.flush_interval = snk.get("flush_interval")
                 .map(|fi| {
                     fi.as_integer()
-                        .expect("could not parse sinks.console.flush_interval") as
-                        u64
+                        .expect("could not parse sinks.console.flush_interval")
+                        as u64
                 })
                 .unwrap_or(args.flush_interval);
 
@@ -440,8 +438,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.port = snk.get("port")
                 .map(|p| {
-                    p.as_integer().expect("could not parse sinks.wavefront.port") as
-                        u16
+                    p.as_integer().expect("could not parse sinks.wavefront.port")
+                        as u16
                 })
                 .unwrap_or(res.port);
 
@@ -462,8 +460,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             res.flush_interval = snk.get("flush_interval")
                 .map(|fi| {
                     fi.as_integer()
-                        .expect("could not parse sinks.wavefront.flush_interval") as
-                        u64
+                        .expect("could not parse sinks.wavefront.flush_interval")
+                        as u64
                 })
                 .unwrap_or(args.flush_interval);
 
@@ -505,8 +503,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             res.flush_interval = snk.get("flush_interval")
                 .map(|fi| {
                     fi.as_integer()
-                        .expect("could not parse sinks.influxdb.flush_interval") as
-                        u64
+                        .expect("could not parse sinks.influxdb.flush_interval")
+                        as u64
                 })
                 .unwrap_or(args.flush_interval);
 
@@ -521,8 +519,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.port = snk.get("port")
                 .map(|p| {
-                    p.as_integer().expect("could not parse sinks.prometheus.port") as
-                        u16
+                    p.as_integer().expect("could not parse sinks.prometheus.port")
+                        as u16
                 })
                 .unwrap_or(res.port);
 
@@ -543,9 +541,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.port = snk.get("port")
                 .map(|p| {
-                    p.as_integer()
-                        .expect("could not parse sinks.elasticsearch.port") as
-                        usize
+                    p.as_integer().expect("could not parse sinks.elasticsearch.port")
+                        as usize
                 })
                 .unwrap_or(res.port);
 
@@ -575,9 +572,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.flush_interval = snk.get("flush_interval")
                 .map(|fi| {
-                    fi.as_integer().expect(
-                            "could not parse sinks.elasticsearch.flush_interval",
-                        ) as u64
+                    fi.as_integer()
+                        .expect("could not parse sinks.elasticsearch.flush_interval")
+                        as u64
                 })
                 .unwrap_or(args.flush_interval);
 
@@ -603,8 +600,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             res.flush_interval = snk.get("flush_interval")
                 .map(|fi| {
                     fi.as_integer()
-                        .expect("could not parse sinks.native.flush_interval") as
-                        u64
+                        .expect("could not parse sinks.native.flush_interval")
+                        as u64
                 })
                 .unwrap_or(args.flush_interval);
 
@@ -628,16 +625,16 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 res.flush_interval = tbl.get("flush_interval")
                     .map(|fi| {
                         fi.as_integer()
-                            .expect("could not parse sinks.firehose.flush_interval") as
-                            u64
+                            .expect("could not parse sinks.firehose.flush_interval")
+                            as u64
                     })
                     .unwrap_or(args.flush_interval);
 
                 res.batch_size = tbl.get("batch_size")
                     .map(|fi| {
                         fi.as_integer()
-                            .expect("could not parse sinks.firehose.batch_size") as
-                            usize
+                            .expect("could not parse sinks.firehose.batch_size")
+                            as usize
                     })
                     .unwrap_or(res.batch_size);
 
@@ -704,8 +701,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         fl.max_lines_read = tbl.get("max_read_lines")
                             .map(|mrl| {
                                 mrl.as_integer()
-                                    .expect("could not parse sinks.wavefront.port") as
-                                    usize
+                                    .expect("could not parse sinks.wavefront.port")
+                                    as usize
                             })
                             .unwrap_or(fl.max_lines_read);
 
@@ -777,8 +774,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                     res.port = tbl.get("port")
                         .map(|p| {
-                            p.as_integer().expect("could not parse graphite port") as
-                                u16
+                            p.as_integer().expect("could not parse graphite port")
+                                as u16
                         })
                         .unwrap_or(res.port);
 

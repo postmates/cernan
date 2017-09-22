@@ -17,7 +17,8 @@ use time;
 ///
 /// This enumeration signals the way in which `Telemetry` values will be
 /// aggregated. The exact descriptions are detailed below.
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, PartialOrd, Eq,
+         Hash)]
 pub enum AggregationMethod {
     /// Cumulatively add `Telemetry` objects. That is, we store only the
     /// summation of all like-points.

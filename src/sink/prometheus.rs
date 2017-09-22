@@ -357,9 +357,7 @@ fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
     }
     metric
         .thaw()
-        .name(
-            String::from_utf8(new_name).expect("wait, we bungled the conversion"),
-        )
+        .name(String::from_utf8(new_name).expect("wait, we bungled the conversion"))
         .kind(metric::AggregationMethod::Summarize)
         .harden()
         .unwrap()
@@ -434,8 +432,9 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new().tests(1000).max_tests(10000).quickcheck(
-            inner as
-                fn(PrometheusAggr, Vec<metric::Telemetry>) -> TestResult,
+            inner
+                as fn(PrometheusAggr, Vec<metric::Telemetry>)
+                    -> TestResult,
         );
     }
 

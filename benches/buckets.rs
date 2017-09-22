@@ -7,7 +7,6 @@ extern crate test;
 use self::test::Bencher;
 use cernan::buckets;
 use cernan::metric::{AggregationMethod, Telemetry};
-
 use chrono::{TimeZone, Utc};
 
 #[bench]
