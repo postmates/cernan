@@ -1,5 +1,6 @@
 use metric;
 use protocols::statsd::parse_statsd;
+use regex::Regex;
 use source::Source;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::str;
@@ -25,10 +26,35 @@ pub struct Statsd {
     host: String,
     port: u16,
     tags: sync::Arc<metric::TagMap>,
+    parse_config: sync::Arc<StatsdParseConfig>,
+}
+
+/// The mask type for metrics in `StatsdParseConfig`.
+pub type Mask = Regex;
+
+/// The bound type for metrics in `StatsdParseConfig`.
+pub type Bounds = Vec<f64>;
+
+/// Configuratoin for the statsd parser
+#[derive(Debug, Clone)]
+pub struct StatsdParseConfig {
+    /// Set specific bin masks for timeseries according to their name. The name
+    /// may be a globbing match, such like 'foo.*'. In this case all metrics
+    /// prefixed by 'foo.' which are timer or histogram will be interpreted as a
+    /// histogram.
+    pub histogram_masks: Vec<(Mask, Bounds)>,
+}
+
+impl Default for StatsdParseConfig {
+    fn default() -> StatsdParseConfig {
+        StatsdParseConfig {
+            histogram_masks: vec![],
+        }
+    }
 }
 
 /// Configuration for the statsd source.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub struct StatsdConfig {
     /// The host for the statsd protocol to bind to.
     pub host: String,
@@ -40,6 +66,8 @@ pub struct StatsdConfig {
     pub forwards: Vec<String>,
     /// The unique name for the source in the routing topology.
     pub config_path: Option<String>,
+    /// Configuration for the parsing of statsd lines
+    pub parse_config: StatsdParseConfig,
 }
 
 impl Default for StatsdConfig {
@@ -50,6 +78,7 @@ impl Default for StatsdConfig {
             tags: metric::TagMap::default(),
             forwards: Vec::new(),
             config_path: None,
+            parse_config: StatsdParseConfig::default(),
         }
     }
 }
@@ -62,6 +91,7 @@ impl Statsd {
             host: config.host,
             port: config.port,
             tags: sync::Arc::new(config.tags),
+            parse_config: sync::Arc::new(config.parse_config),
         }
     }
 }
@@ -69,6 +99,7 @@ impl Statsd {
 fn handle_udp(
     mut chans: util::Channel,
     tags: sync::Arc<metric::TagMap>,
+    parse_config: sync::Arc<StatsdParseConfig>,
     socket: &UdpSocket,
 ) {
     let mut buf = [0; 8192];
@@ -82,7 +113,12 @@ fn handle_udp(
             Err(e) => panic!(format!("Could not read UDP socket with error {:?}", e)),
         };
         match str::from_utf8(&buf[..len]) {
-            Ok(val) => if parse_statsd(val, &mut metrics, basic_metric.clone()) {
+            Ok(val) => if parse_statsd(
+                val,
+                &mut metrics,
+                basic_metric.clone(),
+                parse_config.clone(),
+            ) {
                 for m in metrics.drain(..) {
                     send(&mut chans, metric::Event::new_telemetry(m));
                 }
@@ -111,10 +147,11 @@ impl Source for Statsd {
                         UdpSocket::bind(addr).expect("Unable to bind to TCP socket");
                     let chans = self.chans.clone();
                     let tags = self.tags.clone();
+                    let parse_config = self.parse_config.clone();
                     info!("server started on {:?} {}", addr, self.port);
-                    joins.push(
-                        thread::spawn(move || handle_udp(chans, tags, &listener)),
-                    );
+                    joins.push(thread::spawn(
+                        move || handle_udp(chans, tags, parse_config, &listener),
+                    ));
                 }
             }
             Err(e) => {

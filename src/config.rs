@@ -27,11 +27,11 @@ use sink::NullConfig;
 use sink::PrometheusConfig;
 use sink::WavefrontConfig;
 use sink::wavefront::PadControl;
+use source::{StatsdConfig, StatsdParseConfig};
 use source::FileServerConfig;
 use source::GraphiteConfig;
 use source::InternalConfig;
 use source::NativeServerConfig;
-use source::StatsdConfig;
 
 // This stinks and is verbose. Once
 // https://github.com/rust-lang/rust/issues/41681 lands we'll be able to do this
@@ -750,6 +750,39 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         })
                         .unwrap_or(res.forwards);
 
+                    res.parse_config = tbl.get("mapping")
+                        .map(|cfg| {
+                            let mut masks = Vec::new();
+                            for (_, tbl) in cfg.as_table()
+                                .expect("mapping must be a table")
+                                .iter()
+                            {
+                                if let Some(mask) = tbl.get("mask") {
+                                    let re = ::regex::Regex::new(
+                                        mask.as_str().expect("mask must be a string"),
+                                    ).expect("mask is not a valid regex");
+                                    if let Some(bnds) = tbl.get("bounds") {
+                                        let bounds = bnds.as_array()
+                                            .expect("bounds must be an array")
+                                            .to_vec()
+                                            .iter()
+                                            .map(|v| v.as_float().unwrap())
+                                            .collect();
+                                        masks.insert(0, (re, bounds));
+                                    } else {
+                                        panic!("mapping must have bounds");
+                                    }
+                                } else {
+                                    panic!("mapping must have a mask");
+                                }
+                            }
+                            StatsdParseConfig {
+                                histogram_masks: masks,
+                            }
+                        })
+                        .unwrap_or(res.parse_config);
+
+
                     res.tags = global_tags.clone();
 
                     assert!(res.config_path.is_some());
@@ -1050,6 +1083,48 @@ scripts-directory = "/foo/bar"
         assert_eq!(
             config0.forwards,
             vec!["sinks.console".to_string(), "sinks.null".to_string()]
+        );
+    }
+
+    #[test]
+    fn config_statsd_sources_histogram_mappings() {
+        let config = r#"
+[sources]
+  [sources.statsd.primary]
+  enabled = true
+  host = "localhost"
+  port = 1024
+  forwards = ["sinks.console", "sinks.null"]
+
+  [sources.statsd.primary.mapping]
+  [sources.statsd.primary.mapping.foo]
+  mask = "foo.*"
+  bounds = [0.0, 1.0, 10.0]
+
+  [sources.statsd.primary.mapping.bar]
+  mask = "bar.*"
+  bounds = [0.0, 2.0, 20.0]
+ "#;
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.statsds.is_some());
+        let statsds = args.statsds.unwrap();
+
+        let config0 = statsds.get("sources.statsd.primary").unwrap();
+        assert_eq!(config0.host, "localhost");
+        assert_eq!(config0.port, 1024);
+        assert_eq!(
+            config0.forwards,
+            vec!["sinks.console".to_string(), "sinks.null".to_string()]
+        );
+        assert_eq!(
+            config0.parse_config.histogram_masks[0].1,
+            vec![0.0, 1.0, 10.0]
+        );
+        assert_eq!(
+            config0.parse_config.histogram_masks[1].1,
+            vec![0.0, 2.0, 20.0]
         );
     }
 

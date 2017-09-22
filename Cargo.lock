@@ -21,6 +21,7 @@ dependencies = [
  "protobuf 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "quantiles 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "quickcheck 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "regex 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_core 0.25.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_firehose 0.25.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "seahash 3.0.5 (registry+https://github.com/rust-lang/crates.io-index)",

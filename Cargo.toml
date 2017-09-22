@@ -32,6 +32,7 @@ lua = { git = "https://github.com/blt/rust-lua53.git", branch = "master" }
 openssl-probe = "0.1"
 protobuf = "1.2"
 quantiles = { version = "0.6", features = ["serde_support"] }
+regex = "0.2"
 rusoto_core = {version = "0.25.0"}
 rusoto_firehose = {version = "0.25.0"}
 seahash = "3.0"
