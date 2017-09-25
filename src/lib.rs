@@ -29,6 +29,7 @@ extern crate libc;
 extern crate lua;
 extern crate protobuf;
 extern crate quantiles;
+extern crate regex;
 extern crate rusoto_core;
 extern crate rusoto_firehose;
 extern crate seahash;

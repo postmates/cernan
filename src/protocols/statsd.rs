@@ -4,6 +4,7 @@
 
 use metric;
 use metric::AggregationMethod;
+use source::StatsdParseConfig;
 use std::str::FromStr;
 use std::sync;
 use time;
@@ -22,6 +23,7 @@ pub fn parse_statsd(
     source: &str,
     res: &mut Vec<metric::Telemetry>,
     metric: sync::Arc<Option<metric::Telemetry>>,
+    config: sync::Arc<StatsdParseConfig>,
 ) -> bool {
     for src in source.lines() {
         let mut offset = 0;
@@ -59,50 +61,59 @@ pub fn parse_statsd(
                             return false;
                         };
                         metric = match (&src[offset..]).find('@') {
-                            Some(sample_idx) => {
-                                match &src[offset..(offset + sample_idx)] {
-                                    "g|" | "g" => {
-                                        let sample = match f64::from_str(
-                                            &src[(offset + sample_idx + 1)..],
-                                        ) {
-                                            Ok(f) => f,
-                                            Err(_) => return false,
-                                        };
-                                        metric = metric.persist(true);
-                                        metric = if signed {
-                                            metric.kind(AggregationMethod::Sum)
-                                        } else {
-                                            metric.kind(AggregationMethod::Set)
-                                        };
-                                        metric.value(val * (1.0 / sample))
-                                    }
-                                    "c|" | "c" => {
-                                        let sample = match f64::from_str(
-                                            &src[(offset + sample_idx + 1)..],
-                                        ) {
-                                            Ok(f) => f,
-                                            Err(_) => return false,
-                                        };
-                                        metric = metric
-                                            .kind(AggregationMethod::Sum)
-                                            .persist(false);
-                                        metric.value(val * (1.0 / sample))
-                                    }
-                                    "ms" | "ms|" | "h" | "h|" => {
-                                        let sample = match f64::from_str(
-                                            &src[(offset + sample_idx + 1)..],
-                                        ) {
-                                            Ok(f) => f,
-                                            Err(_) => return false,
-                                        };
-                                        metric = metric
-                                            .kind(AggregationMethod::Summarize)
-                                            .persist(false);
-                                        metric.value(val * (1.0 / sample))
-                                    }
-                                    _ => return false,
+                            Some(sample_idx) => match &src
+                                [offset..(offset + sample_idx)]
+                            {
+                                "g|" | "g" => {
+                                    let sample = match f64::from_str(
+                                        &src[(offset + sample_idx + 1)..],
+                                    ) {
+                                        Ok(f) => f,
+                                        Err(_) => return false,
+                                    };
+                                    metric = metric.persist(true);
+                                    metric = if signed {
+                                        metric.kind(AggregationMethod::Sum)
+                                    } else {
+                                        metric.kind(AggregationMethod::Set)
+                                    };
+                                    metric.value(val * (1.0 / sample))
                                 }
-                            }
+                                "c|" | "c" => {
+                                    let sample = match f64::from_str(
+                                        &src[(offset + sample_idx + 1)..],
+                                    ) {
+                                        Ok(f) => f,
+                                        Err(_) => return false,
+                                    };
+                                    metric = metric
+                                        .kind(AggregationMethod::Sum)
+                                        .persist(false);
+                                    metric.value(val * (1.0 / sample))
+                                }
+                                "ms" | "ms|" | "h" | "h|" => {
+                                    let sample = match f64::from_str(
+                                        &src[(offset + sample_idx + 1)..],
+                                    ) {
+                                        Ok(f) => f,
+                                        Err(_) => return false,
+                                    };
+                                    metric = metric.persist(false);
+                                    metric = metric.kind(AggregationMethod::Summarize);
+                                    for &(ref mask_re, ref bounds) in
+                                        config.histogram_masks.iter()
+                                    {
+                                        if mask_re.is_match(name) {
+                                            metric = metric
+                                                .kind(AggregationMethod::Histogram)
+                                                .bounds(bounds.clone());
+                                            break;
+                                        }
+                                    }
+                                    metric.value(val * (1.0 / sample))
+                                }
+                                _ => return false,
+                            },
                             None => match &src[offset..] {
                                 "g" => {
                                     metric = metric.persist(true);
@@ -112,9 +123,21 @@ pub fn parse_statsd(
                                         metric.kind(AggregationMethod::Set)
                                     }
                                 }
-                                "ms" | "h" => metric
-                                    .kind(AggregationMethod::Summarize)
-                                    .persist(false),
+                                "ms" | "h" => {
+                                    metric = metric.persist(false);
+                                    metric = metric.kind(AggregationMethod::Summarize);
+                                    for &(ref mask_re, ref bounds) in
+                                        config.histogram_masks.iter()
+                                    {
+                                        if mask_re.is_match(name) {
+                                            metric = metric
+                                                .kind(AggregationMethod::Histogram)
+                                                .bounds(bounds.clone());
+                                            break;
+                                        }
+                                    }
+                                    metric
+                                }
                                 "c" => {
                                     metric.kind(AggregationMethod::Sum).persist(false)
                                 }
@@ -279,7 +302,9 @@ mod tests {
             let metric = sync::Arc::new(Some(Telemetry::default()));
             let mut res = Vec::new();
 
-            if parse_statsd(&lines, &mut res, metric) {
+            let config = sync::Arc::new(StatsdParseConfig::default());
+
+            if parse_statsd(&lines, &mut res, metric, config) {
                 assert_eq!(res.len(), pyld.lines.len());
                 for (sline, telem) in pyld.lines.iter().zip(res.iter()) {
                     assert_eq!(sline.name, telem.name);
@@ -325,11 +350,13 @@ mod tests {
     #[test]
     fn test_counter() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
         assert!(parse_statsd(
             "a.b:3.1|c\na-b:4|c|@0.1\na-b:5.2|c@0.2\n",
             &mut res,
-            metric
+            metric,
+            config,
         ));
         assert_eq!(res[0].kind(), AggregationMethod::Sum);
         assert_eq!(res[0].name, "a.b");
@@ -348,8 +375,9 @@ mod tests {
     #[test]
     fn test_parse_negative_timer() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd("fst:-1.1|ms\n", &mut res, metric));
+        assert!(parse_statsd("fst:-1.1|ms\n", &mut res, metric, config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Summarize);
         assert_eq!(res[0].name, "fst");
@@ -360,8 +388,9 @@ mod tests {
     #[test]
     fn test_metric_equal_in_name() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd("A=:1|ms\n", &mut res, metric));
+        assert!(parse_statsd("A=:1|ms\n", &mut res, metric, config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Summarize);
         assert_eq!(res[0].name, "A=");
@@ -372,8 +401,9 @@ mod tests {
     #[test]
     fn test_metric_slash_in_name() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd("A/:1|ms\n", &mut res, metric));
+        assert!(parse_statsd("A/:1|ms\n", &mut res, metric, config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Summarize);
         assert_eq!(res[0].name, "A/");
@@ -384,11 +414,13 @@ mod tests {
     #[test]
     fn test_metric_sample_gauge() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
         assert!(parse_statsd(
             "foo:1|g|@+0.22\nbar:101|g|@2\nbaz:2|g@0.2\nqux:4|g@0.1",
             &mut res,
-            metric
+            metric,
+            config
         ));
         //                              0         A     F
         assert_eq!(res[0].kind(), AggregationMethod::Set);
@@ -415,23 +447,31 @@ mod tests {
     #[test]
     fn test_metric_parse_invalid_no_name() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(!parse_statsd("", &mut res, metric));
+        assert!(!parse_statsd("", &mut res, metric, config));
     }
 
 
     #[test]
     fn test_metric_parse_invalid_no_value() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(!parse_statsd("foo:", &mut res, metric));
+        assert!(!parse_statsd("foo:", &mut res, metric, config));
     }
 
     #[test]
     fn test_metric_multiple() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd("a.b:12.1|g\nb_c:13.2|c\n", &mut res, metric));
+        assert!(parse_statsd(
+            "a.b:12.1|g\nb_c:13.2|c\n",
+            &mut res,
+            metric,
+            config
+        ));
         assert_eq!(2, res.len());
 
         assert_eq!(res[0].kind(), AggregationMethod::Set);
@@ -448,8 +488,14 @@ mod tests {
     #[test]
     fn test_metric_optional_final_newline() {
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd("a.b:12.1|g\nb_c:13.2|c", &mut res, metric));
+        assert!(parse_statsd(
+            "a.b:12.1|g\nb_c:13.2|c",
+            &mut res,
+            metric,
+            config
+        ));
         assert_eq!(2, res.len());
 
         assert_eq!(res[0].kind(), AggregationMethod::Set);
@@ -467,8 +513,9 @@ mod tests {
     fn test_solo_negative_gauge_as_ephemeral_set() {
         let pyld = "zrth:-1|g\n";
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd(pyld, &mut res, metric));
+        assert!(parse_statsd(pyld, &mut res, metric, config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Sum);
         assert_eq!(res[0].name, "zrth");
@@ -480,8 +527,9 @@ mod tests {
     fn test_multi_gauge_as_persist_sum() {
         let pyld = "zrth:0|g\nzrth:-1|g\n";
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd(pyld, &mut res, metric));
+        assert!(parse_statsd(pyld, &mut res, metric, config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Set);
         assert_eq!(res[0].name, "zrth");
@@ -506,8 +554,14 @@ mod tests {
             ":1.0|c",
         ];
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         for input in invalid.iter() {
-            assert!(!parse_statsd(*input, &mut Vec::new(), metric.clone()));
+            assert!(!parse_statsd(
+                *input,
+                &mut Vec::new(),
+                metric.clone(),
+                config.clone()
+            ));
         }
     }
 
@@ -516,8 +570,9 @@ mod tests {
         let pyld = "zrth:0|g\nfst:-1.1|ms\nsnd:+2.2|g\nthd:3.3|h\nfth:4|c\nfvth:5.5|c|@0.1\nsxth:\
                     -6.6|g\nsvth:+7.77|g\n";
         let metric = sync::Arc::new(Some(Telemetry::default()));
+        let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd(pyld, &mut res, metric));
+        assert!(parse_statsd(pyld, &mut res, metric, config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Set);
         assert_eq!(res[0].name, "zrth");
