@@ -35,13 +35,13 @@ pub type Mask = Regex;
 /// The bound type for metrics in `StatsdParseConfig`.
 pub type Bounds = Vec<f64>;
 
-/// Configuratoin for the statsd parser
+/// Configuration for the statsd parser
 #[derive(Debug, Clone)]
 pub struct StatsdParseConfig {
     /// Set specific bin masks for timeseries according to their name. The name
-    /// may be a globbing match, such like 'foo.*'. In this case all metrics
-    /// prefixed by 'foo.' which are timer or histogram will be interpreted as a
-    /// histogram.
+    /// may be a [regex](https://crates.io/crates/regex) match, such like
+    /// 'foo.*'. In this case all metrics prefixed by 'foo.' which are timer or
+    /// histogram will be interpreted as a histogram.
     pub histogram_masks: Vec<(Mask, Bounds)>,
 }
 
