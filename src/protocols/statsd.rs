@@ -45,8 +45,9 @@ pub fn parse_statsd(
                                 Ok(f) => f,
                                 Err(_) => return false,
                             };
-                        let mut metric = sync::Arc::make_mut(&mut metric.clone())
-                            .take()
+                        let mut metric = sync::Arc::make_mut(
+                            &mut sync::Arc::clone(&metric),
+                        ).take()
                             .unwrap()
                             .thaw();
                         metric = metric.name(name);
@@ -101,7 +102,7 @@ pub fn parse_statsd(
                                     metric = metric.persist(false);
                                     metric = metric.kind(AggregationMethod::Summarize);
                                     for &(ref mask_re, ref bounds) in
-                                        config.histogram_masks.iter()
+                                        &config.histogram_masks
                                     {
                                         if mask_re.is_match(name) {
                                             metric = metric
@@ -127,7 +128,7 @@ pub fn parse_statsd(
                                     metric = metric.persist(false);
                                     metric = metric.kind(AggregationMethod::Summarize);
                                     for &(ref mask_re, ref bounds) in
-                                        config.histogram_masks.iter()
+                                        &config.histogram_masks
                                     {
                                         if mask_re.is_match(name) {
                                             metric = metric

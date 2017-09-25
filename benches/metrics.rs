@@ -113,7 +113,6 @@ fn bench_graphite(b: &mut Bencher) {
     b.iter(|| {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let mut res = Vec::new();
-        let config = sync::Arc::new(StatsdParseConfig::default());
-        parse_graphite("fst 1 101\n", &mut res, metric, config);
+        parse_graphite("fst 1 101\n", &mut res, metric);
     });
 }

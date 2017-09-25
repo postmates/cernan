@@ -116,8 +116,8 @@ fn handle_udp(
             Ok(val) => if parse_statsd(
                 val,
                 &mut metrics,
-                basic_metric.clone(),
-                parse_config.clone(),
+                sync::Arc::clone(&basic_metric),
+                sync::Arc::clone(&parse_config),
             ) {
                 for m in metrics.drain(..) {
                     send(&mut chans, metric::Event::new_telemetry(m));
@@ -146,8 +146,8 @@ impl Source for Statsd {
                     let listener =
                         UdpSocket::bind(addr).expect("Unable to bind to TCP socket");
                     let chans = self.chans.clone();
-                    let tags = self.tags.clone();
-                    let parse_config = self.parse_config.clone();
+                    let tags = sync::Arc::clone(&self.tags);
+                    let parse_config = sync::Arc::clone(&self.parse_config);
                     info!("server started on {:?} {}", addr, self.port);
                     joins.push(thread::spawn(
                         move || handle_udp(chans, tags, parse_config, &listener),

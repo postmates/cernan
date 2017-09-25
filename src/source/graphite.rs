@@ -82,7 +82,7 @@ fn handle_tcp(
                 stream.peer_addr(),
                 stream.local_addr()
             );
-            let tags = tags.clone();
+            let tags = Arc::clone(&tags);
             let chans = chans.clone();
             thread::spawn(move || {
                 handle_stream(chans, tags, stream);
@@ -106,7 +106,7 @@ fn handle_stream(
         ));
         while let Some(len) = line_reader.read_line(&mut line).ok() {
             if len > 0 {
-                if parse_graphite(&line, &mut res, basic_metric.clone()) {
+                if parse_graphite(&line, &mut res, Arc::clone(&basic_metric)) {
                     assert!(!res.is_empty());
                     GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
                     GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
@@ -138,7 +138,7 @@ impl Source for Graphite {
                     let listener =
                         TcpListener::bind(addr).expect("Unable to bind to TCP socket");
                     let chans = self.chans.clone();
-                    let tags = self.tags.clone();
+                    let tags = Arc::clone(&self.tags);
                     info!("server started on {:?} {}", addr, self.port);
                     joins.push(thread::spawn(move || {
                                                  handle_tcp(chans, tags, listener)

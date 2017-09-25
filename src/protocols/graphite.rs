@@ -24,8 +24,9 @@ pub fn parse_graphite(
                         Ok(t) => t,
                         Err(_) => return false,
                     };
-                    let metric =
-                        sync::Arc::make_mut(&mut metric.clone()).take().unwrap();
+                    let metric = sync::Arc::make_mut(&mut sync::Arc::clone(&metric))
+                        .take()
+                        .unwrap();
                     res.push(
                         metric
                             .thaw()

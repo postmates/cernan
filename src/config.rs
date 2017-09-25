@@ -753,9 +753,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     res.parse_config = tbl.get("mapping")
                         .map(|cfg| {
                             let mut masks = Vec::new();
-                            for (_, tbl) in cfg.as_table()
-                                .expect("mapping must be a table")
-                                .iter()
+                            for (_, tbl) in
+                                cfg.as_table().expect("mapping must be a table").iter()
                             {
                                 if let Some(mask) = tbl.get("mask") {
                                     let re = ::regex::Regex::new(

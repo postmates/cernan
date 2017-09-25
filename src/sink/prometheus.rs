@@ -218,7 +218,7 @@ impl Prometheus {
     /// Please see documentation on `PrometheusConfig` for more details.
     pub fn new(config: PrometheusConfig) -> Prometheus {
         let aggrs = sync::Arc::new(sync::Mutex::new(Default::default()));
-        let srv_aggrs = aggrs.clone();
+        let srv_aggrs = sync::Arc::clone(&aggrs);
         let listener = Server::http((config.host.as_str(), config.port))
             .unwrap()
             .handle_threads(SenderHandler { aggr: srv_aggrs }, 1)
@@ -282,8 +282,8 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
     let mut buf = String::with_capacity(1024);
     let mut res = res.start().unwrap();
     for m in aggrs {
-        let sum_tags = m.tags.clone();
-        let count_tags = m.tags.clone();
+        let sum_tags = sync::Arc::clone(&m.tags);
+        let count_tags = sync::Arc::clone(&m.tags);
         for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
             buf.push_str(&m.name);
             buf.push_str("{quantile=\"");

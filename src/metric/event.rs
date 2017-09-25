@@ -35,14 +35,14 @@ impl Event {
     pub fn timestamp(&self) -> Option<i64> {
         match *self {
             Event::Telemetry(ref t) => {
-                let t = t.clone();
+                let t = sync::Arc::clone(t);
                 match *t {
                     Some(ref telem) => Some(telem.timestamp),
                     None => None,
                 }
             }
             Event::Log(ref l) => {
-                let l = l.clone();
+                let l = sync::Arc::clone(l);
                 match *l {
                     Some(ref log) => Some(log.time),
                     None => None,
