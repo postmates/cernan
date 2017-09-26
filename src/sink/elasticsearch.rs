@@ -3,10 +3,12 @@
 use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
+use elastic::client::responses::BulkAction;
 use elastic::error::Result;
 use elastic::prelude::*;
 use metric::{LogLine, Telemetry};
 use sink::{Sink, Valve};
+use std::error::Error;
 use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -24,6 +26,14 @@ lazy_static! {
     pub static ref ELASTIC_ERROR_ATTEMPTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total errors during attempted delivery, unknown
     pub static ref ELASTIC_ERROR_UNKNOWN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of index bulk action errors
+    pub static ref ELASTIC_BULK_ACTION_INDEX_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of create bulk action errors
+    pub static ref ELASTIC_BULK_ACTION_CREATE_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of update bulk action errors
+    pub static ref ELASTIC_BULK_ACTION_UPDATE_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of delete bulk action errors
+    pub static ref ELASTIC_BULK_ACTION_DELETE_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
 /// Configuration for the Elasticsearch sink
@@ -148,10 +158,34 @@ impl Sink for Elasticsearch {
                     self.buffer.clear();
                     ELASTIC_RECORDS_DELIVERY.fetch_add(1, Ordering::Relaxed);
                     ELASTIC_RECORDS_TOTAL_DELIVERED.fetch_add(1, Ordering::Relaxed);
-                    let failed_count = bulk.items.err.len();
-                    if failed_count > 0 {
-                        ELASTIC_RECORDS_TOTAL_FAILED.fetch_add(1, Ordering::Relaxed);
-                        error!("Failed to write {} put records", failed_count);
+                    ELASTIC_RECORDS_TOTAL_FAILED
+                        .fetch_add(bulk.items.err.len(), Ordering::Relaxed);
+                    if !bulk.items.err.is_empty() {
+                        error!("Failed to write {} put records", bulk.items.err.len());
+                        for bulk_err in bulk.items.err {
+                            if let Some(cause) = bulk_err.cause() {
+                                error!(
+                                    "Failed to write item with error {}, cause {}",
+                                    bulk_err.description(),
+                                    cause
+                                );
+                            } else {
+                                error!(
+                                    "Failed to write item with error {}",
+                                    bulk_err.description()
+                                );
+                            }
+                            match bulk_err.action {
+                                BulkAction::Index => ELASTIC_BULK_ACTION_INDEX_ERR
+                                    .fetch_add(1, Ordering::Relaxed),
+                                BulkAction::Create => ELASTIC_BULK_ACTION_CREATE_ERR
+                                    .fetch_add(1, Ordering::Relaxed),
+                                BulkAction::Update => ELASTIC_BULK_ACTION_UPDATE_ERR
+                                    .fetch_add(1, Ordering::Relaxed),
+                                BulkAction::Delete => ELASTIC_BULK_ACTION_DELETE_ERR
+                                    .fetch_add(1, Ordering::Relaxed),
+                            };
+                        }
                     }
                     return;
                 }

@@ -174,6 +174,30 @@ impl Source for Internal {
                     self.tags,
                     self.chans
                 );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.bulk_action.index",
+                    sink::elasticsearch::ELASTIC_BULK_ACTION_INDEX_ERR,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.bulk_action.create",
+                    sink::elasticsearch::ELASTIC_BULK_ACTION_CREATE_ERR,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.bulk_action.update",
+                    sink::elasticsearch::ELASTIC_BULK_ACTION_UPDATE_ERR,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.bulk_action.delete",
+                    sink::elasticsearch::ELASTIC_BULK_ACTION_DELETE_ERR,
+                    self.tags,
+                    self.chans
+                );
                 // sink::wavefront
                 atom_non_zero_telem!(
                     "cernan.sinks.wavefront.aggregation.histogram",
