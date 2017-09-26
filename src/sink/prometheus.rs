@@ -5,7 +5,7 @@
 //!
 //!   - SET -> gauge
 //!   - SUM -> counter
-//!   - QUANTILES -> summary 
+//!   - QUANTILES -> summary
 //!   - HISTOGRAM -> histogram
 //!
 //! All points are retained in a sliding window defined by
@@ -23,6 +23,7 @@ use seahash::SeaHasher;
 use sink::{Sink, Valve};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::hash_map::Entry;
 use std::f64;
 use std::hash::BuildHasherDefault;
 use std::io;
@@ -33,6 +34,7 @@ use std::sync;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use time;
 
 lazy_static! {
     /// Total reportable metrics
@@ -116,13 +118,22 @@ struct PrometheusAggr {
     //     let Prometheus take care of that. If you think you need timestamps,
     //     then you probably need the pushgateway (without timestamps) instead.
     //
-    // Prometheus has a certain view of the world -- and that's fine -- so we
-    // need to meet it there. But! We can't just drop metrics as soon as they're
-    // read, apparently, since prometheus expects to be able to re-read multiple
-    // times and get roughly similar results. What we do, then, is store a
-    // sliding window of metrics per hash, keeping only retain_limit per
-    // time series. We sum these values up at report time.
-    inner: HashMap<u64, Vec<metric::Telemetry>, BuildHasherDefault<SeaHasher>>,
+    // The following AggregationMethods we keep forever and ever:
+    //
+    //     - SET
+    //     - SUM
+    //     - HISTOGRAM
+    //
+    // The idea being that there's no good reason to flush these things,
+    // according to this conversation:
+    // https://github.com/postmates/cernan/pull/306#discussion_r139770087
+    perpetual: HashMap<u64, metric::Telemetry, BuildHasherDefault<SeaHasher>>,
+    // Now, AggregationMethod::Summarize is different. We store up a moving
+    // window of summaries and add them together on report. The window is
+    // `retain_limit` seconds wide, with older entries being flushed during
+    // flush intervals and insertion.
+    oldest_timestamp: i64,
+    windowed: HashMap<u64, Vec<metric::Telemetry>, BuildHasherDefault<SeaHasher>>,
 }
 
 impl PrometheusAggr {
@@ -130,7 +141,7 @@ impl PrometheusAggr {
     /// Telemetry
     #[cfg(test)]
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
-        if let Some(vs) = self.inner.get(&telem.hash()) {
+        if let Some(vs) = self.windowed.get(&telem.hash()) {
             let mut iter = vs.iter();
             if let Some(fst) = iter.next() {
                 let mut base = fst.clone();
@@ -142,22 +153,27 @@ impl PrometheusAggr {
                 None
             }
         } else {
-            None
+            self.perpetual.get(&telem.hash()).map(|x| x.clone())
         }
     }
 
     /// Return all 'reportable' Telemetry
     ///
     /// This function returns all the stored Telemetry points that are available
-    /// for shipping to Prometheus. 
+    /// for shipping to Prometheus.
     fn reportable(&mut self) -> Vec<metric::Telemetry> {
         let mut ret = Vec::new();
-        for v in self.inner.values() {
+        for v in self.perpetual.values() {
+            ret.push(v.clone());
+        }
+        for v in self.windowed.values() {
             let mut iter = v.iter();
             if let Some(fst) = iter.next() {
                 let mut base = fst.clone();
                 for x in iter {
-                    base += x.clone();
+                    if x.timestamp > self.oldest_timestamp {
+                        base += x.clone();
+                    }
                 }
                 ret.push(base);
             }
@@ -171,15 +187,41 @@ impl PrometheusAggr {
     /// PrometheusAggr. Timestamps are _not_ respected. Distinctions between
     /// Telemetry of the same name are only made if their tagmaps are distinct.
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
-        let ts_vec = self.inner.entry(telem.hash()).or_insert_with(|| vec![]);
-        match (*ts_vec).binary_search_by(|probe| probe.timestamp.cmp(&telem.timestamp))
-        {
-            Ok(idx) => ts_vec[idx] += telem,
-            Err(idx) => ts_vec.insert(idx, telem),
-        }
-        if ts_vec.len() > self.retain_limit {
-            let overage = ts_vec.len() - self.retain_limit;
-            let _ = ts_vec.drain(0..overage);
+        match telem.kind() {
+            AggregationMethod::Set |
+            AggregationMethod::Sum |
+            AggregationMethod::Histogram => {
+                let entry = self.perpetual.entry(telem.hash());
+                match entry {
+                    Entry::Occupied(mut o) => {
+                        *o.get_mut() += telem;
+                    }
+                    Entry::Vacant(o) => {
+                        o.insert(telem);
+                    }
+                };
+            }
+            AggregationMethod::Summarize => {
+                let ts_vec =
+                    self.windowed.entry(telem.hash()).or_insert_with(|| vec![]);
+                match (*ts_vec)
+                    .binary_search_by(|probe| probe.timestamp.cmp(&telem.timestamp))
+                {
+                    Ok(idx) => ts_vec[idx] += telem,
+                    Err(idx) => ts_vec.insert(idx, telem),
+                }
+                let mut overage = 0;
+                for val in ts_vec.iter() {
+                    if val.timestamp < self.oldest_timestamp {
+                        overage += 1;
+                    } else {
+                        break;
+                    }
+                }
+                if overage > 0 {
+                    let _ = ts_vec.drain(0..overage);
+                }
+            }
         }
         true
     }
@@ -200,14 +242,16 @@ impl PrometheusAggr {
 
     /// Return the total points stored by this aggregation
     fn count(&self) -> usize {
-        self.inner.len()
+        self.windowed.len() + self.perpetual.len()
     }
 
     /// Create a new PrometheusAggr
     fn new(retain_limit: usize) -> PrometheusAggr {
         PrometheusAggr {
             retain_limit: retain_limit,
-            inner: Default::default(),
+            perpetual: Default::default(),
+            oldest_timestamp: time::now() - (retain_limit as i64),
+            windowed: Default::default(),
         }
     }
 }
@@ -453,7 +497,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
                     buf.push_str("\"} ");
                 } else {
                     buf.push_str(" ");
-                }                    
+                }
                 buf.push_str(&v.to_string());
                 buf.push_str("\n");
             },
@@ -612,8 +656,8 @@ impl Sink for Prometheus {
     }
 
     fn flush(&mut self) {
-        // There is no flush for the Prometheus sink. Prometheus prefers to
-        // pull via HTTP / Protobuf. See PrometheusSrv.
+        let mut aggrs = self.aggrs.lock().unwrap();
+        aggrs.oldest_timestamp = time::now() - (aggrs.retain_limit as i64);
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<metric::Telemetry>>) -> () {
@@ -652,14 +696,14 @@ mod test {
                 n => n,
             };
             let limit: usize = Arbitrary::arbitrary(g);
-            let mut inner: HashMap<
+            let mut windowed: HashMap<
                 u64,
                 Vec<metric::Telemetry>,
                 BuildHasherDefault<SeaHasher>,
             > = Default::default();
             for _ in 0..limit {
                 let telem: metric::Telemetry = Arbitrary::arbitrary(g);
-                let ts_vec = inner.entry(telem.hash()).or_insert(vec![]);
+                let ts_vec = windowed.entry(telem.hash()).or_insert(vec![]);
                 match (*ts_vec)
                     .binary_search_by(|probe| probe.timestamp.cmp(&telem.timestamp))
                 {
@@ -667,9 +711,20 @@ mod test {
                     Err(idx) => ts_vec.insert(idx, telem),
                 }
             }
+            let mut perpetual: HashMap<
+                u64,
+                metric::Telemetry,
+                BuildHasherDefault<SeaHasher>,
+            > = Default::default();
+            for _ in 0..limit {
+                let telem: metric::Telemetry = Arbitrary::arbitrary(g);
+                perpetual.insert(telem.hash(), telem);
+            }
             PrometheusAggr {
                 retain_limit: retain_limit,
-                inner: inner,
+                perpetual: perpetual,
+                windowed: windowed,
+                oldest_timestamp: 0,
             }
         }
     }
