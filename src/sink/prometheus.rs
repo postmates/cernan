@@ -133,7 +133,26 @@ struct PrometheusAggr {
     // `retain_limit` seconds wide, with older entries being flushed during
     // flush intervals and insertion.
     oldest_timestamp: i64,
+    retainers: HashMap<u64, WindowedRetainer, BuildHasherDefault<SeaHasher>>,
     windowed: HashMap<u64, Vec<metric::Telemetry>, BuildHasherDefault<SeaHasher>>,
+}
+
+/// When we store AggregationMethod::Summarize into windows we have to be
+/// careful to kep the count and summation of past bins we've dropped
+/// off. That's the purpose of WindowedRetainer.
+#[derive(Clone, Debug)]
+struct WindowedRetainer {
+    historic_count: usize,
+    historic_sum: f64,
+}
+
+impl Default for WindowedRetainer {
+    fn default() -> WindowedRetainer {
+        WindowedRetainer {
+            historic_count: 0,
+            historic_sum: 0.0,
+        }
+    }
 }
 
 impl PrometheusAggr {
@@ -142,9 +161,11 @@ impl PrometheusAggr {
     #[cfg(test)]
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
         match telem.kind() {
-            AggregationMethod::Set | AggregationMethod::Sum | AggregationMethod::Histogram => {
+            AggregationMethod::Set |
+            AggregationMethod::Sum |
+            AggregationMethod::Histogram => {
                 self.perpetual.get(&telem.hash()).map(|x| x.clone())
-            },
+            }
             AggregationMethod::Summarize => {
                 if let Some(vs) = self.windowed.get(&telem.hash()) {
                     let mut iter = vs.iter();
@@ -209,8 +230,8 @@ impl PrometheusAggr {
                 };
             }
             AggregationMethod::Summarize => {
-                let ts_vec =
-                    self.windowed.entry(telem.hash()).or_insert_with(|| vec![]);
+                let id = telem.hash();
+                let ts_vec = self.windowed.entry(id).or_insert_with(|| vec![]);
                 match (*ts_vec)
                     .binary_search_by(|probe| probe.timestamp.cmp(&telem.timestamp))
                 {
@@ -226,7 +247,13 @@ impl PrometheusAggr {
                     }
                 }
                 if overage > 0 {
-                    let _ = ts_vec.drain(0..overage);
+                    for t in ts_vec.drain(0..overage) {
+                        let retainer = self.retainers
+                            .entry(id)
+                            .or_insert_with(|| WindowedRetainer::default());
+                        retainer.historic_sum += t.samples_sum().unwrap_or(0.0);
+                        retainer.historic_count += t.count();
+                    }
                 }
             }
         }
@@ -258,6 +285,7 @@ impl PrometheusAggr {
             retain_limit: retain_limit,
             perpetual: Default::default(),
             oldest_timestamp: time::now() - (retain_limit as i64),
+            retainers: Default::default(),
             windowed: Default::default(),
         }
     }
@@ -292,10 +320,10 @@ impl Handler for SenderHandler {
         }
         let res = if accept_proto {
             PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
-            write_binary(&reportable, res)
+            write_binary(&reportable, &aggr.retainers, res)
         } else {
             PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
-            write_text(&reportable, res)
+            write_text(&reportable, &aggr.retainers, res)
         };
         if res.is_err() {
             PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
@@ -324,7 +352,11 @@ impl Prometheus {
     }
 }
 
-fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
+fn write_binary(
+    aggrs: &[metric::Telemetry],
+    retainers: &HashMap<u64, WindowedRetainer, BuildHasherDefault<SeaHasher>>,
+    mut res: Response,
+) -> io::Result<()> {
     res.headers_mut().set_raw(
         "content-type",
         vec![
@@ -390,10 +422,16 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
                     label_pairs.push(lp);
                 }
                 metric.set_label(RepeatedField::from_vec(label_pairs));
+                let (retained_count, retained_sum) =
+                    if let Some(retainer) = retainers.get(&value.hash()) {
+                        (retainer.historic_count, retainer.historic_sum)
+                    } else {
+                        (0, 0.0)
+                    };
                 let mut summary = Summary::new();
-                summary.set_sample_count(value.count() as u64);
+                summary.set_sample_count((retained_count + value.count()) as u64);
                 if let Some(val) = value.samples_sum() {
-                    summary.set_sample_sum(val);
+                    summary.set_sample_sum(retained_sum + val);
                 }
                 let mut quantiles = Vec::with_capacity(9);
                 for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
@@ -456,7 +494,11 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
 }
 
 #[allow(cyclomatic_complexity)]
-fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
+fn write_text(
+    aggrs: &[metric::Telemetry],
+    retainers: &HashMap<u64, WindowedRetainer, BuildHasherDefault<SeaHasher>>,
+    mut res: Response,
+) -> io::Result<()> {
     res.headers_mut()
         .set_raw("content-type", vec![b"text/plain; version=0.0.4".to_vec()]);
     let mut buf = String::with_capacity(1024);
@@ -598,7 +640,14 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
                     }
                     buf.push_str("} ");
                 }
-                buf.push_str(&value.samples_sum().unwrap_or(0.0).to_string());
+                let (retained_count, retained_sum) =
+                    if let Some(retainer) = retainers.get(&value.hash()) {
+                        (retainer.historic_count, retainer.historic_sum)
+                    } else {
+                        (0, 0.0)
+                    };
+                buf.push_str(&(value.samples_sum().unwrap_or(0.0) + retained_sum)
+                    .to_string());
                 buf.push_str("\n");
                 buf.push_str(&value.name);
                 buf.push_str("_count ");
@@ -612,7 +661,7 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
                     }
                     buf.push_str("} ");
                 }
-                buf.push_str(&value.count().to_string());
+                buf.push_str(&(value.count() + retained_count).to_string());
                 buf.push_str("\n");
             }
         }
@@ -731,6 +780,7 @@ mod test {
                 retain_limit: retain_limit,
                 perpetual: perpetual,
                 windowed: windowed,
+                retainers: Default::default(),
                 oldest_timestamp: 0,
             }
         }
