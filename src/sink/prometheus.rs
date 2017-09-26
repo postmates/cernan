@@ -141,19 +141,26 @@ impl PrometheusAggr {
     /// Telemetry
     #[cfg(test)]
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
-        if let Some(vs) = self.windowed.get(&telem.hash()) {
-            let mut iter = vs.iter();
-            if let Some(fst) = iter.next() {
-                let mut base = fst.clone();
-                for x in iter {
-                    base += x.clone();
+        match telem.kind() {
+            AggregationMethod::Set | AggregationMethod::Sum | AggregationMethod::Histogram => {
+                self.perpetual.get(&telem.hash()).map(|x| x.clone())
+            },
+            AggregationMethod::Summarize => {
+                if let Some(vs) = self.windowed.get(&telem.hash()) {
+                    let mut iter = vs.iter();
+                    if let Some(fst) = iter.next() {
+                        let mut base = fst.clone();
+                        for x in iter {
+                            base += x.clone();
+                        }
+                        Some(base)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
                 }
-                Some(base)
-            } else {
-                None
             }
-        } else {
-            self.perpetual.get(&telem.hash()).map(|x| x.clone())
         }
     }
 
@@ -795,18 +802,6 @@ mod test {
                         aggr.find_match(&telem).expect("could not find in test");
                     assert_eq!(other.name, new_t.name);
                     assert_eq!(new_t.kind(), telem.kind());
-                    // TODO
-                    //
-                    // This will not longer function correctly. Previously we
-                    // _only_ checked that the count got bumpbed but count is
-                    // not a sensible thing when Telemetry is not all CKMS
-                    // backed.
-                    //
-                    // That's okay. In the future we'll be obeying the
-                    // aggregation of the input Telemetry and then this will
-                    // work.
-                    //
-                    // assert_eq!(other.value(), new_t.value());
                 }
                 None => return TestResult::discard(),
             }
