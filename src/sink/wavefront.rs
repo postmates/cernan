@@ -483,9 +483,32 @@ impl Wavefront {
     ) -> () {
         let mut tag_buf = String::with_capacity(1_024);
         match value.kind() {
-            AggregationMethod::Histogram => {
-                unimplemented!();
-            }
+            AggregationMethod::Histogram => if let Some(bins) = value.bins() {
+                use quantiles::histogram::Bound;
+                fmt_tags(&value.tags, &mut tag_buf);
+                for &(bound, count) in bins {
+                    self.stats.push_str(&value.name);
+                    self.stats.push_str("_");
+                    match bound {
+                        Bound::Finite(bnd) => {
+                            self.stats.push_str(get_from_cache(&mut value_cache, bnd));
+                        }
+                        Bound::PosInf => {
+                            self.stats.push_str("pos_inf");
+                        }
+                    };
+                    self.stats.push_str(" ");
+                    self.stats.push_str(get_from_cache(&mut count_cache, count));
+                    self.stats.push_str(" ");
+                    self.stats
+                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                    self.stats.push_str(" ");
+                    self.stats.push_str(&tag_buf);
+                    self.stats.push_str("\n");
+                }
+
+                tag_buf.clear();
+            },
             AggregationMethod::Sum => if let Some(v) = value.sum() {
                 self.stats.push_str(&value.name);
                 self.stats.push_str(" ");

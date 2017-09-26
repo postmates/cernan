@@ -242,7 +242,7 @@ impl Source for Internal {
                     self.chans
                 );
                 atom_non_zero_telem!(
-                    "cernan.sinks.wavefront.value.open",
+                    "cernan.sinks.wavefront.valve.open",
                     sink::wavefront::WAVEFRONT_VALVE_OPEN,
                     self.tags,
                     self.chans
