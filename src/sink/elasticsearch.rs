@@ -12,7 +12,6 @@ use std::error::Error;
 use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use time;
 use uuid::Uuid;
 
 lazy_static! {
@@ -22,8 +21,8 @@ lazy_static! {
     pub static ref ELASTIC_RECORDS_TOTAL_DELIVERED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total records that failed to be delivered due to error
     pub static ref ELASTIC_RECORDS_TOTAL_FAILED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total errors during attempted delivery
-    pub static ref ELASTIC_ERROR_ATTEMPTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Unknown error occurred during attempted flush 
+    pub static ref ELASTIC_ERROR_UNKNOWN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total number of index bulk action errors
     pub static ref ELASTIC_BULK_ACTION_INDEX_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total number of create bulk action errors
@@ -65,7 +64,7 @@ impl Default for ElasticsearchConfig {
             host: "127.0.0.1".to_string(),
             index_prefix: None,
             port: 9200,
-            flush_interval: 10,
+            flush_interval: 1,
         }
     }
 }
@@ -75,7 +74,9 @@ impl Default for ElasticsearchConfig {
 /// Refer to the documentation on `ElasticsearchConfig` for more details.
 pub struct Elasticsearch {
     buffer: Vec<LogLine>,
-    client: Client,
+    secure: bool,
+    host: String,
+    port: usize,
     index_prefix: Option<String>,
     flush_interval: u64,
 }
@@ -85,14 +86,11 @@ impl Elasticsearch {
     ///
     /// Refer to the documentation on Elasticsearch for more details.
     pub fn new(config: ElasticsearchConfig) -> Elasticsearch {
-        let proto = if config.secure { "https" } else { "http" };
-        let params =
-            RequestParams::new(format!("{}://{}:{}", proto, config.host, config.port));
-        let client = Client::new(params).unwrap();
-
         Elasticsearch {
             buffer: Vec::new(),
-            client: client,
+            secure: config.secure,
+            host: config.host,
+            port: config.port,
             index_prefix: config.index_prefix,
             flush_interval: config.flush_interval,
         }
@@ -141,63 +139,57 @@ impl Sink for Elasticsearch {
             return;
         }
 
-        let mut attempts: u32 = 0;
-        loop {
-            let mut buffer = String::with_capacity(4048);
-            self.bulk_body(&mut buffer);
-            debug!("BODY: {:?}", buffer);
-            let bulk_resp: Result<BulkResponse> = self.client
-                .request(BulkRequest::new(buffer))
-                .send()
-                .and_then(into_response);
+        let proto = if self.secure { "https" } else { "http" };
+        let params =
+            RequestParams::new(format!("{}://{}:{}", proto, self.host, self.port));
+        let client = Client::new(params).unwrap();
 
-            match bulk_resp {
-                Ok(bulk) => {
-                    self.buffer.clear();
-                    ELASTIC_RECORDS_DELIVERY.fetch_add(1, Ordering::Relaxed);
-                    ELASTIC_RECORDS_TOTAL_DELIVERED.fetch_add(bulk.items.ok.len(), Ordering::Relaxed);
-                    ELASTIC_RECORDS_TOTAL_FAILED
-                        .fetch_add(bulk.items.err.len(), Ordering::Relaxed);
-                    if !bulk.items.err.is_empty() {
-                        error!("Failed to write {} put records", bulk.items.err.len());
-                        for bulk_err in bulk.items.err {
-                            if let Some(cause) = bulk_err.cause() {
-                                error!(
-                                    "Failed to write item with error {}, cause {}",
-                                    bulk_err.description(),
-                                    cause
-                                );
-                            } else {
-                                error!(
-                                    "Failed to write item with error {}",
-                                    bulk_err.description()
-                                );
-                            }
-                            match bulk_err.action {
-                                BulkAction::Index => ELASTIC_BULK_ACTION_INDEX_ERR
-                                    .fetch_add(1, Ordering::Relaxed),
-                                BulkAction::Create => ELASTIC_BULK_ACTION_CREATE_ERR
-                                    .fetch_add(1, Ordering::Relaxed),
-                                BulkAction::Update => ELASTIC_BULK_ACTION_UPDATE_ERR
-                                    .fetch_add(1, Ordering::Relaxed),
-                                BulkAction::Delete => ELASTIC_BULK_ACTION_DELETE_ERR
-                                    .fetch_add(1, Ordering::Relaxed),
-                            };
+        let mut buffer = String::with_capacity(4048);
+        self.bulk_body(&mut buffer);
+        debug!("BODY: {:?}", buffer);
+        let bulk_resp: Result<BulkResponse> = client
+            .request(BulkRequest::new(buffer))
+            .send()
+            .and_then(into_response);
+        
+        match bulk_resp {
+            Ok(bulk) => {
+                self.buffer.clear();
+                ELASTIC_RECORDS_DELIVERY.fetch_add(1, Ordering::Relaxed);
+                ELASTIC_RECORDS_TOTAL_DELIVERED.fetch_add(bulk.items.ok.len(), Ordering::Relaxed);
+                ELASTIC_RECORDS_TOTAL_FAILED
+                    .fetch_add(bulk.items.err.len(), Ordering::Relaxed);
+                if !bulk.items.err.is_empty() {
+                    error!("Failed to write {} put records", bulk.items.err.len());
+                    for bulk_err in bulk.items.err {
+                        if let Some(cause) = bulk_err.cause() {
+                            error!(
+                                "Failed to write item with error {}, cause {}",
+                                bulk_err.description(),
+                                cause
+                            );
+                        } else {
+                            error!(
+                                "Failed to write item with error {}",
+                                bulk_err.description()
+                            );
                         }
+                        match bulk_err.action {
+                            BulkAction::Index => ELASTIC_BULK_ACTION_INDEX_ERR
+                                .fetch_add(1, Ordering::Relaxed),
+                            BulkAction::Create => ELASTIC_BULK_ACTION_CREATE_ERR
+                                .fetch_add(1, Ordering::Relaxed),
+                            BulkAction::Update => ELASTIC_BULK_ACTION_UPDATE_ERR
+                                .fetch_add(1, Ordering::Relaxed),
+                            BulkAction::Delete => ELASTIC_BULK_ACTION_DELETE_ERR
+                                .fetch_add(1, Ordering::Relaxed),
+                        };
                     }
-                    return;
                 }
-                Err(err) => {
-                    ELASTIC_ERROR_ATTEMPTS
-                        .fetch_add(attempts as usize, Ordering::Relaxed);
-                    error!("Unable to write, unknown failure: {}", err);
-                    attempts += 1;
-                    time::delay(attempts);
-                    if attempts > 10 {
-                        break;
-                    }
-                    continue;
-                }
+            }
+            Err(err) => {
+                ELASTIC_ERROR_UNKNOWN.fetch_add(1, Ordering::Relaxed);
+                error!("Unable to write, unknown failure: {}", err);
             }
         }
     }

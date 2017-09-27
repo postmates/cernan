@@ -169,8 +169,8 @@ impl Source for Internal {
                     self.chans
                 );
                 atom_non_zero_telem!(
-                    "cernan.sinks.elasticsearch.error.attempts",
-                    sink::elasticsearch::ELASTIC_ERROR_ATTEMPTS,
+                    "cernan.sinks.elasticsearch.error.unknown",
+                    sink::elasticsearch::ELASTIC_ERROR_UNKNOWN,
                     self.tags,
                     self.chans
                 );
