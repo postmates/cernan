@@ -24,8 +24,6 @@ lazy_static! {
     pub static ref ELASTIC_RECORDS_TOTAL_FAILED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total errors during attempted delivery
     pub static ref ELASTIC_ERROR_ATTEMPTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total errors during attempted delivery, unknown
-    pub static ref ELASTIC_ERROR_UNKNOWN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total number of index bulk action errors
     pub static ref ELASTIC_BULK_ACTION_INDEX_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total number of create bulk action errors
@@ -157,7 +155,7 @@ impl Sink for Elasticsearch {
                 Ok(bulk) => {
                     self.buffer.clear();
                     ELASTIC_RECORDS_DELIVERY.fetch_add(1, Ordering::Relaxed);
-                    ELASTIC_RECORDS_TOTAL_DELIVERED.fetch_add(1, Ordering::Relaxed);
+                    ELASTIC_RECORDS_TOTAL_DELIVERED.fetch_add(bulk.items.ok.len(), Ordering::Relaxed);
                     ELASTIC_RECORDS_TOTAL_FAILED
                         .fetch_add(bulk.items.err.len(), Ordering::Relaxed);
                     if !bulk.items.err.is_empty() {
@@ -192,7 +190,6 @@ impl Sink for Elasticsearch {
                 Err(err) => {
                     ELASTIC_ERROR_ATTEMPTS
                         .fetch_add(attempts as usize, Ordering::Relaxed);
-                    ELASTIC_ERROR_UNKNOWN.fetch_add(1, Ordering::Relaxed);
                     error!("Unable to write, unknown failure: {}", err);
                     attempts += 1;
                     time::delay(attempts);
