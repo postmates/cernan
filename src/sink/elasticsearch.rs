@@ -31,6 +31,25 @@ lazy_static! {
     pub static ref ELASTIC_BULK_ACTION_UPDATE_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total number of delete bulk action errors
     pub static ref ELASTIC_BULK_ACTION_DELETE_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+
+    /// Total number of api errors due to index not found 
+    pub static ref ELASTIC_ERROR_API_INDEX_NOT_FOUND: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of api errors due to parsing 
+    pub static ref ELASTIC_ERROR_API_PARSING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of api errors due to mapper parsing
+    pub static ref ELASTIC_ERROR_API_MAPPER_PARSING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of api errors due to action request validation
+    pub static ref ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of api errors due to unknown reasons 
+    pub static ref ELASTIC_ERROR_API_UNKNOWN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of api errors due to parse respose json errors
+    pub static ref ELASTIC_ERROR_RESPONSE_JSON: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of api errors due to parse respose io errors
+    pub static ref ELASTIC_ERROR_RESPONSE_IO: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of api errors due to json parsing 
+    pub static ref ELASTIC_ERROR_JSON: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of api errors due to reqwest client
+    pub static ref ELASTIC_ERROR_REQUEST_FAILURE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
 /// Configuration for the Elasticsearch sink
@@ -188,8 +207,58 @@ impl Sink for Elasticsearch {
                 }
             }
             Err(err) => {
-                ELASTIC_ERROR_UNKNOWN.fetch_add(1, Ordering::Relaxed);
-                error!("Unable to write, unknown failure: {}", err);
+                use elastic::error::ErrorKind;
+                match *err.kind() {
+                    ErrorKind::Response(ref response_err) => {
+                        use elastic::client::responses::parse::ParseResponseError;
+                        match *response_err {
+                            ParseResponseError::Json(ref e) => {
+                                ELASTIC_ERROR_RESPONSE_JSON.fetch_add(1, Ordering::Relaxed);
+                                error!("Unable to write, Parse Response Error (JSON): {}", e.description());
+                            },
+                            ParseResponseError::Io(ref e) => {
+                                ELASTIC_ERROR_RESPONSE_IO.fetch_add(1, Ordering::Relaxed);
+                                error!("Unable to write, Parse Response Error (IO): {}", e.description());
+                            },
+                        }
+                    },
+                    ErrorKind::Json(ref e) => {
+                        ELASTIC_ERROR_JSON.fetch_add(1, Ordering::Relaxed);
+                        error!("Unable to write, JSON: {}", e.description());
+                    },
+                    ErrorKind::Client(ref e) => {
+                        ELASTIC_ERROR_REQUEST_FAILURE.fetch_add(1, Ordering::Relaxed);
+                        error!("Unable to write, Reqwest Client Error: {}", e.description());
+                    },
+                    ErrorKind::Msg(ref msg) => {
+                        error!("Unable to write, msg: {}", msg);
+                    },
+                    ErrorKind::Api(ref err) => {
+                        use elastic::error::ApiError;
+                        match *err {
+                            ApiError::IndexNotFound { ref index } => {
+                                ELASTIC_ERROR_API_INDEX_NOT_FOUND.fetch_add(1, Ordering::Relaxed);
+                                error!("Unable to write, API Error (Index Not Found): {}", index);
+                            },
+                            ApiError::Parsing { ref reason, .. } => {
+                                ELASTIC_ERROR_API_PARSING.fetch_add(1, Ordering::Relaxed);
+                                error!("Unable to write, API Error (Parsing): {}", reason);
+                            },
+                            ApiError::MapperParsing { ref reason, .. } => {
+                                ELASTIC_ERROR_API_MAPPER_PARSING.fetch_add(1, Ordering::Relaxed);
+                                error!("Unable to write, API Error (Mapper Parsing): {}", reason);
+                            },
+                            ApiError::ActionRequestValidation { ref reason, .. } => {
+                                ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION.fetch_add(1, Ordering::Relaxed);
+                                error!("Unable to write, API Error (Action Request Validation): {}", reason);
+                            },
+                            ApiError::Other { .. } => {
+                                ELASTIC_ERROR_API_UNKNOWN.fetch_add(1, Ordering::Relaxed);
+                                error!("Unable to write, API Error (Unknown)");
+                            },
+                        }
+                    },
+                }
             }
         }
     }
