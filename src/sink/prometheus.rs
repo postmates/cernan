@@ -556,6 +556,7 @@ fn write_text(
                     buf.push_str(&value.name);
                     buf.push_str(" histogram\n");
                 }
+                let mut running_sum = 0;
                 for &(bound, val) in bin_iter {
                     buf.push_str(&value.name);
                     buf.push_str("{le=\"");
@@ -574,7 +575,8 @@ fn write_text(
                         buf.push_str(v);
                     }
                     buf.push_str("\"} ");
-                    buf.push_str(&val.to_string());
+                    buf.push_str(&(val + running_sum).to_string());
+                    running_sum += val;
                     buf.push_str("\n");
                 }
                 buf.push_str(&value.name);
@@ -589,7 +591,7 @@ fn write_text(
                     }
                     buf.push_str("} ");
                 }
-                buf.push_str(&value.sum().unwrap_or(0.0).to_string());
+                buf.push_str(&value.samples_sum().unwrap_or(0.0).to_string());
                 buf.push_str("\n");
                 buf.push_str(&value.name);
                 buf.push_str("_count ");
