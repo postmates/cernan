@@ -137,9 +137,9 @@ struct PrometheusAggr {
     windowed: HashMap<u64, Vec<metric::Telemetry>, BuildHasherDefault<SeaHasher>>,
 }
 
-/// When we store AggregationMethod::Summarize into windows we have to be
+/// When we store `AggregationMethod::Summarize` into windows we have to be
 /// careful to kep the count and summation of past bins we've dropped
-/// off. That's the purpose of WindowedRetainer.
+/// off. That's the purpose of `WindowedRetainer`.
 #[derive(Clone, Debug)]
 struct WindowedRetainer {
     historic_count: usize,
@@ -250,7 +250,7 @@ impl PrometheusAggr {
                     for t in ts_vec.drain(0..overage) {
                         let retainer = self.retainers
                             .entry(id)
-                            .or_insert_with(|| WindowedRetainer::default());
+                            .or_insert_with(WindowedRetainer::default);
                         retainer.historic_sum += t.samples_sum().unwrap_or(0.0);
                         retainer.historic_count += t.count();
                     }
@@ -339,7 +339,7 @@ impl Prometheus {
     pub fn new(config: PrometheusConfig) -> Prometheus {
         let aggrs =
             sync::Arc::new(sync::Mutex::new(PrometheusAggr::new(config.retain_limit)));
-        let srv_aggrs = aggrs.clone();
+        let srv_aggrs = sync::Arc::clone(&aggrs);
         let listener = Server::http((config.host.as_str(), config.port))
             .unwrap()
             .handle_threads(SenderHandler { aggr: srv_aggrs }, 1)
@@ -614,8 +614,8 @@ fn write_text(
                     buf.push_str(&value.name);
                     buf.push_str(" summary\n");
                 }
-                let sum_tags = value.tags.clone();
-                let count_tags = value.tags.clone();
+                let sum_tags = sync::Arc::clone(&value.tags);
+                let count_tags = sync::Arc::clone(&value.tags);
                 for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
                     buf.push_str(&value.name);
                     buf.push_str("{quantile=\"");
