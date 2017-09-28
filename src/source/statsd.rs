@@ -102,7 +102,7 @@ fn handle_udp(
     parse_config: sync::Arc<StatsdParseConfig>,
     socket: &UdpSocket,
 ) {
-    let mut buf = Vec::with_capacity(8192);
+    let mut buf = [0; 16_250];
     let mut metrics = Vec::new();
     let basic_metric = sync::Arc::new(Some(
         metric::Telemetry::default().overlay_tags_from_map(&tags),
