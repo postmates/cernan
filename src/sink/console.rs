@@ -110,11 +110,33 @@ impl Sink for Console {
         let mut sums = String::new();
         let mut sets = String::new();
         let mut summaries = String::new();
+        let mut histograms = String::new();
 
         for telem in self.aggrs.iter() {
             match telem.kind() {
                 AggregationMethod::Histogram => {
-                    unimplemented!();
+                    use quantiles::histogram::Bound;
+                    let tgt = &mut histograms;
+                    if let Some(bin_iter) = telem.bins() {
+                        for &(bound, val) in bin_iter {
+                            tgt.push_str("    ");
+                            tgt.push_str(&telem.name);
+                            tgt.push_str("_");
+                            match bound {
+                                Bound::Finite(bnd) => {
+                                    tgt.push_str(&bnd.to_string());
+                                }
+                                Bound::PosInf => {
+                                    tgt.push_str("pos_inf");
+                                }
+                            };
+                            tgt.push_str("(");
+                            tgt.push_str(&telem.timestamp.to_string());
+                            tgt.push_str("): ");
+                            tgt.push_str(&val.to_string());
+                            tgt.push_str("\n");
+                        }
+                    }
                 }
                 AggregationMethod::Sum => {
                     let tgt = &mut sums;
@@ -171,6 +193,8 @@ impl Sink for Console {
         print!("{}", sets);
         println!("  summaries:");
         print!("{}", summaries);
+        println!("  histograms:");
+        print!("{}", histograms);
 
         self.aggrs.reset();
     }
