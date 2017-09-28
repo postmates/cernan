@@ -169,8 +169,8 @@ impl Source for Internal {
                     self.chans
                 );
                 atom_non_zero_telem!(
-                    "cernan.sinks.elasticsearch.error.attempts",
-                    sink::elasticsearch::ELASTIC_ERROR_ATTEMPTS,
+                    "cernan.sinks.elasticsearch.error.unknown",
+                    sink::elasticsearch::ELASTIC_ERROR_UNKNOWN,
                     self.tags,
                     self.chans
                 );
@@ -195,6 +195,60 @@ impl Source for Internal {
                 atom_non_zero_telem!(
                     "cernan.sinks.elasticsearch.error.bulk_action.delete",
                     sink::elasticsearch::ELASTIC_BULK_ACTION_DELETE_ERR,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.api.index_not_found",
+                    sink::elasticsearch::ELASTIC_ERROR_API_INDEX_NOT_FOUND,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.api.parsing",
+                    sink::elasticsearch::ELASTIC_ERROR_API_PARSING,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.api.mapper_parsing",
+                    sink::elasticsearch::ELASTIC_ERROR_API_MAPPER_PARSING,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.api.action_request_validation",
+                    sink::elasticsearch::ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.api.unknown",
+                    sink::elasticsearch::ELASTIC_ERROR_API_UNKNOWN,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.response.json",
+                    sink::elasticsearch::ELASTIC_ERROR_RESPONSE_JSON,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.response.io",
+                    sink::elasticsearch::ELASTIC_ERROR_RESPONSE_IO,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.json",
+                    sink::elasticsearch::ELASTIC_ERROR_JSON,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.request.failure",
+                    sink::elasticsearch::ELASTIC_ERROR_REQUEST_FAILURE,
                     self.tags,
                     self.chans
                 );
