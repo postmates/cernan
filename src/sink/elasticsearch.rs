@@ -64,6 +64,8 @@ pub struct ElasticsearchConfig {
     /// The Elasticsearch index prefix. This prefix will be added to the
     /// automatically created date-based index of this sink.
     pub index_prefix: Option<String>,
+    /// The _type of the Elasticsearch index
+    pub index_type: String,
     /// Determines whether to use HTTP or HTTPS when publishing to
     /// Elasticsearch.
     pub secure: bool, // whether http or https
@@ -82,6 +84,7 @@ impl Default for ElasticsearchConfig {
             secure: false,
             host: "127.0.0.1".to_string(),
             index_prefix: None,
+            index_type: "payload".to_string(),
             port: 9200,
             flush_interval: 1,
         }
@@ -97,6 +100,7 @@ pub struct Elasticsearch {
     host: String,
     port: usize,
     index_prefix: Option<String>,
+    index_type: String,
     flush_interval: u64,
 }
 
@@ -111,6 +115,7 @@ impl Elasticsearch {
             host: config.host,
             port: config.port,
             index_prefix: config.index_prefix,
+            index_type: config.index_type,
             flush_interval: config.flush_interval,
         }
     }
@@ -123,7 +128,7 @@ impl Elasticsearch {
             let header: Value = json!({
                 "index": {
                     "_index" : idx(&self.index_prefix, m.time),
-                    "_type" : "payload",
+                    "_type" : self.index_type.clone(),
                     "_id" : uuid.clone(),
                 }
             });

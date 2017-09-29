@@ -578,6 +578,14 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 })
                 .unwrap_or(res.secure);
 
+            res.index_type = snk.get("index_type")
+                .map(|bw| {
+                    bw.as_str()
+                        .expect("could not parse sinks.elasticsearch.index_type")
+                        .to_string()
+                })
+                .unwrap_or(res.index_type);
+
             res.flush_interval = snk.get("flush_interval")
                 .map(|fi| {
                     fi.as_integer()
