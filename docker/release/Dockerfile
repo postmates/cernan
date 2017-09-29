@@ -19,4 +19,5 @@ COPY examples/configs/quickstart.toml /etc/cernan/cernan.toml
 
 ENV STATSD_PORT 8125
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT /usr/bin/cernan
+CMD --config /etc/cernan/cernan.toml
