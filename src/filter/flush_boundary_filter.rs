@@ -1,7 +1,6 @@
 use filter;
 use metric;
 use std::mem;
-use util;
 
 /// Buffer events for a set period of flushes
 ///
@@ -55,10 +54,6 @@ impl FlushBoundaryFilter {
 }
 
 impl filter::Filter for FlushBoundaryFilter {
-    fn valve_state(&self) -> util::Valve {
-        util::Valve::Open
-    }
-
     fn process(
         &mut self,
         event: metric::Event,

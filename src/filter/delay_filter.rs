@@ -10,7 +10,6 @@ use metric;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use time;
-use util;
 
 lazy_static! {
     /// Total number of telemetry rejected for age
@@ -54,10 +53,6 @@ impl DelayFilter {
 }
 
 impl filter::Filter for DelayFilter {
-    fn valve_state(&self) -> util::Valve {
-        util::Valve::Open
-    }
-
     fn process(
         &mut self,
         event: metric::Event,

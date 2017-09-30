@@ -303,6 +303,18 @@ impl Source for Internal {
                 );
                 // sink::prometheus
                 atom_non_zero_telem!(
+                    "cernan.sinks.prometheus.aggregation.inside_baseball.windowed.total",
+                    sink::prometheus::PROMETHEUS_AGGR_WINDOWED_LEN,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.prometheus.aggregation.inside_baseball.perpetual.total",
+                    sink::prometheus::PROMETHEUS_AGGR_PERPETUAL_LEN,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
                     "cernan.sinks.prometheus.aggregation.reportable",
                     sink::prometheus::PROMETHEUS_AGGR_REPORTABLE,
                     self.tags,

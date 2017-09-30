@@ -39,6 +39,10 @@ use time;
 lazy_static! {
     /// Total reportable metrics
     pub static ref PROMETHEUS_AGGR_REPORTABLE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total inside baseball perpetual metrics
+    pub static ref PROMETHEUS_AGGR_PERPETUAL_LEN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total inside baseball windowed metrics
+    pub static ref PROMETHEUS_AGGR_WINDOWED_LEN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total remaining metrics in aggr
     pub static ref PROMETHEUS_AGGR_REMAINING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total writes to binary
@@ -219,42 +223,50 @@ impl PrometheusAggr {
             AggregationMethod::Set |
             AggregationMethod::Sum |
             AggregationMethod::Histogram => {
-                let entry = self.perpetual.entry(telem.hash());
-                match entry {
-                    Entry::Occupied(mut o) => {
-                        *o.get_mut() += telem;
-                    }
-                    Entry::Vacant(o) => {
-                        o.insert(telem);
-                    }
-                };
+                {
+                    let entry = self.perpetual.entry(telem.hash());
+                    match entry {
+                        Entry::Occupied(mut o) => {
+                            *o.get_mut() += telem;
+                        }
+                        Entry::Vacant(o) => {
+                            o.insert(telem);
+                        }
+                    };
+                }
+                PROMETHEUS_AGGR_PERPETUAL_LEN
+                    .store(self.perpetual.len(), Ordering::Relaxed);
             }
             AggregationMethod::Summarize => {
-                let id = telem.hash();
-                let ts_vec = self.windowed.entry(id).or_insert_with(|| vec![]);
-                match (*ts_vec)
-                    .binary_search_by(|probe| probe.timestamp.cmp(&telem.timestamp))
                 {
-                    Ok(idx) => ts_vec[idx] += telem,
-                    Err(idx) => ts_vec.insert(idx, telem),
-                }
-                let mut overage = 0;
-                for val in ts_vec.iter() {
-                    if val.timestamp < self.oldest_timestamp {
-                        overage += 1;
-                    } else {
-                        break;
+                    let id = telem.hash();
+                    let ts_vec = self.windowed.entry(id).or_insert_with(|| vec![]);
+                    match (*ts_vec).binary_search_by(
+                        |probe| probe.timestamp.cmp(&telem.timestamp),
+                    ) {
+                        Ok(idx) => ts_vec[idx] += telem,
+                        Err(idx) => ts_vec.insert(idx, telem),
+                    }
+                    let mut overage = 0;
+                    for val in ts_vec.iter() {
+                        if val.timestamp < self.oldest_timestamp {
+                            overage += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    if overage > 0 {
+                        for t in ts_vec.drain(0..overage) {
+                            let retainer = self.retainers
+                                .entry(id)
+                                .or_insert_with(WindowedRetainer::default);
+                            retainer.historic_sum += t.samples_sum().unwrap_or(0.0);
+                            retainer.historic_count += t.count();
+                        }
                     }
                 }
-                if overage > 0 {
-                    for t in ts_vec.drain(0..overage) {
-                        let retainer = self.retainers
-                            .entry(id)
-                            .or_insert_with(WindowedRetainer::default);
-                        retainer.historic_sum += t.samples_sum().unwrap_or(0.0);
-                        retainer.historic_count += t.count();
-                    }
-                }
+                PROMETHEUS_AGGR_WINDOWED_LEN
+                    .store(self.windowed.len(), Ordering::Relaxed);
             }
         }
         true
@@ -295,8 +307,8 @@ impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
         let mut aggr = self.aggr.lock().unwrap();
         let reportable: Vec<metric::Telemetry> = aggr.reportable();
-        PROMETHEUS_AGGR_REPORTABLE.fetch_add(reportable.len(), Ordering::Relaxed);
-        PROMETHEUS_AGGR_REMAINING.fetch_add(aggr.count(), Ordering::Relaxed);
+        PROMETHEUS_AGGR_REPORTABLE.store(reportable.len(), Ordering::Relaxed);
+        PROMETHEUS_AGGR_REMAINING.store(aggr.count(), Ordering::Relaxed);
         // Typed hyper::mime is challenging to use. In particular, matching does
         // not seem to work like I expect and handling all other MIME cases in
         // the existing enum strikes me as a fool's errand, on account of there
@@ -710,7 +722,7 @@ fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
 
 impl Sink for Prometheus {
     fn flush_interval(&self) -> Option<u64> {
-        None
+        Some(1)
     }
 
     fn flush(&mut self) {
@@ -729,12 +741,7 @@ impl Sink for Prometheus {
     }
 
     fn valve_state(&self) -> Valve {
-        let aggrs = self.aggrs.lock().unwrap();
-        if aggrs.count() > 10_000 {
-            Valve::Closed
-        } else {
-            Valve::Open
-        }
+        Valve::Open
     }
 }
 

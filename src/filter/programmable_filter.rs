@@ -6,7 +6,6 @@ use lua::ffi::lua_State;
 use metric;
 use std::path::PathBuf;
 use std::sync;
-use util;
 
 struct Payload<'a> {
     metrics: Vec<Box<metric::Telemetry>>,
@@ -506,10 +505,6 @@ impl ProgrammableFilter {
 }
 
 impl filter::Filter for ProgrammableFilter {
-    fn valve_state(&self) -> util::Valve {
-        util::Valve::Open
-    }
-
     fn process(
         &mut self,
         event: metric::Event,
