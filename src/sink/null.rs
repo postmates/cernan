@@ -45,7 +45,7 @@ impl Sink for Null {
     }
 
     fn flush_interval(&self) -> Option<u64> {
-        None
+        Some(1)
     }
 
 

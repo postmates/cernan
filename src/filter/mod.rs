@@ -54,10 +54,6 @@ pub trait Filter {
         res: &mut Vec<metric::Event>,
     ) -> Result<(), FilterError>;
 
-    /// Lookup the `Filter` valve state. See `Valve` documentation for more
-    /// information.
-    fn valve_state(&self) -> util::Valve;
-
     /// Run the Filter
     ///
     /// It is not expected that most Filters will re-implement this. If this is
@@ -77,23 +73,17 @@ pub trait Filter {
                 None => attempts += 1,
                 Some(event) => {
                     attempts = 0;
-                    match self.valve_state() {
-                        util::Valve::Open => match self.process(event, &mut events) {
-                            Ok(()) => for ev in events.drain(..) {
-                                util::send(&mut chans, ev)
-                            },
-                            Err(fe) => {
-                                error!(
-                                    "Failed to run filter with error: {:?}",
-                                    name_in_fe(&fe)
-                                );
-                                let event = event_in_fe(fe);
-                                util::send(&mut chans, event);
-                            }
+                    match self.process(event, &mut events) {
+                        Ok(()) => for ev in events.drain(..) {
+                            util::send(&mut chans, ev)
                         },
-                        util::Valve::Closed => {
-                            attempts += 1;
-                            continue;
+                        Err(fe) => {
+                            error!(
+                                "Failed to run filter with error: {:?}",
+                                name_in_fe(&fe)
+                            );
+                            let event = event_in_fe(fe);
+                            util::send(&mut chans, event);
                         }
                     }
                 }
