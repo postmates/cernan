@@ -60,7 +60,7 @@ pub trait Sink {
         // The run-loop of a sink is two nested loops. The outer loop pulls a
         // value from the hopper queue. If that value is Some the inner loop
         // tries to do something with it, only discarding it at such time as
-        // it's been delivered to the Source.
+        // it's been delivered to the Sink.
         loop {
             time::delay(attempts);
             let nxt = recv.next();
