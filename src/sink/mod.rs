@@ -87,7 +87,22 @@ pub trait Sink {
                 match self.valve_state() {
                     Valve::Open => match event {
                         Event::TimerFlush(idx) => {
+                            // Flush timers are interesting. The timer thread
+                            // sends a TimerFlush pulse once a second and it's
+                            // possible that a sink will have multiple Sources /
+                            // Filters pushing down into it. That means multiple
+                            // TimerFlush values for the same time index.
+                            //
+                            // What we do to avoid duplicating time pulses is
+                            // keep track of a 'last_flush_idx', our current
+                            // time and only reset to a new time when the idx in
+                            // the pulse is greater than the last one we've
+                            // seen. If it's not, we ignore it.
                             if idx > last_flush_idx {
+                                // Now, because sinks will not want to flush
+                                // every timer pulse we query the flush_interval
+                                // of the sink. If the interval and the idx
+                                // match up, we flush. Else, not.
                                 if let Some(flush_interval) = self.flush_interval() {
                                     if idx % flush_interval == 0 {
                                         self.flush();
