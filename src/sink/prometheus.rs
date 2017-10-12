@@ -699,10 +699,6 @@ fn write_text(
 /// Metrics coming into cernan can have full utf8 names, save for some ingestion
 /// protocols that special-case certain characters. To cope with this we just
 /// mangle the mess out of names and hope for forgiveness in the hereafter.
-///
-/// In addition, we want to make sure nothing goofy happens to our metrics and
-/// so set the kind to Summarize. The prometheus sink _does not_ respect source
-/// metadata and stores everything as quantiles.
 fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
     let name: String = mem::replace(&mut metric.name, Default::default());
     let mut new_name: Vec<u8> = Vec::with_capacity(128);
@@ -715,7 +711,6 @@ fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
     metric
         .thaw()
         .name(String::from_utf8(new_name).expect("wait, we bungled the conversion"))
-        .kind(metric::AggregationMethod::Summarize)
         .harden()
         .unwrap()
 }
