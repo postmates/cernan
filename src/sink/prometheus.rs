@@ -14,7 +14,7 @@
 
 use hyper::server::{Handler, Listening, Request, Response, Server};
 use metric;
-use metric::AggregationMethod;
+use metric::{AggregationMethod, TagMap};
 use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protocols::prometheus::*;
@@ -506,6 +506,32 @@ fn write_binary(
 }
 
 #[allow(cyclomatic_complexity)]
+#[inline]
+fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
+    if tags.is_empty() {
+        s.push_str("");
+    } else {
+        let mut iter = tags.iter();
+        if let Some(&(ref fk, ref fv)) = iter.next() {
+            s.push_str(fk);
+            s.push_str("=\"");
+            s.push_str(fv);
+            let mut empty = true;
+            for &(ref k, ref v) in iter {
+                empty = false;
+                s.push_str("\", ");
+                s.push_str(k);
+                s.push_str("=\"");
+                s.push_str(v);
+                s.push_str("\"");
+            }
+            if empty {
+                s.push_str("\"");
+            }
+        }
+    }
+}
+
 fn write_text(
     aggrs: &[metric::Telemetry],
     retainers: &HashMap<u64, WindowedRetainer, BuildHasherDefault<SeaHasher>>,
@@ -525,18 +551,9 @@ fn write_text(
                     buf.push_str(" counter\n");
                 }
                 buf.push_str(&value.name);
-                if !value.tags.is_empty() {
-                    buf.push_str("{");
-                    for (k, v) in &(*value.tags) {
-                        buf.push_str("\", ");
-                        buf.push_str(k);
-                        buf.push_str("=\"");
-                        buf.push_str(v);
-                    }
-                    buf.push_str("\"} ");
-                } else {
-                    buf.push_str(" ");
-                }
+                buf.push_str("{");
+                fmt_tags(&value.tags, &mut buf);
+                buf.push_str("} ");
                 buf.push_str(&v.to_string());
                 buf.push_str("\n");
             },
@@ -547,18 +564,9 @@ fn write_text(
                     buf.push_str(" gauge\n");
                 }
                 buf.push_str(&value.name);
-                if !value.tags.is_empty() {
-                    buf.push_str("{");
-                    for (k, v) in &(*value.tags) {
-                        buf.push_str("\", ");
-                        buf.push_str(k);
-                        buf.push_str("=\"");
-                        buf.push_str(v);
-                    }
-                    buf.push_str("\"} ");
-                } else {
-                    buf.push_str(" ");
-                }
+                buf.push_str("{");
+                fmt_tags(&value.tags, &mut buf);
+                buf.push_str("} ");
                 buf.push_str(&v.to_string());
                 buf.push_str("\n");
             },
@@ -593,30 +601,16 @@ fn write_text(
                 }
                 buf.push_str(&value.name);
                 buf.push_str("_sum ");
-                if !value.tags.is_empty() {
-                    buf.push_str("{");
-                    for (k, v) in &(*value.tags) {
-                        buf.push_str(k);
-                        buf.push_str("=\"");
-                        buf.push_str(v);
-                        buf.push_str("\", ");
-                    }
-                    buf.push_str("} ");
-                }
+                buf.push_str("{");
+                fmt_tags(&value.tags, &mut buf);
+                buf.push_str("} ");
                 buf.push_str(&value.samples_sum().unwrap_or(0.0).to_string());
                 buf.push_str("\n");
                 buf.push_str(&value.name);
                 buf.push_str("_count ");
-                if !value.tags.is_empty() {
-                    buf.push_str("{");
-                    for (k, v) in &(*value.tags) {
-                        buf.push_str(k);
-                        buf.push_str("=\"");
-                        buf.push_str(v);
-                        buf.push_str("\", ");
-                    }
-                    buf.push_str("} ");
-                }
+                buf.push_str("{");
+                fmt_tags(&value.tags, &mut buf);
+                buf.push_str("} ");
                 buf.push_str(&value.count().to_string());
                 buf.push_str("\n");
             },
@@ -626,8 +620,6 @@ fn write_text(
                     buf.push_str(&value.name);
                     buf.push_str(" summary\n");
                 }
-                let sum_tags = sync::Arc::clone(&value.tags);
-                let count_tags = sync::Arc::clone(&value.tags);
                 for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
                     buf.push_str(&value.name);
                     buf.push_str("{quantile=\"");
@@ -644,16 +636,9 @@ fn write_text(
                 }
                 buf.push_str(&value.name);
                 buf.push_str("_sum ");
-                if !sum_tags.is_empty() {
-                    buf.push_str("{");
-                    for (k, v) in &(*sum_tags) {
-                        buf.push_str(k);
-                        buf.push_str("=\"");
-                        buf.push_str(v);
-                        buf.push_str("\", ");
-                    }
-                    buf.push_str("} ");
-                }
+                buf.push_str("{");
+                fmt_tags(&value.tags, &mut buf);
+                buf.push_str("} ");
                 let (retained_count, retained_sum) =
                     if let Some(retainer) = retainers.get(&value.hash()) {
                         (retainer.historic_count, retainer.historic_sum)
@@ -665,16 +650,9 @@ fn write_text(
                 buf.push_str("\n");
                 buf.push_str(&value.name);
                 buf.push_str("_count ");
-                if !count_tags.is_empty() {
-                    buf.push_str("{");
-                    for (k, v) in &(*count_tags) {
-                        buf.push_str(k);
-                        buf.push_str("=\"");
-                        buf.push_str(v);
-                        buf.push_str("\", ");
-                    }
-                    buf.push_str("} ");
-                }
+                buf.push_str("{");
+                fmt_tags(&value.tags, &mut buf);
+                buf.push_str("} ");
                 buf.push_str(&(value.count() + retained_count).to_string());
                 buf.push_str("\n");
             }
