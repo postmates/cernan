@@ -516,10 +516,11 @@ fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
             s.push_str(fk);
             s.push_str("=\"");
             s.push_str(fv);
+            s.push_str("\"");
             let mut empty = true;
             for &(ref k, ref v) in iter {
                 empty = false;
-                s.push_str("\", ");
+                s.push_str(", ");
                 s.push_str(k);
                 s.push_str("=\"");
                 s.push_str(v);
