@@ -22,6 +22,7 @@ extern crate chrono;
 extern crate clap;
 extern crate coco;
 extern crate elastic;
+extern crate flate2;
 extern crate glob;
 extern crate hopper;
 extern crate hyper;

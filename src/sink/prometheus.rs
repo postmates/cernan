@@ -12,6 +12,9 @@
 //! `retain_limit`. Points will persist indefinately unless new points come
 //! behind them to push them out of the `retain_limit` window.
 
+use flate2::Compression;
+use flate2::write::GzEncoder;
+use hyper::header::{ContentEncoding, Encoding};
 use hyper::server::{Handler, Listening, Request, Response, Server};
 use metric;
 use metric::{AggregationMethod, TagMap};
@@ -507,27 +510,27 @@ fn write_binary(
 
 #[allow(cyclomatic_complexity)]
 #[inline]
-fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
+fn fmt_tags(tags: &TagMap, s: &mut GzEncoder<Vec<u8>>) -> () {
     if tags.is_empty() {
-        s.push_str("");
+        let _ = s.write(b"");
     } else {
         let mut iter = tags.iter();
         if let Some(&(ref fk, ref fv)) = iter.next() {
-            s.push_str(fk);
-            s.push_str("=\"");
-            s.push_str(fv);
-            s.push_str("\"");
+            let _ = s.write(fk.as_bytes());
+            let _ = s.write(b"=\"");
+            let _ = s.write(fv.as_bytes());
+            let _ = s.write(b"\"");
             let mut empty = true;
             for &(ref k, ref v) in iter {
                 empty = false;
-                s.push_str(", ");
-                s.push_str(k);
-                s.push_str("=\"");
-                s.push_str(v);
-                s.push_str("\"");
+                let _ = s.write(b", ");
+                let _ = s.write(k.as_bytes());
+                let _ = s.write(b"=\"");
+                let _ = s.write(v.as_bytes());
+                let _ = s.write(b"\"");
             }
             if empty {
-                s.push_str("\"");
+                let _ = s.write(b"\"");
             }
         }
     }
@@ -538,132 +541,140 @@ fn write_text(
     retainers: &HashMap<u64, WindowedRetainer, BuildHasherDefault<SeaHasher>>,
     mut res: Response,
 ) -> io::Result<()> {
-    res.headers_mut()
-        .set_raw("content-type", vec![b"text/plain; version=0.0.4".to_vec()]);
-    let mut buf = String::with_capacity(1024);
+    {
+        let headers = res.headers_mut();
+        headers.set(ContentEncoding(vec![Encoding::Gzip]));
+        headers.set_raw("content-type", vec![b"text/plain; version=0.0.4".to_vec()]);
+    }
     let mut res = res.start().unwrap();
     let mut seen = HashSet::new();
+    let mut enc = GzEncoder::new(Vec::with_capacity(1024), Compression::Default);
     for value in aggrs {
         match value.kind() {
             AggregationMethod::Sum => if let Some(v) = value.sum() {
                 if seen.insert(&value.name) {
-                    buf.push_str("# TYPE ");
-                    buf.push_str(&value.name);
-                    buf.push_str(" counter\n");
+                    let _ = enc.write(b"# TYPE ");
+                    let _ = enc.write(value.name.as_bytes());
+                    let _ = enc.write(b" counter\n");
                 }
-                buf.push_str(&value.name);
-                buf.push_str("{");
-                fmt_tags(&value.tags, &mut buf);
-                buf.push_str("} ");
-                buf.push_str(&v.to_string());
-                buf.push_str("\n");
+                let _ = enc.write(value.name.as_bytes());
+                let _ = enc.write(b"{");
+                fmt_tags(&value.tags, &mut enc);
+                let _ = enc.write(b"} ");
+                let _ = enc.write(v.to_string().as_bytes());
+                let _ = enc.write(b"\n");
             },
             AggregationMethod::Set => if let Some(v) = value.set() {
                 if seen.insert(&value.name) {
-                    buf.push_str("# TYPE ");
-                    buf.push_str(&value.name);
-                    buf.push_str(" gauge\n");
+                    let _ = enc.write(b"# TYPE ");
+                    let _ = enc.write(value.name.as_bytes());
+                    let _ = enc.write(b" gauge\n");
                 }
-                buf.push_str(&value.name);
-                buf.push_str("{");
-                fmt_tags(&value.tags, &mut buf);
-                buf.push_str("} ");
-                buf.push_str(&v.to_string());
-                buf.push_str("\n");
+                let _ = enc.write(value.name.as_bytes());
+                let _ = enc.write(b"{");
+                fmt_tags(&value.tags, &mut enc);
+                let _ = enc.write(b"} ");
+                let _ = enc.write(v.to_string().as_bytes());
+                let _ = enc.write(b"\n");
             },
             AggregationMethod::Histogram => if let Some(bin_iter) = value.bins() {
                 if seen.insert(&value.name) {
-                    buf.push_str("# TYPE ");
-                    buf.push_str(&value.name);
-                    buf.push_str(" histogram\n");
+                    let _ = enc.write(b"# TYPE ");
+                    let _ = enc.write(value.name.as_bytes());
+                    let _ = enc.write(b" histogram\n");
                 }
                 let mut running_sum = 0;
                 for &(bound, val) in bin_iter {
-                    buf.push_str(&value.name);
-                    buf.push_str("{le=\"");
+                    let _ = enc.write(value.name.as_bytes());
+                    let _ = enc.write(b"{le=\"");
                     match bound {
                         Bound::Finite(bnd) => {
-                            buf.push_str(&bnd.to_string());
+                            let _ = enc.write(bnd.to_string().as_bytes());
                         }
                         Bound::PosInf => {
-                            buf.push_str("+Inf");
+                            let _ = enc.write(b"+Inf");
                         }
                     }
                     for (k, v) in &(*value.tags) {
-                        buf.push_str("\", ");
-                        buf.push_str(k);
-                        buf.push_str("=\"");
-                        buf.push_str(v);
+                        let _ = enc.write(b"\", ");
+                        let _ = enc.write(k.as_bytes());
+                        let _ = enc.write(b"=\"");
+                        let _ = enc.write(v.as_bytes());
                     }
-                    buf.push_str("\"} ");
-                    buf.push_str(&(val + running_sum).to_string());
+                    let _ = enc.write(b"\"} ");
+                    let _ = enc.write((val + running_sum).to_string().as_bytes());
                     running_sum += val;
-                    buf.push_str("\n");
+                    let _ = enc.write(b"\n");
                 }
-                buf.push_str(&value.name);
-                buf.push_str("_sum ");
-                buf.push_str("{");
-                fmt_tags(&value.tags, &mut buf);
-                buf.push_str("} ");
-                buf.push_str(&value.samples_sum().unwrap_or(0.0).to_string());
-                buf.push_str("\n");
-                buf.push_str(&value.name);
-                buf.push_str("_count ");
-                buf.push_str("{");
-                fmt_tags(&value.tags, &mut buf);
-                buf.push_str("} ");
-                buf.push_str(&value.count().to_string());
-                buf.push_str("\n");
+                let _ = enc.write(value.name.as_bytes());
+                let _ = enc.write(b"_sum ");
+                let _ = enc.write(b"{");
+                fmt_tags(&value.tags, &mut enc);
+                let _ = enc.write(b"} ");
+                let _ =
+                    enc.write(
+                        value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
+                    );
+                let _ = enc.write(b"\n");
+                let _ = enc.write(value.name.as_bytes());
+                let _ = enc.write(b"_count ");
+                let _ = enc.write(b"{");
+                fmt_tags(&value.tags, &mut enc);
+                let _ = enc.write(b"} ");
+                let _ = enc.write(value.count().to_string().as_bytes());
+                let _ = enc.write(b"\n");
             },
             AggregationMethod::Summarize => {
                 if seen.insert(&value.name) {
-                    buf.push_str("# TYPE ");
-                    buf.push_str(&value.name);
-                    buf.push_str(" summary\n");
+                    let _ = enc.write(b"# TYPE ");
+                    let _ = enc.write(value.name.as_bytes());
+                    let _ = enc.write(b" summary\n");
                 }
                 for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-                    buf.push_str(&value.name);
-                    buf.push_str("{quantile=\"");
-                    buf.push_str(&q.to_string());
+                    let _ = enc.write(value.name.as_bytes());
+                    let _ = enc.write(b"{quantile=\"");
+                    let _ = enc.write(q.to_string().as_bytes());
                     for (k, v) in &(*value.tags) {
-                        buf.push_str("\", ");
-                        buf.push_str(k);
-                        buf.push_str("=\"");
-                        buf.push_str(v);
+                        let _ = enc.write(b"\", ");
+                        let _ = enc.write(k.as_bytes());
+                        let _ = enc.write(b"=\"");
+                        let _ = enc.write(v.as_bytes());
                     }
-                    buf.push_str("\"} ");
-                    buf.push_str(&value.query(*q).unwrap().to_string());
-                    buf.push_str("\n");
+                    let _ = enc.write(b"\"} ");
+                    let _ = enc.write(value.query(*q).unwrap().to_string().as_bytes());
+                    let _ = enc.write(b"\n");
                 }
-                buf.push_str(&value.name);
-                buf.push_str("_sum ");
-                buf.push_str("{");
-                fmt_tags(&value.tags, &mut buf);
-                buf.push_str("} ");
+                let _ = enc.write(value.name.as_bytes());
+                let _ = enc.write(b"_sum ");
+                let _ = enc.write(b"{");
+                fmt_tags(&value.tags, &mut enc);
+                let _ = enc.write(b"} ");
                 let (retained_count, retained_sum) =
                     if let Some(retainer) = retainers.get(&value.hash()) {
                         (retainer.historic_count, retainer.historic_sum)
                     } else {
                         (0, 0.0)
                     };
-                buf.push_str(&(value.samples_sum().unwrap_or(0.0) + retained_sum)
-                    .to_string());
-                buf.push_str("\n");
-                buf.push_str(&value.name);
-                buf.push_str("_count ");
-                buf.push_str("{");
-                fmt_tags(&value.tags, &mut buf);
-                buf.push_str("} ");
-                buf.push_str(&(value.count() + retained_count).to_string());
-                buf.push_str("\n");
+                let _ = enc.write(
+                    (value.samples_sum().unwrap_or(0.0) + retained_sum)
+                        .to_string()
+                        .as_bytes(),
+                );
+                let _ = enc.write(b"\n");
+                let _ = enc.write(value.name.as_bytes());
+                let _ = enc.write(b"_count ");
+                let _ = enc.write(b"{");
+                fmt_tags(&value.tags, &mut enc);
+                let _ = enc.write(b"} ");
+                let _ =
+                    enc.write((value.count() + retained_count).to_string().as_bytes());
+                let _ = enc.write(b"\n");
             }
         }
-        res.write_all(buf.as_bytes()).expect(
-            "FAILED TO WRITE BUFFER INTO HTTP
-    STREAMING RESPONSE",
-        );
-        buf.clear();
     }
+    let encoded = enc.finish().unwrap();
+    res.write_all(&encoded)
+        .expect("FAILED TO WRITE BUFFER INTO HTTP STREAMING RESPONSE");
     res.end()
 }
 
