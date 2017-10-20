@@ -611,10 +611,9 @@ fn write_text(
                 let _ = enc.write(b"{");
                 fmt_tags(&value.tags, &mut enc);
                 let _ = enc.write(b"} ");
-                let _ =
-                    enc.write(
-                        value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
-                    );
+                let _ = enc.write(
+                    value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
+                );
                 let _ = enc.write(b"\n");
                 let _ = enc.write(value.name.as_bytes());
                 let _ = enc.write(b"_count ");

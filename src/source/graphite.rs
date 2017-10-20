@@ -140,9 +140,8 @@ impl Source for Graphite {
                     let chans = self.chans.clone();
                     let tags = Arc::clone(&self.tags);
                     info!("server started on {:?} {}", addr, self.port);
-                    joins.push(thread::spawn(move || {
-                                                 handle_tcp(chans, tags, listener)
-                                             }));
+                    joins
+                        .push(thread::spawn(move || handle_tcp(chans, tags, listener)));
                 }
             }
             Err(e) => {

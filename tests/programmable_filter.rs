@@ -486,7 +486,8 @@ mod integration {
 
             let orig = "collectd.cernan-llrv-prod-b3fbb697.protocols-TcpExt.\
                         protocol_counter-TCPFastOpenActive";
-            let expected = "collectd.protocols-TcpExt.protocol_counter-TCPFastOpenActive";
+            let expected =
+                "collectd.protocols-TcpExt.protocol_counter-TCPFastOpenActive";
 
             let metric = metric::Telemetry::new()
                 .name(orig)
