@@ -4,6 +4,7 @@ extern crate cernan;
 extern crate chrono;
 extern crate fern;
 extern crate hopper;
+extern crate chan_signal;
 #[macro_use]
 extern crate log;
 extern crate openssl_probe;
@@ -20,6 +21,7 @@ use std::mem;
 use std::process;
 use std::str;
 use std::thread;
+use chan_signal::Signal;
 
 fn populate_forwards(
     sends: &mut util::Channel,
@@ -67,6 +69,8 @@ fn main() {
         3 => log::LogLevelFilter::Debug,
         _ => log::LogLevelFilter::Trace,
     };
+
+    let signal = chan_signal::notify(&[Signal::INT,Signal::TERM]);
 
     fern::Dispatch::new()
         .format(|out, message, record| {
@@ -504,10 +508,9 @@ fn main() {
     drop(config_topology);
     drop(receivers);
 
-    for jh in joins {
-        // TODO Having sub-threads panic will not cause a bubble-up if that
-        // thread is not the currently examined one. We're going to have to have
-        // some manner of sub-thread communication going on.
-        jh.join().expect("Uh oh, child thread panicked!");
-    }
+    //TODO - Enable IPC
+    //TODO - Make use of IPC to:
+    // * Monitor child thread application-layer health.
+    // * Communicate graceful shutdown to source/sink/filter child threads on signal.
+    signal.recv().unwrap();
 }
