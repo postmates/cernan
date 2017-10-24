@@ -121,6 +121,14 @@ pub trait Sink {
                             self.deliver_line(line);
                             break;
                         }
+                        Event::Shutdown => {
+                            // Invariant - In order to ensure at least once delivery
+                            // at the sink level, the following properties must hold:
+                            //    1) Shutdown events only ever appear at the end of a queue.
+                            //    2) The given sink synchronously flushes any internal memory.
+                            self.flush();
+                            return;
+                        }
                     },
                     Valve::Closed => {
                         self.flush();
