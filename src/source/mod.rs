@@ -3,6 +3,8 @@
 //! In cernan a `Source` is a place where all `metric::Event` come from, feeding
 //! down into the source's forwards for further processing. Statsd is a source
 //! that creates `Telemetry`, `FileServer` is a source that creates `LogLine`s.
+extern crate mio;
+
 mod file;
 mod flush;
 mod graphite;
@@ -24,5 +26,5 @@ pub use self::statsd::{Statsd, StatsdConfig, StatsdParseConfig};
 /// topology.
 pub trait Source {
     /// Run the Source, the exact mechanism here depends on the Source itself.
-    fn run(&mut self) -> ();
+    fn run(&mut self, _poll: mio::Poll) -> ();
 }

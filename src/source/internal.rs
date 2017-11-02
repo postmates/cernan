@@ -1,3 +1,5 @@
+extern crate mio;
+
 use coco::Stack;
 use filter;
 use metric;
@@ -106,7 +108,7 @@ macro_rules! atom_non_zero_telem {
 /// floor.
 impl Source for Internal {
     #[allow(cyclomatic_complexity)]
-    fn run(&mut self) {
+    fn run(&mut self, _poll: mio::Poll) {
         let slp = std::time::Duration::from_millis(1_000);
         loop {
             std::thread::sleep(slp);

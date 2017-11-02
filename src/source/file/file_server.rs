@@ -1,3 +1,5 @@
+extern crate mio;
+
 use glob::glob;
 use metric;
 use seahash::SeaHasher;
@@ -87,7 +89,7 @@ impl FileServer {
 /// Specific operating systems support evented interfaces that correct this
 /// problem but your intrepid authors know of no generic solution.
 impl Source for FileServer {
-    fn run(&mut self) -> () {
+    fn run(&mut self, _poll: mio::Poll) {
         let mut buffer = String::new();
 
         let mut fp_map: HashMapFnv<PathBuf, FileWatcher> = Default::default();

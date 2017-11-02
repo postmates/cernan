@@ -39,6 +39,7 @@ extern crate serde_json;
 extern crate toml;
 extern crate url;
 extern crate uuid;
+extern crate mio;
 
 #[macro_use]
 extern crate log;
@@ -60,4 +61,5 @@ pub mod time;
 pub mod source;
 pub mod filter;
 pub mod util;
+pub mod constants;
 pub mod protocols;

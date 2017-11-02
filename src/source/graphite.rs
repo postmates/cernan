@@ -1,4 +1,5 @@
 use super::Source;
+extern crate mio;
 use metric;
 use protocols::graphite::parse_graphite;
 use std::io::BufReader;
@@ -128,7 +129,7 @@ fn handle_stream(
 }
 
 impl Source for Graphite {
-    fn run(&mut self) {
+    fn run(&mut self, _poll: mio::Poll) {
         let mut joins = Vec::new();
 
         let addrs = (self.host.as_str(), self.port).to_socket_addrs();

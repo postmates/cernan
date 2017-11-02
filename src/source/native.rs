@@ -1,3 +1,5 @@
+extern crate mio;
+
 use super::Source;
 use byteorder::{BigEndian, ReadBytesExt};
 use hopper;
@@ -173,7 +175,7 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
 }
 
 impl Source for NativeServer {
-    fn run(&mut self) {
+    fn run(&mut self, _poll: mio::Poll) {
         let srv: Vec<_> = (self.ip.as_str(), self.port)
             .to_socket_addrs()
             .expect("unable to make socket addr")
