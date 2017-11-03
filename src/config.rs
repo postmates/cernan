@@ -521,14 +521,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             let mut res = PrometheusConfig::default();
             res.config_path = Some("sinks.prometheus".to_string());
 
-            res.retain_limit = snk.get("retain_limit")
-                .map(|p| {
-                    p.as_integer()
-                        .expect("could not parse sinks.prometheus.retain_limit")
-                        as usize
-                })
-                .unwrap_or(res.retain_limit);
-
             res.port = snk.get("port")
                 .map(|p| {
                     p.as_integer().expect("could not parse sinks.prometheus.port")
