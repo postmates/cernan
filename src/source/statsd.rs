@@ -98,14 +98,14 @@ impl Statsd {
 
 fn handle_udp(
     mut chans: util::Channel,
-    tags: sync::Arc<metric::TagMap>,
-    parse_config: sync::Arc<StatsdParseConfig>,
+    tags: &sync::Arc<metric::TagMap>,
+    parse_config: &sync::Arc<StatsdParseConfig>,
     socket: &UdpSocket,
 ) {
     let mut buf = vec![0; 16_250];
     let mut metrics = Vec::new();
     let basic_metric = sync::Arc::new(Some(
-        metric::Telemetry::default().overlay_tags_from_map(&tags),
+        metric::Telemetry::default().overlay_tags_from_map(tags),
     ));
     loop {
         let (len, _) = match socket.recv_from(&mut buf) {
@@ -116,8 +116,8 @@ fn handle_udp(
             Ok(val) => if parse_statsd(
                 val,
                 &mut metrics,
-                sync::Arc::clone(&basic_metric),
-                sync::Arc::clone(&parse_config),
+                &basic_metric,
+                parse_config,
             ) {
                 for m in metrics.drain(..) {
                     send(&mut chans, metric::Event::new_telemetry(m));
@@ -150,7 +150,7 @@ impl Source for Statsd {
                     let parse_config = sync::Arc::clone(&self.parse_config);
                     info!("server started on {:?} {}", addr, self.port);
                     joins.push(thread::spawn(
-                        move || handle_udp(chans, tags, parse_config, &listener),
+                        move || handle_udp(chans, &tags, &parse_config, &listener),
                     ));
                 }
             }

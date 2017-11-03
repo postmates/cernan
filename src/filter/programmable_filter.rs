@@ -372,7 +372,7 @@ impl<'a> Payload<'a> {
     }
 }
 
-const PAYLOAD_LIB: [(&'static str, Function); 16] = [
+const PAYLOAD_LIB: [(&str, Function); 16] = [
     ("set_metric_name", Some(Payload::lua_set_metric_name)),
     ("clear_logs", Some(Payload::lua_clear_logs)),
     ("clear_metrics", Some(Payload::lua_clear_metrics)),

@@ -1,10 +1,10 @@
 #![allow(unknown_lints)]
 
 extern crate cernan;
+extern crate chan_signal;
 extern crate chrono;
 extern crate fern;
 extern crate hopper;
-extern crate chan_signal;
 #[macro_use]
 extern crate log;
 extern crate openssl_probe;
@@ -15,13 +15,13 @@ use cernan::metric;
 use cernan::sink::Sink;
 use cernan::source::Source;
 use cernan::util;
+use chan_signal::Signal;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::process;
 use std::str;
 use std::thread;
-use chan_signal::Signal;
 
 fn populate_forwards(
     sends: &mut util::Channel,
@@ -70,7 +70,7 @@ fn main() {
         _ => log::LogLevelFilter::Trace,
     };
 
-    let signal = chan_signal::notify(&[Signal::INT,Signal::TERM]);
+    let signal = chan_signal::notify(&[Signal::INT, Signal::TERM]);
 
     fern::Dispatch::new()
         .format(|out, message, record| {
@@ -508,9 +508,10 @@ fn main() {
     drop(config_topology);
     drop(receivers);
 
-    //TODO - Enable IPC
-    //TODO - Make use of IPC to:
+    // TODO - Enable IPC
+    // TODO - Make use of IPC to:
     // * Monitor child thread application-layer health.
-    // * Communicate graceful shutdown to source/sink/filter child threads on signal.
+    // * Communicate graceful shutdown to source/sink/filter child threads on
+    // signal.
     signal.recv().unwrap();
 }

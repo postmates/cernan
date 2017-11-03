@@ -22,8 +22,8 @@ use time;
 pub fn parse_statsd(
     source: &str,
     res: &mut Vec<metric::Telemetry>,
-    metric: sync::Arc<Option<metric::Telemetry>>,
-    config: sync::Arc<StatsdParseConfig>,
+    metric: &sync::Arc<Option<metric::Telemetry>>,
+    config: &sync::Arc<StatsdParseConfig>,
 ) -> bool {
     for src in source.lines() {
         let mut offset = 0;
@@ -46,7 +46,7 @@ pub fn parse_statsd(
                                 Err(_) => return false,
                             };
                         let mut metric = sync::Arc::make_mut(
-                            &mut sync::Arc::clone(&metric),
+                            &mut sync::Arc::clone(metric),
                         ).take()
                             .unwrap()
                             .thaw();

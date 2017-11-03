@@ -9,7 +9,7 @@ use std::sync;
 pub fn parse_graphite(
     source: &str,
     res: &mut Vec<Telemetry>,
-    metric: sync::Arc<Option<Telemetry>>,
+    metric: &sync::Arc<Option<Telemetry>>,
 ) -> bool {
     let mut iter = source.split_whitespace();
     while let Some(name) = iter.next() {
@@ -24,7 +24,7 @@ pub fn parse_graphite(
                         Ok(t) => t,
                         Err(_) => return false,
                     };
-                    let metric = sync::Arc::make_mut(&mut sync::Arc::clone(&metric))
+                    let metric = sync::Arc::make_mut(&mut sync::Arc::clone(metric))
                         .take()
                         .unwrap();
                     res.push(

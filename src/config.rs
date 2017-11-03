@@ -263,7 +263,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         }
                     }
                 };
-                tags.insert(String::from(k.clone()), String::from(val));
+                tags.insert(k.clone(), val);
             }
             tags
         }
