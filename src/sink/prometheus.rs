@@ -8,9 +8,7 @@
 //!   - QUANTILES -> summary
 //!   - HISTOGRAM -> histogram
 //!
-//! All points are retained in a sliding window defined by
-//! `retain_limit`. Points will persist indefinately unless new points come
-//! behind them to push them out of the `retain_limit` window.
+//! All points are retained indefinately in their aggregation.
 
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -37,7 +35,6 @@ use std::sync;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use time;
 
 lazy_static! {
     /// Total reportable metrics
@@ -75,9 +72,6 @@ pub struct Prometheus {
 /// The configuration for Prometheus sink
 #[derive(Debug, Deserialize)]
 pub struct PrometheusConfig {
-    /// Configure how many seconds worth of Telemetry the Prometheus aggregation
-    /// will retain. Values only expire as new values come in to push them out.
-    pub retain_limit: usize,
     /// The host to listen for prometheus. This will be used to bind an HTTP
     /// server to the given host. Host may be an IP address or a DNS hostname.
     pub host: String,
@@ -90,7 +84,6 @@ pub struct PrometheusConfig {
 impl Default for PrometheusConfig {
     fn default() -> Self {
         PrometheusConfig {
-            retain_limit: 10,
             host: "localhost".to_string(),
             port: 8086,
             config_path: None,
@@ -116,7 +109,6 @@ struct SenderHandler {
 /// establish the above invariants.
 #[derive(Clone, Debug)]
 struct PrometheusAggr {
-    retain_limit: usize,
     // The approach we take is unique in cernan: we drop all timestamps and _do
     // not bin_. This is driven by the following comment in Prometheus' doc /
     // our own experience trying to set explict timestamps:
@@ -130,18 +122,12 @@ struct PrometheusAggr {
     //     - SET
     //     - SUM
     //     - HISTOGRAM
+    //     - SUMMARIZE
     //
     // The idea being that there's no good reason to flush these things,
     // according to this conversation:
     // https://github.com/postmates/cernan/pull/306#discussion_r139770087
     perpetual: HashMap<u64, metric::Telemetry, BuildHasherDefault<SeaHasher>>,
-    // Now, AggregationMethod::Summarize is different. We store up a moving
-    // window of summaries and add them together on report. The window is
-    // `retain_limit` seconds wide, with older entries being flushed during
-    // flush intervals and insertion.
-    oldest_timestamp: i64,
-    retainers: HashMap<u64, WindowedRetainer, BuildHasherDefault<SeaHasher>>,
-    windowed: HashMap<u64, Vec<metric::Telemetry>, BuildHasherDefault<SeaHasher>>,
 }
 
 /// When we store `AggregationMethod::Summarize` into windows we have to be
@@ -170,24 +156,9 @@ impl PrometheusAggr {
         match telem.kind() {
             AggregationMethod::Set |
             AggregationMethod::Sum |
-            AggregationMethod::Histogram => {
-                self.perpetual.get(&telem.hash()).map(|x| x.clone())
-            }
+            AggregationMethod::Histogram |
             AggregationMethod::Summarize => {
-                if let Some(vs) = self.windowed.get(&telem.hash()) {
-                    let mut iter = vs.iter();
-                    if let Some(fst) = iter.next() {
-                        let mut base = fst.clone();
-                        for x in iter {
-                            base += x.clone();
-                        }
-                        Some(base)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
+                self.perpetual.get(&telem.hash()).map(|x| x.clone())
             }
         }
     }
@@ -201,18 +172,6 @@ impl PrometheusAggr {
         for v in self.perpetual.values() {
             ret.push(v.clone());
         }
-        for v in self.windowed.values() {
-            let mut iter = v.iter();
-            if let Some(fst) = iter.next() {
-                let mut base = fst.clone();
-                for x in iter {
-                    if x.timestamp > self.oldest_timestamp {
-                        base += x.clone();
-                    }
-                }
-                ret.push(base);
-            }
-        }
         ret
     }
 
@@ -225,7 +184,8 @@ impl PrometheusAggr {
         match telem.kind() {
             AggregationMethod::Set |
             AggregationMethod::Sum |
-            AggregationMethod::Histogram => {
+            AggregationMethod::Histogram |
+            AggregationMethod::Summarize => {
                 {
                     let entry = self.perpetual.entry(telem.hash());
                     match entry {
@@ -239,37 +199,6 @@ impl PrometheusAggr {
                 }
                 PROMETHEUS_AGGR_PERPETUAL_LEN
                     .store(self.perpetual.len(), Ordering::Relaxed);
-            }
-            AggregationMethod::Summarize => {
-                {
-                    let id = telem.hash();
-                    let ts_vec = self.windowed.entry(id).or_insert_with(|| vec![]);
-                    match (*ts_vec).binary_search_by(
-                        |probe| probe.timestamp.cmp(&telem.timestamp),
-                    ) {
-                        Ok(idx) => ts_vec[idx] += telem,
-                        Err(idx) => ts_vec.insert(idx, telem),
-                    }
-                    let mut overage = 0;
-                    for val in ts_vec.iter() {
-                        if val.timestamp < self.oldest_timestamp {
-                            overage += 1;
-                        } else {
-                            break;
-                        }
-                    }
-                    if overage > 0 {
-                        for t in ts_vec.drain(0..overage) {
-                            let retainer = self.retainers
-                                .entry(id)
-                                .or_insert_with(WindowedRetainer::default);
-                            retainer.historic_sum += t.samples_sum().unwrap_or(0.0);
-                            retainer.historic_count += t.count();
-                        }
-                    }
-                }
-                PROMETHEUS_AGGR_WINDOWED_LEN
-                    .store(self.windowed.len(), Ordering::Relaxed);
             }
         }
         true
@@ -291,17 +220,13 @@ impl PrometheusAggr {
 
     /// Return the total points stored by this aggregation
     fn count(&self) -> usize {
-        self.windowed.len() + self.perpetual.len()
+        self.perpetual.len()
     }
 
     /// Create a new PrometheusAggr
-    fn new(retain_limit: usize) -> PrometheusAggr {
+    fn new() -> PrometheusAggr {
         PrometheusAggr {
-            retain_limit: retain_limit,
             perpetual: Default::default(),
-            oldest_timestamp: time::now() - (retain_limit as i64),
-            retainers: Default::default(),
-            windowed: Default::default(),
         }
     }
 }
@@ -335,10 +260,10 @@ impl Handler for SenderHandler {
         }
         let res = if accept_proto {
             PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
-            write_binary(&reportable, &aggr.retainers, res)
+            write_binary(&reportable, res)
         } else {
             PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
-            write_text(&reportable, &aggr.retainers, res)
+            write_text(&reportable, res)
         };
         if res.is_err() {
             PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
@@ -353,7 +278,7 @@ impl Prometheus {
     /// Please see documentation on `PrometheusConfig` for more details.
     pub fn new(config: PrometheusConfig) -> Prometheus {
         let aggrs =
-            sync::Arc::new(sync::Mutex::new(PrometheusAggr::new(config.retain_limit)));
+            sync::Arc::new(sync::Mutex::new(PrometheusAggr::new()));
         let srv_aggrs = sync::Arc::clone(&aggrs);
         let listener = Server::http((config.host.as_str(), config.port))
             .unwrap()
@@ -369,7 +294,6 @@ impl Prometheus {
 
 fn write_binary(
     aggrs: &[metric::Telemetry],
-    retainers: &HashMap<u64, WindowedRetainer, BuildHasherDefault<SeaHasher>>,
     mut res: Response,
 ) -> io::Result<()> {
     res.headers_mut().set_raw(
@@ -437,12 +361,8 @@ fn write_binary(
                     label_pairs.push(lp);
                 }
                 metric.set_label(RepeatedField::from_vec(label_pairs));
-                let (retained_count, retained_sum) =
-                    if let Some(retainer) = retainers.get(&value.hash()) {
-                        (retainer.historic_count, retainer.historic_sum)
-                    } else {
-                        (0, 0.0)
-                    };
+                let retained_count = value.count();
+                let retained_sum = value.samples_sum().unwrap_or(0.0);
                 let mut summary = Summary::new();
                 summary.set_sample_count((retained_count + value.count()) as u64);
                 if let Some(val) = value.samples_sum() {
@@ -538,7 +458,6 @@ fn fmt_tags(tags: &TagMap, s: &mut GzEncoder<Vec<u8>>) -> () {
 
 fn write_text(
     aggrs: &[metric::Telemetry],
-    retainers: &HashMap<u64, WindowedRetainer, BuildHasherDefault<SeaHasher>>,
     mut res: Response,
 ) -> io::Result<()> {
     {
@@ -646,12 +565,8 @@ fn write_text(
                 let _ = enc.write(b"{");
                 fmt_tags(&value.tags, &mut enc);
                 let _ = enc.write(b"} ");
-                let (retained_count, retained_sum) =
-                    if let Some(retainer) = retainers.get(&value.hash()) {
-                        (retainer.historic_count, retainer.historic_sum)
-                    } else {
-                        (0, 0.0)
-                    };
+                let retained_count = value.count();
+                let retained_sum = value.samples_sum().unwrap_or(0.0);
                 let _ = enc.write(
                     (value.samples_sum().unwrap_or(0.0) + retained_sum)
                         .to_string()
@@ -708,8 +623,7 @@ impl Sink for Prometheus {
     }
 
     fn flush(&mut self) {
-        let mut aggrs = self.aggrs.lock().unwrap();
-        aggrs.oldest_timestamp = time::now() - (aggrs.retain_limit as i64);
+        // intentionally blank 
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<metric::Telemetry>>) -> () {
@@ -738,26 +652,7 @@ mod test {
         where
             G: Gen,
         {
-            let retain_limit: usize = match Arbitrary::arbitrary(g) {
-                0 => 1,
-                n => n,
-            };
             let limit: usize = Arbitrary::arbitrary(g);
-            let mut windowed: HashMap<
-                u64,
-                Vec<metric::Telemetry>,
-                BuildHasherDefault<SeaHasher>,
-            > = Default::default();
-            for _ in 0..limit {
-                let telem: metric::Telemetry = Arbitrary::arbitrary(g);
-                let ts_vec = windowed.entry(telem.hash()).or_insert(vec![]);
-                match (*ts_vec)
-                    .binary_search_by(|probe| probe.timestamp.cmp(&telem.timestamp))
-                {
-                    Ok(idx) => ts_vec[idx] += telem,
-                    Err(idx) => ts_vec.insert(idx, telem),
-                }
-            }
             let mut perpetual: HashMap<
                 u64,
                 metric::Telemetry,
@@ -768,11 +663,7 @@ mod test {
                 perpetual.insert(telem.hash(), telem);
             }
             PrometheusAggr {
-                retain_limit: retain_limit,
                 perpetual: perpetual,
-                windowed: windowed,
-                retainers: Default::default(),
-                oldest_timestamp: 0,
             }
         }
     }
