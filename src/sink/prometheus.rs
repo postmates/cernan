@@ -8,7 +8,7 @@
 //!   - QUANTILES -> summary
 //!   - HISTOGRAM -> histogram
 //!
-//! All points are retained indefinately in their aggregation.
+//! All points are retained indefinitely in their aggregation.
 
 use flate2::Compression;
 use flate2::write::GzEncoder;
