@@ -20,7 +20,7 @@ use metric;
 use metric::{AggregationMethod, TagMap};
 use protobuf::Message;
 use protobuf::repeated::RepeatedField;
-use protocols::prometheus::*;
+use protocols::prometheus::binary::*;
 use quantiles::histogram::Bound;
 use seahash::SeaHasher;
 use sink::{Sink, Valve};
