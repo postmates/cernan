@@ -305,7 +305,7 @@ mod tests {
 
             let config = sync::Arc::new(StatsdParseConfig::default());
 
-            if parse_statsd(&lines, &mut res, metric, config) {
+            if parse_statsd(&lines, &mut res, &metric, &config) {
                 assert_eq!(res.len(), pyld.lines.len());
                 for (sline, telem) in pyld.lines.iter().zip(res.iter()) {
                     assert_eq!(sline.name, telem.name);
@@ -356,8 +356,8 @@ mod tests {
         assert!(parse_statsd(
             "a.b:3.1|c\na-b:4|c|@0.1\na-b:5.2|c@0.2\n",
             &mut res,
-            metric,
-            config,
+            &metric,
+            &config,
         ));
         assert_eq!(res[0].kind(), AggregationMethod::Sum);
         assert_eq!(res[0].name, "a.b");
@@ -378,7 +378,7 @@ mod tests {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd("fst:-1.1|ms\n", &mut res, metric, config));
+        assert!(parse_statsd("fst:-1.1|ms\n", &mut res, &metric, &config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Summarize);
         assert_eq!(res[0].name, "fst");
@@ -391,7 +391,7 @@ mod tests {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd("A=:1|ms\n", &mut res, metric, config));
+        assert!(parse_statsd("A=:1|ms\n", &mut res, &metric, &config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Summarize);
         assert_eq!(res[0].name, "A=");
@@ -404,7 +404,7 @@ mod tests {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd("A/:1|ms\n", &mut res, metric, config));
+        assert!(parse_statsd("A/:1|ms\n", &mut res, &metric, &config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Summarize);
         assert_eq!(res[0].name, "A/");
@@ -420,8 +420,8 @@ mod tests {
         assert!(parse_statsd(
             "foo:1|g|@+0.22\nbar:101|g|@2\nbaz:2|g@0.2\nqux:4|g@0.1",
             &mut res,
-            metric,
-            config
+            &metric,
+            &config
         ));
         //                              0         A     F
         assert_eq!(res[0].kind(), AggregationMethod::Set);
@@ -450,7 +450,7 @@ mod tests {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(!parse_statsd("", &mut res, metric, config));
+        assert!(!parse_statsd("", &mut res, &metric, &config));
     }
 
 
@@ -459,7 +459,7 @@ mod tests {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(!parse_statsd("foo:", &mut res, metric, config));
+        assert!(!parse_statsd("foo:", &mut res, &metric, &config));
     }
 
     #[test]
@@ -470,8 +470,8 @@ mod tests {
         assert!(parse_statsd(
             "a.b:12.1|g\nb_c:13.2|c\n",
             &mut res,
-            metric,
-            config
+            &metric,
+            &config
         ));
         assert_eq!(2, res.len());
 
@@ -494,8 +494,8 @@ mod tests {
         assert!(parse_statsd(
             "a.b:12.1|g\nb_c:13.2|c",
             &mut res,
-            metric,
-            config
+            &metric,
+            &config
         ));
         assert_eq!(2, res.len());
 
@@ -516,7 +516,7 @@ mod tests {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd(pyld, &mut res, metric, config));
+        assert!(parse_statsd(pyld, &mut res, &metric, &config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Sum);
         assert_eq!(res[0].name, "zrth");
@@ -530,7 +530,7 @@ mod tests {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd(pyld, &mut res, metric, config));
+        assert!(parse_statsd(pyld, &mut res, &metric, &config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Set);
         assert_eq!(res[0].name, "zrth");
@@ -560,8 +560,8 @@ mod tests {
             assert!(!parse_statsd(
                 *input,
                 &mut Vec::new(),
-                metric.clone(),
-                config.clone()
+                &metric.clone(),
+                &config.clone()
             ));
         }
     }
@@ -573,7 +573,7 @@ mod tests {
         let metric = sync::Arc::new(Some(Telemetry::default()));
         let config = sync::Arc::new(StatsdParseConfig::default());
         let mut res = Vec::new();
-        assert!(parse_statsd(pyld, &mut res, metric, config));
+        assert!(parse_statsd(pyld, &mut res, &metric, &config));
 
         assert_eq!(res[0].kind(), AggregationMethod::Set);
         assert_eq!(res[0].name, "zrth");

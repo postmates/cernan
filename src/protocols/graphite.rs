@@ -59,7 +59,7 @@ mod tests {
             "fst 1 101\nsnd -2.0 202\nthr 3 303\nfth@fth 4 404\nfv%fv 5 505\ns-th 6 606\n";
         let mut res = Vec::new();
         let metric = sync::Arc::new(Some(Telemetry::default()));
-        assert!(parse_graphite(pyld, &mut res, metric));
+        assert!(parse_graphite(pyld, &mut res, &metric));
 
         assert_eq!(res[0].kind(), AggregationMethod::Set);
         assert_eq!(res[0].name, "fst");
