@@ -204,20 +204,6 @@ impl PrometheusAggr {
         true
     }
 
-    /// Recombine Telemetry into the aggregation
-    ///
-    /// In the event that Prometheus hangs up on us we have to recombine
-    /// 'reportable' Telemetry back into the aggregation, else we lose it. This
-    /// function _will_ reset the last_report for each time series.
-    ///
-    /// If a Telemetry is passed that did not previously exist or has not been
-    /// reported the effect will be the same as if `insert` had been called.
-    fn recombine(&mut self, telems: Vec<metric::Telemetry>) {
-        for telem in telems {
-            self.insert(telem);
-        }
-    }
-
     /// Return the total points stored by this aggregation
     fn count(&self) -> usize {
         self.perpetual.len()
@@ -234,8 +220,8 @@ impl PrometheusAggr {
 impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
         let mut aggr = self.aggr.lock().unwrap();
-        let reportable: Vec<metric::Telemetry> = aggr.reportable();
-        PROMETHEUS_AGGR_REPORTABLE.store(reportable.len(), Ordering::Relaxed);
+        // PROMETHEUS_AGGR_REPORTABLE is retained for backward compatability. 
+        PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed); 
         PROMETHEUS_AGGR_REMAINING.store(aggr.count(), Ordering::Relaxed);
         // Typed hyper::mime is challenging to use. In particular, matching does
         // not seem to work like I expect and handling all other MIME cases in
@@ -258,6 +244,9 @@ impl Handler for SenderHandler {
                 break;
             }
         }
+        // TODO the existing implementation of reportable requires
+        // cloning. That... stinks. It shouldn't be the case.
+        let reportable: Vec<metric::Telemetry> = aggr.reportable();
         let res = if accept_proto {
             PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
             write_binary(&reportable, res)
@@ -267,7 +256,6 @@ impl Handler for SenderHandler {
         };
         if res.is_err() {
             PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
-            aggr.recombine(reportable);
         }
     }
 }
@@ -304,7 +292,7 @@ fn write_binary(
                 .to_vec(),
         ],
     );
-    let mut res = res.start().unwrap();
+    let mut res = res.start()?;
     for value in aggrs {
         match value.kind() {
             AggregationMethod::Sum => if let Some(v) = value.sum() {
@@ -325,8 +313,7 @@ fn write_binary(
                 metric_family.set_field_type(MetricType::COUNTER);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
                 metric_family
-                    .write_length_delimited_to_writer(res.by_ref())
-                    .expect("FAILED TO WRITE TO HTTP RESPONSE");
+                    .write_length_delimited_to_writer(res.by_ref())?
             },
             AggregationMethod::Set => if let Some(v) = value.set() {
                 let mut metric_family = MetricFamily::new();
@@ -346,8 +333,7 @@ fn write_binary(
                 metric_family.set_field_type(MetricType::GAUGE);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
                 metric_family
-                    .write_length_delimited_to_writer(res.by_ref())
-                    .expect("FAILED TO WRITE TO HTTP RESPONSE");
+                    .write_length_delimited_to_writer(res.by_ref())?
             },
             AggregationMethod::Summarize => {
                 let mut metric_family = MetricFamily::new();
@@ -380,8 +366,7 @@ fn write_binary(
                 metric_family.set_field_type(MetricType::SUMMARY);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
                 metric_family
-                    .write_length_delimited_to_writer(res.by_ref())
-                    .expect("FAILED TO WRITE TO HTTP RESPONSE");
+                    .write_length_delimited_to_writer(res.by_ref())?
             }
             AggregationMethod::Histogram => {
                 let mut metric_family = MetricFamily::new();
@@ -420,8 +405,7 @@ fn write_binary(
                 metric_family.set_field_type(MetricType::HISTOGRAM);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
                 metric_family
-                    .write_length_delimited_to_writer(res.by_ref())
-                    .expect("FAILED TO WRITE TO HTTP RESPONSE");
+                    .write_length_delimited_to_writer(res.by_ref())?
             }
         }
     }
@@ -465,128 +449,126 @@ fn write_text(
         headers.set(ContentEncoding(vec![Encoding::Gzip]));
         headers.set_raw("content-type", vec![b"text/plain; version=0.0.4".to_vec()]);
     }
-    let mut res = res.start().unwrap();
+    let mut res = res.start()?;
     let mut seen = HashSet::new();
     let mut enc = GzEncoder::new(Vec::with_capacity(1024), Compression::Default);
     for value in aggrs {
         match value.kind() {
             AggregationMethod::Sum => if let Some(v) = value.sum() {
                 if seen.insert(&value.name) {
-                    let _ = enc.write(b"# TYPE ");
-                    let _ = enc.write(value.name.as_bytes());
-                    let _ = enc.write(b" counter\n");
+                    enc.write(b"# TYPE ")?;
+                    enc.write(value.name.as_bytes())?;
+                    enc.write(b" counter\n")?;
                 }
-                let _ = enc.write(value.name.as_bytes());
-                let _ = enc.write(b"{");
+                enc.write(value.name.as_bytes())?;
+                enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                let _ = enc.write(b"} ");
-                let _ = enc.write(v.to_string().as_bytes());
-                let _ = enc.write(b"\n");
+                enc.write(b"} ")?;
+                enc.write(v.to_string().as_bytes())?;
+                enc.write(b"\n")?;
             },
             AggregationMethod::Set => if let Some(v) = value.set() {
                 if seen.insert(&value.name) {
-                    let _ = enc.write(b"# TYPE ");
-                    let _ = enc.write(value.name.as_bytes());
-                    let _ = enc.write(b" gauge\n");
+                    enc.write(b"# TYPE ")?;
+                    enc.write(value.name.as_bytes())?;
+                    enc.write(b" gauge\n")?;
                 }
-                let _ = enc.write(value.name.as_bytes());
-                let _ = enc.write(b"{");
+                enc.write(value.name.as_bytes())?;
+                enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                let _ = enc.write(b"} ");
-                let _ = enc.write(v.to_string().as_bytes());
-                let _ = enc.write(b"\n");
+                enc.write(b"} ")?;
+                enc.write(v.to_string().as_bytes())?;
+                enc.write(b"\n")?;
             },
             AggregationMethod::Histogram => if let Some(bin_iter) = value.bins() {
                 if seen.insert(&value.name) {
-                    let _ = enc.write(b"# TYPE ");
-                    let _ = enc.write(value.name.as_bytes());
-                    let _ = enc.write(b" histogram\n");
+                    enc.write(b"# TYPE ")?;
+                    enc.write(value.name.as_bytes())?;
+                    enc.write(b" histogram\n")?;
                 }
                 let mut running_sum = 0;
                 for &(bound, val) in bin_iter {
-                    let _ = enc.write(value.name.as_bytes());
-                    let _ = enc.write(b"{le=\"");
+                    enc.write(value.name.as_bytes())?;
+                    enc.write(b"{le=\"")?;
                     match bound {
                         Bound::Finite(bnd) => {
-                            let _ = enc.write(bnd.to_string().as_bytes());
+                            enc.write(bnd.to_string().as_bytes())?;
                         }
                         Bound::PosInf => {
-                            let _ = enc.write(b"+Inf");
+                            enc.write(b"+Inf")?;
                         }
                     }
                     for (k, v) in &(*value.tags) {
-                        let _ = enc.write(b"\", ");
-                        let _ = enc.write(k.as_bytes());
-                        let _ = enc.write(b"=\"");
-                        let _ = enc.write(v.as_bytes());
+                        enc.write(b"\", ")?;
+                        enc.write(k.as_bytes())?;
+                        enc.write(b"=\"")?;
+                        enc.write(v.as_bytes())?;
                     }
-                    let _ = enc.write(b"\"} ");
-                    let _ = enc.write((val + running_sum).to_string().as_bytes());
+                    enc.write(b"\"} ")?;
+                    enc.write((val + running_sum).to_string().as_bytes())?;
                     running_sum += val;
-                    let _ = enc.write(b"\n");
+                    enc.write(b"\n")?;
                 }
-                let _ = enc.write(value.name.as_bytes());
-                let _ = enc.write(b"_sum ");
-                let _ = enc.write(b"{");
+                enc.write(value.name.as_bytes())?;
+                enc.write(b"_sum ")?;
+                enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                let _ = enc.write(b"} ");
-                let _ = enc.write(value.samples_sum().unwrap_or(0.0).to_string().as_bytes());
-                let _ = enc.write(b"\n");
-                let _ = enc.write(value.name.as_bytes());
-                let _ = enc.write(b"_count ");
-                let _ = enc.write(b"{");
+                enc.write(b"} ")?;
+                enc.write(value.samples_sum().unwrap_or(0.0).to_string().as_bytes())?;
+                enc.write(b"\n")?;
+                enc.write(value.name.as_bytes())?;
+                enc.write(b"_count ")?;
+                enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                let _ = enc.write(b"} ");
-                let _ = enc.write(value.count().to_string().as_bytes());
-                let _ = enc.write(b"\n");
+                enc.write(b"} ")?;
+                enc.write(value.count().to_string().as_bytes())?;
+                enc.write(b"\n")?;
             },
             AggregationMethod::Summarize => {
                 if seen.insert(&value.name) {
-                    let _ = enc.write(b"# TYPE ");
-                    let _ = enc.write(value.name.as_bytes());
-                    let _ = enc.write(b" summary\n");
+                    enc.write(b"# TYPE ")?;
+                    enc.write(value.name.as_bytes())?;
+                    enc.write(b" summary\n")?;
                 }
                 for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-                    let _ = enc.write(value.name.as_bytes());
-                    let _ = enc.write(b"{quantile=\"");
-                    let _ = enc.write(q.to_string().as_bytes());
+                    enc.write(value.name.as_bytes())?;
+                    enc.write(b"{quantile=\"")?;
+                    enc.write(q.to_string().as_bytes())?;
                     for (k, v) in &(*value.tags) {
-                        let _ = enc.write(b"\", ");
-                        let _ = enc.write(k.as_bytes());
-                        let _ = enc.write(b"=\"");
-                        let _ = enc.write(v.as_bytes());
+                        enc.write(b"\", ")?;
+                        enc.write(k.as_bytes())?;
+                        enc.write(b"=\"")?;
+                        enc.write(v.as_bytes())?;
                     }
-                    let _ = enc.write(b"\"} ");
-                    let _ = enc.write(value.query(*q).unwrap().to_string().as_bytes());
-                    let _ = enc.write(b"\n");
+                    enc.write(b"\"} ")?;
+                    enc.write(value.query(*q).unwrap().to_string().as_bytes())?;
+                    enc.write(b"\n")?;
                 }
-                let _ = enc.write(value.name.as_bytes());
-                let _ = enc.write(b"_sum ");
-                let _ = enc.write(b"{");
+                enc.write(value.name.as_bytes())?;
+                enc.write(b"_sum ")?;
+                enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                let _ = enc.write(b"} ");
+                enc.write(b"} ")?;
                 let retained_count = value.count();
                 let retained_sum = value.samples_sum().unwrap_or(0.0);
-                let _ = enc.write(
+                enc.write(
                     (value.samples_sum().unwrap_or(0.0) + retained_sum)
                         .to_string()
                         .as_bytes(),
-                );
-                let _ = enc.write(b"\n");
-                let _ = enc.write(value.name.as_bytes());
-                let _ = enc.write(b"_count ");
-                let _ = enc.write(b"{");
+                )?;
+                enc.write(b"\n")?;
+                enc.write(value.name.as_bytes())?;
+                enc.write(b"_count ")?;
+                enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                let _ = enc.write(b"} ");
-                let _ =
-                    enc.write((value.count() + retained_count).to_string().as_bytes());
-                let _ = enc.write(b"\n");
+                enc.write(b"} ")?;
+                enc.write((value.count() + retained_count).to_string().as_bytes())?;
+                enc.write(b"\n")?;
             }
         }
     }
-    let encoded = enc.finish().unwrap();
-    res.write_all(&encoded)
-        .expect("FAILED TO WRITE BUFFER INTO HTTP STREAMING RESPONSE");
+    let encoded = enc.finish()?;
+    res.write_all(&encoded)?;
     res.end()
 }
 
@@ -666,34 +648,6 @@ mod test {
                 perpetual: perpetual,
             }
         }
-    }
-
-    // * recombining points should increase the size of aggr by the size of the
-    //   report vec
-    // * recombining points should adjust the last_report to the least of the
-    //   combined points
-    #[test]
-    fn test_recombine() {
-        fn inner(
-            mut aggr: PrometheusAggr,
-            recomb: Vec<metric::Telemetry>,
-        ) -> TestResult {
-            let cur_cnt = aggr.count();
-            let recomb_len = recomb.len();
-
-            aggr.recombine(recomb);
-
-            let lower = cur_cnt;
-            let upper = cur_cnt + recomb_len;
-
-            assert!(lower <= aggr.count() || aggr.count() <= upper);
-            TestResult::passed()
-        }
-        QuickCheck::new().tests(1000).max_tests(10000).quickcheck(
-            inner
-                as fn(PrometheusAggr, Vec<metric::Telemetry>)
-                    -> TestResult,
-        );
     }
 
     #[test]
