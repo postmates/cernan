@@ -1,7 +1,11 @@
 //! Utility module, a grab-bag of functionality
 
+extern crate mio;
+
 use hopper;
 use metric;
+use constants;
+use std;
 
 /// A vector of `hopper::Sender`s.
 pub type Channel = Vec<hopper::Sender<metric::Event>>;
@@ -33,4 +37,40 @@ pub enum Valve {
     /// In the `Closed` state a filter / sink will reject new inputs, backing
     /// them up in the communication queue.
     Closed,
+}
+
+
+pub struct ChildThread {
+    pub handle : std::thread::JoinHandle<()>,
+
+    readiness : mio::SetReadiness,
+}
+
+impl ChildThread {
+    pub fn new<F>(f : F) -> ChildThread where
+        F: Send + 'static + Fn(mio::Poll) -> () {
+
+        let poller = mio::Poll::new().unwrap();
+        let (registration, readiness) = mio::Registration::new2();
+
+        return ChildThread {
+            readiness: readiness,
+
+            handle: std::thread::spawn(move || {
+                poller.register(
+                    &registration,
+                    constants::SYSTEM,
+                    mio::Ready::readable(),
+                    mio::PollOpt::edge()).expect("Failed to register system pipe");
+
+                let arc_f = std::sync::Arc::new(f);
+                arc_f.clone()(poller);
+            }),
+        }
+    }
+
+    pub fn shutdown(&self) {
+        self.readiness.set_readiness(mio::Ready::readable());
+        self.handle.join();
+    }
 }

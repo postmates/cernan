@@ -72,7 +72,7 @@ fn new_mio_poller() -> (mio::Poll, mio::SetReadiness) {
     poll.register(&registration,
         constants::SYSTEM,
         mio::Ready::readable(),
-        mio::PollOpt::edge());
+        mio::PollOpt::edge()).expect("Poll failed to return a result!");
 
     return (poll, readiness);
 }
@@ -545,7 +545,8 @@ fn main() {
     mem::replace(&mut args.native_server_config, None).map(
         |cfg_map| for (config_path, config) in cfg_map {
             let mut native_server_send = Vec::new();
-            let (poll, readiness) = new_mio_poller();
+            let poll = mio::Poll::new().unwrap();
+            let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
                 &mut native_server_send,
                 Some(&mut flush_sends),
@@ -558,6 +559,10 @@ fn main() {
                 SourceWorker {
                     readiness: readiness,
                     thread: thread::spawn(move || {
+                        poll.register(&registration,
+                            constants::SYSTEM,
+                            mio::Ready::readable(),
+                            mio::PollOpt::edge()).expect("Poll failed to return a result!");
                         cernan::source::NativeServer::new(native_server_send, config).run(poll);
                     })
                 }
@@ -566,7 +571,8 @@ fn main() {
     );
 
     let internal_config = mem::replace(&mut args.internal, Default::default());
-    let (poll, readiness) = new_mio_poller();
+    let poll = mio::Poll::new().unwrap();
+    let (registration, readiness) = mio::Registration::new2();
     let mut internal_send = Vec::new();
     populate_forwards(
         &mut internal_send,
@@ -580,6 +586,10 @@ fn main() {
         SourceWorker {
             readiness: readiness,
             thread: thread::spawn(move || {
+                poll.register(&registration,
+                    constants::SYSTEM,
+                    mio::Ready::readable(),
+                    mio::PollOpt::edge()).expect("Poll failed to return a result!");
                 cernan::source::Internal::new(internal_send, internal_config).run(poll);
             })
         }
@@ -587,7 +597,8 @@ fn main() {
 
     mem::replace(&mut args.statsds, None).map(|cfg_map| for (config_path, config) in cfg_map {
         let mut statsd_sends = Vec::new();
-        let (poll, readiness) = new_mio_poller();
+        let poll = mio::Poll::new().unwrap();
+        let (registration, readiness) = mio::Registration::new2();
         populate_forwards(
             &mut statsd_sends,
             Some(&mut flush_sends),
@@ -598,8 +609,12 @@ fn main() {
         sources.insert(
             config_path.clone(),
             SourceWorker {
-                readiness: readiness,
+                readiness: readiness.clone(),
                 thread: thread::spawn(move || {
+                    poll.register(&registration,
+                        constants::SYSTEM,
+                        mio::Ready::readable(),
+                        mio::PollOpt::edge()).expect("Poll failed to return a result!");
                     cernan::source::Statsd::new(statsd_sends, config).run(poll);
                 })
             }
@@ -609,7 +624,8 @@ fn main() {
     mem::replace(&mut args.graphites, None).map(
         |cfg_map| for (config_path, config) in cfg_map {
             let mut graphite_sends = Vec::new();
-            let (poll, readiness) = new_mio_poller();
+            let poll = mio::Poll::new().unwrap();
+            let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
                 &mut graphite_sends,
                 Some(&mut flush_sends),
@@ -622,6 +638,10 @@ fn main() {
                 SourceWorker {
                     readiness: readiness,
                     thread: thread::spawn(move || {
+                        poll.register(&registration,
+                            constants::SYSTEM,
+                            mio::Ready::readable(),
+                            mio::PollOpt::edge()).expect("Poll failed to return a result!");
                         cernan::source::Graphite::new(graphite_sends, config).run(poll);
                     })
                 }
@@ -631,7 +651,8 @@ fn main() {
 
     mem::replace(&mut args.files, None).map(|cfg| for config in cfg {
         let mut fp_sends = Vec::new();
-        let (poll, readiness) = new_mio_poller();
+        let poll = mio::Poll::new().unwrap();
+        let (registration, readiness) = mio::Registration::new2();
         populate_forwards(
             &mut fp_sends,
             Some(&mut flush_sends),
@@ -644,6 +665,10 @@ fn main() {
             SourceWorker {
                 readiness: readiness,
                 thread: thread::spawn(move || {
+                    poll.register(&registration,
+                        constants::SYSTEM,
+                        mio::Ready::readable(),
+                        mio::PollOpt::edge()).expect("Poll failed to return a result!");
                     cernan::source::FileServer::new(fp_sends, config).run(poll);
                 })
             }
@@ -654,7 +679,7 @@ fn main() {
     //
     thread::spawn(move || {
         let mut flush_channels = Vec::new();
-        let (poll, _readiness) = new_mio_poller();
+        let poll = mio::Poll::new().unwrap();
         for destination in &flush_sends {
             match senders.get(destination) {
                 Some(snd) => {
@@ -682,23 +707,21 @@ fn main() {
     drop(config_topology);
     drop(receivers);
 
-    // TODO - Enable IPC
-    // TODO - Make use of IPC to:
-    // * Monitor child thread application-layer health.
-    // * Communicate graceful shutdown to source/sink/filter child threads on
-    // signal.
     signal.recv().unwrap();
 
     // First, we shut down source to quiesce event generation.
-    for (_id, source_worker) in sources {
-        source_worker.readiness.set_readiness(mio::Ready::empty());
+    for (id, source_worker) in sources {
+        println!("Signalling shutdown for {:?}", id);
+        source_worker.readiness.set_readiness(mio::Ready::readable()).expect("Oops!");
         source_worker.thread.join();
     }
 
+    std::thread::sleep(std::time::Duration::from_millis(10000));
+
     broadcast_shutdown(&filters);
     broadcast_shutdown(&sinks);
-    //join_all(sinks);
-    //join_all(filters);
+    join_all(sinks);
+    join_all(filters);
 
     println!("DONE");
 }

@@ -119,11 +119,10 @@ fn handle_udp(
     ));
     loop {
         let mut events = mio::Events::with_capacity(1024);
-
         match poll.poll(& mut events, None) {
             Ok(_num_events) =>
                 for event in events {
-
+                    println!("Got event {:?}", event);
                     match event.token() {
                         constants::SYSTEM =>  return,
                         token => {

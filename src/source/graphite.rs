@@ -1,6 +1,8 @@
 use super::Source;
 extern crate mio;
 use metric;
+use constants;
+use std;
 use protocols::graphite::parse_graphite;
 use std::io::BufReader;
 use std::io::prelude::*;
@@ -12,6 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use util;
 use util::send;
+use std::collections::HashMap;
 
 lazy_static! {
     pub static ref GRAPHITE_NEW_PEER: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
@@ -70,82 +73,129 @@ impl Graphite {
     }
 }
 
+fn spawn_stream_handlers(
+    chans: util::Channel,
+    tags: std::sync::Arc<metric::TagMap>,
+    listener : & mio::net::TcpListener,
+    stream_handlers : &mut Vec<util::ChildThread>,
+) -> () {
+    loop {
+        match listener.accept() {
+            Ok((stream, _addr)) => {
+                let chans = chans.clone();
+                let tags_clone = std::sync::Arc::clone(&tags);
+                let new_stream = util::ChildThread::new(move |poller| {
+                    poller.register(
+                        &stream,
+                        mio::Token(0),
+                        mio::Ready::readable(),
+                        mio::PollOpt::edge()).unwrap();
+
+                    handle_stream(
+                       chans.clone(),
+                       tags_clone,
+                       poller,
+                       stream);
+                });
+
+                stream_handlers.push(new_stream);
+            }
+
+            Err(e) => if e.kind() == std::io::ErrorKind::WouldBlock {
+                break;
+            }
+
+            Err(e) => {
+                panic!("Failed while accepting new connection");
+            }
+        };
+
+    }
+}
+
 fn handle_tcp(
     chans: util::Channel,
-    tags: Arc<metric::TagMap>,
-    listner: TcpListener,
-) -> thread::JoinHandle<()> {
-    thread::spawn(move || {
-        for stream in listner.incoming() {
-            if let Ok(stream) = stream {
-                GRAPHITE_NEW_PEER.fetch_add(1, Ordering::Relaxed);
-                debug!(
-                    "new peer at {:?} | local addr for peer {:?}",
-                    stream.peer_addr(),
-                    stream.local_addr()
-                );
-                let tags = Arc::clone(&tags);
-                let chans = chans.clone();
-                thread::spawn(move || {
-                    handle_stream(chans, tags, stream);
-                });
+    tags: std::sync::Arc<metric::TagMap>,
+    socket_map: HashMap<mio::Token, mio::net::TcpListener>,
+    poll: mio::Poll,
+) {
+    let mut stream_handlers = Vec::new();
+    loop {
+        let mut events = mio::Events::with_capacity(1024);
+        match poll.poll(& mut events, None) {
+            Err(e) =>
+                panic!(format!("Failed during poll {:?}", e)),
+            Ok(_num_events) => {
+                for event in events {
+                    match event.token() {
+                        constants::SYSTEM => return, // TODO - Shutdown stream handlers.
+                        listener_token => {
+                            let listener = socket_map.get(&listener_token).unwrap();
+                            spawn_stream_handlers(chans, tags, &listener, &mut stream_handlers);
+                        }
+                    }
+                }
             }
         }
-    })
+    }
 }
 
 fn handle_stream(
     mut chans: util::Channel,
     tags: Arc<metric::TagMap>,
-    stream: TcpStream,
+    poller: mio::Poll,
+    stream: mio::net::TcpStream,
 ) {
-    thread::spawn(move || {
-        let mut line = String::new();
-        let mut res = Vec::new();
-        let mut line_reader = BufReader::new(stream);
-        let basic_metric = Arc::new(Some(
-            metric::Telemetry::default().overlay_tags_from_map(&tags),
-        ));
-        while let Some(len) = line_reader.read_line(&mut line).ok() {
-            if len > 0 {
-                if parse_graphite(&line, &mut res, &basic_metric) {
-                    assert!(!res.is_empty());
-                    GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
-                    GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
-                    for m in res.drain(..) {
-                        send(&mut chans, metric::Event::Telemetry(Arc::new(Some(m))));
-                    }
-                    line.clear();
-                } else {
-                    GRAPHITE_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
-                    error!("bad packet: {:?}", line);
-                    line.clear();
+    let mut line = String::new();
+    let mut res = Vec::new();
+    let mut line_reader = BufReader::new(stream);
+    let basic_metric = Arc::new(Some(
+        metric::Telemetry::default().overlay_tags_from_map(&tags),
+    ));
+    while let Some(len) = line_reader.read_line(&mut line).ok() {
+        if len > 0 {
+            if parse_graphite(&line, &mut res, Arc::clone(&basic_metric)) {
+                assert!(!res.is_empty());
+                GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
+                GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
+                for m in res.drain(..) {
+                    send(&mut chans, metric::Event::Telemetry(Arc::new(Some(m))));
                 }
+                line.clear();
             } else {
-                break;
+                GRAPHITE_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
+                error!("bad packet: {:?}", line);
+                line.clear();
             }
+        } else {
+            break;
         }
-    });
+    }
 }
 
 impl Source for Graphite {
-    fn run(&mut self, _poll: mio::Poll) {
-        let mut joins = Vec::new();
-
+    fn run(&mut self, poll: mio::Poll) {
         let addrs = (self.host.as_str(), self.port).to_socket_addrs();
         match addrs {
             Ok(ips) => {
                 let ips: Vec<_> = ips.collect();
-                for addr in ips {
+                let mut socket_map : HashMap<mio::Token, mio::net::TcpListener> = HashMap::new();
+                for i in 0..ips.len() {
+                    let token = mio::Token(i);
+                    let addr = ips[i];
                     let listener =
-                        TcpListener::bind(addr).expect("Unable to bind to TCP socket");
-                    let chans = self.chans.clone();
-                    let tags = Arc::clone(&self.tags);
-                    info!("server started on {:?} {}", addr, self.port);
-                    joins.push(thread::spawn(move || {
-                        handle_tcp(chans, tags, listener)
-                    }));
+                        mio::net::TcpListener::bind(&addr).expect("Unable to bind to TCP socket");
+                    info!("registered listener for {:?} {}", addr, self.port);
+                    poll.register(
+                        &listener,
+                        token,
+                        mio::Ready::readable(),
+                        mio::PollOpt::edge()).unwrap();
+
+                    socket_map.insert(token, listener);
                 }
+
+                handle_tcp(self.chans.clone(), std::sync::Arc::clone(&self.tags), socket_map, poll);
             }
             Err(e) => {
                 info!(
@@ -153,14 +203,6 @@ impl Source for Graphite {
                     self.host, e
                 );
             }
-        }
-
-        // TODO thread spawn trick, join on results
-        for jh in joins {
-            // TODO Having sub-threads panic will not cause a bubble-up if that
-            // thread is not the currently examined one. We're going to have to have
-            // some manner of sub-thread communication going on.
-            jh.join().expect("Uh oh, child thread panicked!");
         }
     }
 }
