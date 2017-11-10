@@ -12,6 +12,7 @@ use std::mem;
 use std::path::PathBuf;
 use std::str;
 use std::thread;
+use std::time;
 use util;
 use util::send;
 
@@ -89,7 +90,7 @@ impl FileServer {
 /// Specific operating systems support evented interfaces that correct this
 /// problem but your intrepid authors know of no generic solution.
 impl Source for FileServer {
-    fn run(&mut self, _poll: mio::Poll) {
+    fn run(&mut self, poller: mio::Poll) {
         let mut buffer = String::new();
 
         let mut fp_map: HashMapFnv<PathBuf, FileWatcher> = Default::default();
@@ -174,7 +175,16 @@ impl Source for FileServer {
                 backoff_cap = 1;
             }
             let backoff = backoff_cap.saturating_sub(global_lines_read);
-            thread::sleep(::std::time::Duration::from_millis(backoff as u64));
+            let mut events = mio::Events::with_capacity(1024);
+            match poller.poll(& mut events, Some(time::Duration::from_millis(backoff as u64))){
+                Err(e) =>
+                    panic!(format!("Failed during poll {:?}", e)),
+                Ok(_num_events) =>
+                    // File server doesn't poll for anything other than SYSTEM events.
+                    // As currently there are no system events other than SHUTDOWN,
+                    // we immediately exit.
+                    return,
+            }
         }
     }
 }
