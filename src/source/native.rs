@@ -14,6 +14,7 @@ use std::net::ToSocketAddrs;
 use std::str;
 use constants;
 use util;
+use thread;
 
 /// The native source
 ///
@@ -78,7 +79,7 @@ fn handle_tcp(
     listener_map: HashMap<mio::Token, mio::net::TcpListener>,
     poller: mio::Poll,
 ) {
-    let mut stream_handlers : Vec<util::ChildThread> = Vec::new();
+    let mut stream_handlers : Vec<thread::ThreadHandle> = Vec::new();
     loop {
         let mut events = mio::Events::with_capacity(1024);
         match poller.poll(& mut events, None) {
@@ -111,7 +112,7 @@ fn spawn_stream_handlers(
     chans: util::Channel,
     tags: sync::Arc<metric::TagMap>,
     listener : & mio::net::TcpListener,
-    stream_handlers : &mut Vec<util::ChildThread>,
+    stream_handlers : &mut Vec<thread::ThreadHandle>,
 ) -> () {
     loop {
         match listener.accept() {
@@ -120,7 +121,7 @@ fn spawn_stream_handlers(
                 let rtags = sync::Arc::clone(&tags);
                 let rchans = chans.clone();
 
-                let new_stream = util::ChildThread::new(move |poller| {
+                let new_stream = thread::ThreadHandle::new(move |poller| {
                     poller.register(
                         &stream,
                         mio::Token(0),

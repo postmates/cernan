@@ -62,4 +62,5 @@ pub mod source;
 pub mod filter;
 pub mod util;
 pub mod constants;
+pub mod thread;
 pub mod protocols;

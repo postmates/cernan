@@ -11,6 +11,7 @@ use std::str;
 use std::sync;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
+use thread;
 use util::send;
 use std::collections::HashMap;
 
@@ -75,14 +76,14 @@ fn spawn_stream_handlers(
     chans: util::Channel,
     tags: sync::Arc<metric::TagMap>,
     listener : & mio::net::TcpListener,
-    stream_handlers : &mut Vec<util::ChildThread>,
+    stream_handlers : &mut Vec<thread::ThreadHandle>,
 ) -> () {
     loop {
         match listener.accept() {
             Ok((stream, _addr)) => {
                 let rchans = chans.clone();
                 let rtags = sync::Arc::clone(&tags);
-                let new_stream = util::ChildThread::new(move |poller| {
+                let new_stream = thread::ThreadHandle::new(move |poller| {
                     poller.register(
                         &stream,
                         mio::Token(0),
@@ -165,7 +166,7 @@ fn handle_tcp(
     socket_map: HashMap<mio::Token, mio::net::TcpListener>,
     poll: mio::Poll,
 ) {
-    let mut stream_handlers : Vec<util::ChildThread> = Vec::new();
+    let mut stream_handlers : Vec<thread::ThreadHandle> = Vec::new();
     loop {
         let mut events = mio::Events::with_capacity(1024);
         match poll.poll(& mut events, None) {
