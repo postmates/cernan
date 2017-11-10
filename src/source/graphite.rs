@@ -135,7 +135,7 @@ fn handle_stream(
                         _stream_token => {
                             if let Ok(len) = line_reader.read_line(&mut line) {
                                 if len > 0 {
-                                    if parse_graphite(&line, &mut res, sync::Arc::clone(&basic_metric)) {
+                                    if parse_graphite(&line, &mut res, &basic_metric) {
                                         assert!(!res.is_empty());
                                         GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
                                         GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
