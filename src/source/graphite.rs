@@ -109,13 +109,63 @@ fn spawn_stream_handlers(
     }
 }
 
+fn handle_stream(
+    mut chans: util::Channel,
+    tags: sync::Arc<metric::TagMap>,
+    poller: mio::Poll,
+    stream: mio::net::TcpStream,
+) {
+    let mut line = String::new();
+    let mut res = Vec::new();
+    let mut line_reader = BufReader::new(stream);
+    let basic_metric = sync::Arc::new(Some(
+        metric::Telemetry::default().overlay_tags_from_map(&tags),
+    ));
+
+    loop {
+        let mut events = mio::Events::with_capacity(1024);
+        match poller.poll(& mut events, None) {
+            Err(e) =>
+                panic!(format!("Failed during poll {:?}", e)),
+            Ok(_num_events) => {
+                for event in events {
+                    match event.token() {
+                        constants::SYSTEM => return,
+                        _stream_token => {
+                            if let Some(len) = line_reader.read_line(&mut line).ok() {
+                                if len > 0 {
+                                    if parse_graphite(&line, &mut res, sync::Arc::clone(&basic_metric)) {
+                                        assert!(!res.is_empty());
+                                        GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
+                                        GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
+                                        for m in res.drain(..) {
+                                            send(&mut chans, metric::Event::Telemetry(sync::Arc::new(Some(m))));
+                                        }
+                                        line.clear();
+                                    } else {
+                                        GRAPHITE_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
+                                        error!("bad packet: {:?}", line);
+                                        line.clear();
+                                    }
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn handle_tcp(
     chans: util::Channel,
     tags: sync::Arc<metric::TagMap>,
     socket_map: HashMap<mio::Token, mio::net::TcpListener>,
     poll: mio::Poll,
 ) {
-    let mut stream_handlers = Vec::new();
+    let mut stream_handlers : Vec<util::ChildThread> = Vec::new();
     loop {
         let mut events = mio::Events::with_capacity(1024);
         match poll.poll(& mut events, None) {
@@ -124,7 +174,12 @@ fn handle_tcp(
             Ok(_num_events) => {
                 for event in events {
                     match event.token() {
-                        constants::SYSTEM => return, // TODO - Shutdown stream handlers.
+                        constants::SYSTEM => {
+                            for handler in stream_handlers {
+                                handler.shutdown();
+                            }
+                            return
+                        }
                         listener_token => {
                             let listener = socket_map.get(&listener_token).unwrap();
                             spawn_stream_handlers(chans.clone(), // TODO: do not clone, make an Arc 
@@ -135,39 +190,6 @@ fn handle_tcp(
                     }
                 }
             }
-        }
-    }
-}
-
-fn handle_stream(
-    mut chans: util::Channel,
-    tags: sync::Arc<metric::TagMap>,
-    _poller: mio::Poll,
-    stream: mio::net::TcpStream,
-) {
-    let mut line = String::new();
-    let mut res = Vec::new();
-    let mut line_reader = BufReader::new(stream);
-    let basic_metric = sync::Arc::new(Some(
-        metric::Telemetry::default().overlay_tags_from_map(&tags),
-    ));
-    while let Some(len) = line_reader.read_line(&mut line).ok() {
-        if len > 0 {
-            if parse_graphite(&line, &mut res, sync::Arc::clone(&basic_metric)) {
-                assert!(!res.is_empty());
-                GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
-                GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
-                for m in res.drain(..) {
-                    send(&mut chans, metric::Event::Telemetry(sync::Arc::new(Some(m))));
-                }
-                line.clear();
-            } else {
-                GRAPHITE_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
-                error!("bad packet: {:?}", line);
-                line.clear();
-            }
-        } else {
-            break;
         }
     }
 }

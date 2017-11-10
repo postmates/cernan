@@ -40,13 +40,20 @@ pub enum Valve {
 }
 
 
+/// Mio enabled thread state.
 pub struct ChildThread {
+
+    /// JoinHandle for the executing thread.
     pub handle : std::thread::JoinHandle<()>,
 
+    /// Readiness signal used to notify the given thread when an event is ready
+    /// to be consumed on the SYSTEM channel.
     readiness : mio::SetReadiness,
 }
 
 impl ChildThread {
+
+    /// Spawns a new thread executing the provided closure.
     pub fn new<F>(f : F) -> ChildThread where
         F: Send + 'static + FnOnce(mio::Poll) -> () {
 
@@ -68,8 +75,12 @@ impl ChildThread {
         }
     }
 
+    /// Gracefully shutdown the child thread, blocking until it exists.
+    ///
+    /// Note - It is the responsability of the developer to ensure
+    /// that thread logic polls for events occuring on the SYSTEM token.
     pub fn shutdown(self) {
-        self.readiness.set_readiness(mio::Ready::readable());
-        self.handle.join();
+        self.readiness.set_readiness(mio::Ready::readable()).expect("Failed to notify child thread of shutdown!");;
+        self.handle.join().expect("Failed to join child thread!");
     }
 }

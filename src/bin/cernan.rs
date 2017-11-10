@@ -65,21 +65,9 @@ fn populate_forwards(
     }
 }
 
-fn new_mio_poller() -> (mio::Poll, mio::SetReadiness) {
-    let poll = mio::Poll::new().unwrap();
-    let (registration, readiness) = mio::Registration::new2();
-
-    poll.register(&registration,
-        constants::SYSTEM,
-        mio::Ready::readable(),
-        mio::PollOpt::edge()).expect("Poll failed to return a result!");
-
-    return (poll, readiness);
-}
-
 fn join_all(workers : HashMap<String, SinkWorker>){
     for (_worker_id, worker) in workers.into_iter() {
-        worker.thread.join();
+        worker.thread.join().expect("Failed to join worker");
     }
 }
 
@@ -713,7 +701,7 @@ fn main() {
     for (id, source_worker) in sources {
         println!("Signalling shutdown for {:?}", id);
         source_worker.readiness.set_readiness(mio::Ready::readable()).expect("Oops!");
-        source_worker.thread.join();
+        source_worker.thread.join().expect("Failed during join!");
     }
 
     std::thread::sleep(std::time::Duration::from_millis(10000));
