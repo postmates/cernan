@@ -90,8 +90,8 @@ fn spawn_stream_handlers(
                         mio::PollOpt::edge()).unwrap();
 
                     handle_stream(
-                        rchans, 
-                        rtags, 
+                        rchans,
+                        rtags,
                         poller,
                         stream);
                 });
@@ -178,11 +178,11 @@ fn handle_tcp(
                             for handler in stream_handlers {
                                 handler.shutdown();
                             }
-                            return
+                            return;
                         }
                         listener_token => {
                             let listener = socket_map.get(&listener_token).unwrap();
-                            spawn_stream_handlers(chans.clone(), // TODO: do not clone, make an Arc 
+                            spawn_stream_handlers(chans.clone(), // TODO: do not clone, make an Arc
                                                   sync::Arc::clone(&tags),
                                                   &listener,
                                                   &mut stream_handlers);

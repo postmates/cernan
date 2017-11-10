@@ -11,7 +11,6 @@ use std::hash::BuildHasherDefault;
 use std::mem;
 use std::path::PathBuf;
 use std::str;
-use std::thread;
 use std::time;
 use util;
 use util::send;
