@@ -1,7 +1,5 @@
 //! Utility module, a grab-bag of functionality
 
-extern crate mio;
-
 use hopper;
 use metric;
 

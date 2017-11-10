@@ -463,10 +463,9 @@ fn main() {
                     thread: thread::spawn(move || {
                         cernan::filter::ProgrammableFilter::new(c).run(recv, downstream_sends);
                     })
-                }
-            );
-        },
-    );
+                });
+        }
+    }); 
 
     mem::replace(&mut args.delay_filters, None).map(|cfg_map| {
         for config in cfg_map.values() {
@@ -494,8 +493,8 @@ fn main() {
                     })
                 }
             );
-        },
-    );
+        }
+    });
 
     mem::replace(&mut args.flush_boundary_filters, None).map(|cfg_map| {
         for config in cfg_map.values() {
@@ -524,8 +523,8 @@ fn main() {
                     })
                 }
             );
-        },
-    );
+        }
+    });
 
     // SOURCES
     //
@@ -552,10 +551,8 @@ fn main() {
                             mio::PollOpt::edge()).expect("Poll failed to return a result!");
                         cernan::source::NativeServer::new(native_server_send, config).run(poll);
                     })
-                }
-            );
-        },
-    );
+                });
+        });
 
     let internal_config = mem::replace(&mut args.internal, Default::default());
     let poll = mio::Poll::new().unwrap();
