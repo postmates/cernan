@@ -18,28 +18,6 @@ pub struct ThreadHandle {
 
 impl ThreadHandle {
 
-    /// Spawns a new thread executing the provided closure.
-    pub fn new<F>(f : F) -> ThreadHandle where
-        F: Send + 'static + FnOnce(mio::Poll) -> () {
-
-        let poller = mio::Poll::new().unwrap();
-        let (registration, readiness) = mio::Registration::new2();
-
-        return ThreadHandle {
-            readiness: readiness,
-
-            handle: thread::spawn(move || {
-                poller.register(
-                    &registration,
-                    constants::SYSTEM,
-                    mio::Ready::readable(),
-                    mio::PollOpt::edge()).expect("Failed to register system pipe");
-
-                f(poller);
-            }),
-        }
-    }
-
     /// Join the given Thread, blocking until it exits.
     pub fn join(self) {
         self.handle.join().expect("Failed to join child thread!");

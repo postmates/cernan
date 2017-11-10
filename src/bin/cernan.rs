@@ -704,8 +704,6 @@ fn main() {
         source_worker.thread.join().expect("Failed during join!");
     }
 
-    std::thread::sleep(std::time::Duration::from_millis(10000));
-
     broadcast_shutdown(&filters);
     broadcast_shutdown(&sinks);
     join_all(sinks);

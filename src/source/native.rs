@@ -121,7 +121,7 @@ fn spawn_stream_handlers(
                 let rtags = sync::Arc::clone(&tags);
                 let rchans = chans.clone();
 
-                let new_stream = thread::ThreadHandle::new(move |poller| {
+                let new_stream = thread::spawn(move |poller| {
                     poller.register(
                         &stream,
                         mio::Token(0),
