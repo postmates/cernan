@@ -6,21 +6,19 @@ use std;
 use protocols::graphite::parse_graphite;
 use std::io::BufReader;
 use std::io::prelude::*;
-use std::net::{TcpListener, TcpStream};
 use std::net::ToSocketAddrs;
 use std::str;
-use std::sync::Arc;
+use std::sync;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread;
 use util;
 use util::send;
 use std::collections::HashMap;
 
 lazy_static! {
-    pub static ref GRAPHITE_NEW_PEER: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    pub static ref GRAPHITE_GOOD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    pub static ref GRAPHITE_TELEM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    pub static ref GRAPHITE_BAD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    pub static ref GRAPHITE_NEW_PEER: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
+    pub static ref GRAPHITE_GOOD_PACKET: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
+    pub static ref GRAPHITE_TELEM: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
+    pub static ref GRAPHITE_BAD_PACKET: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
 }
 
 /// Graphite protocol source
@@ -30,7 +28,7 @@ pub struct Graphite {
     chans: util::Channel,
     host: String,
     port: u16,
-    tags: Arc<metric::TagMap>,
+    tags: sync::Arc<metric::TagMap>,
 }
 
 /// Configured for the `metric::Telemetry` source.
@@ -68,22 +66,22 @@ impl Graphite {
             chans: chans,
             host: config.host,
             port: config.port,
-            tags: Arc::new(config.tags),
+            tags: sync::Arc::new(config.tags),
         }
     }
 }
 
 fn spawn_stream_handlers(
     chans: util::Channel,
-    tags: std::sync::Arc<metric::TagMap>,
+    tags: sync::Arc<metric::TagMap>,
     listener : & mio::net::TcpListener,
     stream_handlers : &mut Vec<util::ChildThread>,
 ) -> () {
     loop {
         match listener.accept() {
             Ok((stream, _addr)) => {
-                let chans = chans.clone();
-                let tags_clone = std::sync::Arc::clone(&tags);
+                let rchans = chans.clone();
+                let rtags = sync::Arc::clone(&tags);
                 let new_stream = util::ChildThread::new(move |poller| {
                     poller.register(
                         &stream,
@@ -92,21 +90,19 @@ fn spawn_stream_handlers(
                         mio::PollOpt::edge()).unwrap();
 
                     handle_stream(
-                       chans.clone(),
-                       tags_clone,
-                       poller,
-                       stream);
+                        rchans, 
+                        rtags, 
+                        poller,
+                        stream);
                 });
-
                 stream_handlers.push(new_stream);
             }
 
-            Err(e) => if e.kind() == std::io::ErrorKind::WouldBlock {
-                break;
-            }
-
-            Err(e) => {
-                panic!("Failed while accepting new connection");
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::WouldBlock => {
+                    break;
+                },
+                _ => unimplemented!()
             }
         };
 
@@ -115,7 +111,7 @@ fn spawn_stream_handlers(
 
 fn handle_tcp(
     chans: util::Channel,
-    tags: std::sync::Arc<metric::TagMap>,
+    tags: sync::Arc<metric::TagMap>,
     socket_map: HashMap<mio::Token, mio::net::TcpListener>,
     poll: mio::Poll,
 ) {
@@ -131,7 +127,10 @@ fn handle_tcp(
                         constants::SYSTEM => return, // TODO - Shutdown stream handlers.
                         listener_token => {
                             let listener = socket_map.get(&listener_token).unwrap();
-                            spawn_stream_handlers(chans, tags, &listener, &mut stream_handlers);
+                            spawn_stream_handlers(chans.clone(), // TODO: do not clone, make an Arc 
+                                                  sync::Arc::clone(&tags),
+                                                  &listener,
+                                                  &mut stream_handlers);
                         }
                     }
                 }
@@ -142,24 +141,24 @@ fn handle_tcp(
 
 fn handle_stream(
     mut chans: util::Channel,
-    tags: Arc<metric::TagMap>,
-    poller: mio::Poll,
+    tags: sync::Arc<metric::TagMap>,
+    _poller: mio::Poll,
     stream: mio::net::TcpStream,
 ) {
     let mut line = String::new();
     let mut res = Vec::new();
     let mut line_reader = BufReader::new(stream);
-    let basic_metric = Arc::new(Some(
+    let basic_metric = sync::Arc::new(Some(
         metric::Telemetry::default().overlay_tags_from_map(&tags),
     ));
     while let Some(len) = line_reader.read_line(&mut line).ok() {
         if len > 0 {
-            if parse_graphite(&line, &mut res, Arc::clone(&basic_metric)) {
+            if parse_graphite(&line, &mut res, sync::Arc::clone(&basic_metric)) {
                 assert!(!res.is_empty());
                 GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
                 GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
                 for m in res.drain(..) {
-                    send(&mut chans, metric::Event::Telemetry(Arc::new(Some(m))));
+                    send(&mut chans, metric::Event::Telemetry(sync::Arc::new(Some(m))));
                 }
                 line.clear();
             } else {
@@ -195,7 +194,7 @@ impl Source for Graphite {
                     socket_map.insert(token, listener);
                 }
 
-                handle_tcp(self.chans.clone(), std::sync::Arc::clone(&self.tags), socket_map, poll);
+                handle_tcp(self.chans.clone(), sync::Arc::clone(&self.tags), socket_map, poll);
             }
             Err(e) => {
                 info!(

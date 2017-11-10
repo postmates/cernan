@@ -48,7 +48,7 @@ pub struct ChildThread {
 
 impl ChildThread {
     pub fn new<F>(f : F) -> ChildThread where
-        F: Send + 'static + Fn(mio::Poll) -> () {
+        F: Send + 'static + FnOnce(mio::Poll) -> () {
 
         let poller = mio::Poll::new().unwrap();
         let (registration, readiness) = mio::Registration::new2();
@@ -63,13 +63,12 @@ impl ChildThread {
                     mio::Ready::readable(),
                     mio::PollOpt::edge()).expect("Failed to register system pipe");
 
-                let arc_f = std::sync::Arc::new(f);
-                arc_f.clone()(poller);
+                f(poller);
             }),
         }
     }
 
-    pub fn shutdown(&self) {
+    pub fn shutdown(self) {
         self.readiness.set_readiness(mio::Ready::readable());
         self.handle.join();
     }
