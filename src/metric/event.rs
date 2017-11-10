@@ -52,8 +52,7 @@ impl Event {
                     None => None,
                 }
             }
-            Event::TimerFlush(_) => None,
-            Event::Shutdown => None,
+            Event::TimerFlush(_) | Event::Shutdown => None,
         }
     }
 }

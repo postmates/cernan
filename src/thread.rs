@@ -40,7 +40,7 @@ pub fn spawn<F>(f: F) -> ThreadHandle where
         let poller = mio::Poll::new().unwrap();
         let (registration, readiness) = mio::Registration::new2();
 
-        return ThreadHandle {
+        ThreadHandle {
             readiness: readiness,
 
             handle: thread::spawn(move || {

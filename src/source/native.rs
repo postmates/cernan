@@ -95,7 +95,7 @@ fn handle_tcp(
                             return;
                         }
                         listener_token => {
-                            let listener = listener_map.get(&listener_token).unwrap();
+                            let listener = &listener_map[&listener_token];
                             spawn_stream_handlers(chans.clone(),
                                                   sync::Arc::clone(&tags),
                                                   &listener,

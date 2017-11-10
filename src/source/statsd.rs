@@ -167,9 +167,8 @@ impl Source for Statsd {
             Ok(ips) => {
                 let ips: Vec<_> = ips.collect();
                 let mut socket_map : HashMap<mio::Token, mio::net::UdpSocket> = HashMap::new();
-                for i in 0..ips.len() {
+                for (i, addr) in ips.iter().enumerate() {
                     let token = mio::Token(i);
-                    let addr = ips[i];
                     let listener = mio::net::UdpSocket::bind(&addr).expect("Unable to bind to TCP socket");
                     poll.register(
                         &listener,

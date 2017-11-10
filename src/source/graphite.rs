@@ -133,7 +133,7 @@ fn handle_stream(
                     match event.token() {
                         constants::SYSTEM => return,
                         _stream_token => {
-                            if let Some(len) = line_reader.read_line(&mut line).ok() {
+                            if let Ok(len) = line_reader.read_line(&mut line) {
                                 if len > 0 {
                                     if parse_graphite(&line, &mut res, sync::Arc::clone(&basic_metric)) {
                                         assert!(!res.is_empty());
@@ -182,10 +182,10 @@ fn handle_tcp(
                             return;
                         }
                         listener_token => {
-                            let listener = socket_map.get(&listener_token).unwrap();
+                            let listener = &socket_map[&listener_token];
                             spawn_stream_handlers(chans.clone(), // TODO: do not clone, make an Arc
                                                   sync::Arc::clone(&tags),
-                                                  &listener,
+                                                  listener,
                                                   &mut stream_handlers);
                         }
                     }
@@ -202,9 +202,8 @@ impl Source for Graphite {
             Ok(ips) => {
                 let ips: Vec<_> = ips.collect();
                 let mut socket_map : HashMap<mio::Token, mio::net::TcpListener> = HashMap::new();
-                for i in 0..ips.len() {
+                for (i, addr) in ips.iter().enumerate() {
                     let token = mio::Token(i);
-                    let addr = ips[i];
                     let listener =
                         mio::net::TcpListener::bind(&addr).expect("Unable to bind to TCP socket");
                     info!("registered listener for {:?} {}", addr, self.port);

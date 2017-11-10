@@ -66,7 +66,7 @@ fn populate_forwards(
 }
 
 fn join_all(workers : HashMap<String, SinkWorker>){
-    for (_worker_id, worker) in workers.into_iter() {
+    for (_worker_id, worker) in workers {
         worker.thread.join().expect("Failed to join worker");
     }
 }
@@ -78,7 +78,7 @@ fn broadcast_shutdown(workers : &HashMap<String, SinkWorker>){
         source_channels.push(worker.sender.clone());
     }
 
-    if source_channels.len() > 0 {
+    if !source_channels.is_empty() {
         cernan::util::send(&mut source_channels, cernan::metric::Event::Shutdown);
     }
 
