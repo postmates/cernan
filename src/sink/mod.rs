@@ -54,6 +54,8 @@ pub trait Sink {
     /// provide their own implementation. Please take care to obey `Valve`
     /// states and `flush_interval` configurations.
     fn run(&mut self, recv: hopper::Receiver<Event>) {
+        let mut reads = 0;
+
         let mut attempts = 0;
         let mut recv = recv.into_iter();
         let mut last_flush_idx = 0;
@@ -62,12 +64,16 @@ pub trait Sink {
         // tries to do something with it, only discarding it at such time as
         // it's been delivered to the Sink.
         loop {
-            time::delay(attempts);
+            if (reads % 1_000) == 0 {
+                println!("SINK READS: {:?}", reads);
+            }
             let nxt = recv.next();
             if nxt.is_none() {
+                time::delay(attempts);
                 attempts += 1;
                 continue;
             }
+            reads += 1;
             let event = nxt.unwrap();
             loop {
                 // We have to be careful here not to dump a value until it's

@@ -20,13 +20,9 @@ use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protocols::prometheus::*;
 use quantiles::histogram::Bound;
-use seahash::SeaHasher;
 use sink::{Sink, Valve};
-use std::collections::HashMap;
 use std::collections::HashSet;
-use std::collections::hash_map::Entry;
 use std::f64;
-use std::hash::BuildHasherDefault;
 use std::io;
 use std::io::Write;
 use std::mem;
@@ -63,7 +59,7 @@ lazy_static! {
 /// pull-based.
 #[allow(dead_code)]
 pub struct Prometheus {
-    aggrs: sync::Arc<Mutex<PrometheusAggr>>,
+    aggrs: sync::Arc<sync::Mutex<PrometheusAggr>>,
     // `http_srv` is never used but we must keep it in this struct to avoid the
     // listening server being dropped
     http_srv: Listening,
@@ -127,7 +123,8 @@ struct PrometheusAggr {
     // The idea being that there's no good reason to flush these things,
     // according to this conversation:
     // https://github.com/postmates/cernan/pull/306#discussion_r139770087
-    perpetual: HashMap<u64, metric::Telemetry, BuildHasherDefault<SeaHasher>>,
+    keys: Vec<u64>,
+    values: Vec<metric::Telemetry>,
 }
 
 /// When we store `AggregationMethod::Summarize` into windows we have to be
@@ -153,26 +150,15 @@ impl PrometheusAggr {
     /// Telemetry
     #[cfg(test)]
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
-        match telem.kind() {
-            AggregationMethod::Set |
-            AggregationMethod::Sum |
-            AggregationMethod::Histogram |
-            AggregationMethod::Summarize => {
-                self.perpetual.get(&telem.hash()).map(|x| x.clone())
-            }
-        }
+        self.perpetual.get(&telem.hash()).map(|x| x.clone())
     }
 
     /// Return all 'reportable' Telemetry
     ///
     /// This function returns all the stored Telemetry points that are available
     /// for shipping to Prometheus.
-    fn reportable(&mut self) -> Vec<metric::Telemetry> {
-        let mut ret = Vec::new();
-        for v in self.perpetual.values() {
-            ret.push(v.clone());
-        }
-        ret
+    fn reportable(&mut self) -> &Vec<metric::Telemetry> {
+        &self.values
     }
 
     /// Insert a Telemetry into the aggregation
@@ -181,38 +167,41 @@ impl PrometheusAggr {
     /// PrometheusAggr. Timestamps are _not_ respected. Distinctions between
     /// Telemetry of the same name are only made if their tagmaps are distinct.
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
-        match telem.kind() {
-            AggregationMethod::Set |
-            AggregationMethod::Sum |
-            AggregationMethod::Histogram |
-            AggregationMethod::Summarize => {
-                {
-                    let entry = self.perpetual.entry(telem.hash());
-                    match entry {
-                        Entry::Occupied(mut o) => {
-                            *o.get_mut() += telem;
-                        }
-                        Entry::Vacant(o) => {
-                            o.insert(telem);
-                        }
-                    };
+        use std::ops::IndexMut;
+        {
+            match self.keys.binary_search_by(
+                |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
+            ) {
+                Ok(hsh_idx) => {
+                    // TODO insertion gets slower and slower for reasons that I
+                    // do not know. Maybe check something with summarization?
+                    //
+                    // Also, we can avoid sanitizing up front. Do sanitize when
+                    // we're writing out to prometheus, not at storage time.
+                    
+                    // *(self.values.index_mut(hsh_idx)) += telem;
                 }
-                PROMETHEUS_AGGR_PERPETUAL_LEN
-                    .store(self.perpetual.len(), Ordering::Relaxed);
+                Err(hsh_idx) => {
+                    self.keys.insert(hsh_idx, telem.name_tag_hash());
+                    self.values.insert(hsh_idx, telem);
+                }
             }
         }
+        assert_eq!(self.keys.len(), self.values.len());
+        PROMETHEUS_AGGR_PERPETUAL_LEN.store(self.values.len(), Ordering::Relaxed);
         true
     }
 
     /// Return the total points stored by this aggregation
     fn count(&self) -> usize {
-        self.perpetual.len()
+        self.values.len()
     }
 
     /// Create a new PrometheusAggr
     fn new() -> PrometheusAggr {
         PrometheusAggr {
-            perpetual: Default::default(),
+            keys: Vec::with_capacity(128),
+            values: Vec::with_capacity(128),
         }
     }
 }
@@ -220,8 +209,8 @@ impl PrometheusAggr {
 impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
         let mut aggr = self.aggr.lock().unwrap();
-        // PROMETHEUS_AGGR_REPORTABLE is retained for backward compatability. 
-        PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed); 
+        // PROMETHEUS_AGGR_REPORTABLE is retained for backward compatability.
+        PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
         PROMETHEUS_AGGR_REMAINING.store(aggr.count(), Ordering::Relaxed);
         // Typed hyper::mime is challenging to use. In particular, matching does
         // not seem to work like I expect and handling all other MIME cases in
@@ -244,9 +233,7 @@ impl Handler for SenderHandler {
                 break;
             }
         }
-        // TODO the existing implementation of reportable requires
-        // cloning. That... stinks. It shouldn't be the case.
-        let reportable: Vec<metric::Telemetry> = aggr.reportable();
+        let reportable: &Vec<metric::Telemetry> = aggr.reportable();
         let res = if accept_proto {
             PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
             write_binary(&reportable, res)
@@ -265,8 +252,7 @@ impl Prometheus {
     ///
     /// Please see documentation on `PrometheusConfig` for more details.
     pub fn new(config: PrometheusConfig) -> Prometheus {
-        let aggrs =
-            sync::Arc::new(sync::Mutex::new(PrometheusAggr::new()));
+        let aggrs = sync::Arc::new(sync::Mutex::new(PrometheusAggr::new()));
         let srv_aggrs = sync::Arc::clone(&aggrs);
         let listener = Server::http((config.host.as_str(), config.port))
             .unwrap()
@@ -274,16 +260,13 @@ impl Prometheus {
             .unwrap();
 
         Prometheus {
-            aggrs: aggrs,
+            aggrs: aggrs, 
             http_srv: listener,
         }
     }
 }
 
-fn write_binary(
-    aggrs: &[metric::Telemetry],
-    mut res: Response,
-) -> io::Result<()> {
+fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
     res.headers_mut().set_raw(
         "content-type",
         vec![
@@ -312,8 +295,7 @@ fn write_binary(
                 metric.set_counter(counter);
                 metric_family.set_field_type(MetricType::COUNTER);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family
-                    .write_length_delimited_to_writer(res.by_ref())?
+                metric_family.write_length_delimited_to_writer(res.by_ref())?
             },
             AggregationMethod::Set => if let Some(v) = value.set() {
                 let mut metric_family = MetricFamily::new();
@@ -332,8 +314,7 @@ fn write_binary(
                 metric.set_gauge(gauge);
                 metric_family.set_field_type(MetricType::GAUGE);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family
-                    .write_length_delimited_to_writer(res.by_ref())?
+                metric_family.write_length_delimited_to_writer(res.by_ref())?
             },
             AggregationMethod::Summarize => {
                 let mut metric_family = MetricFamily::new();
@@ -365,8 +346,7 @@ fn write_binary(
                 metric.set_summary(summary);
                 metric_family.set_field_type(MetricType::SUMMARY);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family
-                    .write_length_delimited_to_writer(res.by_ref())?
+                metric_family.write_length_delimited_to_writer(res.by_ref())?
             }
             AggregationMethod::Histogram => {
                 let mut metric_family = MetricFamily::new();
@@ -404,8 +384,7 @@ fn write_binary(
                 metric.set_histogram(histogram);
                 metric_family.set_field_type(MetricType::HISTOGRAM);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family
-                    .write_length_delimited_to_writer(res.by_ref())?
+                metric_family.write_length_delimited_to_writer(res.by_ref())?
             }
         }
     }
@@ -440,10 +419,7 @@ fn fmt_tags(tags: &TagMap, s: &mut GzEncoder<Vec<u8>>) -> () {
     }
 }
 
-fn write_text(
-    aggrs: &[metric::Telemetry],
-    mut res: Response,
-) -> io::Result<()> {
+fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
     {
         let headers = res.headers_mut();
         headers.set(ContentEncoding(vec![Encoding::Gzip]));
@@ -605,7 +581,7 @@ impl Sink for Prometheus {
     }
 
     fn flush(&mut self) {
-        // intentionally blank 
+        // intentionally blank
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<metric::Telemetry>>) -> () {
