@@ -100,7 +100,7 @@ pub fn parse_statsd(
                                         Err(_) => return false,
                                     };
                                     metric = metric.persist(false);
-                                    metric = metric.kind(AggregationMethod::Summarize);
+                                    metric = metric.kind(AggregationMethod::Summarize).error(0.01);
                                     for &(ref mask_re, ref bounds) in
                                         &config.histogram_masks
                                     {
@@ -126,7 +126,7 @@ pub fn parse_statsd(
                                 }
                                 "ms" | "h" => {
                                     metric = metric.persist(false);
-                                    metric = metric.kind(AggregationMethod::Summarize);
+                                    metric = metric.kind(AggregationMethod::Summarize).error(0.01);
                                     for &(ref mask_re, ref bounds) in
                                         &config.histogram_masks
                                     {

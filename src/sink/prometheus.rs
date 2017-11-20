@@ -25,7 +25,6 @@ use std::collections::HashSet;
 use std::f64;
 use std::io;
 use std::io::Write;
-use std::mem;
 use std::str;
 use std::sync;
 use std::sync::Arc;
@@ -127,24 +126,6 @@ struct PrometheusAggr {
     values: Vec<metric::Telemetry>,
 }
 
-/// When we store `AggregationMethod::Summarize` into windows we have to be
-/// careful to kep the count and summation of past bins we've dropped
-/// off. That's the purpose of `WindowedRetainer`.
-#[derive(Clone, Debug)]
-struct WindowedRetainer {
-    historic_count: usize,
-    historic_sum: f64,
-}
-
-impl Default for WindowedRetainer {
-    fn default() -> WindowedRetainer {
-        WindowedRetainer {
-            historic_count: 0,
-            historic_sum: 0.0,
-        }
-    }
-}
-
 impl PrometheusAggr {
     /// Return a reference to the stored Telemetry if it matches the passed
     /// Telemetry
@@ -173,13 +154,7 @@ impl PrometheusAggr {
                 |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
             ) {
                 Ok(hsh_idx) => {
-                    // TODO insertion gets slower and slower for reasons that I
-                    // do not know. Maybe check something with summarization?
-                    //
-                    // Also, we can avoid sanitizing up front. Do sanitize when
-                    // we're writing out to prometheus, not at storage time.
-                    
-                    // *(self.values.index_mut(hsh_idx)) += telem;
+                    *(self.values.index_mut(hsh_idx)) += telem;
                 }
                 Err(hsh_idx) => {
                     self.keys.insert(hsh_idx, telem.name_tag_hash());
@@ -277,10 +252,11 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
     );
     let mut res = res.start()?;
     for value in aggrs {
+        let sanitized_name: String = sanitize(&value.name);
         match value.kind() {
             AggregationMethod::Sum => if let Some(v) = value.sum() {
                 let mut metric_family = MetricFamily::new();
-                metric_family.set_name(value.name.clone());
+                metric_family.set_name(sanitized_name);
                 let mut metric = Metric::new();
                 let mut label_pairs = Vec::with_capacity(8);
                 for &(ref k, ref v) in value.tags.iter() {
@@ -299,7 +275,7 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
             },
             AggregationMethod::Set => if let Some(v) = value.set() {
                 let mut metric_family = MetricFamily::new();
-                metric_family.set_name(value.name.clone());
+                metric_family.set_name(sanitized_name);
                 let mut metric = Metric::new();
                 let mut label_pairs = Vec::with_capacity(8);
                 for &(ref k, ref v) in value.tags.iter() {
@@ -318,7 +294,7 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
             },
             AggregationMethod::Summarize => {
                 let mut metric_family = MetricFamily::new();
-                metric_family.set_name(value.name.clone());
+                metric_family.set_name(sanitized_name);
                 let mut metric = Metric::new();
                 let mut label_pairs = Vec::with_capacity(8);
                 for &(ref k, ref v) in value.tags.iter() {
@@ -350,7 +326,7 @@ fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()
             }
             AggregationMethod::Histogram => {
                 let mut metric_family = MetricFamily::new();
-                metric_family.set_name(value.name.clone());
+                metric_family.set_name(sanitized_name);
                 let mut metric = Metric::new();
                 let mut label_pairs = Vec::with_capacity(8);
                 for &(ref k, ref v) in value.tags.iter() {
@@ -429,14 +405,15 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
     let mut seen = HashSet::new();
     let mut enc = GzEncoder::new(Vec::with_capacity(1024), Compression::Default);
     for value in aggrs {
+        let sanitized_name: String = sanitize(&value.name);
         match value.kind() {
             AggregationMethod::Sum => if let Some(v) = value.sum() {
                 if seen.insert(&value.name) {
                     enc.write(b"# TYPE ")?;
-                    enc.write(value.name.as_bytes())?;
+                    enc.write(sanitized_name.as_bytes())?;
                     enc.write(b" counter\n")?;
                 }
-                enc.write(value.name.as_bytes())?;
+                enc.write(sanitized_name.as_bytes())?;
                 enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
                 enc.write(b"} ")?;
@@ -446,10 +423,10 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
             AggregationMethod::Set => if let Some(v) = value.set() {
                 if seen.insert(&value.name) {
                     enc.write(b"# TYPE ")?;
-                    enc.write(value.name.as_bytes())?;
+                    enc.write(sanitized_name.as_bytes())?;
                     enc.write(b" gauge\n")?;
                 }
-                enc.write(value.name.as_bytes())?;
+                enc.write(sanitized_name.as_bytes())?;
                 enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
                 enc.write(b"} ")?;
@@ -459,12 +436,12 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
             AggregationMethod::Histogram => if let Some(bin_iter) = value.bins() {
                 if seen.insert(&value.name) {
                     enc.write(b"# TYPE ")?;
-                    enc.write(value.name.as_bytes())?;
+                    enc.write(sanitized_name.as_bytes())?;
                     enc.write(b" histogram\n")?;
                 }
                 let mut running_sum = 0;
                 for &(bound, val) in bin_iter {
-                    enc.write(value.name.as_bytes())?;
+                    enc.write(sanitized_name.as_bytes())?;
                     enc.write(b"{le=\"")?;
                     match bound {
                         Bound::Finite(bnd) => {
@@ -485,14 +462,14 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
                     running_sum += val;
                     enc.write(b"\n")?;
                 }
-                enc.write(value.name.as_bytes())?;
+                enc.write(sanitized_name.as_bytes())?;
                 enc.write(b"_sum ")?;
                 enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
                 enc.write(b"} ")?;
                 enc.write(value.samples_sum().unwrap_or(0.0).to_string().as_bytes())?;
                 enc.write(b"\n")?;
-                enc.write(value.name.as_bytes())?;
+                enc.write(sanitized_name.as_bytes())?;
                 enc.write(b"_count ")?;
                 enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
@@ -503,11 +480,11 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
             AggregationMethod::Summarize => {
                 if seen.insert(&value.name) {
                     enc.write(b"# TYPE ")?;
-                    enc.write(value.name.as_bytes())?;
+                    enc.write(sanitized_name.as_bytes())?;
                     enc.write(b" summary\n")?;
                 }
                 for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-                    enc.write(value.name.as_bytes())?;
+                    enc.write(sanitized_name.as_bytes())?;
                     enc.write(b"{quantile=\"")?;
                     enc.write(q.to_string().as_bytes())?;
                     for (k, v) in &(*value.tags) {
@@ -520,25 +497,23 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
                     enc.write(value.query(*q).unwrap().to_string().as_bytes())?;
                     enc.write(b"\n")?;
                 }
-                enc.write(value.name.as_bytes())?;
+                enc.write(sanitized_name.as_bytes())?;
                 enc.write(b"_sum ")?;
                 enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
                 enc.write(b"} ")?;
-                let retained_count = value.count();
-                let retained_sum = value.samples_sum().unwrap_or(0.0);
                 enc.write(
-                    (value.samples_sum().unwrap_or(0.0) + retained_sum)
+                    value.samples_sum().unwrap_or(0.0)
                         .to_string()
                         .as_bytes(),
                 )?;
                 enc.write(b"\n")?;
-                enc.write(value.name.as_bytes())?;
+                enc.write(sanitized_name.as_bytes())?;
                 enc.write(b"_count ")?;
                 enc.write(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
                 enc.write(b"} ")?;
-                enc.write((value.count() + retained_count).to_string().as_bytes())?;
+                enc.write((value.count()).to_string().as_bytes())?;
                 enc.write(b"\n")?;
             }
         }
@@ -559,8 +534,8 @@ fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> 
 /// Metrics coming into cernan can have full utf8 names, save for some ingestion
 /// protocols that special-case certain characters. To cope with this we just
 /// mangle the mess out of names and hope for forgiveness in the hereafter.
-fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
-    let name: String = mem::replace(&mut metric.name, Default::default());
+fn sanitize(name: &str) -> String {
+    let name: String = name.clone().to_string();
     let mut new_name: Vec<u8> = Vec::with_capacity(128);
     for c in name.as_bytes() {
         match *c {
@@ -568,11 +543,7 @@ fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
             _ => new_name.push(b'_'),
         }
     }
-    metric
-        .thaw()
-        .name(String::from_utf8(new_name).expect("wait, we bungled the conversion"))
-        .harden()
-        .unwrap()
+    name
 }
 
 impl Sink for Prometheus {
@@ -586,7 +557,7 @@ impl Sink for Prometheus {
 
     fn deliver(&mut self, mut point: sync::Arc<Option<metric::Telemetry>>) -> () {
         let mut aggrs = self.aggrs.lock().unwrap();
-        let metric = sanitize(sync::Arc::make_mut(&mut point).take().unwrap());
+        let metric = sync::Arc::make_mut(&mut point).take().unwrap();
         aggrs.insert(metric);
     }
 

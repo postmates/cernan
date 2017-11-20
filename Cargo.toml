@@ -23,7 +23,7 @@ elastic_types = "0.19"
 fern = "0.4"
 flate2 = "0.2"
 glob = "0.2.11"
-hopper = "0.3.2"
+hopper = { git = "https://github.com/postmates/hopper.git", branch = "introduce_zlo" }
 hyper = "0.10"
 hyper-native-tls = "0.2"
 lazy_static = "0.2.1"
@@ -32,7 +32,7 @@ log = "0.3.6"
 lua = { git = "https://github.com/blt/rust-lua53.git", branch = "master" }
 openssl-probe = "0.1"
 protobuf = "1.2"
-quantiles = { version = "0.6", features = ["serde_support"] }
+quantiles = { git = "https://github.com/postmates/quantiles.git", branch = "ckms_insertion_perf_improvement", features = ["serde_support"] }
 regex = "0.2"
 rusoto_core = {version = "0.25.0"}
 rusoto_firehose = {version = "0.25.0"}
