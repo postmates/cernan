@@ -62,59 +62,61 @@ pub fn parse_statsd(
                             return false;
                         };
                         metric = match (&src[offset..]).find('@') {
-                            Some(sample_idx) => match &src
-                                [offset..(offset + sample_idx)]
-                            {
-                                "g|" | "g" => {
-                                    let sample = match f64::from_str(
-                                        &src[(offset + sample_idx + 1)..],
-                                    ) {
-                                        Ok(f) => f,
-                                        Err(_) => return false,
-                                    };
-                                    metric = metric.persist(true);
-                                    metric = if signed {
-                                        metric.kind(AggregationMethod::Sum)
-                                    } else {
-                                        metric.kind(AggregationMethod::Set)
-                                    };
-                                    metric.value(val * (1.0 / sample))
-                                }
-                                "c|" | "c" => {
-                                    let sample = match f64::from_str(
-                                        &src[(offset + sample_idx + 1)..],
-                                    ) {
-                                        Ok(f) => f,
-                                        Err(_) => return false,
-                                    };
-                                    metric = metric
-                                        .kind(AggregationMethod::Sum)
-                                        .persist(false);
-                                    metric.value(val * (1.0 / sample))
-                                }
-                                "ms" | "ms|" | "h" | "h|" => {
-                                    let sample = match f64::from_str(
-                                        &src[(offset + sample_idx + 1)..],
-                                    ) {
-                                        Ok(f) => f,
-                                        Err(_) => return false,
-                                    };
-                                    metric = metric.persist(false);
-                                    metric = metric.kind(AggregationMethod::Summarize).error(0.01);
-                                    for &(ref mask_re, ref bounds) in
-                                        &config.histogram_masks
-                                    {
-                                        if mask_re.is_match(name) {
-                                            metric = metric
-                                                .kind(AggregationMethod::Histogram)
-                                                .bounds(bounds.clone());
-                                            break;
-                                        }
+                            Some(sample_idx) => {
+                                match &src[offset..(offset + sample_idx)] {
+                                    "g|" | "g" => {
+                                        let sample = match f64::from_str(
+                                            &src[(offset + sample_idx + 1)..],
+                                        ) {
+                                            Ok(f) => f,
+                                            Err(_) => return false,
+                                        };
+                                        metric = metric.persist(true);
+                                        metric = if signed {
+                                            metric.kind(AggregationMethod::Sum)
+                                        } else {
+                                            metric.kind(AggregationMethod::Set)
+                                        };
+                                        metric.value(val * (1.0 / sample))
                                     }
-                                    metric.value(val * (1.0 / sample))
+                                    "c|" | "c" => {
+                                        let sample = match f64::from_str(
+                                            &src[(offset + sample_idx + 1)..],
+                                        ) {
+                                            Ok(f) => f,
+                                            Err(_) => return false,
+                                        };
+                                        metric = metric
+                                            .kind(AggregationMethod::Sum)
+                                            .persist(false);
+                                        metric.value(val * (1.0 / sample))
+                                    }
+                                    "ms" | "ms|" | "h" | "h|" => {
+                                        let sample = match f64::from_str(
+                                            &src[(offset + sample_idx + 1)..],
+                                        ) {
+                                            Ok(f) => f,
+                                            Err(_) => return false,
+                                        };
+                                        metric = metric.persist(false);
+                                        metric = metric
+                                            .kind(AggregationMethod::Summarize)
+                                            .error(0.01);
+                                        for &(ref mask_re, ref bounds) in
+                                            &config.histogram_masks
+                                        {
+                                            if mask_re.is_match(name) {
+                                                metric = metric
+                                                    .kind(AggregationMethod::Histogram)
+                                                    .bounds(bounds.clone());
+                                                break;
+                                            }
+                                        }
+                                        metric.value(val * (1.0 / sample))
+                                    }
+                                    _ => return false,
                                 }
-                                _ => return false,
-                            },
+                            }
                             None => match &src[offset..] {
                                 "g" => {
                                     metric = metric.persist(true);
@@ -126,7 +128,9 @@ pub fn parse_statsd(
                                 }
                                 "ms" | "h" => {
                                     metric = metric.persist(false);
-                                    metric = metric.kind(AggregationMethod::Summarize).error(0.01);
+                                    metric = metric
+                                        .kind(AggregationMethod::Summarize)
+                                        .error(0.01);
                                     for &(ref mask_re, ref bounds) in
                                         &config.histogram_masks
                                     {
