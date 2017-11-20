@@ -787,12 +787,21 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                                     panic!("mapping must have a mask");
                                 }
                             }
-                            StatsdParseConfig {
-                                histogram_masks: masks,
-                            }
+                            let mut parse_config = StatsdParseConfig::default();
+                            parse_config.histogram_masks = masks;
+
+                            parse_config
                         })
                         .unwrap_or(res.parse_config);
 
+                    let error_bound = tbl.get("summarize_error_bound")
+                        .map(|p| {
+                            p.as_float()
+                                .expect("summarize_error_bound must be a flaot")
+                        })
+                        .unwrap_or(0.01);
+
+                    res.parse_config.summarize_error_bound = error_bound;
 
                     res.tags = global_tags.clone();
 
@@ -1137,6 +1146,25 @@ scripts-directory = "/foo/bar"
             config0.parse_config.histogram_masks[1].1,
             vec![0.0, 2.0, 20.0]
         );
+    }
+
+    #[test]
+    fn config_statsd_sources_error_bound() {
+        let config = r#"
+[sources]
+  [sources.statsd.primary]
+  enabled = true
+  summarize_error_bound = 0.00001
+  forwards = ["sinks.null"]
+ "#;
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.statsds.is_some());
+        let statsds = args.statsds.unwrap();
+
+        let config0 = statsds.get("sources.statsd.primary").unwrap();
+        assert_eq!(config0.parse_config.summarize_error_bound, 0.00001);
     }
 
     #[test]
