@@ -113,12 +113,8 @@ fn handle_udp(
             Err(e) => panic!(format!("Could not read UDP socket with error {:?}", e)),
         };
         match str::from_utf8(&buf[..len]) {
-            Ok(val) => if parse_statsd(
-                val,
-                &mut metrics,
-                &basic_metric,
-                parse_config,
-            ) {
+            Ok(val) => if parse_statsd(val, &mut metrics, &basic_metric, parse_config)
+            {
                 for m in metrics.drain(..) {
                     send(&mut chans, metric::Event::new_telemetry(m));
                 }

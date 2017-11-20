@@ -20,16 +20,11 @@ use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protocols::prometheus::*;
 use quantiles::histogram::Bound;
-use seahash::SeaHasher;
 use sink::{Sink, Valve};
-use std::collections::HashMap;
 use std::collections::HashSet;
-use std::collections::hash_map::Entry;
 use std::f64;
-use std::hash::BuildHasherDefault;
 use std::io;
 use std::io::Write;
-use std::mem;
 use std::str;
 use std::sync;
 use std::sync::Arc;
@@ -63,7 +58,7 @@ lazy_static! {
 /// pull-based.
 #[allow(dead_code)]
 pub struct Prometheus {
-    aggrs: sync::Arc<Mutex<PrometheusAggr>>,
+    aggrs: sync::Arc<sync::Mutex<PrometheusAggr>>,
     // `http_srv` is never used but we must keep it in this struct to avoid the
     // listening server being dropped
     http_srv: Listening,
@@ -127,25 +122,8 @@ struct PrometheusAggr {
     // The idea being that there's no good reason to flush these things,
     // according to this conversation:
     // https://github.com/postmates/cernan/pull/306#discussion_r139770087
-    perpetual: HashMap<u64, metric::Telemetry, BuildHasherDefault<SeaHasher>>,
-}
-
-/// When we store `AggregationMethod::Summarize` into windows we have to be
-/// careful to kep the count and summation of past bins we've dropped
-/// off. That's the purpose of `WindowedRetainer`.
-#[derive(Clone, Debug)]
-struct WindowedRetainer {
-    historic_count: usize,
-    historic_sum: f64,
-}
-
-impl Default for WindowedRetainer {
-    fn default() -> WindowedRetainer {
-        WindowedRetainer {
-            historic_count: 0,
-            historic_sum: 0.0,
-        }
-    }
+    keys: Vec<u64>,
+    values: Vec<metric::Telemetry>,
 }
 
 impl PrometheusAggr {
@@ -153,13 +131,13 @@ impl PrometheusAggr {
     /// Telemetry
     #[cfg(test)]
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
-        match telem.kind() {
-            AggregationMethod::Set |
-            AggregationMethod::Sum |
-            AggregationMethod::Histogram |
-            AggregationMethod::Summarize => {
-                self.perpetual.get(&telem.hash()).map(|x| x.clone())
-            }
+        use std::ops::Index;
+
+        match self.keys.binary_search_by(
+            |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
+        ) {
+            Ok(hsh_idx) => Some(self.values.index(hsh_idx).clone()),
+            Err(_) => None,
         }
     }
 
@@ -167,12 +145,8 @@ impl PrometheusAggr {
     ///
     /// This function returns all the stored Telemetry points that are available
     /// for shipping to Prometheus.
-    fn reportable(&mut self) -> Vec<metric::Telemetry> {
-        let mut ret = Vec::new();
-        for v in self.perpetual.values() {
-            ret.push(v.clone());
-        }
-        ret
+    fn reportable(&mut self) -> &Vec<metric::Telemetry> {
+        &self.values
     }
 
     /// Insert a Telemetry into the aggregation
@@ -181,38 +155,35 @@ impl PrometheusAggr {
     /// PrometheusAggr. Timestamps are _not_ respected. Distinctions between
     /// Telemetry of the same name are only made if their tagmaps are distinct.
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
-        match telem.kind() {
-            AggregationMethod::Set |
-            AggregationMethod::Sum |
-            AggregationMethod::Histogram |
-            AggregationMethod::Summarize => {
-                {
-                    let entry = self.perpetual.entry(telem.hash());
-                    match entry {
-                        Entry::Occupied(mut o) => {
-                            *o.get_mut() += telem;
-                        }
-                        Entry::Vacant(o) => {
-                            o.insert(telem);
-                        }
-                    };
+        use std::ops::IndexMut;
+        {
+            match self.keys.binary_search_by(
+                |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
+            ) {
+                Ok(hsh_idx) => {
+                    *(self.values.index_mut(hsh_idx)) += telem;
                 }
-                PROMETHEUS_AGGR_PERPETUAL_LEN
-                    .store(self.perpetual.len(), Ordering::Relaxed);
+                Err(hsh_idx) => {
+                    self.keys.insert(hsh_idx, telem.name_tag_hash());
+                    self.values.insert(hsh_idx, telem);
+                }
             }
         }
+        assert_eq!(self.keys.len(), self.values.len());
+        PROMETHEUS_AGGR_PERPETUAL_LEN.store(self.values.len(), Ordering::Relaxed);
         true
     }
 
     /// Return the total points stored by this aggregation
     fn count(&self) -> usize {
-        self.perpetual.len()
+        self.values.len()
     }
 
     /// Create a new PrometheusAggr
     fn new() -> PrometheusAggr {
         PrometheusAggr {
-            perpetual: Default::default(),
+            keys: Vec::with_capacity(128),
+            values: Vec::with_capacity(128),
         }
     }
 }
@@ -220,8 +191,8 @@ impl PrometheusAggr {
 impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
         let mut aggr = self.aggr.lock().unwrap();
-        // PROMETHEUS_AGGR_REPORTABLE is retained for backward compatability. 
-        PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed); 
+        // PROMETHEUS_AGGR_REPORTABLE is retained for backward compatability.
+        PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
         PROMETHEUS_AGGR_REMAINING.store(aggr.count(), Ordering::Relaxed);
         // Typed hyper::mime is challenging to use. In particular, matching does
         // not seem to work like I expect and handling all other MIME cases in
@@ -244,15 +215,13 @@ impl Handler for SenderHandler {
                 break;
             }
         }
-        // TODO the existing implementation of reportable requires
-        // cloning. That... stinks. It shouldn't be the case.
-        let reportable: Vec<metric::Telemetry> = aggr.reportable();
+        let reportable: &Vec<metric::Telemetry> = aggr.reportable();
         let res = if accept_proto {
             PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
-            write_binary(&reportable, res)
+            write_binary(reportable, res)
         } else {
             PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
-            write_text(&reportable, res)
+            write_text(reportable, res)
         };
         if res.is_err() {
             PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
@@ -265,8 +234,7 @@ impl Prometheus {
     ///
     /// Please see documentation on `PrometheusConfig` for more details.
     pub fn new(config: PrometheusConfig) -> Prometheus {
-        let aggrs =
-            sync::Arc::new(sync::Mutex::new(PrometheusAggr::new()));
+        let aggrs = sync::Arc::new(sync::Mutex::new(PrometheusAggr::new()));
         let srv_aggrs = sync::Arc::clone(&aggrs);
         let listener = Server::http((config.host.as_str(), config.port))
             .unwrap()
@@ -280,10 +248,7 @@ impl Prometheus {
     }
 }
 
-fn write_binary(
-    aggrs: &[metric::Telemetry],
-    mut res: Response,
-) -> io::Result<()> {
+fn write_binary(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
     res.headers_mut().set_raw(
         "content-type",
         vec![
@@ -294,10 +259,11 @@ fn write_binary(
     );
     let mut res = res.start()?;
     for value in aggrs {
+        let sanitized_name: String = sanitize(&value.name);
         match value.kind() {
             AggregationMethod::Sum => if let Some(v) = value.sum() {
                 let mut metric_family = MetricFamily::new();
-                metric_family.set_name(value.name.clone());
+                metric_family.set_name(sanitized_name);
                 let mut metric = Metric::new();
                 let mut label_pairs = Vec::with_capacity(8);
                 for &(ref k, ref v) in value.tags.iter() {
@@ -312,12 +278,11 @@ fn write_binary(
                 metric.set_counter(counter);
                 metric_family.set_field_type(MetricType::COUNTER);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family
-                    .write_length_delimited_to_writer(res.by_ref())?
+                metric_family.write_length_delimited_to_writer(res.by_ref())?
             },
             AggregationMethod::Set => if let Some(v) = value.set() {
                 let mut metric_family = MetricFamily::new();
-                metric_family.set_name(value.name.clone());
+                metric_family.set_name(sanitized_name);
                 let mut metric = Metric::new();
                 let mut label_pairs = Vec::with_capacity(8);
                 for &(ref k, ref v) in value.tags.iter() {
@@ -332,12 +297,11 @@ fn write_binary(
                 metric.set_gauge(gauge);
                 metric_family.set_field_type(MetricType::GAUGE);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family
-                    .write_length_delimited_to_writer(res.by_ref())?
+                metric_family.write_length_delimited_to_writer(res.by_ref())?
             },
             AggregationMethod::Summarize => {
                 let mut metric_family = MetricFamily::new();
-                metric_family.set_name(value.name.clone());
+                metric_family.set_name(sanitized_name);
                 let mut metric = Metric::new();
                 let mut label_pairs = Vec::with_capacity(8);
                 for &(ref k, ref v) in value.tags.iter() {
@@ -365,12 +329,11 @@ fn write_binary(
                 metric.set_summary(summary);
                 metric_family.set_field_type(MetricType::SUMMARY);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family
-                    .write_length_delimited_to_writer(res.by_ref())?
+                metric_family.write_length_delimited_to_writer(res.by_ref())?
             }
             AggregationMethod::Histogram => {
                 let mut metric_family = MetricFamily::new();
-                metric_family.set_name(value.name.clone());
+                metric_family.set_name(sanitized_name);
                 let mut metric = Metric::new();
                 let mut label_pairs = Vec::with_capacity(8);
                 for &(ref k, ref v) in value.tags.iter() {
@@ -404,8 +367,7 @@ fn write_binary(
                 metric.set_histogram(histogram);
                 metric_family.set_field_type(MetricType::HISTOGRAM);
                 metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family
-                    .write_length_delimited_to_writer(res.by_ref())?
+                metric_family.write_length_delimited_to_writer(res.by_ref())?
             }
         }
     }
@@ -440,10 +402,7 @@ fn fmt_tags(tags: &TagMap, s: &mut GzEncoder<Vec<u8>>) -> () {
     }
 }
 
-fn write_text(
-    aggrs: &[metric::Telemetry],
-    mut res: Response,
-) -> io::Result<()> {
+fn write_text(aggrs: &[metric::Telemetry], mut res: Response) -> io::Result<()> {
     {
         let headers = res.headers_mut();
         headers.set(ContentEncoding(vec![Encoding::Gzip]));
@@ -453,117 +412,116 @@ fn write_text(
     let mut seen = HashSet::new();
     let mut enc = GzEncoder::new(Vec::with_capacity(1024), Compression::Default);
     for value in aggrs {
+        let sanitized_name: String = sanitize(&value.name);
         match value.kind() {
             AggregationMethod::Sum => if let Some(v) = value.sum() {
                 if seen.insert(&value.name) {
-                    enc.write(b"# TYPE ")?;
-                    enc.write(value.name.as_bytes())?;
-                    enc.write(b" counter\n")?;
+                    enc.write_all(b"# TYPE ")?;
+                    enc.write_all(sanitized_name.as_bytes())?;
+                    enc.write_all(b" counter\n")?;
                 }
-                enc.write(value.name.as_bytes())?;
-                enc.write(b"{")?;
+                enc.write_all(sanitized_name.as_bytes())?;
+                enc.write_all(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                enc.write(b"} ")?;
-                enc.write(v.to_string().as_bytes())?;
-                enc.write(b"\n")?;
+                enc.write_all(b"} ")?;
+                enc.write_all(v.to_string().as_bytes())?;
+                enc.write_all(b"\n")?;
             },
             AggregationMethod::Set => if let Some(v) = value.set() {
                 if seen.insert(&value.name) {
-                    enc.write(b"# TYPE ")?;
-                    enc.write(value.name.as_bytes())?;
-                    enc.write(b" gauge\n")?;
+                    enc.write_all(b"# TYPE ")?;
+                    enc.write_all(sanitized_name.as_bytes())?;
+                    enc.write_all(b" gauge\n")?;
                 }
-                enc.write(value.name.as_bytes())?;
-                enc.write(b"{")?;
+                enc.write_all(sanitized_name.as_bytes())?;
+                enc.write_all(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                enc.write(b"} ")?;
-                enc.write(v.to_string().as_bytes())?;
-                enc.write(b"\n")?;
+                enc.write_all(b"} ")?;
+                enc.write_all(v.to_string().as_bytes())?;
+                enc.write_all(b"\n")?;
             },
             AggregationMethod::Histogram => if let Some(bin_iter) = value.bins() {
                 if seen.insert(&value.name) {
-                    enc.write(b"# TYPE ")?;
-                    enc.write(value.name.as_bytes())?;
-                    enc.write(b" histogram\n")?;
+                    enc.write_all(b"# TYPE ")?;
+                    enc.write_all(sanitized_name.as_bytes())?;
+                    enc.write_all(b" histogram\n")?;
                 }
                 let mut running_sum = 0;
                 for &(bound, val) in bin_iter {
-                    enc.write(value.name.as_bytes())?;
-                    enc.write(b"{le=\"")?;
+                    enc.write_all(sanitized_name.as_bytes())?;
+                    enc.write_all(b"{le=\"")?;
                     match bound {
                         Bound::Finite(bnd) => {
-                            enc.write(bnd.to_string().as_bytes())?;
+                            enc.write_all(bnd.to_string().as_bytes())?;
                         }
                         Bound::PosInf => {
-                            enc.write(b"+Inf")?;
+                            enc.write_all(b"+Inf")?;
                         }
                     }
                     for (k, v) in &(*value.tags) {
-                        enc.write(b"\", ")?;
-                        enc.write(k.as_bytes())?;
-                        enc.write(b"=\"")?;
-                        enc.write(v.as_bytes())?;
+                        enc.write_all(b"\", ")?;
+                        enc.write_all(k.as_bytes())?;
+                        enc.write_all(b"=\"")?;
+                        enc.write_all(v.as_bytes())?;
                     }
-                    enc.write(b"\"} ")?;
-                    enc.write((val + running_sum).to_string().as_bytes())?;
+                    enc.write_all(b"\"} ")?;
+                    enc.write_all((val + running_sum).to_string().as_bytes())?;
                     running_sum += val;
-                    enc.write(b"\n")?;
+                    enc.write_all(b"\n")?;
                 }
-                enc.write(value.name.as_bytes())?;
-                enc.write(b"_sum ")?;
-                enc.write(b"{")?;
+                enc.write_all(sanitized_name.as_bytes())?;
+                enc.write_all(b"_sum ")?;
+                enc.write_all(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                enc.write(b"} ")?;
-                enc.write(value.samples_sum().unwrap_or(0.0).to_string().as_bytes())?;
-                enc.write(b"\n")?;
-                enc.write(value.name.as_bytes())?;
-                enc.write(b"_count ")?;
-                enc.write(b"{")?;
+                enc.write_all(b"} ")?;
+                enc.write_all(
+                    value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
+                )?;
+                enc.write_all(b"\n")?;
+                enc.write_all(sanitized_name.as_bytes())?;
+                enc.write_all(b"_count ")?;
+                enc.write_all(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                enc.write(b"} ")?;
-                enc.write(value.count().to_string().as_bytes())?;
-                enc.write(b"\n")?;
+                enc.write_all(b"} ")?;
+                enc.write_all(value.count().to_string().as_bytes())?;
+                enc.write_all(b"\n")?;
             },
             AggregationMethod::Summarize => {
                 if seen.insert(&value.name) {
-                    enc.write(b"# TYPE ")?;
-                    enc.write(value.name.as_bytes())?;
-                    enc.write(b" summary\n")?;
+                    enc.write_all(b"# TYPE ")?;
+                    enc.write_all(sanitized_name.as_bytes())?;
+                    enc.write_all(b" summary\n")?;
                 }
                 for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-                    enc.write(value.name.as_bytes())?;
-                    enc.write(b"{quantile=\"")?;
-                    enc.write(q.to_string().as_bytes())?;
+                    enc.write_all(sanitized_name.as_bytes())?;
+                    enc.write_all(b"{quantile=\"")?;
+                    enc.write_all(q.to_string().as_bytes())?;
                     for (k, v) in &(*value.tags) {
-                        enc.write(b"\", ")?;
-                        enc.write(k.as_bytes())?;
-                        enc.write(b"=\"")?;
-                        enc.write(v.as_bytes())?;
+                        enc.write_all(b"\", ")?;
+                        enc.write_all(k.as_bytes())?;
+                        enc.write_all(b"=\"")?;
+                        enc.write_all(v.as_bytes())?;
                     }
-                    enc.write(b"\"} ")?;
-                    enc.write(value.query(*q).unwrap().to_string().as_bytes())?;
-                    enc.write(b"\n")?;
+                    enc.write_all(b"\"} ")?;
+                    enc.write_all(value.query(*q).unwrap().to_string().as_bytes())?;
+                    enc.write_all(b"\n")?;
                 }
-                enc.write(value.name.as_bytes())?;
-                enc.write(b"_sum ")?;
-                enc.write(b"{")?;
+                enc.write_all(sanitized_name.as_bytes())?;
+                enc.write_all(b"_sum ")?;
+                enc.write_all(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                enc.write(b"} ")?;
-                let retained_count = value.count();
-                let retained_sum = value.samples_sum().unwrap_or(0.0);
-                enc.write(
-                    (value.samples_sum().unwrap_or(0.0) + retained_sum)
-                        .to_string()
-                        .as_bytes(),
+                enc.write_all(b"} ")?;
+                enc.write_all(
+                    value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
                 )?;
-                enc.write(b"\n")?;
-                enc.write(value.name.as_bytes())?;
-                enc.write(b"_count ")?;
-                enc.write(b"{")?;
+                enc.write_all(b"\n")?;
+                enc.write_all(sanitized_name.as_bytes())?;
+                enc.write_all(b"_count ")?;
+                enc.write_all(b"{")?;
                 fmt_tags(&value.tags, &mut enc);
-                enc.write(b"} ")?;
-                enc.write((value.count() + retained_count).to_string().as_bytes())?;
-                enc.write(b"\n")?;
+                enc.write_all(b"} ")?;
+                enc.write_all((value.count()).to_string().as_bytes())?;
+                enc.write_all(b"\n")?;
             }
         }
     }
@@ -583,8 +541,8 @@ fn write_text(
 /// Metrics coming into cernan can have full utf8 names, save for some ingestion
 /// protocols that special-case certain characters. To cope with this we just
 /// mangle the mess out of names and hope for forgiveness in the hereafter.
-fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
-    let name: String = mem::replace(&mut metric.name, Default::default());
+fn sanitize(name: &str) -> String {
+    let name: String = name.to_string();
     let mut new_name: Vec<u8> = Vec::with_capacity(128);
     for c in name.as_bytes() {
         match *c {
@@ -592,11 +550,7 @@ fn sanitize(mut metric: metric::Telemetry) -> metric::Telemetry {
             _ => new_name.push(b'_'),
         }
     }
-    metric
-        .thaw()
-        .name(String::from_utf8(new_name).expect("wait, we bungled the conversion"))
-        .harden()
-        .unwrap()
+    String::from_utf8(new_name).unwrap()
 }
 
 impl Sink for Prometheus {
@@ -605,12 +559,12 @@ impl Sink for Prometheus {
     }
 
     fn flush(&mut self) {
-        // intentionally blank 
+        // intentionally blank
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<metric::Telemetry>>) -> () {
         let mut aggrs = self.aggrs.lock().unwrap();
-        let metric = sanitize(sync::Arc::make_mut(&mut point).take().unwrap());
+        let metric = sync::Arc::make_mut(&mut point).take().unwrap();
         aggrs.insert(metric);
     }
 
@@ -634,18 +588,28 @@ mod test {
         where
             G: Gen,
         {
+            use std::ops::IndexMut;
+
             let limit: usize = Arbitrary::arbitrary(g);
-            let mut perpetual: HashMap<
-                u64,
-                metric::Telemetry,
-                BuildHasherDefault<SeaHasher>,
-            > = Default::default();
+            let mut keys: Vec<u64> = Vec::new();
+            let mut values: Vec<metric::Telemetry> = Vec::new();
             for _ in 0..limit {
                 let telem: metric::Telemetry = Arbitrary::arbitrary(g);
-                perpetual.insert(telem.hash(), telem);
+                match keys.binary_search_by(
+                    |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
+                ) {
+                    Ok(hsh_idx) => {
+                        *(values.index_mut(hsh_idx)) += telem;
+                    }
+                    Err(hsh_idx) => {
+                        keys.insert(hsh_idx, telem.name_tag_hash());
+                        values.insert(hsh_idx, telem);
+                    }
+                }
             }
             PrometheusAggr {
-                perpetual: perpetual,
+                keys: keys,
+                values: values,
             }
         }
     }
@@ -720,11 +684,14 @@ mod test {
     #[test]
     fn test_sanitization() {
         fn inner(metric: metric::Telemetry) -> TestResult {
-            let metric = sanitize(metric);
-            for c in metric.name.chars() {
+            let name: String = sanitize(&metric.name);
+            for c in name.chars() {
                 match c {
                     'a'...'z' | 'A'...'Z' | '0'...'9' | ':' | '_' => continue,
-                    _ => return TestResult::failed(),
+                    other => {
+                        println!("OTHER: {}", other);
+                        return TestResult::failed();
+                    }
                 }
             }
             TestResult::passed()

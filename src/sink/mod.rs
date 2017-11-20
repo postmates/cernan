@@ -62,12 +62,13 @@ pub trait Sink {
         // tries to do something with it, only discarding it at such time as
         // it's been delivered to the Sink.
         loop {
-            time::delay(attempts);
             let nxt = recv.next();
             if nxt.is_none() {
+                time::delay(attempts);
                 attempts += 1;
                 continue;
             }
+            attempts = 0;
             let event = nxt.unwrap();
             loop {
                 // We have to be careful here not to dump a value until it's
@@ -113,18 +114,15 @@ pub trait Sink {
                             break;
                         }
                         Event::Telemetry(metric) => {
-                            attempts = attempts.saturating_sub(1);
                             self.deliver(metric);
                             break;
                         }
                         Event::Log(line) => {
-                            attempts = attempts.saturating_sub(1);
                             self.deliver_line(line);
                             break;
                         }
                     },
                     Valve::Closed => {
-                        attempts += 1;
                         self.flush();
                         continue;
                     }
