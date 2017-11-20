@@ -623,52 +623,58 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
         args.firehosen = sinks.get("firehose").map(|snk| {
             let mut firehosen = Vec::new();
             for (name, tbl) in snk.as_table().unwrap().iter() {
-                let mut res = FirehoseConfig::default();
-                res.config_path = Some(format!("sinks.firehose.{}", name));
+                let is_enabled = tbl.get("enabled")
+                    .unwrap_or(&toml::Value::Boolean(true))
+                    .as_bool()
+                    .expect("must be a bool");
+                if is_enabled {
+                    let mut res = FirehoseConfig::default();
+                    res.config_path = Some(format!("sinks.firehose.{}", name));
 
-                let ds = tbl.get("delivery_stream")
-                    .map(|x| x.as_str().expect("delivery_stream must be a string"));
-                if !ds.is_some() {
-                    continue;
+                    let ds = tbl.get("delivery_stream")
+                        .map(|x| x.as_str().expect("delivery_stream must be a string"));
+                    if !ds.is_some() {
+                        continue;
+                    }
+
+                    res.delivery_stream = ds.map(|s| s.to_string());
+
+                    res.flush_interval = tbl.get("flush_interval")
+                        .map(|fi| {
+                            fi.as_integer().expect(
+                                "could not parse sinks.firehose.flush_interval",
+                            ) as u64
+                        })
+                        .unwrap_or(args.flush_interval);
+
+                    res.batch_size = tbl.get("batch_size")
+                        .map(|fi| {
+                            fi.as_integer()
+                                .expect("could not parse sinks.firehose.batch_size")
+                                as usize
+                        })
+                        .unwrap_or(res.batch_size);
+
+                    res.region = match tbl.get("region")
+                        .map(|x| x.as_str().expect("region must be a string"))
+                    {
+                        Some("ap-northeast-1") => Some(Region::ApNortheast1),
+                        Some("ap-northeast-2") => Some(Region::ApNortheast2),
+                        Some("ap-south-1") => Some(Region::ApSouth1),
+                        Some("ap-southeast-1") => Some(Region::ApSoutheast1),
+                        Some("ap-southeast-2") => Some(Region::ApSoutheast2),
+                        Some("cn-north-1") => Some(Region::CnNorth1),
+                        Some("eu-central-1") => Some(Region::EuCentral1),
+                        Some("eu-west-1") => Some(Region::EuWest1),
+                        Some("sa-east-1") => Some(Region::SaEast1),
+                        Some("us-east-1") => Some(Region::UsEast1),
+                        Some("us-west-1") => Some(Region::UsWest1),
+                        Some("us-west-2") => Some(Region::UsWest2),
+                        Some(_) | None => res.region,
+                    };
+
+                    firehosen.push(res);
                 }
-
-                res.delivery_stream = ds.map(|s| s.to_string());
-
-                res.flush_interval = tbl.get("flush_interval")
-                    .map(|fi| {
-                        fi.as_integer()
-                            .expect("could not parse sinks.firehose.flush_interval")
-                            as u64
-                    })
-                    .unwrap_or(args.flush_interval);
-
-                res.batch_size = tbl.get("batch_size")
-                    .map(|fi| {
-                        fi.as_integer()
-                            .expect("could not parse sinks.firehose.batch_size")
-                            as usize
-                    })
-                    .unwrap_or(res.batch_size);
-
-                res.region = match tbl.get("region")
-                    .map(|x| x.as_str().expect("region must be a string"))
-                {
-                    Some("ap-northeast-1") => Some(Region::ApNortheast1),
-                    Some("ap-northeast-2") => Some(Region::ApNortheast2),
-                    Some("ap-south-1") => Some(Region::ApSouth1),
-                    Some("ap-southeast-1") => Some(Region::ApSoutheast1),
-                    Some("ap-southeast-2") => Some(Region::ApSoutheast2),
-                    Some("cn-north-1") => Some(Region::CnNorth1),
-                    Some("eu-central-1") => Some(Region::EuCentral1),
-                    Some("eu-west-1") => Some(Region::EuWest1),
-                    Some("sa-east-1") => Some(Region::SaEast1),
-                    Some("us-east-1") => Some(Region::UsEast1),
-                    Some("us-west-1") => Some(Region::UsWest1),
-                    Some("us-west-2") => Some(Region::UsWest2),
-                    Some(_) | None => res.region,
-                };
-
-                firehosen.push(res);
             }
             firehosen
         });
@@ -1490,6 +1496,35 @@ scripts-directory = "/foo/bar"
         assert_eq!(firehosen[1].batch_size, 800);
         assert_eq!(firehosen[1].region, Some(Region::UsEast1));
         assert_eq!(firehosen[1].flush_interval, 60); // default
+    }
+
+    #[test]
+    fn config_file_firehose_enabled_flag() {
+        let config = r#"
+    [sinks]
+      [sinks.firehose.stream_one]
+      delivery_stream = "stream_one"
+      batch_size = 20
+      flush_interval = 15
+      region = "us-west-2"
+
+      [sinks.firehose.stream_two]
+      enabled = false
+      delivery_stream = "stream_two"
+      batch_size = 800
+      region = "us-east-1"
+    "#;
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.firehosen.is_some());
+        let firehosen = args.firehosen.unwrap();
+        assert_eq!(firehosen.len(), 1);
+
+        assert_eq!(firehosen[0].delivery_stream, Some("stream_one".to_string()));
+        assert_eq!(firehosen[0].batch_size, 20);
+        assert_eq!(firehosen[0].region, Some(Region::UsWest2));
+        assert_eq!(firehosen[0].flush_interval, 15);
     }
 
     #[test]
