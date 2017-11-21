@@ -43,12 +43,18 @@ pub struct StatsdParseConfig {
     /// 'foo.*'. In this case all metrics prefixed by 'foo.' which are timer or
     /// histogram will be interpreted as a histogram.
     pub histogram_masks: Vec<(Mask, Bounds)>,
+    /// Configure the error bound for a statsd timer or histogram. Cernan does
+    /// not compute precise quantiles but approximations with a guaranteed upper
+    /// bound on the error of approximation. This allows the end-user to set
+    /// that.
+    pub summarize_error_bound: f64,
 }
 
 impl Default for StatsdParseConfig {
     fn default() -> StatsdParseConfig {
         StatsdParseConfig {
             histogram_masks: vec![],
+            summarize_error_bound: 0.01,
         }
     }
 }
