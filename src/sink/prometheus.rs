@@ -657,9 +657,10 @@ mod test {
             }
             TestResult::passed()
         }
-        QuickCheck::new().tests(1000).max_tests(10000).quickcheck(
-            inner as fn(PrometheusAggr, metric::Telemetry) -> TestResult,
-        );
+        QuickCheck::new()
+            .tests(1000)
+            .max_tests(10000)
+            .quickcheck(inner as fn(PrometheusAggr, metric::Telemetry) -> TestResult);
     }
 
     #[test]
@@ -676,9 +677,10 @@ mod test {
             }
             TestResult::passed()
         }
-        QuickCheck::new().tests(1000).max_tests(10000).quickcheck(
-            inner as fn(PrometheusAggr, metric::Telemetry) -> TestResult,
-        );
+        QuickCheck::new()
+            .tests(1000)
+            .max_tests(10000)
+            .quickcheck(inner as fn(PrometheusAggr, metric::Telemetry) -> TestResult);
     }
 
     #[test]

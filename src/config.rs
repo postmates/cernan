@@ -204,14 +204,16 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     args.max_hopper_queue_bytes = value
         .get("max-hopper-queue-bytes")
         .map(|s| {
-            s.as_integer().expect("could not parse max-hopper-queue-bytes") as usize
+            s.as_integer()
+                .expect("could not parse max-hopper-queue-bytes") as usize
         })
         .unwrap_or(args.max_hopper_queue_bytes);
 
     args.data_directory = value
         .get("data-directory")
         .map(|s| {
-            let s = s.as_str().expect("data-directory value must be valid string");
+            let s = s.as_str()
+                .expect("data-directory value must be valid string");
             Path::new(s).to_path_buf()
         })
         .unwrap_or(args.data_directory);
@@ -219,7 +221,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     args.scripts_directory = value
         .get("scripts-directory")
         .map(|s| {
-            let s = s.as_str().expect("scripts-directory value must be valid string");
+            let s = s.as_str()
+                .expect("scripts-directory value must be valid string");
             Path::new(s).to_path_buf()
         })
         .unwrap_or(args.scripts_directory);
@@ -384,7 +387,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.bin_width = snk.get("bin_width")
                 .map(|bw| {
-                    bw.as_integer().expect("could not parse sinks.console.bin_width")
+                    bw.as_integer()
+                        .expect("could not parse sinks.console.bin_width")
                 })
                 .unwrap_or(res.bin_width);
 
@@ -442,7 +446,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.port = snk.get("port")
                 .map(|p| {
-                    p.as_integer().expect("could not parse sinks.wavefront.port")
+                    p.as_integer()
+                        .expect("could not parse sinks.wavefront.port")
                         as u16
                 })
                 .unwrap_or(res.port);
@@ -457,7 +462,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.bin_width = snk.get("bin_width")
                 .map(|bw| {
-                    bw.as_integer().expect("could not parse sinks.wavefront.bin_width")
+                    bw.as_integer()
+                        .expect("could not parse sinks.wavefront.bin_width")
                 })
                 .unwrap_or(res.bin_width);
 
@@ -500,7 +506,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.db = snk.get("db")
                 .map(|p| {
-                    p.as_str().expect("could not parse sinks.influxdb.db").to_string()
+                    p.as_str()
+                        .expect("could not parse sinks.influxdb.db")
+                        .to_string()
                 })
                 .unwrap_or(res.db);
 
@@ -523,7 +531,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.port = snk.get("port")
                 .map(|p| {
-                    p.as_integer().expect("could not parse sinks.prometheus.port")
+                    p.as_integer()
+                        .expect("could not parse sinks.prometheus.port")
                         as u16
                 })
                 .unwrap_or(res.port);
@@ -545,7 +554,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.port = snk.get("port")
                 .map(|p| {
-                    p.as_integer().expect("could not parse sinks.elasticsearch.port")
+                    p.as_integer()
+                        .expect("could not parse sinks.elasticsearch.port")
                         as usize
                 })
                 .unwrap_or(res.port);
@@ -570,7 +580,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.secure = snk.get("secure")
                 .map(|bw| {
-                    bw.as_bool().expect("could not parse sinks.elasticsearch.secure")
+                    bw.as_bool()
+                        .expect("could not parse sinks.elasticsearch.secure")
                 })
                 .unwrap_or(res.secure);
 
@@ -605,7 +616,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.host = snk.get("host")
                 .map(|p| {
-                    p.as_str().expect("could not parse sinks.native.host").to_string()
+                    p.as_str()
+                        .expect("could not parse sinks.native.host")
+                        .to_string()
                 })
                 .unwrap_or(res.host);
 

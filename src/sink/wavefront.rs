@@ -514,7 +514,8 @@ impl Wavefront {
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut value_cache, v));
                 self.stats.push_str(" ");
-                self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
+                self.stats
+                    .push_str(get_from_cache(&mut time_cache, value.timestamp));
                 self.stats.push_str(" ");
                 fmt_tags(&value.tags, &mut tag_buf);
                 self.stats.push_str(&tag_buf);
@@ -527,7 +528,8 @@ impl Wavefront {
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut value_cache, v));
                 self.stats.push_str(" ");
-                self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
+                self.stats
+                    .push_str(get_from_cache(&mut time_cache, value.timestamp));
                 self.stats.push_str(" ");
                 fmt_tags(&value.tags, &mut tag_buf);
                 self.stats.push_str(&tag_buf);
@@ -561,7 +563,8 @@ impl Wavefront {
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut count_cache, count));
                 self.stats.push_str(" ");
-                self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
+                self.stats
+                    .push_str(get_from_cache(&mut time_cache, value.timestamp));
                 self.stats.push_str(" ");
                 self.stats.push_str(&tag_buf);
                 self.stats.push_str("\n");
@@ -572,7 +575,8 @@ impl Wavefront {
                 self.stats.push_str(" ");
                 self.stats.push_str(get_from_cache(&mut value_cache, mean));
                 self.stats.push_str(" ");
-                self.stats.push_str(get_from_cache(&mut time_cache, value.timestamp));
+                self.stats
+                    .push_str(get_from_cache(&mut time_cache, value.timestamp));
                 self.stats.push_str(" ");
                 self.stats.push_str(&tag_buf);
                 self.stats.push_str("\n");
@@ -973,9 +977,15 @@ mod test {
             pad_control: pad_control,
         };
         let mut wavefront = Wavefront::new(config).unwrap();
-        let dt_0 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00).timestamp();
-        let dt_1 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00).timestamp();
-        let dt_2 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00).timestamp();
+        let dt_0 = Utc.ymd(1990, 6, 12)
+            .and_hms_milli(9, 10, 11, 00)
+            .timestamp();
+        let dt_1 = Utc.ymd(1990, 6, 12)
+            .and_hms_milli(9, 10, 12, 00)
+            .timestamp();
+        let dt_2 = Utc.ymd(1990, 6, 12)
+            .and_hms_milli(9, 10, 13, 00)
+            .timestamp();
         wavefront.deliver(Arc::new(Some(
             Telemetry::new()
                 .name("test.counter")

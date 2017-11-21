@@ -11,7 +11,9 @@ use chrono::{TimeZone, Utc};
 
 #[bench]
 fn bench_single_timer(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -30,7 +32,9 @@ fn bench_single_timer(b: &mut Bencher) {
 
 #[bench]
 fn bench_single_timer_100(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -51,7 +55,9 @@ fn bench_single_timer_100(b: &mut Bencher) {
 
 #[bench]
 fn bench_single_timer_1000(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -72,7 +78,9 @@ fn bench_single_timer_1000(b: &mut Bencher) {
 
 #[bench]
 fn bench_single_timer_10000(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -93,7 +101,9 @@ fn bench_single_timer_10000(b: &mut Bencher) {
 
 #[bench]
 fn bench_single_histogram(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -112,7 +122,9 @@ fn bench_single_histogram(b: &mut Bencher) {
 
 #[bench]
 fn bench_single_histogram_100(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -133,7 +145,9 @@ fn bench_single_histogram_100(b: &mut Bencher) {
 
 #[bench]
 fn bench_single_histogram_1000(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -154,7 +168,9 @@ fn bench_single_histogram_1000(b: &mut Bencher) {
 
 #[bench]
 fn bench_single_histogram_10000(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -175,8 +191,12 @@ fn bench_single_histogram_10000(b: &mut Bencher) {
 
 #[bench]
 fn bench_multi_counters(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
-    let dt_1 = Utc.ymd(1972, 12, 14).and_hms_milli(5, 40, 56, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
+    let dt_1 = Utc.ymd(1972, 12, 14)
+        .and_hms_milli(5, 40, 56, 0)
+        .timestamp();
 
 
     b.iter(|| {
@@ -212,7 +232,9 @@ fn bench_multi_counters(b: &mut Bencher) {
 
 #[bench]
 fn bench_single_counter(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -231,8 +253,12 @@ fn bench_single_counter(b: &mut Bencher) {
 
 #[bench]
 fn bench_multi_gauges(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
-    let dt_1 = Utc.ymd(1972, 12, 14).and_hms_milli(5, 40, 56, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
+    let dt_1 = Utc.ymd(1972, 12, 14)
+        .and_hms_milli(5, 40, 56, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
@@ -267,7 +293,9 @@ fn bench_multi_gauges(b: &mut Bencher) {
 
 #[bench]
 fn bench_single_gauge(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11).and_hms_milli(11, 59, 49, 0).timestamp();
+    let dt_0 = Utc.ymd(1972, 12, 11)
+        .and_hms_milli(11, 59, 49, 0)
+        .timestamp();
 
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();

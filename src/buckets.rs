@@ -518,9 +518,15 @@ mod test {
     fn test_true_histogram() {
         let mut buckets = Buckets::default();
 
-        let dt_0 = Utc.ymd(1996, 10, 7).and_hms_milli(10, 11, 11, 0).timestamp();
-        let dt_1 = Utc.ymd(1996, 10, 7).and_hms_milli(10, 11, 12, 0).timestamp();
-        let dt_2 = Utc.ymd(1996, 10, 7).and_hms_milli(10, 11, 13, 0).timestamp();
+        let dt_0 = Utc.ymd(1996, 10, 7)
+            .and_hms_milli(10, 11, 11, 0)
+            .timestamp();
+        let dt_1 = Utc.ymd(1996, 10, 7)
+            .and_hms_milli(10, 11, 12, 0)
+            .timestamp();
+        let dt_2 = Utc.ymd(1996, 10, 7)
+            .and_hms_milli(10, 11, 13, 0)
+            .timestamp();
 
         let m0 = Telemetry::new()
             .name("some.metric")

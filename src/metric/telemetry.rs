@@ -17,8 +17,7 @@ use time;
 ///
 /// This enumeration signals the way in which `Telemetry` values will be
 /// aggregated. The exact descriptions are detailed below.
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, PartialOrd, Eq,
-         Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
 pub enum AggregationMethod {
     /// Cumulatively add `Telemetry` objects. That is, we store only the
     /// summation of all like-points.
@@ -742,9 +741,12 @@ impl Telemetry {
         match self.value {
             Some(Value::Set(x)) | Some(Value::Sum(x)) => vec![x],
             Some(Value::Quantiles(ref ckms)) => ckms.clone().into_vec(),
-            Some(Value::Histogram(ref histo)) => {
-                histo.clone().into_vec().iter().map(|x| x.1 as f64).collect()
-            }
+            Some(Value::Histogram(ref histo)) => histo
+                .clone()
+                .into_vec()
+                .iter()
+                .map(|x| x.1 as f64)
+                .collect(),
             None => unreachable!(),
         }
     }
@@ -994,10 +996,18 @@ mod tests {
     #[test]
     fn test_metric_add_assign() {
         fn inner(lhs: f64, rhs: f64, kind: AggregationMethod) -> TestResult {
-            let mut mlhs =
-                Telemetry::new().name("foo").value(lhs).kind(kind).harden().unwrap();
-            let mrhs =
-                Telemetry::new().name("foo").value(rhs).kind(kind).harden().unwrap();
+            let mut mlhs = Telemetry::new()
+                .name("foo")
+                .value(lhs)
+                .kind(kind)
+                .harden()
+                .unwrap();
+            let mrhs = Telemetry::new()
+                .name("foo")
+                .value(rhs)
+                .kind(kind)
+                .harden()
+                .unwrap();
             let old_mlhs = mlhs.clone();
             let old_mrhs = mrhs.clone();
             mlhs += mrhs;

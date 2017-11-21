@@ -291,13 +291,17 @@ fn main() {
         }));
     }
     if let Some(config) = mem::replace(&mut args.console, None) {
-        let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
+        let recv = receivers
+            .remove(&config.config_path.clone().unwrap())
+            .unwrap();
         joins.push(thread::spawn(move || {
             cernan::sink::Console::new(config).run(recv);
         }));
     }
     if let Some(config) = mem::replace(&mut args.wavefront, None) {
-        let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
+        let recv = receivers
+            .remove(&config.config_path.clone().unwrap())
+            .unwrap();
         joins.push(thread::spawn(
             move || match cernan::sink::Wavefront::new(config) {
                 Ok(mut w) => {
@@ -311,26 +315,34 @@ fn main() {
         ));
     }
     if let Some(config) = mem::replace(&mut args.prometheus, None) {
-        let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
+        let recv = receivers
+            .remove(&config.config_path.clone().unwrap())
+            .unwrap();
         joins.push(thread::spawn(move || {
             cernan::sink::Prometheus::new(config).run(recv);
         }));
     }
     if let Some(config) = mem::replace(&mut args.influxdb, None) {
-        let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
+        let recv = receivers
+            .remove(&config.config_path.clone().unwrap())
+            .unwrap();
         joins.push(thread::spawn(move || {
             cernan::sink::InfluxDB::new(config).run(recv);
         }));
     }
     if let Some(config) = mem::replace(&mut args.native_sink_config, None) {
-        let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
+        let recv = receivers
+            .remove(&config.config_path.clone().unwrap())
+            .unwrap();
         joins.push(thread::spawn(move || {
             cernan::sink::Native::new(config).run(recv);
         }));
     }
 
     if let Some(config) = mem::replace(&mut args.elasticsearch, None) {
-        let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
+        let recv = receivers
+            .remove(&config.config_path.clone().unwrap())
+            .unwrap();
         joins.push(thread::spawn(move || {
             cernan::sink::Elasticsearch::new(config).run(recv);
         }));
@@ -338,7 +350,9 @@ fn main() {
 
     if let Some(cfgs) = mem::replace(&mut args.firehosen, None) {
         for config in cfgs {
-            let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
+            let recv = receivers
+                .remove(&config.config_path.clone().unwrap())
+                .unwrap();
             joins.push(thread::spawn(move || {
                 cernan::sink::Firehose::new(config).run(recv);
             }));
@@ -347,65 +361,80 @@ fn main() {
 
     // FILTERS
     //
-    mem::replace(&mut args.programmable_filters, None).map(
-        |cfg_map| for config in cfg_map.values() {
+    mem::replace(&mut args.programmable_filters, None).map(|cfg_map| {
+        for config in cfg_map.values() {
             let c: ProgrammableFilterConfig = (*config).clone();
-            let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
+            let recv = receivers
+                .remove(&config.config_path.clone().unwrap())
+                .unwrap();
             let mut downstream_sends = Vec::new();
             populate_forwards(
                 &mut downstream_sends,
                 None,
                 &config.forwards,
-                &config.config_path.clone().expect("[INTERNAL ERROR] no config_path"),
+                &config
+                    .config_path
+                    .clone()
+                    .expect("[INTERNAL ERROR] no config_path"),
                 &senders,
             );
             joins.push(thread::spawn(move || {
                 cernan::filter::ProgrammableFilter::new(c).run(recv, downstream_sends);
             }));
-        },
-    );
+        }
+    });
 
-    mem::replace(&mut args.delay_filters, None).map(
-        |cfg_map| for config in cfg_map.values() {
+    mem::replace(&mut args.delay_filters, None).map(|cfg_map| {
+        for config in cfg_map.values() {
             let c: DelayFilterConfig = (*config).clone();
-            let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
+            let recv = receivers
+                .remove(&config.config_path.clone().unwrap())
+                .unwrap();
             let mut downstream_sends = Vec::new();
             populate_forwards(
                 &mut downstream_sends,
                 None,
                 &config.forwards,
-                &config.config_path.clone().expect("[INTERNAL ERROR] no config_path"),
+                &config
+                    .config_path
+                    .clone()
+                    .expect("[INTERNAL ERROR] no config_path"),
                 &senders,
             );
             joins.push(thread::spawn(move || {
                 cernan::filter::DelayFilter::new(c).run(recv, downstream_sends);
             }));
-        },
-    );
+        }
+    });
 
-    mem::replace(&mut args.flush_boundary_filters, None).map(
-        |cfg_map| for config in cfg_map.values() {
+    mem::replace(&mut args.flush_boundary_filters, None).map(|cfg_map| {
+        for config in cfg_map.values() {
             let c: FlushBoundaryFilterConfig = (*config).clone();
-            let recv = receivers.remove(&config.config_path.clone().unwrap()).unwrap();
+            let recv = receivers
+                .remove(&config.config_path.clone().unwrap())
+                .unwrap();
             let mut downstream_sends = Vec::new();
             populate_forwards(
                 &mut downstream_sends,
                 None,
                 &config.forwards,
-                &config.config_path.clone().expect("[INTERNAL ERROR] no config_path"),
+                &config
+                    .config_path
+                    .clone()
+                    .expect("[INTERNAL ERROR] no config_path"),
                 &senders,
             );
             joins.push(thread::spawn(move || {
                 cernan::filter::FlushBoundaryFilter::new(c)
                     .run(recv, downstream_sends);
             }));
-        },
-    );
+        }
+    });
 
     // SOURCES
     //
-    mem::replace(&mut args.native_server_config, None).map(
-        |cfg_map| for (_, config) in cfg_map {
+    mem::replace(&mut args.native_server_config, None).map(|cfg_map| {
+        for (_, config) in cfg_map {
             let mut native_server_send = Vec::new();
             populate_forwards(
                 &mut native_server_send,
@@ -417,8 +446,8 @@ fn main() {
             joins.push(thread::spawn(move || {
                 cernan::source::NativeServer::new(native_server_send, config).run();
             }))
-        },
-    );
+        }
+    });
 
     let internal_config = mem::replace(&mut args.internal, Default::default());
     let mut internal_send = Vec::new();
@@ -433,22 +462,24 @@ fn main() {
         cernan::source::Internal::new(internal_send, internal_config).run();
     }));
 
-    mem::replace(&mut args.statsds, None).map(|cfg_map| for (_, config) in cfg_map {
-        let mut statsd_sends = Vec::new();
-        populate_forwards(
-            &mut statsd_sends,
-            Some(&mut flush_sends),
-            &config.forwards,
-            &cfg_conf!(config),
-            &senders,
-        );
-        joins.push(thread::spawn(move || {
-            cernan::source::Statsd::new(statsd_sends, config).run();
-        }));
+    mem::replace(&mut args.statsds, None).map(|cfg_map| {
+        for (_, config) in cfg_map {
+            let mut statsd_sends = Vec::new();
+            populate_forwards(
+                &mut statsd_sends,
+                Some(&mut flush_sends),
+                &config.forwards,
+                &cfg_conf!(config),
+                &senders,
+            );
+            joins.push(thread::spawn(move || {
+                cernan::source::Statsd::new(statsd_sends, config).run();
+            }));
+        }
     });
 
-    mem::replace(&mut args.graphites, None).map(
-        |cfg_map| for (_, config) in cfg_map {
+    mem::replace(&mut args.graphites, None).map(|cfg_map| {
+        for (_, config) in cfg_map {
             let mut graphite_sends = Vec::new();
             populate_forwards(
                 &mut graphite_sends,
@@ -460,21 +491,23 @@ fn main() {
             joins.push(thread::spawn(move || {
                 cernan::source::Graphite::new(graphite_sends, config).run();
             }));
-        },
-    );
+        }
+    });
 
-    mem::replace(&mut args.files, None).map(|cfg| for config in cfg {
-        let mut fp_sends = Vec::new();
-        populate_forwards(
-            &mut fp_sends,
-            Some(&mut flush_sends),
-            &config.forwards,
-            &cfg_conf!(config),
-            &senders,
-        );
-        joins.push(thread::spawn(move || {
-            cernan::source::FileServer::new(fp_sends, config).run();
-        }));
+    mem::replace(&mut args.files, None).map(|cfg| {
+        for config in cfg {
+            let mut fp_sends = Vec::new();
+            populate_forwards(
+                &mut fp_sends,
+                Some(&mut flush_sends),
+                &config.forwards,
+                &cfg_conf!(config),
+                &senders,
+            );
+            joins.push(thread::spawn(move || {
+                cernan::source::FileServer::new(fp_sends, config).run();
+            }));
+        }
     });
 
     // BACKGROUND

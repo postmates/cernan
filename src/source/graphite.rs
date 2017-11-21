@@ -74,19 +74,21 @@ fn handle_tcp(
     tags: Arc<metric::TagMap>,
     listner: TcpListener,
 ) -> thread::JoinHandle<()> {
-    thread::spawn(move || for stream in listner.incoming() {
-        if let Ok(stream) = stream {
-            GRAPHITE_NEW_PEER.fetch_add(1, Ordering::Relaxed);
-            debug!(
-                "new peer at {:?} | local addr for peer {:?}",
-                stream.peer_addr(),
-                stream.local_addr()
-            );
-            let tags = Arc::clone(&tags);
-            let chans = chans.clone();
-            thread::spawn(move || {
-                handle_stream(chans, tags, stream);
-            });
+    thread::spawn(move || {
+        for stream in listner.incoming() {
+            if let Ok(stream) = stream {
+                GRAPHITE_NEW_PEER.fetch_add(1, Ordering::Relaxed);
+                debug!(
+                    "new peer at {:?} | local addr for peer {:?}",
+                    stream.peer_addr(),
+                    stream.local_addr()
+                );
+                let tags = Arc::clone(&tags);
+                let chans = chans.clone();
+                thread::spawn(move || {
+                    handle_stream(chans, tags, stream);
+                });
+            }
         }
     })
 }
