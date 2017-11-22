@@ -112,6 +112,14 @@ impl Accumulator {
         }
     }
 
+    #[cfg(test)]
+    pub fn total_samples(&self) -> usize {
+        match *self {
+            Accumulator::Perpetual(_) => 1,
+            Accumulator::Windowed { cap: _, samples: ref s } => s.len(),
+        }
+    }
+
     pub fn insert(&mut self, telem: metric::Telemetry) {
         match *self {
             Accumulator::Perpetual(ref mut t) => *t += telem,
@@ -127,13 +135,9 @@ impl Accumulator {
                         samples[idx] += telem;
                     }
                     Err(idx) => {
-                        let wrapped_idx = idx % cap;
-                        if wrapped_idx < samples.len()
-                            && samples[wrapped_idx].timestamp == telem.timestamp
-                        {
-                            samples[wrapped_idx] += telem;
-                        } else {
-                            samples.insert(wrapped_idx, telem);
+                        samples.insert(idx, telem);
+                        if samples.len() > cap {
+                            samples.truncate(cap);
                         }
                     }
                 }
@@ -776,6 +780,25 @@ mod test {
                 capacity_in_seconds: capacity_in_seconds,
             }
         }
+    }
+
+    #[test]
+    fn test_accumlator_window_boundary_obeyed() {
+        fn inner(cap: usize, telems: Vec<metric::Telemetry>) -> TestResult {
+            let mut windowed = Accumulator::Windowed { cap: cap, samples: Vec::new() };
+
+            for t in telems.into_iter() {
+                if t.kind() != AggregationMethod::Summarize {
+                    continue;
+                }
+                windowed.insert(t);
+            }
+
+            assert!(windowed.total_samples() <= cap);
+
+            TestResult::passed()
+        }
+        QuickCheck::new().quickcheck(inner as fn(usize, Vec<metric::Telemetry>) -> TestResult);
     }
 
     #[test]
