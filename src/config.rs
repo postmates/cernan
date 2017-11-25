@@ -545,6 +545,14 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 })
                 .unwrap_or(res.host);
 
+            res.capacity_in_seconds = snk.get("capacity_in_seconds")
+                .map(|p| {
+                    p.as_integer()
+                        .expect("could not parse sinks.prometheus.capacity_in_seconds")
+                        as usize
+                })
+                .unwrap_or(res.capacity_in_seconds);
+
             res
         });
 
@@ -1477,6 +1485,26 @@ scripts-directory = "/foo/bar"
         let prometheus = args.prometheus.unwrap();
         assert_eq!(prometheus.host, String::from("example.com"));
         assert_eq!(prometheus.port, 3131);
+        assert_eq!(prometheus.capacity_in_seconds, 600);
+    }
+
+    #[test]
+    fn config_file_prometheus_explicit_summary_capacity() {
+        let config = r#"
+    [sinks]
+      [sinks.prometheus]
+      port = 3131
+      host = "example.com"
+      capacity_in_seconds = 50
+    "#;
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.prometheus.is_some());
+        let prometheus = args.prometheus.unwrap();
+        assert_eq!(prometheus.host, String::from("example.com"));
+        assert_eq!(prometheus.port, 3131);
+        assert_eq!(prometheus.capacity_in_seconds, 50);
     }
 
     #[test]
