@@ -223,32 +223,26 @@ impl Source for Internal {
                     self.chans
                 );
                 atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.api.action_document_missing",
+                    sink::elasticsearch::ELASTIC_ERROR_API_DOCUMENT_MISSING,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.error.api.index_already_exists",
+                    sink::elasticsearch::ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
                     "cernan.sinks.elasticsearch.error.api.unknown",
                     sink::elasticsearch::ELASTIC_ERROR_API_UNKNOWN,
                     self.tags,
                     self.chans
                 );
                 atom_non_zero_telem!(
-                    "cernan.sinks.elasticsearch.error.response.json",
-                    sink::elasticsearch::ELASTIC_ERROR_RESPONSE_JSON,
-                    self.tags,
-                    self.chans
-                );
-                atom_non_zero_telem!(
-                    "cernan.sinks.elasticsearch.error.response.io",
-                    sink::elasticsearch::ELASTIC_ERROR_RESPONSE_IO,
-                    self.tags,
-                    self.chans
-                );
-                atom_non_zero_telem!(
-                    "cernan.sinks.elasticsearch.error.json",
-                    sink::elasticsearch::ELASTIC_ERROR_JSON,
-                    self.tags,
-                    self.chans
-                );
-                atom_non_zero_telem!(
-                    "cernan.sinks.elasticsearch.error.request.failure",
-                    sink::elasticsearch::ELASTIC_ERROR_REQUEST_FAILURE,
+                    "cernan.sinks.elasticsearch.error.client", 
+                    sink::elasticsearch::ELASTIC_ERROR_CLIENT, 
                     self.tags,
                     self.chans
                 );

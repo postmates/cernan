@@ -238,7 +238,7 @@ impl PrometheusAggr {
                 |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
             ) {
                 Ok(hsh_idx) => {
-                    let mut prev = self.values.index_mut(hsh_idx);
+                    let prev = self.values.index_mut(hsh_idx);
                     if prev.kind() == telem.kind() {
                         prev.insert(telem);
                     } else {

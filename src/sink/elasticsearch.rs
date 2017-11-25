@@ -3,7 +3,8 @@
 use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
-use elastic::client::responses::BulkAction;
+use elastic::client::responses::bulk;
+use elastic::error;
 use elastic::error::Result;
 use elastic::prelude::*;
 use metric::{LogLine, Telemetry};
@@ -40,16 +41,14 @@ lazy_static! {
     pub static ref ELASTIC_ERROR_API_MAPPER_PARSING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total number of api errors due to action request validation
     pub static ref ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of api errors due to missing document
+    pub static ref ELASTIC_ERROR_API_DOCUMENT_MISSING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of api errors due to index already existing
+    pub static ref ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total number of api errors due to unknown reasons
     pub static ref ELASTIC_ERROR_API_UNKNOWN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of api errors due to parse respose json errors
-    pub static ref ELASTIC_ERROR_RESPONSE_JSON: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of api errors due to parse respose io errors
-    pub static ref ELASTIC_ERROR_RESPONSE_IO: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of api errors due to json parsing
-    pub static ref ELASTIC_ERROR_JSON: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of api errors due to reqwest client
-    pub static ref ELASTIC_ERROR_REQUEST_FAILURE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of client errors, no specific reasons 
+    pub static ref ELASTIC_ERROR_CLIENT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
 /// Configuration for the Elasticsearch sink
@@ -166,93 +165,60 @@ impl Sink for Elasticsearch {
         let proto = if self.secure { "https" } else { "http" };
         let params =
             RequestParams::new(format!("{}://{}:{}", proto, self.host, self.port));
-        let client = Client::new(params).unwrap();
+        let client = SyncClientBuilder::from_params(params).build().unwrap();
 
         let mut buffer = String::with_capacity(4048);
         self.bulk_body(&mut buffer);
         debug!("BODY: {:?}", buffer);
         let bulk_resp: Result<BulkResponse> = client
             .request(BulkRequest::new(buffer))
-            .send()
-            .and_then(into_response);
+            .send().unwrap()
+            .into_response::<BulkResponse>();
 
         match bulk_resp {
             Ok(bulk) => {
                 self.buffer.clear();
                 ELASTIC_RECORDS_DELIVERY.fetch_add(1, Ordering::Relaxed);
-                ELASTIC_RECORDS_TOTAL_DELIVERED
-                    .fetch_add(bulk.items.ok.len(), Ordering::Relaxed);
-                ELASTIC_RECORDS_TOTAL_FAILED
-                    .fetch_add(bulk.items.err.len(), Ordering::Relaxed);
-                if !bulk.items.err.is_empty() {
-                    error!("Failed to write {} put records", bulk.items.err.len());
-                    for bulk_err in bulk.items.err {
-                        if let Some(cause) = bulk_err.cause() {
-                            error!(
-                                "Failed to write item with error {}, cause {}",
-                                bulk_err.description(),
-                                cause
-                            );
-                        } else {
-                            error!(
-                                "Failed to write item with error {}",
-                                bulk_err.description()
-                            );
+                for item in bulk.iter() {
+                    match item {
+                        Ok(ref _item) => {
+                            ELASTIC_RECORDS_TOTAL_DELIVERED
+                                .fetch_add(1, Ordering::Relaxed);
+                        },
+                        Err(ref item) => {
+                            ELASTIC_RECORDS_TOTAL_FAILED
+                                .fetch_add(1, Ordering::Relaxed);
+                            if let Some(cause) = item.cause() {
+                                error!(
+                                    "Failed to write item with error {}, cause {}",
+                                    item.description(),
+                                    cause
+                                );
+                            } else {
+                                error!(
+                                    "Failed to write item with error {}",
+                                    item.description()
+                                );
+                            }
+                            match item.action() {
+                                bulk::Action::Index => ELASTIC_BULK_ACTION_INDEX_ERR
+                                    .fetch_add(1, Ordering::Relaxed),
+                                bulk::Action::Create => ELASTIC_BULK_ACTION_CREATE_ERR
+                                    .fetch_add(1, Ordering::Relaxed),
+                                bulk::Action::Update => ELASTIC_BULK_ACTION_UPDATE_ERR
+                                    .fetch_add(1, Ordering::Relaxed),
+                                bulk::Action::Delete => ELASTIC_BULK_ACTION_DELETE_ERR
+                                    .fetch_add(1, Ordering::Relaxed),
+                            };
                         }
-                        match bulk_err.action {
-                            BulkAction::Index => ELASTIC_BULK_ACTION_INDEX_ERR
-                                .fetch_add(1, Ordering::Relaxed),
-                            BulkAction::Create => ELASTIC_BULK_ACTION_CREATE_ERR
-                                .fetch_add(1, Ordering::Relaxed),
-                            BulkAction::Update => ELASTIC_BULK_ACTION_UPDATE_ERR
-                                .fetch_add(1, Ordering::Relaxed),
-                            BulkAction::Delete => ELASTIC_BULK_ACTION_DELETE_ERR
-                                .fetch_add(1, Ordering::Relaxed),
-                        };
                     }
                 }
             }
             Err(err) => {
-                use elastic::error::ErrorKind;
-                match *err.kind() {
-                    ErrorKind::Response(ref response_err) => {
-                        use elastic::client::responses::parse::ParseResponseError;
-                        match *response_err {
-                            ParseResponseError::Json(ref e) => {
-                                ELASTIC_ERROR_RESPONSE_JSON
-                                    .fetch_add(1, Ordering::Relaxed);
-                                error!(
-                                    "Unable to write, Parse Response Error (JSON): {}",
-                                    e.description()
-                                );
-                            }
-                            ParseResponseError::Io(ref e) => {
-                                ELASTIC_ERROR_RESPONSE_IO
-                                    .fetch_add(1, Ordering::Relaxed);
-                                error!(
-                                    "Unable to write, Parse Response Error (IO): {}",
-                                    e.description()
-                                );
-                            }
-                        }
-                    }
-                    ErrorKind::Json(ref e) => {
-                        ELASTIC_ERROR_JSON.fetch_add(1, Ordering::Relaxed);
-                        error!("Unable to write, JSON: {}", e.description());
-                    }
-                    ErrorKind::Client(ref e) => {
-                        ELASTIC_ERROR_REQUEST_FAILURE.fetch_add(1, Ordering::Relaxed);
-                        error!(
-                            "Unable to write, Reqwest Client Error: {}",
-                            e.description()
-                        );
-                    }
-                    ErrorKind::Msg(ref msg) => {
-                        error!("Unable to write, msg: {}", msg);
-                    }
-                    ErrorKind::Api(ref err) => {
+                match err {
+                    error::Error::Api(ref api_error) => {
                         use elastic::error::ApiError;
-                        match *err {
+                        match *api_error {
                             ApiError::IndexNotFound { ref index } => {
                                 ELASTIC_ERROR_API_INDEX_NOT_FOUND
                                     .fetch_add(1, Ordering::Relaxed);
@@ -287,12 +253,36 @@ impl Sink for Elasticsearch {
                                     reason
                                 );
                             }
-                            ApiError::Other { .. } => {
+                            ApiError::DocumentMissing {
+                                ref index, ..
+                            } => {
+                                ELASTIC_ERROR_API_DOCUMENT_MISSING
+                                    .fetch_add(1, Ordering::Relaxed);
+                                error!(
+                                    "Unable to write, API Error (Document Missing): {}",
+                                    index
+                                );
+                            }
+                            ApiError::IndexAlreadyExists {
+                                ref index, ..
+                            } => {
+                                ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS
+                                    .fetch_add(1, Ordering::Relaxed);
+                                error!(
+                                    "Unable to write, API Error (Index Already Exists): {}",
+                                    index
+                                );
+                            }
+                            _ => {
                                 ELASTIC_ERROR_API_UNKNOWN
                                     .fetch_add(1, Ordering::Relaxed);
                                 error!("Unable to write, API Error (Unknown)");
                             }
                         }
+                    },
+                    error::Error::Client(ref client_error) => {
+                        ELASTIC_ERROR_CLIENT.fetch_add(1, Ordering::Relaxed);
+                        error!("Unable to write, client error: {}", client_error.description());
                     }
                 }
             }
