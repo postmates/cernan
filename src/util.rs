@@ -2,6 +2,16 @@
 
 use hopper;
 use metric;
+use seahash::SeaHasher;
+use std::collections;
+use std::hash;
+
+/// Cernan hashmap
+///
+/// In most cases where cernan needs a hashmap we've got smallish inputs as keys
+/// and, more, have a smallish number of total elements (< 100k) to store in the
+/// map. This hashmap is specialized to address that common use-case.
+pub type HashMap<K, V> = collections::HashMap<K, V, hash::BuildHasherDefault<SeaHasher>>;
 
 /// A vector of `hopper::Sender`s.
 pub type Channel = Vec<hopper::Sender<metric::Event>>;

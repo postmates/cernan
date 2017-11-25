@@ -28,6 +28,7 @@ extern crate hopper;
 extern crate hyper;
 extern crate libc;
 extern crate lua;
+extern crate mio;
 extern crate protobuf;
 extern crate quantiles;
 extern crate regex;
@@ -36,10 +37,10 @@ extern crate rusoto_firehose;
 extern crate seahash;
 #[macro_use]
 extern crate serde_json;
+extern crate slab;
 extern crate toml;
 extern crate url;
 extern crate uuid;
-extern crate mio;
 
 #[macro_use]
 extern crate log;

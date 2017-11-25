@@ -2,20 +2,15 @@ extern crate mio;
 
 use glob::glob;
 use metric;
-use seahash::SeaHasher;
 use source::Source;
 use source::file::file_watcher::FileWatcher;
 use source::internal::report_full_telemetry;
-use std::collections::HashMap;
-use std::hash::BuildHasherDefault;
 use std::mem;
 use std::path::PathBuf;
 use std::str;
 use std::time;
 use util;
 use util::send;
-
-type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<SeaHasher>>;
 
 /// `FileServer` is a Source which cooperatively schedules reads over files,
 /// converting the lines of said files into `LogLine` structures. As
@@ -92,8 +87,8 @@ impl Source for FileServer {
     fn run(&mut self, poller: mio::Poll) {
         let mut buffer = String::new();
 
-        let mut fp_map: HashMapFnv<PathBuf, FileWatcher> = Default::default();
-        let mut fp_map_alt: HashMapFnv<PathBuf, FileWatcher> = Default::default();
+        let mut fp_map: util::HashMap<PathBuf, FileWatcher> = Default::default();
+        let mut fp_map_alt: util::HashMap<PathBuf, FileWatcher> = Default::default();
 
         let mut backoff_cap: usize = 1;
         let mut lines = Vec::new();
