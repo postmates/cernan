@@ -50,6 +50,9 @@ pub trait Sink {
     /// Deliver a `LogLine` to the `Sink`. Exact behaviour varies by
     /// implementation.
     fn deliver_line(&mut self, line: sync::Arc<Option<LogLine>>) -> ();
+    /// Provide a hook to shutdown a sink. This is necessary for sinks which
+    /// have their own long-running threads.
+    fn shutdown(&mut self) -> ();
     /// The run-loop of the `Sink`. It's expect that few sinks will ever need to
     /// provide their own implementation. Please take care to obey `Valve`
     /// states and `flush_interval` configurations.
@@ -124,9 +127,12 @@ pub trait Sink {
                         Event::Shutdown => {
                             // Invariant - In order to ensure at least once delivery
                             // at the sink level, the following properties must hold:
-                            //    1) Shutdown events only ever appear at the end of a queue.
-                            //    2) The given sink synchronously flushes any internal memory.
-                            self.flush();
+                            //
+                            //    1) Shutdown events only ever appear at the end
+                            //    of a queue.
+                            //
+                            //    2) The given sink synchronously flushes any
+                            //    internal memory.
                             return;
                         }
                     },

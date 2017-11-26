@@ -620,6 +620,10 @@ impl Sink for Wavefront {
         }
     }
 
+    fn shutdown(&mut self) -> () {
+        self.flush();
+    }
+
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
         let telem: Telemetry = sync::Arc::make_mut(&mut point).take().unwrap();
         if let Some(age_threshold) = self.age_threshold {

@@ -295,6 +295,10 @@ impl Sink for Firehose {
         self.buffer.clear();
     }
 
+    fn shutdown(&mut self) -> () {
+        self.flush();
+    }
+
     fn deliver(&mut self, _: sync::Arc<Option<Telemetry>>) -> () {
         // nothing, intentionally
     }

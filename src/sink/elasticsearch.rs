@@ -337,6 +337,10 @@ impl Sink for Elasticsearch {
         }
     }
 
+    fn shutdown(&mut self) -> () {
+        self.flush();
+    }
+
     fn deliver(&mut self, _: sync::Arc<Option<Telemetry>>) -> () {
         // nothing, intentionally
     }
