@@ -241,8 +241,8 @@ impl Source for Internal {
                     self.chans
                 );
                 atom_non_zero_telem!(
-                    "cernan.sinks.elasticsearch.error.client", 
-                    sink::elasticsearch::ELASTIC_ERROR_CLIENT, 
+                    "cernan.sinks.elasticsearch.error.client",
+                    sink::elasticsearch::ELASTIC_ERROR_CLIENT,
                     self.tags,
                     self.chans
                 );

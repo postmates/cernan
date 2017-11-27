@@ -83,7 +83,8 @@ impl Sink for Firehose {
     fn flush(&mut self) {
         let provider = DefaultCredentialsProvider::new().unwrap();
         let dispatcher = default_tls_client().unwrap();
-        let client = KinesisFirehoseClient::new(dispatcher, provider, self.region.clone());
+        let client =
+            KinesisFirehoseClient::new(dispatcher, provider, self.region.clone());
 
         if self.buffer.is_empty() {
             return;

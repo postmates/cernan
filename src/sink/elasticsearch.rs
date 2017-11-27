@@ -47,7 +47,7 @@ lazy_static! {
     pub static ref ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total number of api errors due to unknown reasons
     pub static ref ELASTIC_ERROR_API_UNKNOWN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of client errors, no specific reasons 
+    /// Total number of client errors, no specific reasons
     pub static ref ELASTIC_ERROR_CLIENT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
@@ -172,7 +172,8 @@ impl Sink for Elasticsearch {
         debug!("BODY: {:?}", buffer);
         let bulk_resp: Result<BulkResponse> = client
             .request(BulkRequest::new(buffer))
-            .send().unwrap()
+            .send()
+            .unwrap()
             .into_response::<BulkResponse>();
 
         match bulk_resp {
@@ -181,11 +182,11 @@ impl Sink for Elasticsearch {
                 ELASTIC_RECORDS_DELIVERY.fetch_add(1, Ordering::Relaxed);
                 for item in bulk.iter() {
                     match item {
-                        Ok(ref _item) => {
+                        Ok(_item) => {
                             ELASTIC_RECORDS_TOTAL_DELIVERED
                                 .fetch_add(1, Ordering::Relaxed);
-                        },
-                        Err(ref item) => {
+                        }
+                        Err(item) => {
                             ELASTIC_RECORDS_TOTAL_FAILED
                                 .fetch_add(1, Ordering::Relaxed);
                             if let Some(cause) = item.cause() {
@@ -214,78 +215,68 @@ impl Sink for Elasticsearch {
                     }
                 }
             }
-            Err(err) => {
-                match err {
-                    error::Error::Api(ref api_error) => {
-                        use elastic::error::ApiError;
-                        match *api_error {
-                            ApiError::IndexNotFound { ref index } => {
-                                ELASTIC_ERROR_API_INDEX_NOT_FOUND
-                                    .fetch_add(1, Ordering::Relaxed);
-                                error!(
-                                    "Unable to write, API Error (Index Not Found): {}",
-                                    index
-                                );
-                            }
-                            ApiError::Parsing { ref reason, .. } => {
-                                ELASTIC_ERROR_API_PARSING
-                                    .fetch_add(1, Ordering::Relaxed);
-                                error!(
-                                    "Unable to write, API Error (Parsing): {}",
-                                    reason
-                                );
-                            }
-                            ApiError::MapperParsing { ref reason, .. } => {
-                                ELASTIC_ERROR_API_MAPPER_PARSING
-                                    .fetch_add(1, Ordering::Relaxed);
-                                error!(
-                                    "Unable to write, API Error (Mapper Parsing): {}",
-                                    reason
-                                );
-                            }
-                            ApiError::ActionRequestValidation {
-                                ref reason, ..
-                            } => {
-                                ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION
-                                    .fetch_add(1, Ordering::Relaxed);
-                                error!(
+            Err(err) => match err {
+                error::Error::Api(ref api_error) => {
+                    use elastic::error::ApiError;
+                    match *api_error {
+                        ApiError::IndexNotFound { ref index } => {
+                            ELASTIC_ERROR_API_INDEX_NOT_FOUND
+                                .fetch_add(1, Ordering::Relaxed);
+                            error!(
+                                "Unable to write, API Error (Index Not Found): {}",
+                                index
+                            );
+                        }
+                        ApiError::Parsing { ref reason, .. } => {
+                            ELASTIC_ERROR_API_PARSING.fetch_add(1, Ordering::Relaxed);
+                            error!("Unable to write, API Error (Parsing): {}", reason);
+                        }
+                        ApiError::MapperParsing { ref reason, .. } => {
+                            ELASTIC_ERROR_API_MAPPER_PARSING
+                                .fetch_add(1, Ordering::Relaxed);
+                            error!(
+                                "Unable to write, API Error (Mapper Parsing): {}",
+                                reason
+                            );
+                        }
+                        ApiError::ActionRequestValidation { ref reason, .. } => {
+                            ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION
+                                .fetch_add(1, Ordering::Relaxed);
+                            error!(
                                     "Unable to write, API Error (Action Request Validation): {}",
                                     reason
                                 );
-                            }
-                            ApiError::DocumentMissing {
-                                ref index, ..
-                            } => {
-                                ELASTIC_ERROR_API_DOCUMENT_MISSING
-                                    .fetch_add(1, Ordering::Relaxed);
-                                error!(
-                                    "Unable to write, API Error (Document Missing): {}",
-                                    index
-                                );
-                            }
-                            ApiError::IndexAlreadyExists {
-                                ref index, ..
-                            } => {
-                                ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS
-                                    .fetch_add(1, Ordering::Relaxed);
-                                error!(
+                        }
+                        ApiError::DocumentMissing { ref index, .. } => {
+                            ELASTIC_ERROR_API_DOCUMENT_MISSING
+                                .fetch_add(1, Ordering::Relaxed);
+                            error!(
+                                "Unable to write, API Error (Document Missing): {}",
+                                index
+                            );
+                        }
+                        ApiError::IndexAlreadyExists { ref index, .. } => {
+                            ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS
+                                .fetch_add(1, Ordering::Relaxed);
+                            error!(
                                     "Unable to write, API Error (Index Already Exists): {}",
                                     index
                                 );
-                            }
-                            _ => {
-                                ELASTIC_ERROR_API_UNKNOWN
-                                    .fetch_add(1, Ordering::Relaxed);
-                                error!("Unable to write, API Error (Unknown)");
-                            }
                         }
-                    },
-                    error::Error::Client(ref client_error) => {
-                        ELASTIC_ERROR_CLIENT.fetch_add(1, Ordering::Relaxed);
-                        error!("Unable to write, client error: {}", client_error.description());
+                        _ => {
+                            ELASTIC_ERROR_API_UNKNOWN.fetch_add(1, Ordering::Relaxed);
+                            error!("Unable to write, API Error (Unknown)");
+                        }
                     }
                 }
-            }
+                error::Error::Client(ref client_error) => {
+                    ELASTIC_ERROR_CLIENT.fetch_add(1, Ordering::Relaxed);
+                    error!(
+                        "Unable to write, client error: {}",
+                        client_error.description()
+                    );
+                }
+            },
         }
     }
 

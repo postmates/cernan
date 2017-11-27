@@ -287,7 +287,7 @@ fn main() {
     if let Some(config) = mem::replace(&mut args.null, None) {
         let recv = receivers.remove(&config.config_path).unwrap();
         joins.push(thread::spawn(move || {
-            cernan::sink::Null::new(config).run(recv);
+            cernan::sink::Null::new(&config).run(recv);
         }));
     }
     if let Some(config) = mem::replace(&mut args.console, None) {
@@ -295,7 +295,7 @@ fn main() {
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
         joins.push(thread::spawn(move || {
-            cernan::sink::Console::new(config).run(recv);
+            cernan::sink::Console::new(&config).run(recv);
         }));
     }
     if let Some(config) = mem::replace(&mut args.wavefront, None) {
@@ -319,7 +319,7 @@ fn main() {
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
         joins.push(thread::spawn(move || {
-            cernan::sink::Prometheus::new(config).run(recv);
+            cernan::sink::Prometheus::new(&config).run(recv);
         }));
     }
     if let Some(config) = mem::replace(&mut args.influxdb, None) {
@@ -327,7 +327,7 @@ fn main() {
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
         joins.push(thread::spawn(move || {
-            cernan::sink::InfluxDB::new(config).run(recv);
+            cernan::sink::InfluxDB::new(&config).run(recv);
         }));
     }
     if let Some(config) = mem::replace(&mut args.native_sink_config, None) {
@@ -402,7 +402,7 @@ fn main() {
                 &senders,
             );
             joins.push(thread::spawn(move || {
-                cernan::filter::DelayFilter::new(c).run(recv, downstream_sends);
+                cernan::filter::DelayFilter::new(&c).run(recv, downstream_sends);
             }));
         }
     });
@@ -425,7 +425,7 @@ fn main() {
                 &senders,
             );
             joins.push(thread::spawn(move || {
-                cernan::filter::FlushBoundaryFilter::new(c)
+                cernan::filter::FlushBoundaryFilter::new(&c)
                     .run(recv, downstream_sends);
             }));
         }

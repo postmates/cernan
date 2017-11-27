@@ -106,7 +106,7 @@ impl Accumulator {
     pub fn kind(&self) -> AggregationMethod {
         match *self {
             Accumulator::Perpetual(ref t) => t.kind(),
-            Accumulator::Windowed { cap: _, samples: _ } => {
+            Accumulator::Windowed { .. } => {
                 AggregationMethod::Summarize
             }
         }
@@ -116,7 +116,10 @@ impl Accumulator {
     pub fn total_samples(&self) -> usize {
         match *self {
             Accumulator::Perpetual(_) => 1,
-            Accumulator::Windowed { cap: _, samples: ref s } => s.len(),
+            Accumulator::Windowed {
+                cap: _,
+                samples: ref s,
+            } => s.len(),
         }
     }
 
@@ -304,8 +307,8 @@ impl<'a> Iterator for Iter<'a> {
                     return Some(t.clone());
                 }
                 Accumulator::Windowed {
-                    cap: _,
                     ref samples,
+                    .. 
                 } => {
                     self.idx += 1;
                     match samples.len() {
@@ -373,7 +376,7 @@ impl Prometheus {
     /// Create a new prometheus sink
     ///
     /// Please see documentation on `PrometheusConfig` for more details.
-    pub fn new(config: PrometheusConfig) -> Prometheus {
+    pub fn new(config: &PrometheusConfig) -> Prometheus {
         let aggrs = sync::Arc::new(sync::Mutex::new(
             PrometheusAggr::new(config.capacity_in_seconds),
         ));
@@ -785,7 +788,10 @@ mod test {
     #[test]
     fn test_accumlator_window_boundary_obeyed() {
         fn inner(cap: usize, telems: Vec<metric::Telemetry>) -> TestResult {
-            let mut windowed = Accumulator::Windowed { cap: cap, samples: Vec::new() };
+            let mut windowed = Accumulator::Windowed {
+                cap: cap,
+                samples: Vec::new(),
+            };
 
             for t in telems.into_iter() {
                 if t.kind() != AggregationMethod::Summarize {
@@ -798,7 +804,8 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new().quickcheck(inner as fn(usize, Vec<metric::Telemetry>) -> TestResult);
+        QuickCheck::new()
+            .quickcheck(inner as fn(usize, Vec<metric::Telemetry>) -> TestResult);
     }
 
     #[test]

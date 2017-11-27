@@ -45,7 +45,7 @@ pub struct DelayFilterConfig {
 
 impl DelayFilter {
     /// Create a new DelayFilter
-    pub fn new(config: DelayFilterConfig) -> DelayFilter {
+    pub fn new(config: &DelayFilterConfig) -> DelayFilter {
         DelayFilter {
             tolerance: config.tolerance,
         }

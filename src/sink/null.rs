@@ -10,7 +10,7 @@ pub struct Null {}
 
 impl Null {
     /// Create a new Null sink
-    pub fn new(_config: NullConfig) -> Null {
+    pub fn new(_config: &NullConfig) -> Null {
         Null {}
     }
 }

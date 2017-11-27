@@ -110,7 +110,7 @@ impl Source for FileServer {
             {
                 if let Ok(path) = entry {
                     let entry = fp_map.entry(path.clone());
-                    if let Ok(fw) = FileWatcher::new(path) {
+                    if let Ok(fw) = FileWatcher::new(&path) {
                         entry.or_insert(fw);
                     };
                 }

@@ -45,7 +45,7 @@ impl Hold {
 
 impl FlushBoundaryFilter {
     /// Create a new FlushBoundaryFilter
-    pub fn new(config: FlushBoundaryFilterConfig) -> FlushBoundaryFilter {
+    pub fn new(config: &FlushBoundaryFilterConfig) -> FlushBoundaryFilter {
         FlushBoundaryFilter {
             tolerance: config.tolerance,
             holds: Vec::new(),

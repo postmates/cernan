@@ -110,7 +110,7 @@ where
 
 impl InfluxDB {
     /// Create a new `InfluxDB` given an InfluxDBConfig
-    pub fn new(config: InfluxDBConfig) -> InfluxDB {
+    pub fn new(config: &InfluxDBConfig) -> InfluxDB {
         let scheme = if config.secure { "https" } else { "http" };
         let uri = Url::parse(&format!(
             "{}://{}:{}/write?db={}",

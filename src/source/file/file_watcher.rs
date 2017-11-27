@@ -26,7 +26,7 @@ impl FileWatcher {
     /// The input path will be used by `FileWatcher` to prime its state
     /// machine. A `FileWatcher` tracks _only one_ file. This function returns
     /// None if the path does not exist or is not readable by cernan.
-    pub fn new(path: PathBuf) -> io::Result<FileWatcher> {
+    pub fn new(path: &PathBuf) -> io::Result<FileWatcher> {
         match fs::File::open(&path) {
             Ok(f) => {
                 let mut rdr = io::BufReader::new(f);

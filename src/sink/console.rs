@@ -27,7 +27,7 @@ impl Console {
     /// bin_width: 2, flush_interval: 60 };
     /// let c = Console::new(config);
     /// ```
-    pub fn new(config: ConsoleConfig) -> Console {
+    pub fn new(config: &ConsoleConfig) -> Console {
         Console {
             aggrs: Buckets::new(config.bin_width),
             buffer: Vec::new(),
