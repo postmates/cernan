@@ -338,7 +338,7 @@ fn main() {
             SinkWorker {
                 sender: senders.get(&config.config_path.clone()).expect("Oops").clone(),
                 thread: thread::spawn(move || {
-                    cernan::sink::Null::new(config).run(recv);
+                    cernan::sink::Null::new(&config).run(recv);
                 })
             }
         );
@@ -350,7 +350,7 @@ fn main() {
             SinkWorker {
                 sender: senders.get(&config.config_path.clone().unwrap()).expect("Oops").clone(),
                 thread: thread::spawn(move || {
-                    cernan::sink::Console::new(config).run(recv);
+                    cernan::sink::Console::new(&config).run(recv);
                 })
             }
         );
@@ -381,7 +381,7 @@ fn main() {
             SinkWorker {
                 sender: senders.get(&config.config_path.clone().unwrap()).expect("Oops").clone(),
                 thread:  thread::spawn(move || {
-                    cernan::sink::Prometheus::new(config).run(recv);
+                    cernan::sink::Prometheus::new(&config).run(recv);
                 })
             }
         );
@@ -393,7 +393,7 @@ fn main() {
             SinkWorker {
                 sender: senders.get(&config.config_path.clone().unwrap()).expect("Oops").clone(),
                 thread: thread::spawn(move || {
-                    cernan::sink::InfluxDB::new(config).run(recv);
+                    cernan::sink::InfluxDB::new(&config).run(recv);
                 })
             }
         );
@@ -489,7 +489,7 @@ fn main() {
                 SinkWorker {
                     sender: senders.get(&config.config_path.clone().unwrap()).expect("Oops").clone(),
                     thread: thread::spawn(move || {
-                        cernan::filter::DelayFilter::new(c).run(recv, downstream_sends);
+                        cernan::filter::DelayFilter::new(&c).run(recv, downstream_sends);
                     })
                 }
             );
@@ -518,7 +518,7 @@ fn main() {
                 SinkWorker {
                     sender: senders.get(&config.config_path.clone().unwrap()).expect("Oops").clone(),
                     thread: thread::spawn(move || {
-                        cernan::filter::FlushBoundaryFilter::new(c)
+                        cernan::filter::FlushBoundaryFilter::new(&c)
                         .run(recv, downstream_sends);
                     })
                 }

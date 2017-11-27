@@ -133,31 +133,35 @@ fn handle_udp(
         match poll.poll(& mut events, None) {
             Ok(_num_events) =>
                 for event in events {
-                    let token = event.token();
-                    // Get the socket to receive from:
-                    let socket = &conns[token_to_idx(&token)].sock;
+                    match event.token() {
+                        constants::SYSTEM =>  return,
+                        token => {
+                            // Get the socket to receive from:
+                            let socket = &conns[token_to_idx(&token)].sock;
 
-                    let (len, _) = match socket.recv_from(&mut buf) {
-                        Ok(r) => r,
-                        Err(e) => panic!(format!("Could not read UDP socket with error {:?}", e)),
-                    };
-                    match str::from_utf8(&buf[..len]) {
-                        Ok(val) => if parse_statsd(
-                            val,
-                            &mut metrics,
-                            &basic_metric,
-                            &parse_config,
-                        ) {
-                            for m in metrics.drain(..) {
-                                send(&mut chans, metric::Event::new_telemetry(m));
+                            let (len, _) = match socket.recv_from(&mut buf) {
+                                Ok(r) => r,
+                                Err(e) => panic!(format!("Could not read UDP socket with error {:?}", e)),
+                            };
+                            match str::from_utf8(&buf[..len]) {
+                                Ok(val) => if parse_statsd(
+                                    val,
+                                    &mut metrics,
+                                    &basic_metric,
+                                    &parse_config,
+                                ) {
+                                    for m in metrics.drain(..) {
+                                        send(&mut chans, metric::Event::new_telemetry(m));
+                                    }
+                                    STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
+                                } else {
+                                    STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
+                                    error!("BAD PACKET: {:?}", val);
+                                },
+                                Err(e) => {
+                                    error!("Payload not valid UTF-8: {:?}", e);
+                                }
                             }
-                            STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
-                        } else {
-                            STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
-                            error!("BAD PACKET: {:?}", val);
-                        },
-                        Err(e) => {
-                            error!("Payload not valid UTF-8: {:?}", e);
                         }
                     }
                 }
