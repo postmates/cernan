@@ -7,7 +7,7 @@ license = "MIT"
 name = "cernan"
 readme = "README.md"
 repository = "https://github.com/postmates/cernan"
-version = "0.7.13-pre"
+version = "0.8.0-pre"
 
 [[bin]]
 name = "cernan"
@@ -16,34 +16,33 @@ doc = false
 [dependencies]
 byteorder = "1.0"
 chrono = "0.4"
-clap = "2.20.5"
-coco = "0.2.0"
-elastic = "0.13"
-elastic_types = "0.19"
+clap = "2.27"
+coco = "0.3"
+elastic = "0.20"
+elastic_types = "0.20"
 fern = "0.4"
 flate2 = "0.2"
 glob = "0.2.11"
 hopper = "0.3"
 hyper = "0.10"
-hyper-native-tls = "0.2"
 lazy_static = "0.2.1"
 libc = "0.2"
-log = "0.3.6"
+log = "0.3"
 lua = { git = "https://github.com/blt/rust-lua53.git", branch = "master" }
 openssl-probe = "0.1"
-protobuf = "1.2"
+protobuf = "1.4"
 quantiles = { version = "0.6", features = ["serde_support"] }
 regex = "0.2"
-rusoto_core = {version = "0.25.0"}
-rusoto_firehose = {version = "0.25.0"}
+rusoto_core = "0.29"
+rusoto_firehose = "0.29"
 seahash = "3.0"
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
 toml = "0.4"
-url = "1.4.0"
+url = "1.6"
 uuid = {version = "0.5", features = ["v4"]}
-chan-signal = "0.3.1"
+chan-signal = "0.3"
 
 [dev-dependencies]
 tempdir = "0.3"
