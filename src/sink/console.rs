@@ -25,7 +25,7 @@ impl Console {
     /// let config = ConsoleConfig { config_path:
     /// Some("sinks.console".to_string()),
     /// bin_width: 2, flush_interval: 60 };
-    /// let c = Console::new(config);
+    /// let c = Console::new(&config);
     /// ```
     pub fn new(config: &ConsoleConfig) -> Console {
         Console {

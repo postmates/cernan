@@ -317,7 +317,7 @@ mod test {
             tags: tags.clone(),
             flush_interval: 60,
         };
-        let mut influxdb = InfluxDB::new(config);
+        let mut influxdb = InfluxDB::new(&config);
         let dt_0 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00);
         let dt_1 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00);
         let dt_2 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00);
