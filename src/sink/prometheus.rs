@@ -812,7 +812,7 @@ mod test {
 
     #[test]
     fn test_reportable() {
-        fn inner(mut aggr: PrometheusAggr) -> TestResult {
+        fn inner(aggr: PrometheusAggr) -> TestResult {
             let cur_cnt = aggr.count();
 
             let mut reportable_cnt = 0;
