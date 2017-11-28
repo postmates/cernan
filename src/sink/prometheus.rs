@@ -48,8 +48,6 @@ lazy_static! {
     pub static ref PROMETHEUS_REPORT_ERROR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
-
-
 /// The prometheus sink
 ///
 /// Prometheus is an open-source aggregation server which pulls from its
@@ -58,7 +56,8 @@ lazy_static! {
 /// pull-based.
 #[allow(dead_code)]
 pub struct Prometheus {
-    aggrs: sync::Arc<sync::Mutex<PrometheusAggr>>,
+    thrd_aggr: sync::Arc<sync::Mutex<Option<PrometheusAggr>>>,
+    aggrs: PrometheusAggr,
     // `http_srv` is never used but we must keep it in this struct to avoid the
     // listening server being dropped
     http_srv: Listening,
@@ -90,7 +89,7 @@ impl Default for PrometheusConfig {
 }
 
 struct SenderHandler {
-    aggr: sync::Arc<Mutex<PrometheusAggr>>,
+    aggr: sync::Arc<Mutex<Option<PrometheusAggr>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -106,9 +105,7 @@ impl Accumulator {
     pub fn kind(&self) -> AggregationMethod {
         match *self {
             Accumulator::Perpetual(ref t) => t.kind(),
-            Accumulator::Windowed { .. } => {
-                AggregationMethod::Summarize
-            }
+            Accumulator::Windowed { .. } => AggregationMethod::Summarize,
         }
     }
 
@@ -218,7 +215,7 @@ impl PrometheusAggr {
     ///
     /// This function returns all the stored Telemetry points that are available
     /// for shipping to Prometheus.
-    fn reportable(&mut self) -> Iter {
+    fn reportable(&self) -> Iter {
         Iter {
             samples: &self.values,
             idx: 0,
@@ -306,10 +303,7 @@ impl<'a> Iterator for Iter<'a> {
                     self.idx += 1;
                     return Some(t.clone());
                 }
-                Accumulator::Windowed {
-                    ref samples,
-                    .. 
-                } => {
+                Accumulator::Windowed { ref samples, .. } => {
                     self.idx += 1;
                     match samples.len() {
                         0 => unreachable!(),
@@ -333,41 +327,47 @@ impl<'a> Iterator for Iter<'a> {
 
 impl Handler for SenderHandler {
     fn handle(&self, req: Request, res: Response) {
-        let mut aggr = self.aggr.lock().unwrap();
-        // PROMETHEUS_AGGR_REPORTABLE is retained for backward compatability.
-        PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
-        PROMETHEUS_AGGR_REMAINING.store(aggr.count(), Ordering::Relaxed);
-        // Typed hyper::mime is challenging to use. In particular, matching does
-        // not seem to work like I expect and handling all other MIME cases in
-        // the existing enum strikes me as a fool's errand, on account of there
-        // may be an infinite number of MIMEs that'll come right on in. We'll
-        // just be monsters and assume if you aren't asking for protobuf you're
-        // asking for plaintext.
-        let accept: Vec<&str> = req.headers
-            .get_raw("accept")
-            .unwrap_or(&[])
-            .iter()
-            .map(|x| str::from_utf8(x))
-            .filter(|x| x.is_ok())
-            .map(|x| x.unwrap())
-            .collect();
-        let mut accept_proto = false;
-        for hdr in &accept {
-            if hdr.contains("application/vnd.google.protobuf;") {
-                accept_proto = true;
-                break;
+        match *self.aggr.lock().unwrap() {
+            None => {
+                return;
             }
-        }
-        let reportable = aggr.reportable();
-        let res = if accept_proto {
-            PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
-            write_binary(reportable, res)
-        } else {
-            PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
-            write_text(reportable, res)
-        };
-        if res.is_err() {
-            PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
+            Some(ref aggr) => {
+                PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
+                PROMETHEUS_AGGR_REMAINING.store(aggr.count(), Ordering::Relaxed);
+                // Typed hyper::mime is challenging to use. In particular, matching
+                // does not seem to work like I expect and handling
+                // all other MIME cases in the existing enum strikes
+                // me as a fool's errand, on account of there may be an
+                // infinite number of MIMEs that'll come right on in. We'll
+                // just be monsters and assume if you aren't asking for protobuf you're
+                // asking for plaintext.
+                let accept: Vec<&str> = req.headers
+                    .get_raw("accept")
+                    .unwrap_or(&[])
+                    .iter()
+                    .map(|x| str::from_utf8(x))
+                    .filter(|x| x.is_ok())
+                    .map(|x| x.unwrap())
+                    .collect();
+                let mut accept_proto = false;
+                for hdr in &accept {
+                    if hdr.contains("application/vnd.google.protobuf;") {
+                        accept_proto = true;
+                        break;
+                    }
+                }
+                let reportable = aggr.reportable();
+                let res = if accept_proto {
+                    PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
+                    write_binary(reportable, res)
+                } else {
+                    PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
+                    write_text(reportable, res)
+                };
+                if res.is_err() {
+                    PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
+                }
+            }
         }
     }
 }
@@ -377,10 +377,9 @@ impl Prometheus {
     ///
     /// Please see documentation on `PrometheusConfig` for more details.
     pub fn new(config: &PrometheusConfig) -> Prometheus {
-        let aggrs = sync::Arc::new(sync::Mutex::new(
-            PrometheusAggr::new(config.capacity_in_seconds),
-        ));
-        let srv_aggrs = sync::Arc::clone(&aggrs);
+        let aggrs = PrometheusAggr::new(config.capacity_in_seconds);
+        let thrd_aggrs = sync::Arc::new(sync::Mutex::new(None));
+        let srv_aggrs = sync::Arc::clone(&thrd_aggrs);
         let listener = Server::http((config.host.as_str(), config.port))
             .unwrap()
             .handle_threads(SenderHandler { aggr: srv_aggrs }, 1)
@@ -388,6 +387,7 @@ impl Prometheus {
 
         Prometheus {
             aggrs: aggrs,
+            thrd_aggr: thrd_aggrs,
             http_srv: listener,
         }
     }
@@ -555,7 +555,7 @@ fn write_text(aggrs: Iter, mut res: Response) -> io::Result<()> {
     }
     let mut res = res.start()?;
     let mut seen: HashSet<String> = HashSet::new();
-    let mut enc = GzEncoder::new(Vec::with_capacity(1024), Compression::Default);
+    let mut enc = GzEncoder::new(Vec::with_capacity(1024), Compression::Fast);
     for value in aggrs {
         let sanitized_name: String = sanitize(&value.name);
         match value.kind() {
@@ -704,13 +704,15 @@ impl Sink for Prometheus {
     }
 
     fn flush(&mut self) {
-        // intentionally blank
+        let mut lock = self.thrd_aggr.try_lock();
+        if let Ok(ref mut aggr) = lock {
+            **aggr = Some(self.aggrs.clone());
+        }
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<metric::Telemetry>>) -> () {
-        let mut aggrs = self.aggrs.lock().unwrap();
         let metric = sync::Arc::make_mut(&mut point).take().unwrap();
-        aggrs.insert(metric);
+        self.aggrs.insert(metric);
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<metric::LogLine>>) -> () {
