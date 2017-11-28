@@ -50,8 +50,7 @@ mod test {
             let dir = tempdir::TempDir::new("file_watcher_qc").unwrap();
             let path = dir.path().join("a_file.log");
             let mut fp = fs::File::create(&path).expect("could not create");
-            let mut fw =
-                FileWatcher::new(&path).expect("must be able to create");
+            let mut fw = FileWatcher::new(&path).expect("must be able to create");
 
             let mut expected_read = Vec::new();
 
