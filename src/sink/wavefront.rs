@@ -62,12 +62,10 @@ pub struct Wavefront {
     aggrs: buckets::Buckets,
     delivery_attempts: u32,
     percentiles: Vec<(String, f64)>,
-    /// Public ONLY FOR TESTING. Do not use. (If we could make fields public
-    /// only under test this would be.)
-    pub stats: String,
+    stats: String,
     flush_interval: u64,
+    age_threshold: Option<u64>,
     stream: Option<TcpStream>,
-    flush_number: u32,
     last_seen: HashMap<u64, i64>,
     pad_control: PadControl,
 }
@@ -100,6 +98,9 @@ pub struct WavefrontConfig {
     /// Determine if we will or will not pad an aggregation, disregard ephemeral
     /// status
     pub pad_control: PadControl,
+    /// Determine the age at which a Telemetry point will be ejected. If the
+    /// value is None no points will ever be rejected.
+    pub age_threshold: Option<u64>,
 }
 
 impl Default for WavefrontConfig {
@@ -128,6 +129,7 @@ impl Default for WavefrontConfig {
             tags: TagMap::default(),
             flush_interval: 60,
             pad_control: PadControl::default(),
+            age_threshold: None,
         }
     }
 }
@@ -397,7 +399,7 @@ impl Wavefront {
             stats: String::with_capacity(8_192),
             stream: stream,
             flush_interval: config.flush_interval,
-            flush_number: 0,
+            age_threshold: config.age_threshold,
             last_seen: HashMap::default(),
             pad_control: config.pad_control,
         })
@@ -605,7 +607,6 @@ impl Sink for Wavefront {
                     self.aggrs.reset();
                     self.stats.clear();
                     self.delivery_attempts = 0;
-                    self.flush_number += 1;
                     return;
                 } else {
                     WAVEFRONT_DELIVERY_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
@@ -624,7 +625,13 @@ impl Sink for Wavefront {
 
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
         let telem: Telemetry = sync::Arc::make_mut(&mut point).take().unwrap();
-        self.aggrs.add(telem);
+        if let Some(age_threshold) = self.age_threshold {
+            if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
+                self.aggrs.add(telem);
+            }
+        } else {
+            self.aggrs.add(telem);
+        }
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
@@ -975,6 +982,7 @@ mod test {
             percentiles: percentiles,
             flush_interval: 60,
             pad_control: pad_control,
+            age_threshold: None,
         };
         let mut wavefront = Wavefront::new(config).unwrap();
         let dt_0 = Utc.ymd(1990, 6, 12)
