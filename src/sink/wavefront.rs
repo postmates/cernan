@@ -99,7 +99,7 @@ pub struct WavefrontConfig {
     /// status
     pub pad_control: PadControl,
     /// Determine the age at which a Telemetry point will be ejected. If the
-    /// value is None no points will ever be rejected.
+    /// value is None no points will ever be rejected. Units are seconds.
     pub age_threshold: Option<u64>,
 }
 
