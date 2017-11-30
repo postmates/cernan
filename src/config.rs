@@ -452,6 +452,14 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 })
                 .unwrap_or(res.port);
 
+            res.age_threshold = snk.get("age_threshold")
+                .map(|p| {
+                    Some(p.as_integer()
+                        .expect("could not parse sinks.wavefront.age_threshold")
+                        as u64)
+                })
+                .unwrap_or(res.age_threshold);
+
             res.host = snk.get("host")
                 .map(|p| {
                     p.as_str()
@@ -1376,6 +1384,7 @@ scripts-directory = "/foo/bar"
       host = "example.com"
       bin_width = 9
       flush_interval = 15
+      age_threshold = 43
     "#;
 
         let args = parse_config_file(config, 4);
@@ -1386,6 +1395,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(wavefront.port, 3131);
         assert_eq!(wavefront.bin_width, 9);
         assert_eq!(wavefront.flush_interval, 15);
+        assert_eq!(wavefront.age_threshold, Some(43));
     }
 
     #[test]
@@ -1410,6 +1420,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(wavefront.host, String::from("example.com"));
         assert_eq!(wavefront.port, 3131);
         assert_eq!(wavefront.bin_width, 9);
+        assert_eq!(wavefront.age_threshold, None);
 
         assert_eq!(wavefront.percentiles.len(), 3);
         assert_eq!(wavefront.percentiles[0], ("max".to_string(), 1.0));
