@@ -428,24 +428,32 @@ impl http::Handler for PrometheusHandler {
                 }
                 let reportable = aggr.reportable();
                 let now = Instant::now();
-                let (res, elapsed) = if accept_proto {
-                    PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
-                    let res = write_binary(reportable, res);
-                    let elapsed = now.elapsed();
-                    (res, elapsed)
-                } else {
-                    PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
-                    let res = write_text(reportable, res);
-                    let elapsed = now.elapsed();
-                    (res, elapsed)
-                };
+                let mut buffer = Vec::new();
+                PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
+                let buffer = write_text(reportable, buffer);
+                let elapsed = now.elapsed();
                 let us = ((elapsed.as_secs() as f64) * 10_000.0)
                     + (f64::from(elapsed.subsec_nanos()) / 100_000.0);
                 PROMETHEUS_RESPONSE_DELAY_SUM
                     .fetch_add(us as usize, Ordering::Relaxed);
-                if res.is_err() {
-                    PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
-                }
+                // if accept_proto {
+                //     PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
+                // } else {
+                // };
+                let content_encoding = "gzip";
+                let content_type = "text/plain; version=0.0.4";
+                let headers = [
+                    http::Header::from_bytes(&b"Content-Type"[..], content_type).unwrap(),
+                    http::Header::from_bytes(&b"Content-Encoding"[..], content_type).unwrap(),
+                ];
+                Ok(
+                    http::Response::new(
+                        200,
+                        headers.to_vec(),
+                        &buffer[..],
+                        Some(encoded.len()),
+                        None
+                    ))
             }
         }
     }
@@ -602,7 +610,7 @@ impl Prometheus {
 
 #[allow(cyclomatic_complexity)]
 #[inline]
-fn fmt_tags(tags: &TagMap, s: &mut GzEncoder<Vec<u8>>) -> () {
+fn fmt_tags<W>(tags: &TagMap, s: &mut GzEncoder<W>) -> () where W: Write {
     if tags.is_empty() {
         let _ = s.write(b"");
     } else {
@@ -628,12 +636,12 @@ fn fmt_tags(tags: &TagMap, s: &mut GzEncoder<Vec<u8>>) -> () {
     }
 }
 
-fn write_text(aggrs: Iter) -> io::Result<http::Response> {
+fn write_text<W>(aggrs: Iter, buffer: W) -> io::Result<W> where W: Write {
     use flate2::Compression;
     use std::collections::HashSet;
 
     let mut seen: HashSet<String> = HashSet::new();
-    let mut enc = GzEncoder::new(Vec::with_capacity(1024), Compression::Fast);
+    let mut enc = GzEncoder::new(buffer, Compression::Fast);
     for value in aggrs {
        let sanitized_name: String = sanitize(&value.name);
        match value.kind() {
@@ -748,21 +756,7 @@ fn write_text(aggrs: Iter) -> io::Result<http::Response> {
            }
        }
     }
-    let encoded: Vec<u8> = enc.finish()?; 
-    let content_encoding = "gzip";
-    let content_type = "text/plain; version=0.0.4";
-    let headers = [
-       http::Header::from_bytes(&b"Content-Type"[..], content_type).unwrap(),
-       http::Header::from_bytes(&b"Content-Encoding"[..], content_type).unwrap(),
-    ];
-    Ok(
-       http::Response::new(
-           200,
-           headers.to_vec(),
-           &encoded[..],
-           Some(encoded.len()),
-           None
-       ))
+    enc.finish()
 }
 
 /// Sanitize cernan Telemetry into prometheus' notion
