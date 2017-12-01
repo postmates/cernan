@@ -7,13 +7,10 @@ use thread;
 
 /// HTTP request.  Alias of tiny_http::Request.
 pub type Request = tiny_http::Request;
-
 /// HTTP response.  Alias of tiny_http::Response.
-pub type Response = tiny_http::Response<std::io::Cursor<std::vec::Vec<u8>>>;
-
+pub type Response<'a> = tiny_http::Response<&'a [u8]>;
 /// HTTP header.  Alias of tiny_http::Header.
 pub type Header = tiny_http::Header;
-
 /// HTTP header field.  Alias of tiny_http::HeaderField.
 pub type HeaderField = tiny_http::HeaderField;
 
