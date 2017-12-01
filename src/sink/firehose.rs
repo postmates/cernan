@@ -295,7 +295,7 @@ impl Sink for Firehose {
         self.buffer.clear();
     }
 
-    fn shutdown(&mut self) -> () {
+    fn shutdown(mut self) -> () {
         self.flush();
     }
 

@@ -264,7 +264,7 @@ impl Sink for InfluxDB {
         self.aggrs.clear();
     }
 
-    fn shutdown(&mut self) -> () {
+    fn shutdown(mut self) -> () {
         self.flush();
     }
 

@@ -816,7 +816,7 @@ impl Sink for Prometheus {
         // nothing, intentionally
     }
 
-    fn shutdown(&mut self) -> () {
+    fn shutdown(mut self) -> () {
         self.flush();
         self.http_srv.shutdown();
     }

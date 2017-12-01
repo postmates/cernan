@@ -52,7 +52,7 @@ pub trait Sink {
     fn deliver_line(&mut self, line: sync::Arc<Option<LogLine>>) -> ();
     /// Provide a hook to shutdown a sink. This is necessary for sinks which
     /// have their own long-running threads.
-    fn shutdown(&mut self) -> ();
+    fn shutdown(mut self) -> ();
     /// The run-loop of the `Sink`. It's expect that few sinks will ever need to
     /// provide their own implementation. Please take care to obey `Valve`
     /// states and `flush_interval` configurations.

@@ -200,7 +200,7 @@ impl Sink for Console {
         self.aggrs.reset();
     }
 
-    fn shutdown(&mut self) -> () {
+    fn shutdown(mut self) -> () {
         self.flush();
     }
 }
