@@ -818,9 +818,6 @@ impl Sink for Prometheus {
 
     fn shutdown(&mut self) -> () {
         self.flush();
-        // This won't work:
-        // https://docs.rs/hyper/0.10.13/hyper/server/struct.Listening.html#method.close
-        // We're going to maybe have to update hyper...
         self.http_srv.shutdown();
     }
 
