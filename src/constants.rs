@@ -7,4 +7,4 @@ extern crate mio;
 ///
 /// Note - It is assumed that sources will not hold
 /// more than 2048 addressable streams, 0 indexed.
-pub const SYSTEM : mio::Token = mio::Token(2048);
+pub const SYSTEM: mio::Token = mio::Token(2048);

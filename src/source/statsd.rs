@@ -1,15 +1,15 @@
+use constants;
 use metric;
 use mio;
 use protocols::statsd::parse_statsd;
 use regex::Regex;
-use source::Source;
 use slab;
+use source::Source;
 use std::net::ToSocketAddrs;
 use std::str;
 use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use constants;
 use util;
 use util::send;
 
@@ -130,55 +130,58 @@ fn handle_udp(
     ));
     loop {
         let mut events = mio::Events::with_capacity(1024);
-        match poll.poll(& mut events, None) {
-            Ok(_num_events) =>
-                for event in events {
-                    match event.token() {
-                        constants::SYSTEM =>  return,
-                        token => {
-                            // Get the socket to receive from:
-                            let socket = &conns[token_to_idx(&token)].sock;
+        match poll.poll(&mut events, None) {
+            Ok(_num_events) => for event in events {
+                match event.token() {
+                    constants::SYSTEM => return,
+                    token => {
+                        // Get the socket to receive from:
+                        let socket = &conns[token_to_idx(&token)].sock;
 
-                            let (len, _) = match socket.recv_from(&mut buf) {
-                                Ok(r) => r,
-                                Err(e) => panic!(format!("Could not read UDP socket with error {:?}", e)),
-                            };
-                            match str::from_utf8(&buf[..len]) {
-                                Ok(val) => if parse_statsd(
-                                    val,
-                                    &mut metrics,
-                                    &basic_metric,
-                                    &parse_config,
-                                ) {
-                                    for m in metrics.drain(..) {
-                                        send(&mut chans, metric::Event::new_telemetry(m));
-                                    }
-                                    STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
-                                } else {
-                                    STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
-                                    error!("BAD PACKET: {:?}", val);
-                                },
-                                Err(e) => {
-                                    error!("Payload not valid UTF-8: {:?}", e);
+                        let (len, _) = match socket.recv_from(&mut buf) {
+                            Ok(r) => r,
+                            Err(e) => panic!(format!(
+                                "Could not read UDP socket with error {:?}",
+                                e
+                            )),
+                        };
+                        match str::from_utf8(&buf[..len]) {
+                            Ok(val) => if parse_statsd(
+                                val,
+                                &mut metrics,
+                                &basic_metric,
+                                &parse_config,
+                            ) {
+                                for m in metrics.drain(..) {
+                                    send(&mut chans, metric::Event::new_telemetry(m));
                                 }
+                                STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
+                            } else {
+                                STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
+                                error!("BAD PACKET: {:?}", val);
+                            },
+                            Err(e) => {
+                                error!("Payload not valid UTF-8: {:?}", e);
                             }
                         }
                     }
                 }
-            Err(e) =>
-                panic!(format!("Failed during poll {:?}", e)),
+            },
+            Err(e) => panic!(format!("Failed during poll {:?}", e)),
         }
-    } //loop
-} //handle_udp
+    } // loop
+} // handle_udp
 
 impl Source for Statsd {
     fn run(&mut self, poll: mio::Poll) {
         let addrs = (self.host.as_str(), self.port).to_socket_addrs();
         match addrs {
             Ok(ips) => {
-                let mut conns: slab::Slab<Conn> = slab::Slab::with_capacity(token_to_idx(&constants::SYSTEM));
+                let mut conns: slab::Slab<Conn> =
+                    slab::Slab::with_capacity(token_to_idx(&constants::SYSTEM));
                 for addr in ips {
-                    let socket = mio::net::UdpSocket::bind(&addr).expect("Unable to bind to UDP socket");
+                    let socket = mio::net::UdpSocket::bind(&addr)
+                        .expect("Unable to bind to UDP socket");
                     let conn = Conn {
                         sock: socket,
                         token: None,
@@ -190,7 +193,8 @@ impl Source for Statsd {
                         &conns[idx].sock,
                         token,
                         mio::Ready::readable(),
-                        mio::PollOpt::edge()).unwrap();
+                        mio::PollOpt::edge(),
+                    ).unwrap();
                 }
 
                 let chans = self.chans.clone();

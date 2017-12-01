@@ -2,20 +2,20 @@ extern crate mio;
 
 use super::Source;
 use byteorder::{BigEndian, ReadBytesExt};
+use constants;
 use hopper;
 use metric;
 use protobuf;
 use protocols::native::{AggregationMethod, Payload};
 use std::collections::HashMap;
 use std::io;
-use std::sync;
 use std::io::Read;
 use std::net::ToSocketAddrs;
 use std::str;
-use constants;
-use util;
+use std::sync;
 use thread;
 use thread::Stoppable;
+use util;
 
 /// The native source
 ///
@@ -80,31 +80,30 @@ fn handle_tcp(
     listener_map: HashMap<mio::Token, mio::net::TcpListener>,
     poller: mio::Poll,
 ) {
-    let mut stream_handlers : Vec<thread::ThreadHandle> = Vec::new();
+    let mut stream_handlers: Vec<thread::ThreadHandle> = Vec::new();
     loop {
         let mut events = mio::Events::with_capacity(1024);
-        match poller.poll(& mut events, None) {
-            Err(e) =>
-                panic!(format!("Failed during poll {:?}", e)),
-            Ok(_num_events) => {
-                for event in events {
-                    match event.token() {
-                        constants::SYSTEM => {
-                            for handler in stream_handlers {
-                                handler.shutdown();
-                            }
-                            return;
+        match poller.poll(&mut events, None) {
+            Err(e) => panic!(format!("Failed during poll {:?}", e)),
+            Ok(_num_events) => for event in events {
+                match event.token() {
+                    constants::SYSTEM => {
+                        for handler in stream_handlers {
+                            handler.shutdown();
                         }
-                        listener_token => {
-                            let listener = &listener_map[&listener_token];
-                            spawn_stream_handlers(chans.clone(),
-                                                  sync::Arc::clone(&tags),
-                                                  &listener,
-                                                  &mut stream_handlers)
-                        }
+                        return;
+                    }
+                    listener_token => {
+                        let listener = &listener_map[&listener_token];
+                        spawn_stream_handlers(
+                            chans.clone(),
+                            sync::Arc::clone(&tags),
+                            &listener,
+                            &mut stream_handlers,
+                        )
                     }
                 }
-            }
+            },
         }
     }
 }
@@ -112,28 +111,26 @@ fn handle_tcp(
 fn spawn_stream_handlers(
     chans: util::Channel,
     tags: sync::Arc<metric::TagMap>,
-    listener : & mio::net::TcpListener,
-    stream_handlers : &mut Vec<thread::ThreadHandle>,
+    listener: &mio::net::TcpListener,
+    stream_handlers: &mut Vec<thread::ThreadHandle>,
 ) -> () {
     loop {
         match listener.accept() {
             Ok((stream, _addr)) => {
-
                 let rtags = sync::Arc::clone(&tags);
                 let rchans = chans.clone();
 
                 let new_stream = thread::spawn(move |poller| {
-                    poller.register(
-                        &stream,
-                        mio::Token(0),
-                        mio::Ready::readable(),
-                        mio::PollOpt::edge()).unwrap();
+                    poller
+                        .register(
+                            &stream,
+                            mio::Token(0),
+                            mio::Ready::readable(),
+                            mio::PollOpt::edge(),
+                        )
+                        .unwrap();
 
-                    handle_stream(
-                        rchans,
-                        rtags,
-                        poller,
-                        stream);
+                    handle_stream(rchans, rtags, poller, stream);
                 });
                 stream_handlers.push(new_stream);
             }
@@ -141,9 +138,9 @@ fn spawn_stream_handlers(
             Err(e) => match e.kind() {
                 io::ErrorKind::WouldBlock => {
                     break;
-                },
-                _ => unimplemented!()
-            }
+                }
+                _ => unimplemented!(),
+            },
         }
     }
 }
@@ -157,21 +154,18 @@ fn handle_stream(
     let mut reader = io::BufReader::new(stream);
     loop {
         let mut events = mio::Events::with_capacity(1024);
-        match poller.poll(& mut events, None) {
-            Err(e) =>
-                panic!(format!("Failed during poll {:?}", e)),
-            Ok(_num_events) => {
-                for event in events {
-                    match event.token() {
-                        constants::SYSTEM => return,
-                        _stream_token => {
-                            let rchans = chans.clone();
-                            let rtags = sync::Arc::clone(&tags);
-                            handle_stream_payload(rchans, rtags, &mut reader);
-                        }
+        match poller.poll(&mut events, None) {
+            Err(e) => panic!(format!("Failed during poll {:?}", e)),
+            Ok(_num_events) => for event in events {
+                match event.token() {
+                    constants::SYSTEM => return,
+                    _stream_token => {
+                        let rchans = chans.clone();
+                        let rtags = sync::Arc::clone(&tags);
+                        handle_stream_payload(rchans, rtags, &mut reader);
                     }
                 }
-            }
+            },
         }
     }
 }
@@ -263,15 +257,19 @@ impl Source for NativeServer {
             .expect("unable to make socket addr")
             .collect();
         let listener_token = mio::Token(0);
-        let mut listener_map: HashMap<mio::Token, mio::net::TcpListener> = HashMap::new();
+        let mut listener_map: HashMap<mio::Token, mio::net::TcpListener> =
+            HashMap::new();
         let listener = mio::net::TcpListener::bind(srv.first().unwrap())
             .expect("Unable to bind to TCP socket");
 
-        poller.register(
-            &listener,
-            listener_token,
-            mio::Ready::readable(),
-            mio::PollOpt::edge()).unwrap();
+        poller
+            .register(
+                &listener,
+                listener_token,
+                mio::Ready::readable(),
+                mio::PollOpt::edge(),
+            )
+            .unwrap();
 
         listener_map.insert(listener_token, listener);
 

@@ -2,21 +2,20 @@
 
 extern crate mio;
 
-use std::thread;
 use constants;
+use std::thread;
 
 pub type Poll = mio::Poll;
 pub type Events = mio::Events;
 
 /// Mio enabled thread state.
 pub struct ThreadHandle {
-
     /// JoinHandle for the executing thread.
-    pub handle : thread::JoinHandle<()>,
+    pub handle: thread::JoinHandle<()>,
 
     /// Readiness signal used to notify the given thread when an event is ready
     /// to be consumed on the SYSTEM channel.
-    readiness : mio::SetReadiness,
+    readiness: mio::SetReadiness,
 }
 
 /// Trait for stoppable processes.
@@ -39,29 +38,35 @@ impl Stoppable for ThreadHandle {
     /// Note - It is the responsability of the developer to ensure
     /// that thread logic polls for events occuring on the SYSTEM token.
     fn shutdown(self) {
-        self.readiness.set_readiness(mio::Ready::readable()).expect("Failed to notify child thread of shutdown!");
+        self.readiness
+            .set_readiness(mio::Ready::readable())
+            .expect("Failed to notify child thread of shutdown!");
         self.join();
     }
 }
 
 /// Spawns a new thread executing the provided closure.
-pub fn spawn<F>(f: F) -> ThreadHandle where
-     F: Send + 'static + FnOnce(mio::Poll) -> ()
+pub fn spawn<F>(f: F) -> ThreadHandle
+where
+    F: Send + 'static + FnOnce(mio::Poll) -> (),
 {
-        let poller = mio::Poll::new().unwrap();
-        let (registration, readiness) = mio::Registration::new2();
+    let poller = mio::Poll::new().unwrap();
+    let (registration, readiness) = mio::Registration::new2();
 
-        ThreadHandle {
-            readiness: readiness,
+    ThreadHandle {
+        readiness: readiness,
 
-            handle: thread::spawn(move || {
-                poller.register(
+        handle: thread::spawn(move || {
+            poller
+                .register(
                     &registration,
                     constants::SYSTEM,
                     mio::Ready::readable(),
-                    mio::PollOpt::edge()).expect("Failed to register system pipe");
+                    mio::PollOpt::edge(),
+                )
+                .expect("Failed to register system pipe");
 
-                f(poller);
-            }),
-        }
+            f(poller);
+        }),
+    }
 }

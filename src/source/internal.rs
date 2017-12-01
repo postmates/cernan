@@ -112,13 +112,13 @@ impl Source for Internal {
         let slp = std::time::Duration::from_millis(1_000);
         loop {
             let mut events = mio::Events::with_capacity(1024);
-            match poll.poll(& mut events, Some(slp)) {
+            match poll.poll(&mut events, Some(slp)) {
                 Err(_) => error!("Failed to poll for system events"),
                 // Internal source doesn't register any external evented sources.
                 // Any event must be a system event which, at the time of this writing,
                 // can only be a shutdown event.
                 Ok(num_events) if num_events > 0 => return,
-                Ok(_) => { 
+                Ok(_) => {
                     if !self.chans.is_empty() {
                         // source::graphite
                         atom_non_zero_telem!(

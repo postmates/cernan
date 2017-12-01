@@ -1,20 +1,20 @@
 use super::Source;
 extern crate mio;
-use metric;
 use constants;
-use std;
+use metric;
 use protocols::graphite::parse_graphite;
+use std;
+use std::collections::HashMap;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::net::ToSocketAddrs;
 use std::str;
 use std::sync;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use util;
 use thread;
 use thread::Stoppable;
+use util;
 use util::send;
-use std::collections::HashMap;
 
 lazy_static! {
     pub static ref GRAPHITE_NEW_PEER: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
@@ -76,8 +76,8 @@ impl Graphite {
 fn spawn_stream_handlers(
     chans: util::Channel,
     tags: sync::Arc<metric::TagMap>,
-    listener : & mio::net::TcpListener,
-    stream_handlers : &mut Vec<thread::ThreadHandle>,
+    listener: &mio::net::TcpListener,
+    stream_handlers: &mut Vec<thread::ThreadHandle>,
 ) -> () {
     loop {
         match listener.accept() {
@@ -85,17 +85,16 @@ fn spawn_stream_handlers(
                 let rchans = chans.clone();
                 let rtags = sync::Arc::clone(&tags);
                 let new_stream = thread::spawn(move |poller| {
-                    poller.register(
-                        &stream,
-                        mio::Token(0),
-                        mio::Ready::readable(),
-                        mio::PollOpt::edge()).unwrap();
+                    poller
+                        .register(
+                            &stream,
+                            mio::Token(0),
+                            mio::Ready::readable(),
+                            mio::PollOpt::edge(),
+                        )
+                        .unwrap();
 
-                    handle_stream(
-                        rchans,
-                        rtags,
-                        poller,
-                        stream);
+                    handle_stream(rchans, rtags, poller, stream);
                 });
                 stream_handlers.push(new_stream);
             }
@@ -103,11 +102,10 @@ fn spawn_stream_handlers(
             Err(e) => match e.kind() {
                 std::io::ErrorKind::WouldBlock => {
                     break;
-                },
-                _ => unimplemented!()
-            }
+                }
+                _ => unimplemented!(),
+            },
         };
-
     }
 }
 
@@ -126,37 +124,38 @@ fn handle_stream(
 
     loop {
         let mut events = mio::Events::with_capacity(1024);
-        match poller.poll(& mut events, None) {
-            Err(e) =>
-                panic!(format!("Failed during poll {:?}", e)),
-            Ok(_num_events) => {
-                for event in events {
-                    match event.token() {
-                        constants::SYSTEM => return,
-                        _stream_token => {
-                            if let Ok(len) = line_reader.read_line(&mut line) {
-                                if len > 0 {
-                                    if parse_graphite(&line, &mut res, &basic_metric) {
-                                        assert!(!res.is_empty());
-                                        GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
-                                        GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
-                                        for m in res.drain(..) {
-                                            send(&mut chans, metric::Event::Telemetry(sync::Arc::new(Some(m))));
-                                        }
-                                        line.clear();
-                                    } else {
-                                        GRAPHITE_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
-                                        error!("bad packet: {:?}", line);
-                                        line.clear();
-                                    }
-                                } else {
-                                    break;
+        match poller.poll(&mut events, None) {
+            Err(e) => panic!(format!("Failed during poll {:?}", e)),
+            Ok(_num_events) => for event in events {
+                match event.token() {
+                    constants::SYSTEM => return,
+                    _stream_token => if let Ok(len) = line_reader.read_line(&mut line)
+                    {
+                        if len > 0 {
+                            if parse_graphite(&line, &mut res, &basic_metric) {
+                                assert!(!res.is_empty());
+                                GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
+                                GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
+                                for m in res.drain(..) {
+                                    send(
+                                        &mut chans,
+                                        metric::Event::Telemetry(
+                                            sync::Arc::new(Some(m)),
+                                        ),
+                                    );
                                 }
+                                line.clear();
+                            } else {
+                                GRAPHITE_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
+                                error!("bad packet: {:?}", line);
+                                line.clear();
                             }
+                        } else {
+                            break;
                         }
-                    }
+                    },
                 }
-            }
+            },
         }
     }
 }
@@ -167,12 +166,11 @@ fn handle_tcp(
     socket_map: HashMap<mio::Token, mio::net::TcpListener>,
     poll: mio::Poll,
 ) {
-    let mut stream_handlers : Vec<thread::ThreadHandle> = Vec::new();
+    let mut stream_handlers: Vec<thread::ThreadHandle> = Vec::new();
     loop {
         let mut events = mio::Events::with_capacity(1024);
-        match poll.poll(& mut events, None) {
-            Err(e) =>
-                panic!(format!("Failed during poll {:?}", e)),
+        match poll.poll(&mut events, None) {
+            Err(e) => panic!(format!("Failed during poll {:?}", e)),
             Ok(_num_events) => {
                 for event in events {
                     match event.token() {
@@ -184,10 +182,12 @@ fn handle_tcp(
                         }
                         listener_token => {
                             let listener = &socket_map[&listener_token];
-                            spawn_stream_handlers(chans.clone(), // TODO: do not clone, make an Arc
-                                                  sync::Arc::clone(&tags),
-                                                  listener,
-                                                  &mut stream_handlers);
+                            spawn_stream_handlers(
+                                chans.clone(), // TODO: do not clone, make an Arc
+                                sync::Arc::clone(&tags),
+                                listener,
+                                &mut stream_handlers,
+                            );
                         }
                     }
                 }
@@ -202,22 +202,31 @@ impl Source for Graphite {
         match addrs {
             Ok(ips) => {
                 let ips: Vec<_> = ips.collect();
-                let mut socket_map : HashMap<mio::Token, mio::net::TcpListener> = HashMap::new();
+                let mut socket_map: HashMap<
+                    mio::Token,
+                    mio::net::TcpListener,
+                > = HashMap::new();
                 for (i, addr) in ips.iter().enumerate() {
                     let token = mio::Token(i);
-                    let listener =
-                        mio::net::TcpListener::bind(&addr).expect("Unable to bind to TCP socket");
+                    let listener = mio::net::TcpListener::bind(&addr)
+                        .expect("Unable to bind to TCP socket");
                     info!("registered listener for {:?} {}", addr, self.port);
                     poll.register(
                         &listener,
                         token,
                         mio::Ready::readable(),
-                        mio::PollOpt::edge()).unwrap();
+                        mio::PollOpt::edge(),
+                    ).unwrap();
 
                     socket_map.insert(token, listener);
                 }
 
-                handle_tcp(self.chans.clone(), sync::Arc::clone(&self.tags), socket_map, poll);
+                handle_tcp(
+                    self.chans.clone(),
+                    sync::Arc::clone(&self.tags),
+                    socket_map,
+                    poll,
+                );
             }
             Err(e) => {
                 info!(
