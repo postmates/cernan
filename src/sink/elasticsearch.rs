@@ -200,15 +200,10 @@ impl Sink for Elasticsearch {
                         Ok(item) => {
                             let uuid = uuid::Uuid::parse_str(item.id())
                                 .expect("catastrophic error, TID not a UUID");
-                            match self.buffer
+                            if let Ok(idx) = self.buffer
                                 .binary_search_by(|probe| probe.uuid.cmp(&uuid))
                             {
-                                Ok(idx) => {
-                                    self.buffer.remove(idx);
-                                }
-                                Err(_) => {
-                                    unreachable!();
-                                }
+                                self.buffer.remove(idx);
                             }
                             ELASTIC_RECORDS_TOTAL_DELIVERED
                                 .fetch_add(1, Ordering::Relaxed);
@@ -216,17 +211,12 @@ impl Sink for Elasticsearch {
                         Err(item) => {
                             let uuid = uuid::Uuid::parse_str(item.id())
                                 .expect("catastrophic error, TID not a UUID");
-                            match self.buffer
+                            if let Ok(idx) = self.buffer
                                 .binary_search_by(|probe| probe.uuid.cmp(&uuid))
                             {
-                                Ok(idx) => {
-                                    self.buffer[idx].attempts += 1;
-                                    if self.buffer[idx].attempts > self.delivery_attempt_limit {
-                                        self.buffer.remove(idx);
-                                    }
-                                }
-                                Err(_) => {
-                                    unreachable!();
+                                self.buffer[idx].attempts += 1;
+                                if self.buffer[idx].attempts > self.delivery_attempt_limit {
+                                    self.buffer.remove(idx);
                                 }
                             }
                             ELASTIC_RECORDS_TOTAL_FAILED
