@@ -11,7 +11,7 @@ pub type Header = tiny_http::Header;
 pub type HeaderField = tiny_http::HeaderField;
 
 /// Simple single threaded HTTP request handler.
-pub trait Handler {
+pub trait Handler: Sync + Send {
     fn handle(&self, request: Request) -> ();
 }
 
