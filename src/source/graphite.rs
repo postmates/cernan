@@ -12,7 +12,7 @@ use std::sync;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
 use thread;
-use thread::{ThreadHandle,Stoppable};
+use thread::Stoppable;
 use util::send;
 use std::collections::HashMap;
 

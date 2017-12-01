@@ -10,18 +10,18 @@
 //!
 //! All points are retained indefinitely in their aggregation.
 
-use flate2::Compression;
+// use flate2::Compression;
 use flate2::write::GzEncoder;
 use metric;
 use metric::{AggregationMethod, TagMap};
-use protobuf::Message;
-use protobuf::repeated::RepeatedField;
-use protocols::prometheus::*;
-use quantiles::histogram::Bound;
+// use protobuf::Message;
+// use protobuf::repeated::RepeatedField;
+// use protocols::prometheus::*;
+// use quantiles::histogram::Bound;
 use sink::{Sink, Valve};
-use std::collections::HashSet;
-use std::f64;
-use std::io;
+// use std::collections::HashSet;
+// use std::f64;
+// use std::io;
 use std::io::Write;
 use std::str;
 use std::sync;
@@ -31,6 +31,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 use time;
 use std::time;
+// use std::time;
 use std::option;
 
 use thread::Stoppable;
@@ -68,7 +69,7 @@ pub struct Prometheus {
     age_threshold: Option<u64>,
     // `http_srv` is never used but we must keep it in this struct to avoid the
     // listening server being dropped
-    http_srv: http::Server<PrometheusHandler>,
+    http_srv: http::Server, 
 }
 
 /// The configuration for Prometheus sink
