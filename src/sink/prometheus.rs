@@ -403,29 +403,29 @@ impl http::Handler for PrometheusHandler {
                 // infinite number of MIMEs that'll come right on in. We'll
                 // just be monsters and assume if you aren't asking for protobuf you're
                 // asking for plaintext.
-                let default_header =
-                    http::Header::from_bytes(&"Accept"[..], &"text/plain"[..])
-                        .unwrap();
-                let accepted: Vec<&str> = request
-                    .headers()
-                    .iter()
-                    .find(|x| {
-                        x.field == http::HeaderField::from_bytes("Accept").unwrap()
-                    })
-                    .unwrap_or(&default_header)
-                    .value
-                    .as_str()
-                    .split(";")
-                    .collect();
+                //let default_header =
+                //    http::Header::from_bytes(&"Accept"[..], &"text/plain"[..])
+                //        .unwrap();
+                //let accepted: Vec<&str> = request
+                //    .headers()
+                //    .iter()
+                //    .find(|x| {
+                //        x.field == http::HeaderField::from_bytes("Accept").unwrap()
+                //    })
+                //    .unwrap_or(&default_header)
+                //    .value
+                //    .as_str()
+                //    .split(";")
+                //    .collect();
 
 
-                let mut accept_proto = false;
-                for accepted_type in &accepted {
-                    if accepted_type.contains("application/vnd.google.protobuf") {
-                        accept_proto = true;
-                        break;
-                    }
-                }
+                //let mut accept_proto = false;
+                //for accepted_type in &accepted {
+                //    if accepted_type.contains("application/vnd.google.protobuf") {
+                //        accept_proto = true;
+                //        break;
+                //    }
+                //}
                 let reportable = aggr.reportable();
                 let now = Instant::now();
                 let mut buffer = Vec::new();
@@ -436,24 +436,31 @@ impl http::Handler for PrometheusHandler {
                     + (f64::from(elapsed.subsec_nanos()) / 100_000.0);
                 PROMETHEUS_RESPONSE_DELAY_SUM
                     .fetch_add(us as usize, Ordering::Relaxed);
-                // if accept_proto {
-                //     PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
-                // } else {
-                // };
                 let content_encoding = "gzip";
                 let content_type = "text/plain; version=0.0.4";
                 let headers = [
-                    http::Header::from_bytes(&b"Content-Type"[..], content_type).unwrap(),
-                    http::Header::from_bytes(&b"Content-Encoding"[..], content_type).unwrap(),
+                   http::Header::from_bytes(&b"Content-Type"[..], content_type).unwrap(),
+                   http::Header::from_bytes(&b"Content-Encoding"[..], content_encoding).unwrap(),
                 ];
-                Ok(
+
+                let response =
                     http::Response::new(
-                        200,
-                        headers.to_vec(),
-                        &buffer[..],
-                        Some(encoded.len()),
-                        None
-                    ))
+                       http::StatusCode::from(200),
+                       headers.to_vec(),
+                       &buffer[..],
+                       Some(buffer.len()),
+                       None
+                   );
+
+                match request.respond(response) {
+                    Ok(_) => {
+                        PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
+                    }
+
+                    Err(e) => {
+                        panic!(format!("Failed to send prometheus response! {:?}", e));
+                    }
+                };
             }
         }
     }
@@ -734,7 +741,7 @@ fn write_text<W>(aggrs: Iter, buffer: W) -> io::Result<W> where W: Write {
                        enc.write_all(v.as_bytes())?;
                    }
                    enc.write_all(b"\"} ")?;
-    
+
     enc.write_all(value.query(*q).unwrap().to_string().as_bytes())?;
     enc.write_all(b"\n")?;            }
                enc.write_all(sanitized_name.as_bytes())?;

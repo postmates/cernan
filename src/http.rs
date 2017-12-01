@@ -13,6 +13,8 @@ pub type Response<'a> = tiny_http::Response<&'a [u8]>;
 pub type Header = tiny_http::Header;
 /// HTTP header field.  Alias of tiny_http::HeaderField.
 pub type HeaderField = tiny_http::HeaderField;
+/// HTTP status code.  Alias of tiny_http::StatusCode.
+pub type StatusCode = tiny_http::StatusCode;
 
 /// Simple single threaded HTTP request handler.
 pub trait Handler: Sync + Send {
@@ -29,8 +31,8 @@ pub struct Server {
 
 fn http_server<H>(
     poller: thread::Poll,
-    _tiny_http_server: tiny_http::Server,
-    _handler: H,
+    tiny_http_server: tiny_http::Server,
+    handler: H,
 ) -> ()
 where
     H: Handler,
@@ -38,26 +40,29 @@ where
     loop {
         let mut events = thread::Events::with_capacity(1024);
         match poller.poll(&mut events, Some(std::time::Duration::from_millis(5))) {
-            Ok(_) => {
+            Ok(num_events) if num_events > 0 => {
                 break;
+            }
+
+            Ok(_) => {
+                match tiny_http_server.recv_timeout(std::time::Duration::from_millis(1000))
+                {
+                    Ok(maybe_a_request) => {
+                        if let Some(request) = maybe_a_request {
+                            handler.handle(request);
+                        }
+                    }
+
+                    Err(e) => {
+                        panic!(format!("Failed during recv_timeout {:?}", e));
+                    }
+                }
             }
 
             Err(e) => {
                 panic!(format!("Failed during poll {:?}", e));
             }
-        }
-
-        // match tiny_http_server.recv_timeout(std::time::Duration::from_millis(1000))
-        // {     Ok(maybe_a_request) => {
-        //         if let Some(request) = maybe_a_request {
-        //             handler.handle(request);
-        //         }
-        //     }
-
-        //     Err(e) => {
-        //         panic!(format!("Failed during recv_timeout {:?}", e));
-        //     }
-        // }
+        };
     }
 }
 
