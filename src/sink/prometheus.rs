@@ -631,7 +631,7 @@ fn fmt_tags(tags: &TagMap, s: &mut GzEncoder<Vec<u8>>) -> () {
     }
 }
 
-fn write_text(aggrs: Iter) -> option::Option<http::Response> {
+fn write_text(_aggrs: Iter) -> option::Option<http::Response> {
     unimplemented!();
     // let mut seen: HashSet<String> = HashSet::new();
     // let mut enc = GzEncoder::new(Vec::with_capacity(1024), Compression::Fast);

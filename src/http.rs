@@ -23,8 +23,8 @@ pub struct Server {
 
 fn http_server<H>(
     poller: thread::Poll,
-    tiny_http_server: tiny_http::Server,
-    handler: H,
+    _tiny_http_server: tiny_http::Server,
+    _handler: H,
 ) -> ()
 where
     H: Handler,
