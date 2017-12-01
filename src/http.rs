@@ -57,9 +57,7 @@ where
 
 /// Single threaded HTTP server implementation.
 impl Server {
-    pub fn new<H>(host_port: String, handler: H) -> Self
-    where
-        H: Handler,
+    pub fn new<H: Handler + 'static>(host_port: String, handler: H) -> Self
     {
         Server {
             thread: thread::spawn(move |poller| {
