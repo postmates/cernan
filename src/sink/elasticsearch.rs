@@ -13,7 +13,7 @@ use std::error::Error;
 use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use uuid::Uuid;
+use uuid;
 
 lazy_static! {
     /// Total deliveries made
@@ -94,7 +94,7 @@ impl Default for ElasticsearchConfig {
 ///
 /// Refer to the documentation on `ElasticsearchConfig` for more details.
 pub struct Elasticsearch {
-    buffer: Vec<LogLine>,
+    buffer: Vec<(uuid::Uuid, LogLine)>,
     secure: bool,
     host: String,
     port: usize,
@@ -123,10 +123,11 @@ impl Elasticsearch {
         assert!(!self.buffer.is_empty());
         use serde_json::{to_string, Value};
         for m in &self.buffer {
-            let uuid = Uuid::new_v4().hyphenated().to_string();
+            let uuid = m.0.hyphenated().to_string();
+            let line = &m.1;
             let header: Value = json!({
                 "index": {
-                    "_index" : idx(&self.index_prefix, m.time),
+                    "_index" : idx(&self.index_prefix, line.time),
                     "_type" : self.index_type.clone(),
                     "_id" : uuid.clone(),
                 }
@@ -135,15 +136,15 @@ impl Elasticsearch {
             buffer.push('\n');
             let mut payload: Value = json!({
                 "uuid": uuid,
-                "path": m.path.clone(),
-                "payload": m.value.clone(),
-                "timestamp": format_time(m.time),
+                "path": line.path.clone(),
+                "payload": line.value.clone(),
+                "timestamp": format_time(line.time),
             });
             let obj = payload.as_object_mut().unwrap();
-            for &(ref k, ref v) in m.tags.iter() {
+            for &(ref k, ref v) in line.tags.iter() {
                 obj.insert(k.clone(), Value::String(v.clone()));
             }
-            for &(ref k, ref v) in m.fields.iter() {
+            for &(ref k, ref v) in line.fields.iter() {
                 obj.insert(k.clone(), Value::String(v.clone()));
             }
             buffer.push_str(&to_string(&obj).unwrap());
@@ -169,7 +170,6 @@ impl Sink for Elasticsearch {
 
         let mut buffer = String::with_capacity(4048);
         self.bulk_body(&mut buffer);
-        debug!("BODY: {:?}", buffer);
         let bulk_resp: Result<BulkResponse> = client
             .request(BulkRequest::new(buffer))
             .send()
@@ -178,11 +178,22 @@ impl Sink for Elasticsearch {
 
         match bulk_resp {
             Ok(bulk) => {
-                self.buffer.clear();
                 ELASTIC_RECORDS_DELIVERY.fetch_add(1, Ordering::Relaxed);
                 for item in bulk.iter() {
                     match item {
-                        Ok(_item) => {
+                        Ok(item) => {
+                            let uuid = uuid::Uuid::parse_str(item.id())
+                                .expect("catastrophic error, TID not a UUID");
+                            match self.buffer
+                                .binary_search_by(|probe| probe.0.cmp(&uuid))
+                            {
+                                Ok(idx) => {
+                                    self.buffer.remove(idx);
+                                }
+                                Err(_) => {
+                                    unreachable!();
+                                }
+                            }
                             ELASTIC_RECORDS_TOTAL_DELIVERED
                                 .fetch_add(1, Ordering::Relaxed);
                         }
@@ -286,7 +297,8 @@ impl Sink for Elasticsearch {
 
     fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
         let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
-        self.buffer.push(line);
+        let uuid = uuid::Uuid::new_v4();
+        self.buffer.push((uuid, line));
     }
 
     fn valve_state(&self) -> Valve {
