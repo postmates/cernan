@@ -5,6 +5,9 @@ extern crate mio;
 use std::thread;
 use constants;
 
+pub type Poll = mio::Poll;
+pub type Events = mio::Events;
+
 /// Mio enabled thread state.
 pub struct ThreadHandle {
 
@@ -16,10 +19,18 @@ pub struct ThreadHandle {
     readiness : mio::SetReadiness,
 }
 
-impl ThreadHandle {
+/// Trait for stoppable processes.
+pub trait Stoppable {
+    /// Join the given process, blocking until it exits.
+    fn join(self) -> ();
 
+    /// Gracefully shutdown the process, blocking until exit.
+    fn shutdown(self) -> ();
+}
+
+impl Stoppable for ThreadHandle {
     /// Join the given Thread, blocking until it exits.
-    pub fn join(self) {
+    fn join(self) {
         self.handle.join().expect("Failed to join child thread!");
     }
 
@@ -27,7 +38,7 @@ impl ThreadHandle {
     ///
     /// Note - It is the responsability of the developer to ensure
     /// that thread logic polls for events occuring on the SYSTEM token.
-    pub fn shutdown(self) {
+    fn shutdown(self) {
         self.readiness.set_readiness(mio::Ready::readable()).expect("Failed to notify child thread of shutdown!");
         self.join();
     }

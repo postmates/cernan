@@ -45,6 +45,7 @@ url = "1.6"
 uuid = {version = "0.5", features = ["v4"]}
 chan-signal = "0.3.1"
 mio = "0.6.11"
+tiny_http = "0.5.8"
 
 [dev-dependencies]
 tempdir = "0.3"

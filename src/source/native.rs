@@ -15,6 +15,7 @@ use std::str;
 use constants;
 use util;
 use thread;
+use thread::Stoppable;
 
 /// The native source
 ///

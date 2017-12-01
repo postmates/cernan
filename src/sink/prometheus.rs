@@ -12,8 +12,6 @@
 
 use flate2::Compression;
 use flate2::write::GzEncoder;
-use hyper::header::{ContentEncoding, Encoding};
-use hyper::server::{Handler, Listening, Request, Response, Server};
 use metric;
 use metric::{AggregationMethod, TagMap};
 use protobuf::Message;
@@ -32,6 +30,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 use time;
+use std::time;
+use std::option;
+
+use thread::Stoppable;
+use http;
 
 lazy_static! {
     /// Total reportable metrics
@@ -65,7 +68,7 @@ pub struct Prometheus {
     age_threshold: Option<u64>,
     // `http_srv` is never used but we must keep it in this struct to avoid the
     // listening server being dropped
-    http_srv: Listening,
+    http_srv: http::Server<PrometheusHandler>,
 }
 
 /// The configuration for Prometheus sink
@@ -95,10 +98,6 @@ impl Default for PrometheusConfig {
             age_threshold: None,
         }
     }
-}
-
-struct SenderHandler {
-    aggr: sync::Arc<Mutex<Option<PrometheusAggr>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -386,12 +385,14 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-impl Handler for SenderHandler {
-    fn handle(&self, req: Request, res: Response) {
+struct PrometheusHandler {
+    aggr: sync::Arc<Mutex<Option<PrometheusAggr>>>,
+}
+
+impl http::Handler for PrometheusHandler {
+    fn handle(&self, request:http::Request) -> () {
         match *self.aggr.lock().unwrap() {
-            None => {
-                return;
-            }
+            None => {}
             Some(ref aggr) => {
                 PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
                 PROMETHEUS_AGGR_REMAINING.store(aggr.count(), Ordering::Relaxed);
@@ -402,17 +403,19 @@ impl Handler for SenderHandler {
                 // infinite number of MIMEs that'll come right on in. We'll
                 // just be monsters and assume if you aren't asking for protobuf you're
                 // asking for plaintext.
-                let accept: Vec<&str> = req.headers
-                    .get_raw("accept")
-                    .unwrap_or(&[])
+                let default_header = http::Header::from_bytes(&"Accept"[..], &"text/plain"[..]).unwrap();
+                let accepted: Vec<&str>= request.headers()
                     .iter()
-                    .map(|x| str::from_utf8(x))
-                    .filter(|x| x.is_ok())
-                    .map(|x| x.unwrap())
+                    .find(|x| x.field == http::HeaderField::from_bytes("Accept").unwrap())
+                    .unwrap_or(&default_header)
+                    .value.as_str()
+                    .split(";")
                     .collect();
+
+
                 let mut accept_proto = false;
-                for hdr in &accept {
-                    if hdr.contains("application/vnd.google.protobuf;") {
+                for accepted_type in &accepted {
+                    if accepted_type.contains("application/vnd.google.protobuf") {
                         accept_proto = true;
                         break;
                     }
@@ -446,15 +449,12 @@ impl Prometheus {
     /// Create a new prometheus sink
     ///
     /// Please see documentation on `PrometheusConfig` for more details.
-    pub fn new(config: &PrometheusConfig) -> Prometheus {
+    pub fn new(config: &PrometheusConfig) -> Self {
         let aggrs = PrometheusAggr::new(config.capacity_in_seconds);
         let thrd_aggrs = sync::Arc::new(sync::Mutex::new(None));
         let srv_aggrs = sync::Arc::clone(&thrd_aggrs);
-        let listener = Server::http((config.host.as_str(), config.port))
-            .unwrap()
-            .handle_threads(SenderHandler { aggr: srv_aggrs }, 1)
-            .unwrap();
 
+        let host_port = format!("{}:{}", config.host.as_str(), config.port.to_string());
         Prometheus {
             aggrs: aggrs,
             thrd_aggr: thrd_aggrs,
@@ -464,131 +464,131 @@ impl Prometheus {
     }
 }
 
-fn write_binary(aggrs: Iter, mut res: Response) -> io::Result<()> {
-    res.headers_mut().set_raw(
-        "content-type",
-        vec![
-            b"application/vnd.google.protobuf; \
-                       proto=io.prometheus.client.MetricFamily; encoding=delimited"
-                .to_vec(),
-        ],
-    );
-    let mut res = res.start()?;
-    for value in aggrs {
-        let sanitized_name: String = sanitize(&value.name);
-        match value.kind() {
-            AggregationMethod::Sum => if let Some(v) = value.sum() {
-                let mut metric_family = MetricFamily::new();
-                metric_family.set_name(sanitized_name);
-                let mut metric = Metric::new();
-                let mut label_pairs = Vec::with_capacity(8);
-                for &(ref k, ref v) in value.tags.iter() {
-                    let mut lp = LabelPair::new();
-                    lp.set_name(k.clone());
-                    lp.set_value(v.clone());
-                    label_pairs.push(lp);
-                }
-                metric.set_label(RepeatedField::from_vec(label_pairs));
-                let mut counter = Counter::new();
-                counter.set_value(v);
-                metric.set_counter(counter);
-                metric_family.set_field_type(MetricType::COUNTER);
-                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family.write_length_delimited_to_writer(res.by_ref())?
-            },
-            AggregationMethod::Set => if let Some(v) = value.set() {
-                let mut metric_family = MetricFamily::new();
-                metric_family.set_name(sanitized_name);
-                let mut metric = Metric::new();
-                let mut label_pairs = Vec::with_capacity(8);
-                for &(ref k, ref v) in value.tags.iter() {
-                    let mut lp = LabelPair::new();
-                    lp.set_name(k.clone());
-                    lp.set_value(v.clone());
-                    label_pairs.push(lp);
-                }
-                metric.set_label(RepeatedField::from_vec(label_pairs));
-                let mut gauge = Gauge::new();
-                gauge.set_value(v);
-                metric.set_gauge(gauge);
-                metric_family.set_field_type(MetricType::GAUGE);
-                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family.write_length_delimited_to_writer(res.by_ref())?
-            },
-            AggregationMethod::Summarize => {
-                let mut metric_family = MetricFamily::new();
-                metric_family.set_name(sanitized_name);
-                let mut metric = Metric::new();
-                let mut label_pairs = Vec::with_capacity(8);
-                for &(ref k, ref v) in value.tags.iter() {
-                    let mut lp = LabelPair::new();
-                    lp.set_name(k.clone());
-                    lp.set_value(v.clone());
-                    label_pairs.push(lp);
-                }
-                metric.set_label(RepeatedField::from_vec(label_pairs));
-                let retained_count = value.count();
-                let retained_sum = value.samples_sum().unwrap_or(0.0);
-                let mut summary = Summary::new();
-                summary.set_sample_count((retained_count + value.count()) as u64);
-                if let Some(val) = value.samples_sum() {
-                    summary.set_sample_sum(retained_sum + val);
-                }
-                let mut quantiles = Vec::with_capacity(9);
-                for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-                    let mut quantile = Quantile::new();
-                    quantile.set_quantile(*q);
-                    quantile.set_value(value.query(*q).unwrap());
-                    quantiles.push(quantile);
-                }
-                summary.set_quantile(RepeatedField::from_vec(quantiles));
-                metric.set_summary(summary);
-                metric_family.set_field_type(MetricType::SUMMARY);
-                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family.write_length_delimited_to_writer(res.by_ref())?
-            }
-            AggregationMethod::Histogram => {
-                let mut metric_family = MetricFamily::new();
-                metric_family.set_name(sanitized_name);
-                let mut metric = Metric::new();
-                let mut label_pairs = Vec::with_capacity(8);
-                for &(ref k, ref v) in value.tags.iter() {
-                    let mut lp = LabelPair::new();
-                    lp.set_name(k.clone());
-                    lp.set_value(v.clone());
-                    label_pairs.push(lp);
-                }
-                metric.set_label(RepeatedField::from_vec(label_pairs));
-                let mut histogram = Histogram::new();
-                histogram.set_sample_count(value.count() as u64);
-                if let Some(val) = value.samples_sum() {
-                    histogram.set_sample_sum(val)
-                }
-                let mut buckets = Vec::with_capacity(16);
-                if let Some(bin_iter) = value.bins() {
-                    let mut cummulative: u64 = 0;
-                    for &(bound, val) in bin_iter {
-                        let bnd = match bound {
-                            Bound::Finite(bnd) => bnd,
-                            Bound::PosInf => f64::INFINITY,
-                        };
-                        cummulative += val as u64;
-                        let mut bucket = Bucket::new();
-                        bucket.set_cumulative_count(cummulative);
-                        bucket.set_upper_bound(bnd);
-                        buckets.push(bucket);
-                    }
-                }
-                histogram.set_bucket(RepeatedField::from_vec(buckets));
-                metric.set_histogram(histogram);
-                metric_family.set_field_type(MetricType::HISTOGRAM);
-                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family.write_length_delimited_to_writer(res.by_ref())?
-            }
-        }
-    }
-    res.end()
-}
+//fn write_binary(aggrs: Iter) -> io::Result<()> {
+//    res.headers_mut().set_raw(
+//        "content-type",
+//        vec![
+//            b"application/vnd.google.protobuf; \
+//                       proto=io.prometheus.client.MetricFamily; encoding=delimited"
+//                .to_vec(),
+//        ],
+//    );
+//    let mut res = tiny_http::Response::new();
+//    for value in aggrs {
+//        let sanitized_name: String = sanitize(&value.name);
+//        match value.kind() {
+//            AggregationMethod::Sum => if let Some(v) = value.sum() {
+//                let mut metric_family = MetricFamily::new();
+//                metric_family.set_name(sanitized_name);
+//                let mut metric = Metric::new();
+//                let mut label_pairs = Vec::with_capacity(8);
+//                for &(ref k, ref v) in value.tags.iter() {
+//                    let mut lp = LabelPair::new();
+//                    lp.set_name(k.clone());
+//                    lp.set_value(v.clone());
+//                    label_pairs.push(lp);
+//                }
+//                metric.set_label(RepeatedField::from_vec(label_pairs));
+//                let mut counter = Counter::new();
+//                counter.set_value(v);
+//                metric.set_counter(counter);
+//                metric_family.set_field_type(MetricType::COUNTER);
+//                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
+//                metric_family.write_length_delimited_to_writer(res.by_ref())?
+//            },
+//            AggregationMethod::Set => if let Some(v) = value.set() {
+//                let mut metric_family = MetricFamily::new();
+//                metric_family.set_name(sanitized_name);
+//                let mut metric = Metric::new();
+//                let mut label_pairs = Vec::with_capacity(8);
+//                for &(ref k, ref v) in value.tags.iter() {
+//                    let mut lp = LabelPair::new();
+//                    lp.set_name(k.clone());
+//                    lp.set_value(v.clone());
+//                    label_pairs.push(lp);
+//                }
+//                metric.set_label(RepeatedField::from_vec(label_pairs));
+//                let mut gauge = Gauge::new();
+//                gauge.set_value(v);
+//                metric.set_gauge(gauge);
+//                metric_family.set_field_type(MetricType::GAUGE);
+//                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
+//                metric_family.write_length_delimited_to_writer(res.by_ref())?
+//            },
+//            AggregationMethod::Summarize => {
+//                let mut metric_family = MetricFamily::new();
+//                metric_family.set_name(sanitized_name);
+//                let mut metric = Metric::new();
+//                let mut label_pairs = Vec::with_capacity(8);
+//                for &(ref k, ref v) in value.tags.iter() {
+//                    let mut lp = LabelPair::new();
+//                    lp.set_name(k.clone());
+//                    lp.set_value(v.clone());
+//                    label_pairs.push(lp);
+//                }
+//                metric.set_label(RepeatedField::from_vec(label_pairs));
+//                let retained_count = value.count();
+//                let retained_sum = value.samples_sum().unwrap_or(0.0);
+//                let mut summary = Summary::new();
+//                summary.set_sample_count((retained_count + value.count()) as u64);
+//                if let Some(val) = value.samples_sum() {
+//                    summary.set_sample_sum(retained_sum + val);
+//                }
+//                let mut quantiles = Vec::with_capacity(9);
+//                for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
+//                    let mut quantile = Quantile::new();
+//                    quantile.set_quantile(*q);
+//                    quantile.set_value(value.query(*q).unwrap());
+//                    quantiles.push(quantile);
+//                }
+//                summary.set_quantile(RepeatedField::from_vec(quantiles));
+//                metric.set_summary(summary);
+//                metric_family.set_field_type(MetricType::SUMMARY);
+//                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
+//                metric_family.write_length_delimited_to_writer(res.by_ref())?
+//            }
+//            AggregationMethod::Histogram => {
+//                let mut metric_family = MetricFamily::new();
+//                metric_family.set_name(sanitized_name);
+//                let mut metric = Metric::new();
+//                let mut label_pairs = Vec::with_capacity(8);
+//                for &(ref k, ref v) in value.tags.iter() {
+//                    let mut lp = LabelPair::new();
+//                    lp.set_name(k.clone());
+//                    lp.set_value(v.clone());
+//                    label_pairs.push(lp);
+//                }
+//                metric.set_label(RepeatedField::from_vec(label_pairs));
+//                let mut histogram = Histogram::new();
+//                histogram.set_sample_count(value.count() as u64);
+//                if let Some(val) = value.samples_sum() {
+//                    histogram.set_sample_sum(val)
+//                }
+//                let mut buckets = Vec::with_capacity(16);
+//                if let Some(bin_iter) = value.bins() {
+//                    let mut cummulative: u64 = 0;
+//                    for &(bound, val) in bin_iter {
+//                        let bnd = match bound {
+//                            Bound::Finite(bnd) => bnd,
+//                            Bound::PosInf => f64::INFINITY,
+//                        };
+//                        cummulative += val as u64;
+//                        let mut bucket = Bucket::new();
+//                        bucket.set_cumulative_count(cummulative);
+//                        bucket.set_upper_bound(bnd);
+//                        buckets.push(bucket);
+//                    }
+//                }
+//                histogram.set_bucket(RepeatedField::from_vec(buckets));
+//                metric.set_histogram(histogram);
+//                metric_family.set_field_type(MetricType::HISTOGRAM);
+//                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
+//                metric_family.write_length_delimited_to_writer(res.by_ref())?
+//            }
+//        }
+//    }
+//    return res.end()
+//}
 
 #[allow(cyclomatic_complexity)]
 #[inline]
@@ -618,132 +618,139 @@ fn fmt_tags(tags: &TagMap, s: &mut GzEncoder<Vec<u8>>) -> () {
     }
 }
 
-fn write_text(aggrs: Iter, mut res: Response) -> io::Result<()> {
-    {
-        let headers = res.headers_mut();
-        headers.set(ContentEncoding(vec![Encoding::Gzip]));
-        headers.set_raw("content-type", vec![b"text/plain; version=0.0.4".to_vec()]);
-    }
-    let mut res = res.start()?;
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut enc = GzEncoder::new(Vec::with_capacity(1024), Compression::Fast);
-    for value in aggrs {
-        let sanitized_name: String = sanitize(&value.name);
-        match value.kind() {
-            AggregationMethod::Sum => if let Some(v) = value.sum() {
-                if seen.insert(value.name) {
-                    enc.write_all(b"# TYPE ")?;
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b" counter\n")?;
-                }
-                enc.write_all(sanitized_name.as_bytes())?;
-                enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
-                enc.write_all(b"} ")?;
-                enc.write_all(v.to_string().as_bytes())?;
-                enc.write_all(b"\n")?;
-            },
-            AggregationMethod::Set => if let Some(v) = value.set() {
-                if seen.insert(value.name) {
-                    enc.write_all(b"# TYPE ")?;
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b" gauge\n")?;
-                }
-                enc.write_all(sanitized_name.as_bytes())?;
-                enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
-                enc.write_all(b"} ")?;
-                enc.write_all(v.to_string().as_bytes())?;
-                enc.write_all(b"\n")?;
-            },
-            AggregationMethod::Histogram => if let Some(bin_iter) = value.bins() {
-                if seen.insert(value.name.clone()) {
-                    enc.write_all(b"# TYPE ")?;
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b" histogram\n")?;
-                }
-                let mut running_sum = 0;
-                for &(bound, val) in bin_iter {
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"{le=\"")?;
-                    match bound {
-                        Bound::Finite(bnd) => {
-                            enc.write_all(bnd.to_string().as_bytes())?;
-                        }
-                        Bound::PosInf => {
-                            enc.write_all(b"+Inf")?;
-                        }
-                    }
-                    for (k, v) in &(*value.tags) {
-                        enc.write_all(b"\", ")?;
-                        enc.write_all(k.as_bytes())?;
-                        enc.write_all(b"=\"")?;
-                        enc.write_all(v.as_bytes())?;
-                    }
-                    enc.write_all(b"\"} ")?;
-                    enc.write_all((val + running_sum).to_string().as_bytes())?;
-                    running_sum += val;
-                    enc.write_all(b"\n")?;
-                }
-                enc.write_all(sanitized_name.as_bytes())?;
-                enc.write_all(b"_sum ")?;
-                enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
-                enc.write_all(b"} ")?;
-                enc.write_all(
-                    value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
-                )?;
-                enc.write_all(b"\n")?;
-                enc.write_all(sanitized_name.as_bytes())?;
-                enc.write_all(b"_count ")?;
-                enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
-                enc.write_all(b"} ")?;
-                enc.write_all(value.count().to_string().as_bytes())?;
-                enc.write_all(b"\n")?;
-            },
-            AggregationMethod::Summarize => {
-                if seen.insert(value.name.clone()) {
-                    enc.write_all(b"# TYPE ")?;
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b" summary\n")?;
-                }
-                for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"{quantile=\"")?;
-                    enc.write_all(q.to_string().as_bytes())?;
-                    for (k, v) in &(*value.tags) {
-                        enc.write_all(b"\", ")?;
-                        enc.write_all(k.as_bytes())?;
-                        enc.write_all(b"=\"")?;
-                        enc.write_all(v.as_bytes())?;
-                    }
-                    enc.write_all(b"\"} ")?;
-                    enc.write_all(value.query(*q).unwrap().to_string().as_bytes())?;
-                    enc.write_all(b"\n")?;
-                }
-                enc.write_all(sanitized_name.as_bytes())?;
-                enc.write_all(b"_sum ")?;
-                enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
-                enc.write_all(b"} ")?;
-                enc.write_all(
-                    value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
-                )?;
-                enc.write_all(b"\n")?;
-                enc.write_all(sanitized_name.as_bytes())?;
-                enc.write_all(b"_count ")?;
-                enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
-                enc.write_all(b"} ")?;
-                enc.write_all((value.count()).to_string().as_bytes())?;
-                enc.write_all(b"\n")?;
-            }
-        }
-    }
-    let encoded = enc.finish()?;
-    res.write_all(&encoded)?;
-    res.end()
+fn write_text(aggrs: Iter) -> option::Option<http::Response> {
+    unimplemented!();
+    //let mut seen: HashSet<String> = HashSet::new();
+    //let mut enc = GzEncoder::new(Vec::with_capacity(1024), Compression::Fast);
+    //for value in aggrs {
+    //    let sanitized_name: String = sanitize(&value.name);
+    //    match value.kind() {
+    //        AggregationMethod::Sum => if let Some(v) = value.sum() {
+    //            if seen.insert(value.name) {
+    //                enc.write_all(b"# TYPE ")?;
+    //                enc.write_all(sanitized_name.as_bytes())?;
+    //                enc.write_all(b" counter\n")?;
+    //            }
+    //            enc.write_all(sanitized_name.as_bytes())?;
+    //            enc.write_all(b"{")?;
+    //            fmt_tags(&value.tags, &mut enc);
+    //            enc.write_all(b"} ")?;
+    //            enc.write_all(v.to_string().as_bytes())?;
+    //            enc.write_all(b"\n")?;
+    //        },
+    //        AggregationMethod::Set => if let Some(v) = value.set() {
+    //            if seen.insert(value.name) {
+    //                enc.write_all(b"# TYPE ")?;
+    //                enc.write_all(sanitized_name.as_bytes())?;
+    //                enc.write_all(b" gauge\n")?;
+    //            }
+    //            enc.write_all(sanitized_name.as_bytes())?;
+    //            enc.write_all(b"{")?;
+    //            fmt_tags(&value.tags, &mut enc);
+    //            enc.write_all(b"} ")?;
+    //            enc.write_all(v.to_string().as_bytes())?;
+    //            enc.write_all(b"\n")?;
+    //        },
+    //        AggregationMethod::Histogram => if let Some(bin_iter) = value.bins() {
+    //            if seen.insert(value.name.clone()) {
+    //                enc.write_all(b"# TYPE ")?;
+    //                enc.write_all(sanitized_name.as_bytes())?;
+    //                enc.write_all(b" histogram\n")?;
+    //            }
+    //            let mut running_sum = 0;
+    //            for &(bound, val) in bin_iter {
+    //                enc.write_all(sanitized_name.as_bytes())?;
+    //                enc.write_all(b"{le=\"")?;
+    //                match bound {
+    //                    Bound::Finite(bnd) => {
+    //                        enc.write_all(bnd.to_string().as_bytes())?;
+    //                    }
+    //                    Bound::PosInf => {
+    //                        enc.write_all(b"+Inf")?;
+    //                    }
+    //                }
+    //                for (k, v) in &(*value.tags) {
+    //                    enc.write_all(b"\", ")?;
+    //                    enc.write_all(k.as_bytes())?;
+    //                    enc.write_all(b"=\"")?;
+    //                    enc.write_all(v.as_bytes())?;
+    //                }
+    //                enc.write_all(b"\"} ")?;
+    //                enc.write_all((val + running_sum).to_string().as_bytes())?;
+    //                running_sum += val;
+    //                enc.write_all(b"\n")?;
+    //            }
+    //            enc.write_all(sanitized_name.as_bytes())?;
+    //            enc.write_all(b"_sum ")?;
+    //            enc.write_all(b"{")?;
+    //            fmt_tags(&value.tags, &mut enc);
+    //            enc.write_all(b"} ")?;
+    //            enc.write_all(
+    //                value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
+    //            )?;
+    //            enc.write_all(b"\n")?;
+    //            enc.write_all(sanitized_name.as_bytes())?;
+    //            enc.write_all(b"_count ")?;
+    //            enc.write_all(b"{")?;
+    //            fmt_tags(&value.tags, &mut enc);
+    //            enc.write_all(b"} ")?;
+    //            enc.write_all(value.count().to_string().as_bytes())?;
+    //            enc.write_all(b"\n")?;
+    //        },
+    //        AggregationMethod::Summarize => {
+    //            if seen.insert(value.name.clone()) {
+    //                enc.write_all(b"# TYPE ")?;
+    //                enc.write_all(sanitized_name.as_bytes())?;
+    //                enc.write_all(b" summary\n")?;
+    //            }
+    //            for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
+    //                enc.write_all(sanitized_name.as_bytes())?;
+    //                enc.write_all(b"{quantile=\"")?;
+    //                enc.write_all(q.to_string().as_bytes())?;
+    //                for (k, v) in &(*value.tags) {
+    //                    enc.write_all(b"\", ")?;
+    //                    enc.write_all(k.as_bytes())?;
+    //                    enc.write_all(b"=\"")?;
+    //                    enc.write_all(v.as_bytes())?;
+    //                }
+    //                enc.write_all(b"\"} ")?;
+    //                enc.write_all(value.query(*q).unwrap().to_string().as_bytes())?;
+    //                enc.write_all(b"\n")?;
+    //            }
+    //            enc.write_all(sanitized_name.as_bytes())?;
+    //            enc.write_all(b"_sum ")?;
+    //            enc.write_all(b"{")?;
+    //            fmt_tags(&value.tags, &mut enc);
+    //            enc.write_all(b"} ")?;
+    //            enc.write_all(
+    //                value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
+    //            )?;
+    //            enc.write_all(b"\n")?;
+    //            enc.write_all(sanitized_name.as_bytes())?;
+    //            enc.write_all(b"_count ")?;
+    //            enc.write_all(b"{")?;
+    //            fmt_tags(&value.tags, &mut enc);
+    //            enc.write_all(b"} ")?;
+    //            enc.write_all((value.count()).to_string().as_bytes())?;
+    //            enc.write_all(b"\n")?;
+    //        }
+    //    }
+    //}
+    //let encoded = enc.finish()?;
+    //let content_encoding = "gzip";
+    //let content_type = "text/plain; version=0.0.4";
+    //let headers = [
+    //    http::Header::from_bytes(&b"Content-Type"[..], content_type).unwrap(),
+    //    http::Header::from_bytes(&b"Content-Encoding"[..], content_type).unwrap(),
+    //];
+    //Some(
+    //    http::Response::new(
+    //    200,
+    //    headers,
+    //    encoded.bytes(),
+    //    Some(len(encoded)),
+    //    None
+    //))
 }
 
 /// Sanitize cernan Telemetry into prometheus' notion
@@ -801,7 +808,7 @@ impl Sink for Prometheus {
         // This won't work:
         // https://docs.rs/hyper/0.10.13/hyper/server/struct.Listening.html#method.close
         // We're going to maybe have to update hyper...
-        self.http_srv.close().unwrap();
+        self.http_srv.shutdown();
     }
 
     fn valve_state(&self) -> Valve {
