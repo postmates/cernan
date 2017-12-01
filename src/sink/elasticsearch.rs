@@ -18,6 +18,8 @@ use uuid;
 lazy_static! {
     /// Total deliveries made
     pub static ref ELASTIC_RECORDS_DELIVERY: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total internal buffer entries
+    pub static ref ELASTIC_INTERNAL_BUFFER_LEN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total records delivered in the last delivery
     pub static ref ELASTIC_RECORDS_TOTAL_DELIVERED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total records that failed to be delivered due to error
@@ -67,7 +69,11 @@ pub struct ElasticsearchConfig {
     pub index_type: String,
     /// Determines whether to use HTTP or HTTPS when publishing to
     /// Elasticsearch.
-    pub secure: bool, // whether http or https
+    pub secure: bool, 
+    /// Determine how many times to attempt the delivery of a log line before
+    /// dropping it from the buffer. Failures of a global bulk request does not
+    /// count against this limit.
+    pub delivery_attempt_limit: u8,
     /// The Elasticsearch host. May be an IP address or DNS hostname.
     pub host: String,
     /// The Elasticsearch port.
@@ -84,20 +90,28 @@ impl Default for ElasticsearchConfig {
             host: "127.0.0.1".to_string(),
             index_prefix: None,
             index_type: "payload".to_string(),
+            delivery_attempt_limit: 10,
             port: 9200,
             flush_interval: 1,
         }
     }
 }
 
+struct Line {
+    attempts: u8,
+    uuid: uuid::Uuid,
+    line: LogLine,
+}
+
 /// The elasticsearch sink struct.
 ///
 /// Refer to the documentation on `ElasticsearchConfig` for more details.
 pub struct Elasticsearch {
-    buffer: Vec<(uuid::Uuid, LogLine)>,
+    buffer: Vec<Line>,
     secure: bool,
     host: String,
     port: usize,
+    delivery_attempt_limit: u8,
     index_prefix: Option<String>,
     index_type: String,
     flush_interval: u64,
@@ -115,6 +129,7 @@ impl Elasticsearch {
             port: config.port,
             index_prefix: config.index_prefix,
             index_type: config.index_type,
+            delivery_attempt_limit: config.delivery_attempt_limit,
             flush_interval: config.flush_interval,
         }
     }
@@ -123,8 +138,8 @@ impl Elasticsearch {
         assert!(!self.buffer.is_empty());
         use serde_json::{to_string, Value};
         for m in &self.buffer {
-            let uuid = m.0.hyphenated().to_string();
-            let line = &m.1;
+            let uuid = m.uuid.hyphenated().to_string();
+            let line = &m.line;
             let header: Value = json!({
                 "index": {
                     "_index" : idx(&self.index_prefix, line.time),
@@ -176,6 +191,7 @@ impl Sink for Elasticsearch {
             .unwrap()
             .into_response::<BulkResponse>();
 
+        ELASTIC_INTERNAL_BUFFER_LEN.store(self.buffer.len(), Ordering::Relaxed);
         match bulk_resp {
             Ok(bulk) => {
                 ELASTIC_RECORDS_DELIVERY.fetch_add(1, Ordering::Relaxed);
@@ -185,7 +201,7 @@ impl Sink for Elasticsearch {
                             let uuid = uuid::Uuid::parse_str(item.id())
                                 .expect("catastrophic error, TID not a UUID");
                             match self.buffer
-                                .binary_search_by(|probe| probe.0.cmp(&uuid))
+                                .binary_search_by(|probe| probe.uuid.cmp(&uuid))
                             {
                                 Ok(idx) => {
                                     self.buffer.remove(idx);
@@ -198,6 +214,21 @@ impl Sink for Elasticsearch {
                                 .fetch_add(1, Ordering::Relaxed);
                         }
                         Err(item) => {
+                            let uuid = uuid::Uuid::parse_str(item.id())
+                                .expect("catastrophic error, TID not a UUID");
+                            match self.buffer
+                                .binary_search_by(|probe| probe.uuid.cmp(&uuid))
+                            {
+                                Ok(idx) => {
+                                    self.buffer[idx].attempts += 1;
+                                    if self.buffer[idx].attempts > self.delivery_attempt_limit {
+                                        self.buffer.remove(idx);
+                                    }
+                                }
+                                Err(_) => {
+                                    unreachable!();
+                                }
+                            }
                             ELASTIC_RECORDS_TOTAL_FAILED
                                 .fetch_add(1, Ordering::Relaxed);
                             if let Some(cause) = item.cause() {
@@ -298,7 +329,7 @@ impl Sink for Elasticsearch {
     fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
         let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
         let uuid = uuid::Uuid::new_v4();
-        self.buffer.push((uuid, line));
+        self.buffer.push(Line { uuid: uuid, line: line, attempts: 0 });
     }
 
     fn valve_state(&self) -> Valve {

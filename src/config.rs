@@ -568,6 +568,14 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             let mut res = ElasticsearchConfig::default();
             res.config_path = Some("sinks.elasticsearch".to_string());
 
+            res.delivery_attempt_limit = snk.get("delivery_attempt_limit")
+                .map(|p| {
+                    p.as_integer()
+                        .expect("could not parse sinks.elasticsearch.delivery_attempt_limit")
+                        as u8
+                })
+                .unwrap_or(res.delivery_attempt_limit);
+
             res.port = snk.get("port")
                 .map(|p| {
                     p.as_integer()
@@ -1083,6 +1091,7 @@ scripts-directory = "/foo/bar"
   index-prefix = "prefix-"
   secure = true
   flush_interval = 2020
+  delivery_attempt_limit = 33
 "#;
 
         let args = parse_config_file(config, 4);
@@ -1095,6 +1104,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(es.index_prefix, Some("prefix-".into()));
         assert_eq!(es.secure, true);
         assert_eq!(es.flush_interval, 2020);
+        assert_eq!(es.delivery_attempt_limit, 33);
     }
 
     #[test]

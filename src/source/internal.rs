@@ -157,6 +157,12 @@ impl Source for Internal {
                     self.chans
                 );
                 atom_non_zero_telem!(
+                    "cernan.sinks.elasticsearch.internal.buffer_len",
+                    sink::elasticsearch::ELASTIC_INTERNAL_BUFFER_LEN,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
                     "cernan.sinks.elasticsearch.records.total_delivered",
                     sink::elasticsearch::ELASTIC_RECORDS_TOTAL_DELIVERED,
                     self.tags,
