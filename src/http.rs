@@ -1,17 +1,26 @@
-//#! Tiny, unassuming HTTP Server
+//! Tiny, unassuming HTTP Server
 
 extern crate tiny_http;
 
 use std;
 use thread;
 
+/// HTTP request.  Alias of tiny_http::Request.
 pub type Request = tiny_http::Request;
+
+/// HTTP response.  Alias of tiny_http::Response.
 pub type Response = tiny_http::Response<std::io::Cursor<std::vec::Vec<u8>>>;
+
+/// HTTP header.  Alias of tiny_http::Header.
 pub type Header = tiny_http::Header;
+
+/// HTTP header field.  Alias of tiny_http::HeaderField.
 pub type HeaderField = tiny_http::HeaderField;
 
 /// Simple single threaded HTTP request handler.
 pub trait Handler: Sync + Send {
+
+    /// Handler for a single HTTP request.
     fn handle(&self, request: Request) -> ();
 }
 
@@ -57,6 +66,8 @@ where
 
 /// Single threaded HTTP server implementation.
 impl Server {
+
+    /// Create and start an HTTP server on the given host and port.
     pub fn new<H: Handler + 'static>(host_port: String, handler: H) -> Self
     {
         Server {
