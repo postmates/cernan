@@ -570,9 +570,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.delivery_attempt_limit = snk.get("delivery_attempt_limit")
                 .map(|p| {
-                    p.as_integer()
-                        .expect("could not parse sinks.elasticsearch.delivery_attempt_limit")
-                        as u8
+                    p.as_integer().expect(
+                        "could not parse sinks.elasticsearch.delivery_attempt_limit",
+                    ) as u8
                 })
                 .unwrap_or(res.delivery_attempt_limit);
 

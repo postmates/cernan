@@ -69,7 +69,7 @@ pub struct ElasticsearchConfig {
     pub index_type: String,
     /// Determines whether to use HTTP or HTTPS when publishing to
     /// Elasticsearch.
-    pub secure: bool, 
+    pub secure: bool,
     /// Determine how many times to attempt the delivery of a log line before
     /// dropping it from the buffer. Failures of a global bulk request does not
     /// count against this limit.
@@ -215,7 +215,9 @@ impl Sink for Elasticsearch {
                                 .binary_search_by(|probe| probe.uuid.cmp(&uuid))
                             {
                                 self.buffer[idx].attempts += 1;
-                                if self.buffer[idx].attempts > self.delivery_attempt_limit {
+                                if self.buffer[idx].attempts
+                                    > self.delivery_attempt_limit
+                                {
                                     self.buffer.remove(idx);
                                 }
                             }
@@ -319,7 +321,11 @@ impl Sink for Elasticsearch {
     fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
         let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
         let uuid = uuid::Uuid::new_v4();
-        self.buffer.push(Line { uuid: uuid, line: line, attempts: 0 });
+        self.buffer.push(Line {
+            uuid: uuid,
+            line: line,
+            attempts: 0,
+        });
     }
 
     fn valve_state(&self) -> Valve {
