@@ -232,23 +232,23 @@ impl Source for Internal {
                             self.chans
                         );
                         atom_non_zero_telem!(
-                            "cernan.sinks.elasticsearch.error.api.action_request_validation",
-                            sink::elasticsearch::ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION,
-                            self.tags,
-                            self.chans
-                        );
+                           "cernan.sinks.elasticsearch.error.api.action_request_validation",
+                           sink::elasticsearch::ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION,
+                           self.tags,
+                           self.chans
+                       );
                         atom_non_zero_telem!(
-                            "cernan.sinks.elasticsearch.error.api.action_document_missing",
-                            sink::elasticsearch::ELASTIC_ERROR_API_DOCUMENT_MISSING,
-                            self.tags,
-                            self.chans
-                        );
+                           "cernan.sinks.elasticsearch.error.api.action_document_missing",
+                           sink::elasticsearch::ELASTIC_ERROR_API_DOCUMENT_MISSING,
+                           self.tags,
+                           self.chans
+                       );
                         atom_non_zero_telem!(
-                            "cernan.sinks.elasticsearch.error.api.index_already_exists",
-                            sink::elasticsearch::ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS,
-                            self.tags,
-                            self.chans
-                        );
+                           "cernan.sinks.elasticsearch.error.api.index_already_exists",
+                           sink::elasticsearch::ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS,
+                           self.tags,
+                           self.chans
+                       );
                         atom_non_zero_telem!(
                             "cernan.sinks.elasticsearch.error.api.unknown",
                             sink::elasticsearch::ELASTIC_ERROR_API_UNKNOWN,

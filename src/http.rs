@@ -18,7 +18,6 @@ pub type StatusCode = tiny_http::StatusCode;
 
 /// Simple single threaded HTTP request handler.
 pub trait Handler: Sync + Send {
-
     /// Handler for a single HTTP request.
     fn handle(&self, request: Request) -> ();
 }
@@ -44,20 +43,17 @@ where
                 break;
             }
 
-            Ok(_) => {
-                match tiny_http_server.recv_timeout(std::time::Duration::from_millis(1000))
-                {
-                    Ok(maybe_a_request) => {
-                        if let Some(request) = maybe_a_request {
-                            handler.handle(request);
-                        }
-                    }
+            Ok(_) => match tiny_http_server
+                .recv_timeout(std::time::Duration::from_millis(1000))
+            {
+                Ok(maybe_a_request) => if let Some(request) = maybe_a_request {
+                    handler.handle(request);
+                },
 
-                    Err(e) => {
-                        panic!(format!("Failed during recv_timeout {:?}", e));
-                    }
+                Err(e) => {
+                    panic!(format!("Failed during recv_timeout {:?}", e));
                 }
-            }
+            },
 
             Err(e) => {
                 panic!(format!("Failed during poll {:?}", e));
@@ -68,10 +64,8 @@ where
 
 /// Single threaded HTTP server implementation.
 impl Server {
-
     /// Create and start an HTTP server on the given host and port.
-    pub fn new<H: Handler + 'static>(host_port: String, handler: H) -> Self
-    {
+    pub fn new<H: Handler + 'static>(host_port: String, handler: H) -> Self {
         Server {
             thread: thread::spawn(move |poller| {
                 let tiny_http_server = tiny_http::Server::http(host_port).unwrap();
