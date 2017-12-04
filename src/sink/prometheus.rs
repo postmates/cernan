@@ -136,8 +136,9 @@ impl Accumulator {
                     }
                     Err(idx) => {
                         samples.insert(idx, telem);
-                        while samples.len() > cap {
-                            samples.remove(0);
+                        if samples.len() > cap {
+                            let top_idx = samples.len() - cap;
+                            samples.drain(0 .. top_idx);
                         }
                     }
                 }
