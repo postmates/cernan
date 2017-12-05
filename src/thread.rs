@@ -5,10 +5,9 @@ extern crate mio;
 use constants;
 use std::thread;
 
-/// Event polling structure.  Alias of mio::Poll.
+/// Event polling structure. Alias of `mio::Poll`.
 pub type Poll = mio::Poll;
-
-/// Events buffer type.  Alias of mio::Events.
+/// Events buffer type. Alias of `mio::Events`.
 pub type Events = mio::Events;
 
 /// Mio enabled thread state.

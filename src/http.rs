@@ -5,15 +5,15 @@ extern crate tiny_http;
 use std;
 use thread;
 
-/// HTTP request.  Alias of tiny_http::Request.
+/// HTTP request. Alias of `tiny_http::Request`.
 pub type Request = tiny_http::Request;
-/// HTTP response.  Alias of tiny_http::Response.
+/// HTTP response. Alias of `tiny_http::Response`.
 pub type Response<'a> = tiny_http::Response<&'a [u8]>;
-/// HTTP header.  Alias of tiny_http::Header.
+/// HTTP header. Alias of `tiny_http::Header`.
 pub type Header = tiny_http::Header;
-/// HTTP header field.  Alias of tiny_http::HeaderField.
+/// HTTP header field. Alias of `tiny_http::HeaderField`.
 pub type HeaderField = tiny_http::HeaderField;
-/// HTTP status code.  Alias of tiny_http::StatusCode.
+/// HTTP status code. Alias of `tiny_http::StatusCode`.
 pub type StatusCode = tiny_http::StatusCode;
 
 /// Simple single threaded HTTP request handler.
