@@ -58,6 +58,8 @@ pub struct SoftTelemetry {
     timestamp: Option<i64>,
     tags: Option<sync::Arc<TagMap>>,
     persist: Option<bool>,
+    override_count: Option<u64>,
+    override_sample_sum: Option<f64>,
 }
 
 /// A Telemetry is a name, tagmap, timestamp and aggregated, point-in-time
@@ -74,6 +76,8 @@ pub struct Telemetry {
     pub tags: sync::Arc<TagMap>,
     /// The time of Telemetry, measured in seconds.
     pub timestamp: i64,
+    override_count: Option<u64>,
+    override_sample_sum: Option<f64>,
 }
 
 impl Add for Value {
@@ -243,11 +247,25 @@ impl Default for Telemetry {
             persist: false,
             tags: sync::Arc::new(TagMap::default()),
             timestamp: time::now(),
+            override_sample_sum: None,
+            override_count: None,
         }
     }
 }
 
 impl SoftTelemetry {
+    /// Set the override sample sum 
+    pub fn sample_sum(mut self, sum: f64) -> SoftTelemetry {
+        self.override_sample_sum = Some(sum);
+        self
+    }
+    
+    /// Set the override count
+    pub fn count(mut self, count: u64) -> SoftTelemetry {
+        self.override_count = Some(count);
+        self
+    }
+
     /// Set the name of the Telemetry
     ///
     /// The likelyhood is that there will be many Telemetry with the same
@@ -389,6 +407,8 @@ impl SoftTelemetry {
                     persist: persist,
                     tags: tags,
                     timestamp: timestamp,
+                    override_count: self.override_count,
+                    override_sample_sum: self.override_sample_sum,
                 })
             }
             AggregationMethod::Histogram => {
@@ -415,6 +435,8 @@ impl SoftTelemetry {
                     persist: persist,
                     tags: tags,
                     timestamp: timestamp,
+                    override_sample_sum: None,
+                    override_count: None,
                 })
             }
             AggregationMethod::Set => {
@@ -435,6 +457,8 @@ impl SoftTelemetry {
                     persist: persist,
                     tags: tags,
                     timestamp: timestamp,
+                    override_sample_sum: None,
+                    override_count: None,
                 })
             }
             AggregationMethod::Sum => {
@@ -455,6 +479,8 @@ impl SoftTelemetry {
                     persist: persist,
                     tags: tags,
                     timestamp: timestamp,
+                    override_sample_sum: None,
+                    override_count: None,
                 })
             }
         }
@@ -501,6 +527,8 @@ impl Telemetry {
             timestamp: None,
             tags: None,
             persist: None,
+            override_sample_sum: None,
+            override_count: None,
         }
     }
 
@@ -522,6 +550,8 @@ impl Telemetry {
             timestamp: Some(self.timestamp),
             tags: Some(self.tags),
             persist: Some(self.persist),
+            override_count: None,
+            override_sample_sum: None,
         }
     }
 
@@ -637,6 +667,8 @@ impl Telemetry {
     /// The inserted value will be subject to the Telemetry's aggregation
     /// method.
     pub fn insert(mut self, value: f64) -> Telemetry {
+        assert!(self.override_sample_sum.is_none());
+        assert!(self.override_count.is_none());
         match self.value {
             Some(Value::Set(_)) => {
                 self.value = Some(Value::Set(value));
@@ -696,16 +728,26 @@ impl Telemetry {
         match self.value {
             Some(Value::Set(_)) | Some(Value::Sum(_)) | None => None,
             Some(Value::Histogram(ref histo)) => histo.sum(),
-            Some(Value::Quantiles(ref ckms)) => ckms.sum(),
+            Some(Value::Quantiles(ref ckms)) => {
+                if self.override_sample_sum.is_some() {
+                    self.override_sample_sum
+                } else {
+                    ckms.sum()
+                }
+            }
         }
     }
 
     /// Return the total count of Telemetry aggregated into this Telemetry.
     pub fn count(&self) -> usize {
-        if let Some(ref v) = self.value {
-            v.count()
+        if let Some(cnt) = self.override_count {
+            cnt as usize
         } else {
-            0
+            if let Some(ref v) = self.value {
+                v.count()
+            } else {
+                0
+            }
         }
     }
 

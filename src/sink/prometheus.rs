@@ -97,6 +97,8 @@ enum Accumulator {
     Perpetual(metric::Telemetry),
     Windowed {
         cap: usize,
+        sum: f64,
+        count: u64,
         samples: Vec<metric::Telemetry>,
     },
 }
@@ -125,9 +127,28 @@ impl Accumulator {
             Accumulator::Perpetual(ref mut t) => *t += telem,
             Accumulator::Windowed {
                 cap,
+                ref mut sum,
+                ref mut count,
                 ref mut samples,
             } => {
+                use std::u64;
                 assert_eq!(telem.kind(), AggregationMethod::Summarize);
+                // u64::wrapping_add makes a new u64. We need this to be
+                // in-place. Oops!
+                if (u64::MAX - *count) <= 1 {
+                    *count = 1;
+                } else {
+                    *count += 1;
+                }
+                let val = telem.query(1.0).unwrap();
+                // There's no wrapping_add for f64. Since it's rude to crash
+                // cernan because we've been summing for too long we knock
+                // together our own wrap.
+                if (f64::MAX - val) <= *sum {
+                    *sum = val - (f64::MAX - *sum);
+                } else {
+                    *sum += val;
+                }
                 match samples
                     .binary_search_by(|probe| probe.timestamp.cmp(&telem.timestamp))
                 {
@@ -257,9 +278,12 @@ impl PrometheusAggr {
                         metric::AggregationMethod::Summarize => {
                             let mut samples =
                                 Vec::with_capacity(self.capacity_in_seconds);
+                            let sum = telem.query(1.0).unwrap();
                             samples.push(telem);
                             Accumulator::Windowed {
                                 cap: self.capacity_in_seconds,
+                                count: 1,
+                                sum: sum, 
                                 samples: samples,
                             }
                         }
@@ -304,19 +328,19 @@ impl<'a> Iterator for Iter<'a> {
                     self.idx += 1;
                     return Some(t.clone());
                 }
-                Accumulator::Windowed { ref samples, .. } => {
+                Accumulator::Windowed { ref samples, count, sum, .. } => {
                     self.idx += 1;
                     match samples.len() {
                         0 => unreachable!(),
                         1 => {
-                            return Some(samples[0].clone());
+                            return Some(samples[0].clone().thaw().sample_sum(sum).count(count).harden().unwrap());
                         }
                         _ => {
                             let mut start = samples[0].clone();
                             for t in &samples[1..] {
                                 start += t.clone();
                             }
-                            return Some(start);
+                            return Some(start.thaw().sample_sum(sum).count(count).harden().unwrap());
                         }
                     }
                 }
