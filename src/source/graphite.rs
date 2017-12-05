@@ -4,7 +4,6 @@ use mio;
 use protocols::graphite::parse_graphite;
 use source::Source;
 use std;
-use std::collections::HashMap;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::net::ToSocketAddrs;
@@ -163,7 +162,7 @@ fn handle_stream(
 fn handle_tcp(
     chans: util::Channel,
     tags: &sync::Arc<metric::TagMap>,
-    socket_map: HashMap<mio::Token, mio::net::TcpListener>,
+    listeners: util::TokenSlab<mio::net::TcpListener>,
     poll: &mio::Poll,
 ) {
     let mut stream_handlers: Vec<thread::ThreadHandle> = Vec::new();
@@ -181,7 +180,7 @@ fn handle_tcp(
                             return;
                         }
                         listener_token => {
-                            let listener = &socket_map[&listener_token];
+                            let listener = &listeners[listener_token];
                             spawn_stream_handlers(
                                 chans.clone(), // TODO: do not clone, make an Arc
                                 tags,
@@ -202,26 +201,22 @@ impl Source for Graphite {
         match addrs {
             Ok(ips) => {
                 let ips: Vec<_> = ips.collect();
-                let mut socket_map: HashMap<
-                    mio::Token,
-                    mio::net::TcpListener,
-                > = HashMap::new();
-                for (i, addr) in ips.iter().enumerate() {
-                    let token = mio::Token(i);
-                    let listener = mio::net::TcpListener::bind(addr)
+                let mut listeners =
+                    util::TokenSlab::<mio::net::TcpListener>::new();
+                for addr in ips {
+                    let listener = mio::net::TcpListener::bind(&addr)
                         .expect("Unable to bind to TCP socket");
                     info!("registered listener for {:?} {}", addr, self.port);
+                    let token = listeners.insert(listener);
                     poll.register(
-                        &listener,
+                        &listeners[token],
                         token,
                         mio::Ready::readable(),
                         mio::PollOpt::edge(),
                     ).unwrap();
-
-                    socket_map.insert(token, listener);
                 }
 
-                handle_tcp(self.chans.clone(), &self.tags, socket_map, &poll);
+                handle_tcp(self.chans.clone(), &self.tags, listeners, &poll);
             }
             Err(e) => {
                 info!(

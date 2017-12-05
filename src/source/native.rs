@@ -6,7 +6,6 @@ use metric;
 use mio;
 use protobuf;
 use protocols::native::{AggregationMethod, Payload};
-use std::collections::HashMap;
 use std::io;
 use std::io::Read;
 use std::net::ToSocketAddrs;
@@ -76,7 +75,7 @@ impl NativeServer {
 fn handle_tcp(
     chans: util::Channel,
     tags: &sync::Arc<metric::TagMap>,
-    listener_map: HashMap<mio::Token, mio::net::TcpListener>,
+    listeners: util::TokenSlab<mio::net::TcpListener>,
     poller: &mio::Poll,
 ) {
     let mut stream_handlers: Vec<thread::ThreadHandle> = Vec::new();
@@ -93,7 +92,7 @@ fn handle_tcp(
                         return;
                     }
                     listener_token => {
-                        let listener = &listener_map[&listener_token];
+                        let listener = &listeners[listener_token];
                         spawn_stream_handlers(
                             chans.clone(),
                             tags,
@@ -254,26 +253,24 @@ impl Source for NativeServer {
             .to_socket_addrs()
             .expect("unable to make socket addr")
             .collect();
-        let listener_token = mio::Token(0);
-        let mut listener_map: HashMap<mio::Token, mio::net::TcpListener> =
-            HashMap::new();
+
+        let mut listeners: util::TokenSlab<mio::net::TcpListener> =
+            util::TokenSlab::new();
         let listener = mio::net::TcpListener::bind(srv.first().unwrap())
             .expect("Unable to bind to TCP socket");
-
+        let token = listeners.insert(listener);
         poller
             .register(
-                &listener,
-                listener_token,
+                &listeners[token],
+                token,
                 mio::Ready::readable(),
                 mio::PollOpt::edge(),
             )
             .unwrap();
 
-        listener_map.insert(listener_token, listener);
-
         let chans = self.chans.clone();
         let tags = sync::Arc::new(self.tags.clone());
         info!("server started on {}:{}", self.ip, self.port);
-        handle_tcp(chans, &tags, listener_map, &poller);
+        handle_tcp(chans, &tags, listeners, &poller);
     }
 }

@@ -3,7 +3,6 @@ use metric;
 use mio;
 use protocols::statsd::parse_statsd;
 use regex::Regex;
-use slab;
 use source::Source;
 use std::net::ToSocketAddrs;
 use std::str;
@@ -16,18 +15,6 @@ use util::send;
 lazy_static! {
     pub static ref STATSD_GOOD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     pub static ref STATSD_BAD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
-
-struct Conn {
-    sock: mio::net::UdpSocket,
-    token: Option<mio::Token>,
-}
-
-#[inline]
-fn token_to_idx(token: &mio::Token) -> usize {
-    match *token {
-        mio::Token(idx) => idx,
-    }
 }
 
 /// The statsd source
@@ -120,7 +107,7 @@ fn handle_udp(
     mut chans: util::Channel,
     tags: &sync::Arc<metric::TagMap>,
     parse_config: &sync::Arc<StatsdParseConfig>,
-    conns: &slab::Slab<Conn>,
+    conns: &util::TokenSlab<mio::net::UdpSocket>,
     poll: &mio::Poll,
 ) {
     let mut buf = vec![0; 16_250];
@@ -136,7 +123,7 @@ fn handle_udp(
                     constants::SYSTEM => return,
                     token => {
                         // Get the socket to receive from:
-                        let socket = &conns[token_to_idx(&token)].sock;
+                        let socket = &conns[token];
 
                         let (len, _) = match socket.recv_from(&mut buf) {
                             Ok(r) => r,
@@ -177,20 +164,13 @@ impl Source for Statsd {
         let addrs = (self.host.as_str(), self.port).to_socket_addrs();
         match addrs {
             Ok(ips) => {
-                let mut conns: slab::Slab<Conn> =
-                    slab::Slab::with_capacity(token_to_idx(&constants::SYSTEM));
+                let mut conns = util::TokenSlab::<mio::net::UdpSocket>::new();
                 for addr in ips {
                     let socket = mio::net::UdpSocket::bind(&addr)
                         .expect("Unable to bind to UDP socket");
-                    let conn = Conn {
-                        sock: socket,
-                        token: None,
-                    };
-                    let idx = conns.insert(conn);
-                    let token = mio::Token::from(idx);
-                    conns[idx].token = Some(token);
+                    let token = conns.insert(socket);
                     poll.register(
-                        &conns[idx].sock,
+                        &conns[token],
                         token,
                         mio::Ready::readable(),
                         mio::PollOpt::edge(),
