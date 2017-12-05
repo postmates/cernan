@@ -4,15 +4,16 @@ use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
 use elastic::client::responses::bulk;
-use elastic::error;
 use elastic::error::Result;
+use elastic::error;
 use elastic::prelude::*;
 use metric::{LogLine, Telemetry};
 use sink::{Sink, Valve};
+use std::cmp;
 use std::error::Error;
-use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync;
 use uuid;
 
 lazy_static! {
@@ -196,26 +197,34 @@ impl Sink for Elasticsearch {
                             Ok(item) => {
                                 let uuid = uuid::Uuid::parse_str(item.id())
                                     .expect("catastrophic error, TID not a UUID");
-                                if let Ok(idx) = self.buffer
-                                    .binary_search_by(|probe| probe.uuid.cmp(&uuid))
-                                {
-                                    self.buffer.remove(idx);
+                                let mut idx = 0;
+                                for i in 0..self.buffer.len() {
+                                    match self.buffer[i].uuid.cmp(&uuid) {
+                                        cmp::Ordering::Equal => {
+                                            break;
+                                        },
+                                        _ => { idx += 1 },
+                                    }
                                 }
+                                self.buffer.remove(idx);
                                 ELASTIC_RECORDS_TOTAL_DELIVERED
                                     .fetch_add(1, Ordering::Relaxed);
                             }
                             Err(item) => {
                                 let uuid = uuid::Uuid::parse_str(item.id())
                                     .expect("catastrophic error, TID not a UUID");
-                                if let Ok(idx) = self.buffer
-                                    .binary_search_by(|probe| probe.uuid.cmp(&uuid))
-                                {
-                                    self.buffer[idx].attempts += 1;
-                                    if self.buffer[idx].attempts
-                                        > self.delivery_attempt_limit
-                                    {
-                                        self.buffer.remove(idx);
+                                let mut idx = 0;
+                                for i in 0..self.buffer.len() {
+                                    match self.buffer[i].uuid.cmp(&uuid) {
+                                        cmp::Ordering::Equal => {
+                                            break;
+                                        },
+                                        _ => { idx += 1 },
                                     }
+                                }
+                                self.buffer[idx].attempts += 1;
+                                if self.buffer[idx].attempts > self.delivery_attempt_limit {
+                                    self.buffer.remove(idx);
                                 }
                                 ELASTIC_RECORDS_TOTAL_FAILED
                                     .fetch_add(1, Ordering::Relaxed);
