@@ -120,7 +120,7 @@ fn handle_udp(
     mut chans: util::Channel,
     tags: &sync::Arc<metric::TagMap>,
     parse_config: &sync::Arc<StatsdParseConfig>,
-    conns: slab::Slab<Conn>,
+    conns: &slab::Slab<Conn>,
     poll: &mio::Poll,
 ) {
     let mut buf = vec![0; 16_250];
@@ -150,7 +150,7 @@ fn handle_udp(
                                 val,
                                 &mut metrics,
                                 &basic_metric,
-                                &parse_config,
+                                parse_config,
                             ) {
                                 for m in metrics.drain(..) {
                                     send(&mut chans, metric::Event::new_telemetry(m));
@@ -199,7 +199,7 @@ impl Source for Statsd {
 
                 let chans = self.chans.clone();
                 info!("server started on *:{}", self.port);
-                handle_udp(chans, &self.tags, &self.parse_config, conns, &poll);
+                handle_udp(chans, &self.tags, &self.parse_config, &conns, &poll);
             }
             Err(e) => {
                 info!(

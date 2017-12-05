@@ -29,9 +29,9 @@ pub struct Server {
 }
 
 fn http_server<H>(
-    poller: thread::Poll,
-    tiny_http_server: tiny_http::Server,
-    handler: H,
+    poller: &thread::Poll,
+    tiny_http_server: &tiny_http::Server,
+    handler: &H,
 ) -> ()
 where
     H: Handler,
@@ -69,7 +69,7 @@ impl Server {
         Server {
             thread: thread::spawn(move |poller| {
                 let tiny_http_server = tiny_http::Server::http(host_port).unwrap();
-                http_server(poller, tiny_http_server, handler)
+                http_server(&poller, &tiny_http_server, &handler)
             }),
         }
     }

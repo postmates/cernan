@@ -1,5 +1,5 @@
-use super::Source;
-extern crate mio;
+use mio;
+use source::Source;
 use constants;
 use metric;
 use protocols::graphite::parse_graphite;
@@ -75,7 +75,7 @@ impl Graphite {
 
 fn spawn_stream_handlers(
     chans: util::Channel,
-    tags: sync::Arc<metric::TagMap>,
+    tags: &sync::Arc<metric::TagMap>,
     listener: &mio::net::TcpListener,
     stream_handlers: &mut Vec<thread::ThreadHandle>,
 ) -> () {
@@ -83,7 +83,7 @@ fn spawn_stream_handlers(
         match listener.accept() {
             Ok((stream, _addr)) => {
                 let rchans = chans.clone();
-                let rtags = sync::Arc::clone(&tags);
+                let rtags = sync::Arc::clone(tags);
                 let new_stream = thread::spawn(move |poller| {
                     poller
                         .register(
@@ -94,7 +94,7 @@ fn spawn_stream_handlers(
                         )
                         .unwrap();
 
-                    handle_stream(rchans, rtags, poller, stream);
+                    handle_stream(rchans, &rtags, &poller, stream);
                 });
                 stream_handlers.push(new_stream);
             }
@@ -111,15 +111,15 @@ fn spawn_stream_handlers(
 
 fn handle_stream(
     mut chans: util::Channel,
-    tags: sync::Arc<metric::TagMap>,
-    poller: mio::Poll,
+    tags: &sync::Arc<metric::TagMap>,
+    poller: &mio::Poll,
     stream: mio::net::TcpStream,
 ) {
     let mut line = String::new();
     let mut res = Vec::new();
     let mut line_reader = BufReader::new(stream);
     let basic_metric = sync::Arc::new(Some(
-        metric::Telemetry::default().overlay_tags_from_map(&tags),
+        metric::Telemetry::default().overlay_tags_from_map(tags),
     ));
 
     loop {
@@ -162,9 +162,9 @@ fn handle_stream(
 
 fn handle_tcp(
     chans: util::Channel,
-    tags: sync::Arc<metric::TagMap>,
+    tags: &sync::Arc<metric::TagMap>,
     socket_map: HashMap<mio::Token, mio::net::TcpListener>,
-    poll: mio::Poll,
+    poll: &mio::Poll,
 ) {
     let mut stream_handlers: Vec<thread::ThreadHandle> = Vec::new();
     loop {
@@ -184,7 +184,7 @@ fn handle_tcp(
                             let listener = &socket_map[&listener_token];
                             spawn_stream_handlers(
                                 chans.clone(), // TODO: do not clone, make an Arc
-                                sync::Arc::clone(&tags),
+                                tags,
                                 listener,
                                 &mut stream_handlers,
                             );
@@ -208,7 +208,7 @@ impl Source for Graphite {
                 > = HashMap::new();
                 for (i, addr) in ips.iter().enumerate() {
                     let token = mio::Token(i);
-                    let listener = mio::net::TcpListener::bind(&addr)
+                    let listener = mio::net::TcpListener::bind(addr)
                         .expect("Unable to bind to TCP socket");
                     info!("registered listener for {:?} {}", addr, self.port);
                     poll.register(
@@ -223,9 +223,9 @@ impl Source for Graphite {
 
                 handle_tcp(
                     self.chans.clone(),
-                    sync::Arc::clone(&self.tags),
+                    &self.tags,
                     socket_map,
-                    poll,
+                    &poll,
                 );
             }
             Err(e) => {

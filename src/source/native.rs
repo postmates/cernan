@@ -76,9 +76,9 @@ impl NativeServer {
 
 fn handle_tcp(
     chans: util::Channel,
-    tags: sync::Arc<metric::TagMap>,
+    tags: &sync::Arc<metric::TagMap>,
     listener_map: HashMap<mio::Token, mio::net::TcpListener>,
-    poller: mio::Poll,
+    poller: &mio::Poll,
 ) {
     let mut stream_handlers: Vec<thread::ThreadHandle> = Vec::new();
     loop {
@@ -97,8 +97,8 @@ fn handle_tcp(
                         let listener = &listener_map[&listener_token];
                         spawn_stream_handlers(
                             chans.clone(),
-                            sync::Arc::clone(&tags),
-                            &listener,
+                            tags,
+                            listener,
                             &mut stream_handlers,
                         )
                     }
@@ -110,14 +110,14 @@ fn handle_tcp(
 
 fn spawn_stream_handlers(
     chans: util::Channel,
-    tags: sync::Arc<metric::TagMap>,
+    tags: &sync::Arc<metric::TagMap>,
     listener: &mio::net::TcpListener,
     stream_handlers: &mut Vec<thread::ThreadHandle>,
 ) -> () {
     loop {
         match listener.accept() {
             Ok((stream, _addr)) => {
-                let rtags = sync::Arc::clone(&tags);
+                let rtags = sync::Arc::clone(tags);
                 let rchans = chans.clone();
 
                 let new_stream = thread::spawn(move |poller| {
@@ -130,7 +130,7 @@ fn spawn_stream_handlers(
                         )
                         .unwrap();
 
-                    handle_stream(rchans, rtags, poller, stream);
+                    handle_stream(rchans, &rtags, &poller, stream);
                 });
                 stream_handlers.push(new_stream);
             }
@@ -147,8 +147,8 @@ fn spawn_stream_handlers(
 
 fn handle_stream(
     chans: util::Channel,
-    tags: sync::Arc<metric::TagMap>,
-    poller: mio::Poll,
+    tags: &sync::Arc<metric::TagMap>,
+    poller: &mio::Poll,
     stream: mio::net::TcpStream,
 ) {
     let mut reader = io::BufReader::new(stream);
@@ -161,8 +161,7 @@ fn handle_stream(
                     constants::SYSTEM => return,
                     _stream_token => {
                         let rchans = chans.clone();
-                        let rtags = sync::Arc::clone(&tags);
-                        handle_stream_payload(rchans, rtags, &mut reader);
+                        handle_stream_payload(rchans, tags, &mut reader);
                     }
                 }
             },
@@ -172,7 +171,7 @@ fn handle_stream(
 
 fn handle_stream_payload(
     mut chans: util::Channel,
-    tags: sync::Arc<metric::TagMap>,
+    tags: &sync::Arc<metric::TagMap>,
     reader: &mut io::BufReader<mio::net::TcpStream>,
 ) {
     let mut buf = Vec::with_capacity(4000);
@@ -218,7 +217,7 @@ fn handle_stream_payload(
                 metric = metric.persist(point.get_persisted());
                 metric = metric.timestamp(ts);
                 let mut metric = metric.harden().unwrap(); // todo don't unwrap
-                metric = metric.overlay_tags_from_map(&tags);
+                metric = metric.overlay_tags_from_map(tags);
                 for (key, value) in meta.drain() {
                     metric = metric.overlay_tag(key, value);
                 }
@@ -236,7 +235,7 @@ fn handle_stream_payload(
 
                 let mut logline = metric::LogLine::new(path, value);
                 logline = logline.time(ts);
-                logline = logline.overlay_tags_from_map(&tags);
+                logline = logline.overlay_tags_from_map(tags);
                 for (key, value) in meta.drain() {
                     logline = logline.overlay_tag(key, value);
                 }
@@ -276,6 +275,6 @@ impl Source for NativeServer {
         let chans = self.chans.clone();
         let tags = sync::Arc::new(self.tags.clone());
         info!("server started on {}:{}", self.ip, self.port);
-        handle_tcp(chans, tags, listener_map, poller);
+        handle_tcp(chans, &tags, listener_map, &poller);
     }
 }
