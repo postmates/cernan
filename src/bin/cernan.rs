@@ -247,10 +247,10 @@ fn main() {
         let internal_config = &args.internal;
         config_topology
             .insert(cfg_conf!(internal_config), internal_config.forwards.clone());
-        if let Some(ref configs) = args.statsds {
-            for (config_path, config) in configs {
-                config_topology.insert(config_path.clone(), config.forwards.clone());
-            }
+    }
+    if let Some(ref configs) = args.statsds {
+        for (config_path, config) in configs {
+            config_topology.insert(config_path.clone(), config.forwards.clone());
         }
     }
     if let Some(ref configs) = args.graphites {
