@@ -38,6 +38,7 @@ extern crate seahash;
 #[macro_use]
 extern crate serde_json;
 extern crate slab;
+extern crate systemd;
 extern crate toml;
 extern crate url;
 extern crate uuid;
