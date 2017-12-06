@@ -10,6 +10,8 @@
 //!
 //! All points are retained indefinitely in their aggregation.
 
+extern crate log;
+
 use flate2::write::GzEncoder;
 use http;
 use metric;
@@ -37,10 +39,8 @@ lazy_static! {
     pub static ref PROMETHEUS_AGGR_WINDOWED_LEN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total remaining metrics in aggr
     pub static ref PROMETHEUS_AGGR_REMAINING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total writes to binary
-    pub static ref PROMETHEUS_WRITE_BINARY: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total writes to text
-    pub static ref PROMETHEUS_WRITE_TEXT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total report successes
+    pub static ref PROMETHEUS_REPORT_SUCCESS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total report errors
     pub static ref PROMETHEUS_REPORT_ERROR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Sum of delays in reporting (microseconds)
@@ -417,9 +417,10 @@ impl http::Handler for PrometheusHandler {
 
                 match request.respond(response) {
                     Ok(_) => {
-                        PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
+                        PROMETHEUS_REPORT_SUCCESS.fetch_add(1, Ordering::Relaxed);
                     }
                     Err(e) => {
+                        PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
                         warn!("Failed to send prometheus response! {:?}", e);
                     }
                 };

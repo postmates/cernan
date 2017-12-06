@@ -1,5 +1,3 @@
-extern crate mio;
-
 use coco::Stack;
 use filter;
 use metric;
@@ -12,6 +10,7 @@ use std::sync;
 use std::sync::atomic::Ordering;
 use time;
 use util;
+use mio;
 
 lazy_static! {
     static ref Q: Stack<metric::Telemetry> = Stack::new();
@@ -342,19 +341,13 @@ impl Source for Internal {
                             self.chans
                         );
                         atom_non_zero_telem!(
-                            "cernan.sinks.prometheus.write.binary",
-                            sink::prometheus::PROMETHEUS_WRITE_BINARY,
+                            "cernan.sinks.prometheus.report.success",
+                            sink::prometheus::PROMETHEUS_REPORT_SUCCESS,
                             self.tags,
                             self.chans
                         );
                         atom_non_zero_telem!(
-                            "cernan.sinks.prometheus.write.text",
-                            sink::prometheus::PROMETHEUS_WRITE_TEXT,
-                            self.tags,
-                            self.chans
-                        );
-                        atom_non_zero_telem!(
-                            "cernan.sinks.prometheus.report_error",
+                            "cernan.sinks.prometheus.report.error",
                             sink::prometheus::PROMETHEUS_REPORT_ERROR,
                             self.tags,
                             self.chans
