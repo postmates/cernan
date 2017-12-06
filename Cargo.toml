@@ -2,7 +2,7 @@
 authors = ["Brian L. Troutwine <blt@postmates.com>",
            "Tom Santero <tom.santero@postmates.com>"]
 description = "A telemetry and logging aggregation server."
-keywords = ["statsd", "graphite", "telemetry", "logging", "metrics"]
+keywords = ["statsd", "graphite", "telemetry", "logging", "metrics", "systemd"]
 license = "MIT"
 name = "cernan"
 readme = "README.md"
@@ -39,6 +39,7 @@ seahash = "3.0"
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
+systemd = { path = "../rust-systemd" }
 toml = "0.4"
 url = "1.6"
 uuid = {version = "0.5", features = ["v4"]}

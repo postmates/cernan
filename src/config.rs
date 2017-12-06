@@ -11,6 +11,7 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use systemd::journal::JournalFiles;
 use toml;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
@@ -31,6 +32,7 @@ use source::{StatsdConfig, StatsdParseConfig};
 use source::FileServerConfig;
 use source::GraphiteConfig;
 use source::InternalConfig;
+use source::JournaldConfig;
 use source::NativeServerConfig;
 
 // This stinks and is verbose. Once
@@ -108,6 +110,8 @@ pub struct Args {
     pub native_server_config: Option<HashMap<String, NativeServerConfig>>,
     /// See `sources::Statsd` for more.
     pub statsds: Option<HashMap<String, StatsdConfig>>,
+    /// See `sources::Journald` for more.
+    pub journalds: Option<HashMap<String, JournaldConfig>>,
 }
 
 impl Default for Args {
@@ -138,6 +142,7 @@ impl Default for Args {
             native_server_config: None,
             files: None,
             internal: InternalConfig::default(),
+            journalds: None
         }
     }
 }
@@ -972,6 +977,60 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 res
             })
             .unwrap_or(args.internal);
+
+        args.journalds = sources.get("journald").map(|src| {
+            let mut journalds = HashMap::default();
+            for (name, tbl) in src.as_table().unwrap().iter() {
+                let is_enabled = tbl.get("enabled")
+                    .unwrap_or(&toml::Value::Boolean(true))
+                    .as_bool()
+                    .expect("must be a bool");
+                if is_enabled {
+                    let mut res = JournaldConfig::default();
+                    res.config_path = Some(name.clone());
+
+                    res.journal_files = tbl.get("journal_files")
+                        .and_then(|s| s.as_str())
+                        .and_then(|tf| {
+                            match &*tf.to_lowercase() {
+                                "all" => Some(JournalFiles::All),
+                                "system" => Some(JournalFiles::System),
+                                "current-user" => Some(JournalFiles::CurrentUser),
+                                _ => None,
+                            }
+                        }).unwrap_or(JournalFiles::System);
+
+                    res.runtime_only = tbl.get("runtime_only")
+                        .unwrap_or(&toml::Value::Boolean(true))
+                        .as_bool()
+                        .expect("must be a bool");
+
+                    res.local_only = tbl.get("local_only")
+                        .unwrap_or(&toml::Value::Boolean(true))
+                        .as_bool()
+                        .expect("must be a bool");
+
+                    res.forwards = tbl.get("forwards")
+                        .map(|fwd| {
+                            fwd.as_array()
+                                .expect("forwards must be an array")
+                                .to_vec()
+                                .iter()
+                                .map(|s| s.as_str().unwrap().to_string())
+                                .collect()
+                        })
+                        .unwrap_or(res.forwards);
+
+                    res.tags = global_tags.clone();
+
+                    assert!(res.config_path.is_some());
+                    assert!(!res.forwards.is_empty());
+
+                    journalds.insert(format!("sources.journald.{}", name), res);
+                }
+            }
+            journalds
+        });
     }
 
     args
