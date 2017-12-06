@@ -39,7 +39,7 @@ seahash = "3.0"
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
-systemd = { path = "../rust-systemd" }
+systemd = { url = "https://github.com/ibotty/rust-systemd", branch = "await-new-records" }
 toml = "0.4"
 url = "1.6"
 uuid = {version = "0.5", features = ["v4"]}
