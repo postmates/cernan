@@ -14,7 +14,6 @@ use std::sync;
 use thread;
 use thread::Stoppable;
 use util;
-use mio;
 
 /// The native source
 ///

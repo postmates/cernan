@@ -389,7 +389,6 @@ impl http::Handler for PrometheusHandler {
                 let reportable = aggr.reportable();
                 let now = Instant::now();
                 let mut buffer = Vec::new();
-                PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
                 let buffer = write_text(reportable, buffer).unwrap();
                 let elapsed = now.elapsed();
                 let us = ((elapsed.as_secs() as f64) * 10_000.0)

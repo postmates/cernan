@@ -2,7 +2,6 @@
 use constants;
 use mio;
 use std::thread;
-use mio;
 
 /// Event polling structure. Alias of `mio::Poll`.
 pub type Poll = mio::Poll;

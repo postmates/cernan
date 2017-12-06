@@ -10,7 +10,6 @@ use std::str;
 use std::time;
 use util;
 use util::send;
-use mio;
 
 /// `FileServer` is a Source which cooperatively schedules reads over files,
 /// converting the lines of said files into `LogLine` structures. As
