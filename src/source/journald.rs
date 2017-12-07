@@ -3,7 +3,7 @@ use source::Source;
 use std::collections::BTreeMap;
 use std::io::Result;
 use std::sync::Arc;
-use systemd::journal::{Journal, JournalFiles, JournalRecord};
+use systemd::journal::{Journal, JournalFiles, JournalRecord, JournalSeek};
 use util::Channel;
 use util::send;
 
@@ -80,6 +80,9 @@ impl Source for Journald {
             journal.match_add(key, val.as_bytes())
                 .expect("Unable to add match to journal");
         }
+
+        // seek to end of journal
+        journal.seek(JournalSeek::Tail).expect("Unable to seek to tail of journal");
 
         let tags = Arc::clone(&self.tags);
         let gen_log = |mut rec: JournalRecord| -> Result<Event> {
