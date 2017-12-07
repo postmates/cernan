@@ -4,20 +4,23 @@ use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
 use elastic::client::responses::bulk;
-use elastic::error;
 use elastic::error::Result;
+use elastic::error;
 use elastic::prelude::*;
 use metric::{LogLine, Telemetry};
 use sink::{Sink, Valve};
+use std::cmp;
 use std::error::Error;
-use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use uuid::Uuid;
+use std::sync;
+use uuid;
 
 lazy_static! {
     /// Total deliveries made
     pub static ref ELASTIC_RECORDS_DELIVERY: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total internal buffer entries
+    pub static ref ELASTIC_INTERNAL_BUFFER_LEN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total records delivered in the last delivery
     pub static ref ELASTIC_RECORDS_TOTAL_DELIVERED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total records that failed to be delivered due to error
@@ -67,7 +70,11 @@ pub struct ElasticsearchConfig {
     pub index_type: String,
     /// Determines whether to use HTTP or HTTPS when publishing to
     /// Elasticsearch.
-    pub secure: bool, // whether http or https
+    pub secure: bool,
+    /// Determine how many times to attempt the delivery of a log line before
+    /// dropping it from the buffer. Failures of a global bulk request does not
+    /// count against this limit.
+    pub delivery_attempt_limit: u8,
     /// The Elasticsearch host. May be an IP address or DNS hostname.
     pub host: String,
     /// The Elasticsearch port.
@@ -84,20 +91,28 @@ impl Default for ElasticsearchConfig {
             host: "127.0.0.1".to_string(),
             index_prefix: None,
             index_type: "payload".to_string(),
+            delivery_attempt_limit: 10,
             port: 9200,
             flush_interval: 1,
         }
     }
 }
 
+struct Line {
+    attempts: u8,
+    uuid: uuid::Uuid,
+    line: LogLine,
+}
+
 /// The elasticsearch sink struct.
 ///
 /// Refer to the documentation on `ElasticsearchConfig` for more details.
 pub struct Elasticsearch {
-    buffer: Vec<LogLine>,
+    buffer: Vec<Line>,
     secure: bool,
     host: String,
     port: usize,
+    delivery_attempt_limit: u8,
     index_prefix: Option<String>,
     index_type: String,
     flush_interval: u64,
@@ -115,6 +130,7 @@ impl Elasticsearch {
             port: config.port,
             index_prefix: config.index_prefix,
             index_type: config.index_type,
+            delivery_attempt_limit: config.delivery_attempt_limit,
             flush_interval: config.flush_interval,
         }
     }
@@ -123,10 +139,11 @@ impl Elasticsearch {
         assert!(!self.buffer.is_empty());
         use serde_json::{to_string, Value};
         for m in &self.buffer {
-            let uuid = Uuid::new_v4().hyphenated().to_string();
+            let uuid = m.uuid.hyphenated().to_string();
+            let line = &m.line;
             let header: Value = json!({
                 "index": {
-                    "_index" : idx(&self.index_prefix, m.time),
+                    "_index" : idx(&self.index_prefix, line.time),
                     "_type" : self.index_type.clone(),
                     "_id" : uuid.clone(),
                 }
@@ -135,15 +152,15 @@ impl Elasticsearch {
             buffer.push('\n');
             let mut payload: Value = json!({
                 "uuid": uuid,
-                "path": m.path.clone(),
-                "payload": m.value.clone(),
-                "timestamp": format_time(m.time),
+                "path": line.path.clone(),
+                "payload": line.value.clone(),
+                "timestamp": format_time(line.time),
             });
             let obj = payload.as_object_mut().unwrap();
-            for &(ref k, ref v) in m.tags.iter() {
+            for &(ref k, ref v) in line.tags.iter() {
                 obj.insert(k.clone(), Value::String(v.clone()));
             }
-            for &(ref k, ref v) in m.fields.iter() {
+            for &(ref k, ref v) in line.fields.iter() {
                 obj.insert(k.clone(), Value::String(v.clone()));
             }
             buffer.push_str(&to_string(&obj).unwrap());
@@ -169,114 +186,152 @@ impl Sink for Elasticsearch {
 
         let mut buffer = String::with_capacity(4048);
         self.bulk_body(&mut buffer);
-        debug!("BODY: {:?}", buffer);
-        let bulk_resp: Result<BulkResponse> = client
-            .request(BulkRequest::new(buffer))
-            .send()
-            .unwrap()
-            .into_response::<BulkResponse>();
-
-        match bulk_resp {
-            Ok(bulk) => {
-                self.buffer.clear();
-                ELASTIC_RECORDS_DELIVERY.fetch_add(1, Ordering::Relaxed);
-                for item in bulk.iter() {
-                    match item {
-                        Ok(_item) => {
-                            ELASTIC_RECORDS_TOTAL_DELIVERED
-                                .fetch_add(1, Ordering::Relaxed);
-                        }
-                        Err(item) => {
-                            ELASTIC_RECORDS_TOTAL_FAILED
-                                .fetch_add(1, Ordering::Relaxed);
-                            if let Some(cause) = item.cause() {
-                                error!(
-                                    "Failed to write item with error {}, cause {}",
-                                    item.description(),
-                                    cause
-                                );
-                            } else {
-                                error!(
-                                    "Failed to write item with error {}",
-                                    item.description()
-                                );
+        if let Ok(snd) = client.request(BulkRequest::new(buffer)).send() {
+            let bulk_resp: Result<BulkResponse> = snd.into_response::<BulkResponse>();
+            ELASTIC_INTERNAL_BUFFER_LEN.store(self.buffer.len(), Ordering::Relaxed);
+            match bulk_resp {
+                Ok(bulk) => {
+                    ELASTIC_RECORDS_DELIVERY.fetch_add(1, Ordering::Relaxed);
+                    for item in bulk.iter() {
+                        match item {
+                            Ok(item) => {
+                                let uuid = uuid::Uuid::parse_str(item.id())
+                                    .expect("catastrophic error, TID not a UUID");
+                                let mut idx = 0;
+                                for i in 0..self.buffer.len() {
+                                    match self.buffer[i].uuid.cmp(&uuid) {
+                                        cmp::Ordering::Equal => {
+                                            break;
+                                        },
+                                        _ => { idx += 1 },
+                                    }
+                                }
+                                self.buffer.remove(idx);
+                                ELASTIC_RECORDS_TOTAL_DELIVERED
+                                    .fetch_add(1, Ordering::Relaxed);
                             }
-                            match item.action() {
-                                bulk::Action::Index => ELASTIC_BULK_ACTION_INDEX_ERR
-                                    .fetch_add(1, Ordering::Relaxed),
-                                bulk::Action::Create => ELASTIC_BULK_ACTION_CREATE_ERR
-                                    .fetch_add(1, Ordering::Relaxed),
-                                bulk::Action::Update => ELASTIC_BULK_ACTION_UPDATE_ERR
-                                    .fetch_add(1, Ordering::Relaxed),
-                                bulk::Action::Delete => ELASTIC_BULK_ACTION_DELETE_ERR
-                                    .fetch_add(1, Ordering::Relaxed),
-                            };
+                            Err(item) => {
+                                let uuid = uuid::Uuid::parse_str(item.id())
+                                    .expect("catastrophic error, TID not a UUID");
+                                let mut idx = 0;
+                                for i in 0..self.buffer.len() {
+                                    match self.buffer[i].uuid.cmp(&uuid) {
+                                        cmp::Ordering::Equal => {
+                                            break;
+                                        },
+                                        _ => { idx += 1 },
+                                    }
+                                }
+                                self.buffer[idx].attempts += 1;
+                                if self.buffer[idx].attempts > self.delivery_attempt_limit {
+                                    self.buffer.remove(idx);
+                                }
+                                ELASTIC_RECORDS_TOTAL_FAILED
+                                    .fetch_add(1, Ordering::Relaxed);
+                                if let Some(cause) = item.cause() {
+                                    error!(
+                                        "Failed to write item with error {}, cause {}",
+                                        item.description(),
+                                        cause
+                                    );
+                                } else {
+                                    error!(
+                                        "Failed to write item with error {}",
+                                        item.description()
+                                    );
+                                }
+                                match item.action() {
+                                    bulk::Action::Index => {
+                                        ELASTIC_BULK_ACTION_INDEX_ERR
+                                            .fetch_add(1, Ordering::Relaxed)
+                                    }
+                                    bulk::Action::Create => {
+                                        ELASTIC_BULK_ACTION_CREATE_ERR
+                                            .fetch_add(1, Ordering::Relaxed)
+                                    }
+                                    bulk::Action::Update => {
+                                        ELASTIC_BULK_ACTION_UPDATE_ERR
+                                            .fetch_add(1, Ordering::Relaxed)
+                                    }
+                                    bulk::Action::Delete => {
+                                        ELASTIC_BULK_ACTION_DELETE_ERR
+                                            .fetch_add(1, Ordering::Relaxed)
+                                    }
+                                };
+                            }
                         }
                     }
                 }
-            }
-            Err(err) => match err {
-                error::Error::Api(ref api_error) => {
-                    use elastic::error::ApiError;
-                    match *api_error {
-                        ApiError::IndexNotFound { ref index } => {
-                            ELASTIC_ERROR_API_INDEX_NOT_FOUND
-                                .fetch_add(1, Ordering::Relaxed);
-                            error!(
-                                "Unable to write, API Error (Index Not Found): {}",
-                                index
-                            );
-                        }
-                        ApiError::Parsing { ref reason, .. } => {
-                            ELASTIC_ERROR_API_PARSING.fetch_add(1, Ordering::Relaxed);
-                            error!("Unable to write, API Error (Parsing): {}", reason);
-                        }
-                        ApiError::MapperParsing { ref reason, .. } => {
-                            ELASTIC_ERROR_API_MAPPER_PARSING
-                                .fetch_add(1, Ordering::Relaxed);
-                            error!(
-                                "Unable to write, API Error (Mapper Parsing): {}",
-                                reason
-                            );
-                        }
-                        ApiError::ActionRequestValidation { ref reason, .. } => {
-                            ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION
-                                .fetch_add(1, Ordering::Relaxed);
-                            error!(
+                Err(err) => match err {
+                    error::Error::Api(ref api_error) => {
+                        use elastic::error::ApiError;
+                        match *api_error {
+                            ApiError::IndexNotFound { ref index } => {
+                                ELASTIC_ERROR_API_INDEX_NOT_FOUND
+                                    .fetch_add(1, Ordering::Relaxed);
+                                error!(
+                                    "Unable to write, API Error (Index Not Found): {}",
+                                    index
+                                );
+                            }
+                            ApiError::Parsing { ref reason, .. } => {
+                                ELASTIC_ERROR_API_PARSING
+                                    .fetch_add(1, Ordering::Relaxed);
+                                error!(
+                                    "Unable to write, API Error (Parsing): {}",
+                                    reason
+                                );
+                            }
+                            ApiError::MapperParsing { ref reason, .. } => {
+                                ELASTIC_ERROR_API_MAPPER_PARSING
+                                    .fetch_add(1, Ordering::Relaxed);
+                                error!(
+                                    "Unable to write, API Error (Mapper Parsing): {}",
+                                    reason
+                                );
+                            }
+                            ApiError::ActionRequestValidation {
+                                ref reason, ..
+                            } => {
+                                ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION
+                                    .fetch_add(1, Ordering::Relaxed);
+                                error!(
                                     "Unable to write, API Error (Action Request Validation): {}",
                                     reason
                                 );
-                        }
-                        ApiError::DocumentMissing { ref index, .. } => {
-                            ELASTIC_ERROR_API_DOCUMENT_MISSING
-                                .fetch_add(1, Ordering::Relaxed);
-                            error!(
+                            }
+                            ApiError::DocumentMissing { ref index, .. } => {
+                                ELASTIC_ERROR_API_DOCUMENT_MISSING
+                                    .fetch_add(1, Ordering::Relaxed);
+                                error!(
                                 "Unable to write, API Error (Document Missing): {}",
                                 index
                             );
-                        }
-                        ApiError::IndexAlreadyExists { ref index, .. } => {
-                            ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS
-                                .fetch_add(1, Ordering::Relaxed);
-                            error!(
+                            }
+                            ApiError::IndexAlreadyExists { ref index, .. } => {
+                                ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS
+                                    .fetch_add(1, Ordering::Relaxed);
+                                error!(
                                     "Unable to write, API Error (Index Already Exists): {}",
                                     index
                                 );
-                        }
-                        _ => {
-                            ELASTIC_ERROR_API_UNKNOWN.fetch_add(1, Ordering::Relaxed);
-                            error!("Unable to write, API Error (Unknown)");
+                            }
+                            _ => {
+                                ELASTIC_ERROR_API_UNKNOWN
+                                    .fetch_add(1, Ordering::Relaxed);
+                                error!("Unable to write, API Error (Unknown)");
+                            }
                         }
                     }
-                }
-                error::Error::Client(ref client_error) => {
-                    ELASTIC_ERROR_CLIENT.fetch_add(1, Ordering::Relaxed);
-                    error!(
-                        "Unable to write, client error: {}",
-                        client_error.description()
-                    );
-                }
-            },
+                    error::Error::Client(ref client_error) => {
+                        ELASTIC_ERROR_CLIENT.fetch_add(1, Ordering::Relaxed);
+                        error!(
+                            "Unable to write, client error: {}",
+                            client_error.description()
+                        );
+                    }
+                },
+            }
         }
     }
 
@@ -286,7 +341,12 @@ impl Sink for Elasticsearch {
 
     fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
         let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
-        self.buffer.push(line);
+        let uuid = uuid::Uuid::new_v4();
+        self.buffer.push(Line {
+            uuid: uuid,
+            line: line,
+            attempts: 0,
+        });
     }
 
     fn valve_state(&self) -> Valve {
