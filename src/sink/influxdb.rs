@@ -79,17 +79,11 @@ impl Default for InfluxDBConfig {
 
 #[inline]
 fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
-    let mut iter = tags.iter();
-    if let Some(&(ref fk, ref fv)) = iter.next() {
-        s.push_str(fk);
+    for &(ref k, ref v) in tags.iter() {
+        s.push_str(",");
+        s.push_str(k);
         s.push_str("=");
-        s.push_str(fv);
-        for &(ref k, ref v) in iter {
-            s.push_str(",");
-            s.push_str(k);
-            s.push_str("=");
-            s.push_str(v);
-        }
+        s.push_str(v);
     }
 }
 
@@ -140,7 +134,6 @@ impl InfluxDB {
             match telem.kind() {
                 AggregationMethod::Sum => if let Some(val) = telem.sum() {
                     buffer.push_str(&telem.name);
-                    buffer.push_str(",");
                     fmt_tags(&telem.tags, &mut tag_buf);
                     buffer.push_str(&tag_buf);
                     buffer.push_str(" ");
@@ -156,7 +149,6 @@ impl InfluxDB {
                 },
                 AggregationMethod::Set => if let Some(val) = telem.set() {
                     buffer.push_str(&telem.name);
-                    buffer.push_str(",");
                     fmt_tags(&telem.tags, &mut tag_buf);
                     buffer.push_str(&tag_buf);
                     buffer.push_str(" ");
@@ -177,7 +169,6 @@ impl InfluxDB {
                             Bound::PosInf => "le_inf".to_string(),
                         };
                         buffer.push_str(&format!("{}.{}", &telem.name, bound_name));
-                        buffer.push_str(",");
                         fmt_tags(&telem.tags, &mut tag_buf);
                         buffer.push_str(&tag_buf);
                         buffer.push_str(" ");
@@ -198,7 +189,6 @@ impl InfluxDB {
                 {
                     if let Some(val) = telem.query(*percentile) {
                         buffer.push_str(&format!("{}.{}", &telem.name, percentile));
-                        buffer.push_str(",");
                         fmt_tags(&telem.tags, &mut tag_buf);
                         buffer.push_str(&tag_buf);
                         buffer.push_str(" ");
@@ -323,6 +313,16 @@ mod test {
         let dt_2 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00);
         influxdb.deliver(Arc::new(Some(
             Telemetry::new()
+                .name("test.counter.no.tags")
+                .value(-1.0)
+                .timestamp(dt_0.timestamp())
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
+                .overlay_tags_from_map(&TagMap::default()),
+        )));
+        influxdb.deliver(Arc::new(Some(
+            Telemetry::new()
                 .name("test.counter")
                 .value(-1.0)
                 .timestamp(dt_0.timestamp())
@@ -437,6 +437,7 @@ mod test {
 
         println!("{:?}", lines);
         let expected = [
+            "test.counter.no.tags value=-1 645181811000000000",
             "test.counter,source=test-src value=-1 645181811000000000",
             "test.counter,source=test-src value=2 645181811000000000",
             "test.counter,source=test-src value=3 645181812000000000",
