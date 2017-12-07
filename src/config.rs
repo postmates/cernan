@@ -6,6 +6,7 @@
 use clap::{App, Arg};
 use metric::TagMap;
 use rusoto_core::Region;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
@@ -142,7 +143,7 @@ impl Default for Args {
             native_server_config: None,
             files: None,
             internal: InternalConfig::default(),
-            journalds: None
+            journalds: None,
         }
     }
 }
@@ -1009,6 +1010,14 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         .unwrap_or(&toml::Value::Boolean(true))
                         .as_bool()
                         .expect("must be a bool");
+
+                    res.matches = tbl.get("matches")
+                        .map(|m| {
+                             m.clone()
+                                 .try_into()
+                                 .expect("matches must be a table with only strings values")
+                        })
+                        .unwrap_or_else(|| BTreeMap::new());
 
                     res.forwards = tbl.get("forwards")
                         .map(|fwd| {

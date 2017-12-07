@@ -1,5 +1,6 @@
 use metric::{Event, LogLine, TagMap};
 use source::Source;
+use std::collections::BTreeMap;
 use std::io::Result;
 use std::sync::Arc;
 use systemd::journal::{Journal, JournalFiles, JournalRecord};
@@ -15,6 +16,8 @@ pub struct JournaldConfig {
     pub runtime_only: bool,
     /// Whether to also consider journals from other machines.
     pub local_only: bool,
+    /// Matches to filter the logs from journald.
+    pub matches: BTreeMap<String, String>,
 
     /// The tagmap that journald will apply to all of its created log lines.
     pub tags: TagMap,
@@ -30,6 +33,7 @@ impl Default for JournaldConfig {
             journal_files: JournalFiles::System,
             runtime_only: true,
             local_only: true,
+            matches: BTreeMap::new(),
             tags: TagMap::default(),
             forwards: Vec::new(),
             config_path: None,
@@ -43,6 +47,7 @@ impl Default for JournaldConfig {
 pub struct Journald {
     chans: Channel,
     tags: Arc<TagMap>,
+    matches: BTreeMap<String, String>,
 
     journal_files: JournalFiles,
     runtime_only: bool,
@@ -58,6 +63,7 @@ impl Journald {
             journal_files: config.journal_files,
             runtime_only: config.runtime_only,
             local_only: config.local_only,
+            matches: config.matches,
         }
     }
 }
@@ -69,6 +75,12 @@ impl Source for Journald {
                               self.runtime_only.clone(),
                               self.local_only.clone())
             .expect("Unable to open journal");
+
+        for (key, val) in self.matches.iter() {
+            journal.match_add(key, val.as_bytes())
+                .expect("Unable to add match to journal");
+        }
+
         let tags = Arc::clone(&self.tags);
         let gen_log = |mut rec: JournalRecord| -> Result<Event> {
             let path = rec.remove("_SYSTEMD_UNIT")
