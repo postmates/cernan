@@ -57,6 +57,7 @@ pub struct Journald {
 impl Journald {
     /// Create a new `Journald` source
     pub fn new(chans: Channel, config: JournaldConfig) -> Journald {
+        warn!("journal files: {:?}", config);
         Journald {
             chans: chans,
             tags: Arc::new(config.tags),
@@ -103,7 +104,7 @@ impl Source for Journald {
             l = match rec.get("_SOURCE_REALTIME_TIMESTAMP").map(|s| s.parse()) {
                 Some(Ok(t)) => l.time(t),
                 _ => {
-                    info!("Unable to get SOURCE_REALTIME_TIMESTAMP from journald record.");
+                    info!("Unable to get _SOURCE_REALTIME_TIMESTAMP from journald record.");
                     l
                 }
             };
@@ -123,11 +124,11 @@ impl Source for Journald {
             let mut chans = self.chans.clone();
             let process_records = |rec: JournalRecord| {
                 match gen_log(rec) {
-                    Ok(logline) => send(&mut chans, logline),
-                    Err(err) => {
-                        warn!("cannot generate log: {}", err);
-                        return Ok(());
-                    }
+                    Ok(logline) => {
+                        debug!("send with chans: {:?} and logline: {:?}", chans, logline);
+                        send(&mut chans, logline);
+                    },
+                    Err(err) => warn!("cannot generate log. error: {}", err),
                 }
                 Ok(())
             };
