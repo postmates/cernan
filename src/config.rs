@@ -1002,7 +1002,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         }).unwrap_or(JournalFiles::System);
 
                     res.runtime_only = tbl.get("runtime_only")
-                        .unwrap_or(&toml::Value::Boolean(true))
+                        .unwrap_or(&toml::Value::Boolean(false))
                         .as_bool()
                         .expect("must be a bool");
 

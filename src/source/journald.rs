@@ -31,7 +31,7 @@ impl Default for JournaldConfig {
     fn default() -> JournaldConfig {
         JournaldConfig {
             journal_files: JournalFiles::System,
-            runtime_only: true,
+            runtime_only: false,
             local_only: true,
             matches: BTreeMap::new(),
             tags: TagMap::default(),
