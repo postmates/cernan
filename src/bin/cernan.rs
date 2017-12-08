@@ -263,6 +263,11 @@ fn main() {
             config_topology.insert(cfg_conf!(config), config.forwards.clone());
         }
     }
+    if let Some(ref configs) = args.journalds {
+        for (config_path, config) in configs {
+            config_topology.insert(config_path.clone(), config.forwards.clone());
+        }
+    }
 
     // Now we validate the topology. We search the outer keys and assert that
     // for every forward there's another key in the map. If not, invalid.
@@ -506,6 +511,22 @@ fn main() {
             );
             joins.push(thread::spawn(move || {
                 cernan::source::FileServer::new(fp_sends, config).run();
+            }));
+        }
+    });
+
+    mem::replace(&mut args.journalds, None).map(|cfg_map| {
+        for (_, config) in cfg_map {
+            let mut journald_sends = Vec::new();
+            populate_forwards(
+                &mut journald_sends,
+                Some(&mut flush_sends),
+                &config.forwards,
+                &cfg_conf!(config),
+                &senders,
+            );
+            joins.push(thread::spawn(move || {
+                cernan::source::Journald::new(journald_sends, config).run();
             }));
         }
     });

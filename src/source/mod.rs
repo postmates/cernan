@@ -9,6 +9,7 @@ mod graphite;
 mod internal;
 mod native;
 mod statsd;
+mod journald;
 
 pub use self::file::{FileServer, FileServerConfig};
 pub use self::flush::FlushTimer;
@@ -16,6 +17,7 @@ pub use self::graphite::{Graphite, GraphiteConfig};
 pub use self::internal::{report_full_telemetry, Internal, InternalConfig};
 pub use self::native::{NativeServer, NativeServerConfig};
 pub use self::statsd::{Statsd, StatsdConfig, StatsdParseConfig};
+pub use self::journald::{Journald, JournaldConfig};
 
 /// cernan Source, the originator of all `metric::Event`.
 ///
