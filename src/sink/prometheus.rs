@@ -18,7 +18,7 @@ use metric;
 use metric::{AggregationMethod, TagMap};
 use protobuf::Message;
 use protobuf::repeated::RepeatedField;
-use protocols::prometheus::*;
+use protocols::prometheus::binary::*;
 use quantiles::histogram::Bound;
 use sink::{Sink, Valve};
 use std::collections::HashSet;

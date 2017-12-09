@@ -1,0 +1,16 @@
+data-directory = "data/"
+scripts-directory = "examples/scripts/"
+
+flush-interval = 5
+
+[tags]
+source = "cernan"
+
+[sources.prometheus.a_scrape_job]
+interval = 15
+target = "localhost:8191"
+forwards = ["sinks.console"]
+
+
+[sinks.console]
+bin_width = 1

@@ -32,6 +32,7 @@ use source::FileServerConfig;
 use source::GraphiteConfig;
 use source::InternalConfig;
 use source::NativeServerConfig;
+use source::PrometheusSourceConfig;
 
 // This stinks and is verbose. Once
 // https://github.com/rust-lang/rust/issues/41681 lands we'll be able to do this
@@ -108,6 +109,8 @@ pub struct Args {
     pub native_server_config: Option<HashMap<String, NativeServerConfig>>,
     /// See `sources::Statsd` for more.
     pub statsds: Option<HashMap<String, StatsdConfig>>,
+    /// See `sources::Prometheus` for more.
+    pub prometheus_sources: Option<PrometheusSourceConfig>,
 }
 
 impl Default for Args {
@@ -137,6 +140,7 @@ impl Default for Args {
             graphites: None,
             native_server_config: None,
             files: None,
+            prometheus_sources: None,
             internal: InternalConfig::default(),
         }
     }
@@ -903,6 +907,18 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 }
             }
             graphites
+        });
+
+        args.prometheus_sources = sources.get("prometheus").map(|src| {
+            let mut prom_srcs = HashMap::default();
+            for (name, tbl) in src.as_table().unwrap().iter() {
+                let mut res = PrometheusSourceConfig::default();
+                res.config_path = Some(name.clone());
+                let v: Vec<&str> = tbl.get("target").as_string().splitn(1, ":");
+                res.host = v[0];
+                res.port = v[1];
+            }
+            prom_srcs
         });
 
         args.native_server_config = sources.get("native").map(|src| {
