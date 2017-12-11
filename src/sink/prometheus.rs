@@ -30,6 +30,7 @@ use std::sync;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use time;
 
 lazy_static! {
     /// Total reportable metrics
@@ -58,6 +59,7 @@ lazy_static! {
 pub struct Prometheus {
     thrd_aggr: sync::Arc<sync::Mutex<Option<PrometheusAggr>>>,
     aggrs: PrometheusAggr,
+    age_threshold: Option<u64>,
     // `http_srv` is never used but we must keep it in this struct to avoid the
     // listening server being dropped
     http_srv: Listening,
@@ -75,6 +77,9 @@ pub struct PrometheusConfig {
     pub config_path: Option<String>,
     /// The maximum size of the sample window for Summarize, in seconds.
     pub capacity_in_seconds: usize,
+    /// Determine the age at which a Telemetry point will be ejected. If the
+    /// value is None no points will ever be rejected. Units are seconds.
+    pub age_threshold: Option<u64>,
 }
 
 impl Default for PrometheusConfig {
@@ -84,6 +89,7 @@ impl Default for PrometheusConfig {
             port: 8086,
             config_path: None,
             capacity_in_seconds: 600, // ten minutes
+            age_threshold: None,
         }
     }
 }
@@ -416,6 +422,7 @@ impl Prometheus {
             aggrs: aggrs,
             thrd_aggr: thrd_aggrs,
             http_srv: listener,
+            age_threshold: None,
         }
     }
 }
@@ -738,8 +745,14 @@ impl Sink for Prometheus {
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<metric::Telemetry>>) -> () {
-        let metric = sync::Arc::make_mut(&mut point).take().unwrap();
-        self.aggrs.insert(metric);
+        let telem: metric::Telemetry = sync::Arc::make_mut(&mut point).take().unwrap();
+        if let Some(age_threshold) = self.age_threshold {
+            if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
+                self.aggrs.insert(telem);
+            }
+        } else {
+            self.aggrs.insert(telem);
+        }
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<metric::LogLine>>) -> () {
