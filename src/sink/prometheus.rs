@@ -418,10 +418,9 @@ impl http::Handler for PrometheusHandler {
                 match request.respond(response) {
                     Ok(_) => {
                         PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
-                    }
-
+                    },
                     Err(e) => {
-                        panic!(format!("Failed to send prometheus response! {:?}", e));
+                        warn!("Failed to send prometheus response! {:?}", e);
                     }
                 };
             }
