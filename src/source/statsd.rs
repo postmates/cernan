@@ -151,16 +151,15 @@ impl Source for Statsd {
                     let tags = sync::Arc::clone(&self.tags);
                     let parse_config = sync::Arc::clone(&self.parse_config);
                     info!("server started on {:?} {}", addr, self.port);
-                    joins.push(thread::spawn(
-                        move || handle_udp(chans, &tags, &parse_config, &listener),
-                    ));
+                    joins.push(thread::spawn(move || {
+                        handle_udp(chans, &tags, &parse_config, &listener)
+                    }));
                 }
             }
             Err(e) => {
                 info!(
                     "Unable to perform DNS lookup on host {} with error {}",
-                    self.host,
-                    e
+                    self.host, e
                 );
             }
         }

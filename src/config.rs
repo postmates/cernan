@@ -229,9 +229,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
     args.flush_interval = value
         .get("flush-interval")
-        .map(|fi| {
-            fi.as_integer().expect("could not parse flush-interval") as u64
-        })
+        .map(|fi| fi.as_integer().expect("could not parse flush-interval") as u64)
         .unwrap_or(args.flush_interval);
 
     let global_tags: TagMap = match value.get("tags") {
@@ -375,10 +373,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
     if let Some(sinks) = value.get("sinks") {
         let sinks = sinks.as_table().expect("sinks must be in table format");
 
-        args.null = sinks.get("null").map(|_| {
-            NullConfig {
-                config_path: "sinks.null".to_string(),
-            }
+        args.null = sinks.get("null").map(|_| NullConfig {
+            config_path: "sinks.null".to_string(),
         });
 
         args.console = sinks.get("console").map(|snk| {
@@ -409,25 +405,21 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
             res.pad_control = snk.get("padding")
                 .and_then(|t| t.as_table())
-                .map(|tbl| {
-                    PadControl {
-                        set: tbl.get("set").map_or(false, |v| {
-                            v.as_bool()
-                                .expect("could not parse padding.set as boolean")
-                        }),
-                        sum: tbl.get("sum").map_or(false, |v| {
-                            v.as_bool()
-                                .expect("could not parse padding.sum as boolean")
-                        }),
-                        summarize: tbl.get("summarize").map_or(false, |v| {
-                            v.as_bool()
-                                .expect("could not parse padding.summarize as boolean")
-                        }),
-                        histogram: tbl.get("histogram").map_or(false, |v| {
-                            v.as_bool()
-                                .expect("could not parse padding.histogram as boolean")
-                        }),
-                    }
+                .map(|tbl| PadControl {
+                    set: tbl.get("set").map_or(false, |v| {
+                        v.as_bool().expect("could not parse padding.set as boolean")
+                    }),
+                    sum: tbl.get("sum").map_or(false, |v| {
+                        v.as_bool().expect("could not parse padding.sum as boolean")
+                    }),
+                    summarize: tbl.get("summarize").map_or(false, |v| {
+                        v.as_bool()
+                            .expect("could not parse padding.summarize as boolean")
+                    }),
+                    histogram: tbl.get("histogram").map_or(false, |v| {
+                        v.as_bool()
+                            .expect("could not parse padding.histogram as boolean")
+                    }),
                 })
                 .unwrap_or(res.pad_control);
 
@@ -499,9 +491,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 .unwrap_or(res.port);
 
             res.secure = snk.get("secure")
-                .map(|p| {
-                    p.as_bool().expect("could not parse sinks.influxdb.secure")
-                })
+                .map(|p| p.as_bool().expect("could not parse sinks.influxdb.secure"))
                 .unwrap_or(res.secure);
 
             res.host = snk.get("host")
@@ -676,8 +666,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     let mut res = FirehoseConfig::default();
                     res.config_path = Some(format!("sinks.firehose.{}", name));
 
-                    let ds = tbl.get("delivery_stream")
-                        .map(|x| x.as_str().expect("delivery_stream must be a string"));
+                    let ds = tbl.get("delivery_stream").map(|x| {
+                        x.as_str().expect("delivery_stream must be a string")
+                    });
                     if !ds.is_some() {
                         continue;
                     }

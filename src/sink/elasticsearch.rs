@@ -4,16 +4,16 @@ use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
 use elastic::client::responses::bulk;
-use elastic::error::Result;
 use elastic::error;
+use elastic::error::Result;
 use elastic::prelude::*;
 use metric::{LogLine, Telemetry};
 use sink::{Sink, Valve};
 use std::cmp;
 use std::error::Error;
+use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync;
 use uuid;
 
 lazy_static! {
@@ -202,8 +202,8 @@ impl Sink for Elasticsearch {
                                     match self.buffer[i].uuid.cmp(&uuid) {
                                         cmp::Ordering::Equal => {
                                             break;
-                                        },
-                                        _ => { idx += 1 },
+                                        }
+                                        _ => idx += 1,
                                     }
                                 }
                                 self.buffer.remove(idx);
@@ -218,12 +218,14 @@ impl Sink for Elasticsearch {
                                     match self.buffer[i].uuid.cmp(&uuid) {
                                         cmp::Ordering::Equal => {
                                             break;
-                                        },
-                                        _ => { idx += 1 },
+                                        }
+                                        _ => idx += 1,
                                     }
                                 }
                                 self.buffer[idx].attempts += 1;
-                                if self.buffer[idx].attempts > self.delivery_attempt_limit {
+                                if self.buffer[idx].attempts
+                                    > self.delivery_attempt_limit
+                                {
                                     self.buffer.remove(idx);
                                 }
                                 ELASTIC_RECORDS_TOTAL_FAILED

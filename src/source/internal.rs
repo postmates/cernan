@@ -309,6 +309,12 @@ impl Source for Internal {
                     self.chans
                 );
                 atom_non_zero_telem!(
+                    "cernan.sinks.prometheus.exposition.inside_baseball.delay.sum",
+                    sink::prometheus::PROMETHEUS_RESPONSE_DELAY_SUM,
+                    self.tags,
+                    self.chans
+                );
+                atom_non_zero_telem!(
                     "cernan.sinks.prometheus.aggregation.inside_baseball.perpetual.total",
                     sink::prometheus::PROMETHEUS_AGGR_PERPETUAL_LEN,
                     self.tags,

@@ -48,7 +48,6 @@ impl Sink for Null {
         Some(1)
     }
 
-
     fn flush(&mut self) {
         // do nothing
     }

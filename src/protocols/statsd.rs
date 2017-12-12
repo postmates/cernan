@@ -45,9 +45,9 @@ pub fn parse_statsd(
                                 Ok(f) => f,
                                 Err(_) => return false,
                             };
-                        let mut metric = sync::Arc::make_mut(
-                            &mut sync::Arc::clone(metric),
-                        ).take()
+                        let mut metric = sync::Arc::make_mut(&mut sync::Arc::clone(
+                            metric,
+                        )).take()
                             .unwrap()
                             .thaw();
                         metric = metric.name(name);
@@ -456,7 +456,6 @@ mod tests {
         let mut res = Vec::new();
         assert!(!parse_statsd("", &mut res, &metric, &config));
     }
-
 
     #[test]
     fn test_metric_parse_invalid_no_value() {

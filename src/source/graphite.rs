@@ -93,7 +93,6 @@ fn handle_tcp(
     })
 }
 
-
 fn handle_stream(
     mut chans: util::Channel,
     tags: Arc<metric::TagMap>,
@@ -142,15 +141,15 @@ impl Source for Graphite {
                     let chans = self.chans.clone();
                     let tags = Arc::clone(&self.tags);
                     info!("server started on {:?} {}", addr, self.port);
-                    joins
-                        .push(thread::spawn(move || handle_tcp(chans, tags, listener)));
+                    joins.push(thread::spawn(move || {
+                        handle_tcp(chans, tags, listener)
+                    }));
                 }
             }
             Err(e) => {
                 info!(
                     "Unable to perform DNS lookup on host {} with error {}",
-                    self.host,
-                    e
+                    self.host, e
                 );
             }
         }

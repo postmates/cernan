@@ -526,9 +526,10 @@ impl filter::Filter for ProgrammableFilter {
                         .unwrap();
                     let fail =
                         metric::Event::Telemetry(sync::Arc::new(Some(filter_telem)));
-                    return Err(
-                        filter::FilterError::NoSuchFunction("process_metric", fail),
-                    );
+                    return Err(filter::FilterError::NoSuchFunction(
+                        "process_metric",
+                        fail,
+                    ));
                 }
 
                 let mut pyld = Payload::from_metric(
@@ -610,9 +611,10 @@ impl filter::Filter for ProgrammableFilter {
                             .harden()
                             .unwrap(),
                     );
-                    return Err(
-                        filter::FilterError::NoSuchFunction("process_log", fail),
-                    );
+                    return Err(filter::FilterError::NoSuchFunction(
+                        "process_log",
+                        fail,
+                    ));
                 }
 
                 let mut pyld = Payload::from_log(

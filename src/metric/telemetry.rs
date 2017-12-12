@@ -45,7 +45,7 @@ pub enum Value {
     /// DO NOT USE - PUBLIC FOR TESTING ONLY
     Histogram(Histogram<f64>),
     /// DO NOT USE - PUBLIC FOR TESTING ONLY
-    Quantiles{ ckms: CKMS<f64>, sum: f64 },
+    Quantiles { ckms: CKMS<f64>, sum: f64 },
 }
 
 pub struct SoftTelemetry {
@@ -102,10 +102,10 @@ impl Add for Value {
                     y.insert(x);
                     Value::Histogram(y)
                 }
-                Value::Quantiles{ mut ckms, mut sum } => {
+                Value::Quantiles { mut ckms, mut sum } => {
                     ckms.insert(x);
                     sum += x;
-                    Value::Quantiles{ ckms, sum }
+                    Value::Quantiles { ckms, sum }
                 }
             },
             Value::Histogram(mut x) => match rhs {
@@ -115,9 +115,9 @@ impl Add for Value {
                     x += y;
                     Value::Histogram(x)
                 }
-                Value::Quantiles{ ckms, sum } => Value::Quantiles{ ckms, sum },
+                Value::Quantiles { ckms, sum } => Value::Quantiles { ckms, sum },
             },
-            Value::Quantiles{ mut ckms, mut sum } => match rhs {
+            Value::Quantiles { mut ckms, mut sum } => match rhs {
                 Value::Set(y) => Value::Set(y),
                 Value::Sum(y) => Value::Sum(sum + y),
                 Value::Histogram(mut y) => {
@@ -126,10 +126,13 @@ impl Add for Value {
                     }
                     Value::Histogram(y)
                 }
-                Value::Quantiles{ ckms: rhs, sum: rhs_sum } => {
+                Value::Quantiles {
+                    ckms: rhs,
+                    sum: rhs_sum,
+                } => {
                     ckms += rhs;
                     sum += rhs_sum;
-                    Value::Quantiles{ ckms, sum }
+                    Value::Quantiles { ckms, sum }
                 }
             },
         }
@@ -143,7 +146,7 @@ impl Value {
             (&Value::Set(_), &Value::Set(_)) => true,
             (&Value::Sum(_), &Value::Sum(_)) => true,
             (&Value::Histogram(_), &Value::Histogram(_)) => true,
-            (&Value::Quantiles{ .. }, &Value::Quantiles{ .. }) => true,
+            (&Value::Quantiles { .. }, &Value::Quantiles { .. }) => true,
             _ => false,
         }
     }
@@ -180,7 +183,7 @@ impl Value {
         match *self {
             Value::Set(_) | Value::Sum(_) => 1,
             Value::Histogram(ref histo) => histo.count(),
-            Value::Quantiles{ ref ckms, .. } => ckms.count(),
+            Value::Quantiles { ref ckms, .. } => ckms.count(),
         }
     }
 
@@ -203,7 +206,7 @@ impl Value {
             Value::Set(_) => AggregationMethod::Set,
             Value::Sum(_) => AggregationMethod::Sum,
             Value::Histogram(_) => AggregationMethod::Histogram,
-            Value::Quantiles{ .. } => AggregationMethod::Summarize,
+            Value::Quantiles { .. } => AggregationMethod::Summarize,
         }
     }
 
@@ -256,12 +259,12 @@ impl Default for Telemetry {
 }
 
 impl SoftTelemetry {
-    /// Set the override sample sum 
+    /// Set the override sample sum
     pub fn sample_sum(mut self, sum: f64) -> SoftTelemetry {
         self.override_sample_sum = Some(sum);
         self
     }
-    
+
     /// Set the override count
     pub fn count(mut self, count: u64) -> SoftTelemetry {
         self.override_count = Some(count);
@@ -681,7 +684,10 @@ impl Telemetry {
             Some(Value::Histogram(ref mut histo)) => {
                 histo.insert(value);
             }
-            Some(Value::Quantiles{ ref mut ckms, ref mut sum }) => {
+            Some(Value::Quantiles {
+                ref mut ckms,
+                ref mut sum,
+            }) => {
                 ckms.insert(value);
                 *sum += value;
             }
@@ -731,7 +737,7 @@ impl Telemetry {
         match self.value {
             Some(Value::Set(_)) | Some(Value::Sum(_)) | None => None,
             Some(Value::Histogram(ref histo)) => histo.sum(),
-            Some(Value::Quantiles{ sum, .. }) => {
+            Some(Value::Quantiles { sum, .. }) => {
                 if self.override_sample_sum.is_some() {
                     self.override_sample_sum
                 } else {
@@ -745,12 +751,10 @@ impl Telemetry {
     pub fn count(&self) -> usize {
         if let Some(cnt) = self.override_count {
             cnt as usize
+        } else if let Some(ref v) = self.value {
+            v.count()
         } else {
-            if let Some(ref v) = self.value {
-                v.count()
-            } else {
-                0
-            }
+            0
         }
     }
 
@@ -770,7 +774,7 @@ impl Telemetry {
         match self.value {
             Some(Value::Set(x)) => Some(x),
             Some(Value::Sum(x)) => Some(x),
-            Some(Value::Quantiles{ ref ckms, .. }) => ckms.query(1.0).map(|x| x.1),
+            Some(Value::Quantiles { ref ckms, .. }) => ckms.query(1.0).map(|x| x.1),
             Some(Value::Histogram(ref histo)) => histo.sum(),
             None => unreachable!(),
         }
@@ -785,7 +789,7 @@ impl Telemetry {
     pub fn samples(&self) -> Vec<f64> {
         match self.value {
             Some(Value::Set(x)) | Some(Value::Sum(x)) => vec![x],
-            Some(Value::Quantiles{ ref ckms, .. }) => ckms.clone().into_vec(),
+            Some(Value::Quantiles { ref ckms, .. }) => ckms.clone().into_vec(),
             Some(Value::Histogram(ref histo)) => histo
                 .clone()
                 .into_vec()
@@ -1000,7 +1004,8 @@ mod tests {
                 AggregationMethod::Histogram => mb.kind(AggregationMethod::Histogram)
                     .bounds(vec![1.0, 10.0, 100.0, 1000.0]),
             };
-            mb = if persist { mb.persist(true) } else { mb };
+            mb =
+                if persist { mb.persist(true) } else { mb };
             mb.harden().unwrap()
         }
     }

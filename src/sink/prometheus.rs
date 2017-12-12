@@ -430,8 +430,10 @@ impl Handler for SenderHandler {
                     let elapsed = now.elapsed();
                     (res, elapsed)
                 };
-                let us = ((elapsed.as_secs() as f64) * 10_000.0) + (elapsed.subsec_nanos() as f64 / 100_000.0);
-                PROMETHEUS_RESPONSE_DELAY_SUM.fetch_add(us as usize, Ordering::Relaxed);
+                let us = ((elapsed.as_secs() as f64) * 10_000.0)
+                    + (f64::from(elapsed.subsec_nanos()) / 100_000.0);
+                PROMETHEUS_RESPONSE_DELAY_SUM
+                    .fetch_add(us as usize, Ordering::Relaxed);
                 if res.is_err() {
                     PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
                 }

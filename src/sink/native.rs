@@ -82,9 +82,7 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
                     Err(e) => info!(
                         "Unable to connect to proxy at {} using addr {} with error \
                          {}",
-                        host,
-                        ip,
-                        e
+                        host, ip, e
                     ),
                 }
             }
@@ -93,8 +91,7 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
         Err(e) => {
             info!(
                 "Unable to perform DNS lookup on host {} with error {}",
-                host,
-                e
+                host, e
             );
             None
         }

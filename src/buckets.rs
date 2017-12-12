@@ -138,9 +138,9 @@ impl Buckets {
     /// bucket.add(metric);
     /// ```
     pub fn add(&mut self, value: Telemetry) {
-        let hsh = match self.keys.binary_search_by(
-            |probe| probe.partial_cmp(&value.name_tag_hash()).unwrap(),
-        ) {
+        let hsh = match self.keys.binary_search_by(|probe| {
+            probe.partial_cmp(&value.name_tag_hash()).unwrap()
+        }) {
             Ok(hsh_idx) => self.values.index_mut(hsh_idx),
             Err(hsh_idx) => {
                 self.keys.insert(hsh_idx, value.name_tag_hash());

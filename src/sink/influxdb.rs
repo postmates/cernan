@@ -108,10 +108,7 @@ impl InfluxDB {
         let scheme = if config.secure { "https" } else { "http" };
         let uri = Url::parse(&format!(
             "{}://{}:{}/write?db={}",
-            scheme,
-            config.host,
-            config.port,
-            config.db
+            scheme, config.host, config.port, config.db
         )).expect("malformed url");
 
         InfluxDB {

@@ -172,7 +172,6 @@ fn handle_stream(mut chans: util::Channel, tags: metric::TagMap, stream: TcpStre
     });
 }
 
-
 impl Source for NativeServer {
     fn run(&mut self) {
         let srv: Vec<_> = (self.ip.as_str(), self.port)

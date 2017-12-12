@@ -41,8 +41,7 @@ fn populate_forwards(
             None => {
                 error!(
                     "Unable to fulfill configured forward: {} => {}",
-                    config_path,
-                    fwd
+                    config_path, fwd
                 );
                 process::exit(0);
             }
@@ -272,15 +271,13 @@ fn main() {
                 if config_topology.get(forward).is_none() {
                     error!(
                         "Unable to fulfill configured forward: {} => {}",
-                        key,
-                        forward,
+                        key, forward,
                     );
                     process::exit(1);
                 }
             }
         }
     }
-
 
     // SINKS
     //
