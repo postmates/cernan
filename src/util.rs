@@ -1,8 +1,6 @@
 //! Utility module, a grab-bag of functionality
-
-extern crate mio;
-
 use std::ops::Index;
+use mio;
 use slab;
 use hopper;
 use metric;
