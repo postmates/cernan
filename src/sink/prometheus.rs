@@ -30,6 +30,7 @@ use std::sync;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 use time;
 
 lazy_static! {
@@ -47,6 +48,8 @@ lazy_static! {
     pub static ref PROMETHEUS_WRITE_TEXT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total report errors
     pub static ref PROMETHEUS_REPORT_ERROR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Sum of delays in reporting (microseconds)
+    pub static ref PROMETHEUS_RESPONSE_DELAY_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
 /// The prometheus sink
@@ -415,13 +418,20 @@ impl Handler for SenderHandler {
                     }
                 }
                 let reportable = aggr.reportable();
-                let res = if accept_proto {
+                let now = Instant::now();
+                let (res, elapsed) = if accept_proto {
                     PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
-                    write_binary(reportable, res)
+                    let res = write_binary(reportable, res);
+                    let elapsed = now.elapsed();
+                    (res, elapsed)
                 } else {
                     PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
-                    write_text(reportable, res)
+                    let res = write_text(reportable, res);
+                    let elapsed = now.elapsed();
+                    (res, elapsed)
                 };
+                let us = ((elapsed.as_secs() as f64) * 10_000.0) + (elapsed.subsec_nanos() as f64 / 100_000.0);
+                PROMETHEUS_RESPONSE_DELAY_SUM.fetch_add(us as usize, Ordering::Relaxed);
                 if res.is_err() {
                     PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
                 }
