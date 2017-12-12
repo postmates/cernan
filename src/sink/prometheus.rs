@@ -221,14 +221,19 @@ impl PrometheusAggr {
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
         use std::ops::Index;
 
-        match self.keys.binary_search_by(
-            |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
-        ) {
+        match self.keys.binary_search_by(|probe| {
+            probe.partial_cmp(&telem.name_tag_hash()).unwrap()
+        }) {
             Ok(hsh_idx) => {
                 let accum = self.values.index(hsh_idx).clone();
                 match accum {
                     Accumulator::Perpetual(t) => Some(t),
-                    Accumulator::Windowed { cap: _, samples, sum: _, count: _ } => {
+                    Accumulator::Windowed {
+                        cap: _,
+                        samples,
+                        sum: _,
+                        count: _,
+                    } => {
                         let mut start = samples[0].clone();
                         for t in &samples[1..] {
                             start += t.clone();
@@ -264,9 +269,9 @@ impl PrometheusAggr {
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
         use std::ops::IndexMut;
         {
-            match self.keys.binary_search_by(
-                |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
-            ) {
+            match self.keys.binary_search_by(|probe| {
+                probe.partial_cmp(&telem.name_tag_hash()).unwrap()
+            }) {
                 Ok(hsh_idx) => {
                     let prev = self.values.index_mut(hsh_idx);
                     if prev.kind() == telem.kind() {
@@ -291,7 +296,7 @@ impl PrometheusAggr {
                             Accumulator::Windowed {
                                 cap: self.capacity_in_seconds,
                                 count: 1,
-                                sum: sum, 
+                                sum: sum,
                                 samples: samples,
                             }
                         }
@@ -336,19 +341,39 @@ impl<'a> Iterator for Iter<'a> {
                     self.idx += 1;
                     return Some(t.clone());
                 }
-                Accumulator::Windowed { ref samples, count, sum, .. } => {
+                Accumulator::Windowed {
+                    ref samples,
+                    count,
+                    sum,
+                    ..
+                } => {
                     self.idx += 1;
                     match samples.len() {
                         0 => unreachable!(),
                         1 => {
-                            return Some(samples[0].clone().thaw().sample_sum(sum).count(count).harden().unwrap());
+                            return Some(
+                                samples[0]
+                                    .clone()
+                                    .thaw()
+                                    .sample_sum(sum)
+                                    .count(count)
+                                    .harden()
+                                    .unwrap(),
+                            );
                         }
                         _ => {
                             let mut start = samples[0].clone();
                             for t in &samples[1..] {
                                 start += t.clone();
                             }
-                            return Some(start.thaw().sample_sum(sum).count(count).harden().unwrap());
+                            return Some(
+                                start
+                                    .thaw()
+                                    .sample_sum(sum)
+                                    .count(count)
+                                    .harden()
+                                    .unwrap(),
+                            );
                         }
                     }
                 }
@@ -422,7 +447,7 @@ impl Prometheus {
             aggrs: aggrs,
             thrd_aggr: thrd_aggrs,
             http_srv: listener,
-            age_threshold: None,
+            age_threshold: config.age_threshold,
         }
     }
 }
@@ -786,9 +811,9 @@ mod test {
             let mut values: Vec<Accumulator> = Vec::new();
             for _ in 0..limit {
                 let telem: metric::Telemetry = Arbitrary::arbitrary(g);
-                match keys.binary_search_by(
-                    |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
-                ) {
+                match keys.binary_search_by(|probe| {
+                    probe.partial_cmp(&telem.name_tag_hash()).unwrap()
+                }) {
                     Ok(hsh_idx) => {
                         let prev = values.index_mut(hsh_idx);
                         if prev.kind() == telem.kind() {
