@@ -1,22 +1,25 @@
-use super::Source;
+use constants;
 use metric;
+use mio;
 use protocols::graphite::parse_graphite;
+use source::Source;
+use std;
 use std::io::BufReader;
 use std::io::prelude::*;
-use std::net::{TcpListener, TcpStream};
 use std::net::ToSocketAddrs;
 use std::str;
-use std::sync::Arc;
+use std::sync;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread;
+use thread;
+use thread::Stoppable;
 use util;
 use util::send;
 
 lazy_static! {
-    pub static ref GRAPHITE_NEW_PEER: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    pub static ref GRAPHITE_GOOD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    pub static ref GRAPHITE_TELEM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    pub static ref GRAPHITE_BAD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    pub static ref GRAPHITE_NEW_PEER: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
+    pub static ref GRAPHITE_GOOD_PACKET: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
+    pub static ref GRAPHITE_TELEM: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
+    pub static ref GRAPHITE_BAD_PACKET: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
 }
 
 /// Graphite protocol source
@@ -26,7 +29,7 @@ pub struct Graphite {
     chans: util::Channel,
     host: String,
     port: u16,
-    tags: Arc<metric::TagMap>,
+    tags: sync::Arc<metric::TagMap>,
 }
 
 /// Configured for the `metric::Telemetry` source.
@@ -64,87 +67,156 @@ impl Graphite {
             chans: chans,
             host: config.host,
             port: config.port,
-            tags: Arc::new(config.tags),
+            tags: sync::Arc::new(config.tags),
+        }
+    }
+}
+
+fn spawn_stream_handlers(
+    chans: util::Channel,
+    tags: &sync::Arc<metric::TagMap>,
+    listener: &mio::net::TcpListener,
+    stream_handlers: &mut Vec<thread::ThreadHandle>,
+) -> () {
+    loop {
+        match listener.accept() {
+            Ok((stream, _addr)) => {
+                let rchans = chans.clone();
+                let rtags = sync::Arc::clone(tags);
+                let new_stream = thread::spawn(move |poller| {
+                    poller
+                        .register(
+                            &stream,
+                            mio::Token(0),
+                            mio::Ready::readable(),
+                            mio::PollOpt::edge(),
+                        )
+                        .unwrap();
+
+                    handle_stream(rchans, &rtags, &poller, stream);
+                });
+                stream_handlers.push(new_stream);
+            }
+
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::WouldBlock => {
+                    break;
+                }
+                _ => unimplemented!(),
+            },
+        };
+    }
+}
+
+fn handle_stream(
+    mut chans: util::Channel,
+    tags: &sync::Arc<metric::TagMap>,
+    poller: &mio::Poll,
+    stream: mio::net::TcpStream,
+) {
+    let mut line = String::new();
+    let mut res = Vec::new();
+    let mut line_reader = BufReader::new(stream);
+    let basic_metric = sync::Arc::new(Some(
+        metric::Telemetry::default().overlay_tags_from_map(tags),
+    ));
+
+    loop {
+        let mut events = mio::Events::with_capacity(1024);
+        match poller.poll(&mut events, None) {
+            Err(e) => panic!(format!("Failed during poll {:?}", e)),
+            Ok(_num_events) => for event in events {
+                match event.token() {
+                    constants::SYSTEM => return,
+                    _stream_token => if let Ok(len) = line_reader.read_line(&mut line)
+                    {
+                        if len > 0 {
+                            if parse_graphite(&line, &mut res, &basic_metric) {
+                                assert!(!res.is_empty());
+                                GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
+                                GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
+                                for m in res.drain(..) {
+                                    send(
+                                        &mut chans,
+                                        metric::Event::Telemetry(sync::Arc::new(
+                                            Some(m),
+                                        )),
+                                    );
+                                }
+                                line.clear();
+                            } else {
+                                GRAPHITE_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
+                                error!("bad packet: {:?}", line);
+                                line.clear();
+                            }
+                        } else {
+                            break;
+                        }
+                    },
+                }
+            },
         }
     }
 }
 
 fn handle_tcp(
     chans: util::Channel,
-    tags: Arc<metric::TagMap>,
-    listner: TcpListener,
-) -> thread::JoinHandle<()> {
-    thread::spawn(move || {
-        for stream in listner.incoming() {
-            if let Ok(stream) = stream {
-                GRAPHITE_NEW_PEER.fetch_add(1, Ordering::Relaxed);
-                debug!(
-                    "new peer at {:?} | local addr for peer {:?}",
-                    stream.peer_addr(),
-                    stream.local_addr()
-                );
-                let tags = Arc::clone(&tags);
-                let chans = chans.clone();
-                thread::spawn(move || {
-                    handle_stream(chans, tags, stream);
-                });
-            }
-        }
-    })
-}
-
-fn handle_stream(
-    mut chans: util::Channel,
-    tags: Arc<metric::TagMap>,
-    stream: TcpStream,
+    tags: &sync::Arc<metric::TagMap>,
+    listeners: util::TokenSlab<mio::net::TcpListener>,
+    poll: &mio::Poll,
 ) {
-    thread::spawn(move || {
-        let mut line = String::new();
-        let mut res = Vec::new();
-        let mut line_reader = BufReader::new(stream);
-        let basic_metric = Arc::new(Some(
-            metric::Telemetry::default().overlay_tags_from_map(&tags),
-        ));
-        while let Some(len) = line_reader.read_line(&mut line).ok() {
-            if len > 0 {
-                if parse_graphite(&line, &mut res, &basic_metric) {
-                    assert!(!res.is_empty());
-                    GRAPHITE_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
-                    GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
-                    for m in res.drain(..) {
-                        send(&mut chans, metric::Event::Telemetry(Arc::new(Some(m))));
+    let mut stream_handlers: Vec<thread::ThreadHandle> = Vec::new();
+    loop {
+        let mut events = mio::Events::with_capacity(1024);
+        match poll.poll(&mut events, None) {
+            Err(e) => panic!(format!("Failed during poll {:?}", e)),
+            Ok(_num_events) => {
+                for event in events {
+                    match event.token() {
+                        constants::SYSTEM => {
+                            for handler in stream_handlers {
+                                handler.shutdown();
+                            }
+                            return;
+                        }
+                        listener_token => {
+                            let listener = &listeners[listener_token];
+                            spawn_stream_handlers(
+                                chans.clone(), // TODO: do not clone, make an Arc
+                                tags,
+                                listener,
+                                &mut stream_handlers,
+                            );
+                        }
                     }
-                    line.clear();
-                } else {
-                    GRAPHITE_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
-                    error!("bad packet: {:?}", line);
-                    line.clear();
                 }
-            } else {
-                break;
             }
         }
-    });
+    }
 }
 
 impl Source for Graphite {
-    fn run(&mut self) {
-        let mut joins = Vec::new();
-
+    fn run(&mut self, poll: mio::Poll) {
         let addrs = (self.host.as_str(), self.port).to_socket_addrs();
         match addrs {
             Ok(ips) => {
                 let ips: Vec<_> = ips.collect();
+                let mut listeners =
+                    util::TokenSlab::<mio::net::TcpListener>::new();
                 for addr in ips {
-                    let listener =
-                        TcpListener::bind(addr).expect("Unable to bind to TCP socket");
-                    let chans = self.chans.clone();
-                    let tags = Arc::clone(&self.tags);
-                    info!("server started on {:?} {}", addr, self.port);
-                    joins.push(thread::spawn(move || {
-                        handle_tcp(chans, tags, listener)
-                    }));
+                    let listener = mio::net::TcpListener::bind(&addr)
+                        .expect("Unable to bind to TCP socket");
+                    info!("registered listener for {:?} {}", addr, self.port);
+                    let token = listeners.insert(listener);
+                    poll.register(
+                        &listeners[token],
+                        token,
+                        mio::Ready::readable(),
+                        mio::PollOpt::edge(),
+                    ).unwrap();
                 }
+
+                handle_tcp(self.chans.clone(), &self.tags, listeners, &poll);
             }
             Err(e) => {
                 info!(
@@ -152,14 +224,6 @@ impl Source for Graphite {
                     self.host, e
                 );
             }
-        }
-
-        // TODO thread spawn trick, join on results
-        for jh in joins {
-            // TODO Having sub-threads panic will not cause a bubble-up if that
-            // thread is not the currently examined one. We're going to have to have
-            // some manner of sub-thread communication going on.
-            jh.join().expect("Uh oh, child thread panicked!");
         }
     }
 }

@@ -5,23 +5,37 @@ extern crate chan_signal;
 extern crate chrono;
 extern crate fern;
 extern crate hopper;
+extern crate mio;
+
 #[macro_use]
 extern crate log;
 extern crate openssl_probe;
 
+use cernan::constants;
 use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
                      ProgrammableFilterConfig};
 use cernan::metric;
 use cernan::sink::Sink;
 use cernan::source::Source;
 use cernan::util;
-use chan_signal::Signal;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::process;
 use std::str;
 use std::thread;
+
+#[derive(Debug)]
+struct SourceWorker {
+    thread: std::thread::JoinHandle<()>,
+    readiness: mio::SetReadiness,
+}
+
+#[derive(Debug)]
+struct SinkWorker {
+    thread: std::thread::JoinHandle<()>,
+    sender: hopper::Sender<metric::Event>,
+}
 
 fn populate_forwards(
     sends: &mut util::Channel,
@@ -49,6 +63,26 @@ fn populate_forwards(
     }
 }
 
+fn join_all(workers: HashMap<String, SinkWorker>) {
+    for (_worker_id, worker) in workers {
+        worker.thread.join().expect("Failed to join worker");
+    }
+}
+
+fn broadcast_shutdown(workers: &HashMap<String, SinkWorker>) {
+    let mut source_channels = Vec::new();
+    for (id, worker) in workers.iter() {
+        println!("Signaling shutdown to {:?}", id);
+        source_channels.push(worker.sender.clone());
+    }
+
+    if !source_channels.is_empty() {
+        cernan::util::send(&mut source_channels, cernan::metric::Event::Shutdown);
+    }
+
+    drop(source_channels);
+}
+
 macro_rules! cfg_conf {
     ($config:ident) => {
         $config.config_path.clone().expect("[INTERNAL ERROR] no config_path")
@@ -69,7 +103,8 @@ fn main() {
         _ => log::LogLevelFilter::Trace,
     };
 
-    let signal = chan_signal::notify(&[Signal::INT, Signal::TERM]);
+    let signal =
+        chan_signal::notify(&[chan_signal::Signal::INT, chan_signal::Signal::TERM]);
 
     fern::Dispatch::new()
         .format(|out, message, record| {
@@ -88,7 +123,20 @@ fn main() {
         .expect("could not set up logging");
 
     info!("cernan - {}", args.version);
-    let mut joins = Vec::new();
+
+    // We track the various child threads in order to support graceful shutdown.
+    // There are currently two paths used to communicate shutdown:
+    //
+    // 1) A semaphore is used to signal shutdown to sources.  As generates of
+    //    events, sources are shutdown first to ensure at least once processing.
+    //
+    // 2) metrics::Event::Shutdown is sent to Hopper channels for Filters and Sinks
+    //    after all sources have shutdown.  Shutdown events serve to bookend queued
+    //    events, once read it is safe for these workers to flush any pending writes
+    //    and shutdown.
+    let mut sources: HashMap<String, SourceWorker> = HashMap::new();
+    let mut sinks: HashMap<String, SinkWorker> = HashMap::new();
+    let mut filters: HashMap<String, SinkWorker> = HashMap::new();
     let mut senders: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     let mut receivers: HashMap<String, hopper::Receiver<metric::Event>> =
         HashMap::new();
@@ -237,6 +285,7 @@ fn main() {
         }
     }
     // SOURCES
+    //
     if let Some(ref configs) = args.native_server_config {
         for (config_path, config) in configs {
             config_topology.insert(config_path.clone(), config.forwards.clone());
@@ -259,7 +308,8 @@ fn main() {
     }
     if let Some(ref configs) = args.files {
         for config in configs {
-            config_topology.insert(cfg_conf!(config), config.forwards.clone());
+            let config_path = cfg_conf!(config);
+            config_topology.insert(config_path.clone(), config.forwards.clone());
         }
     }
 
@@ -283,76 +333,146 @@ fn main() {
     //
     if let Some(config) = mem::replace(&mut args.null, None) {
         let recv = receivers.remove(&config.config_path).unwrap();
-        joins.push(thread::spawn(move || {
-            cernan::sink::Null::new(&config).run(recv);
-        }));
+        sinks.insert(
+            config.config_path.clone(),
+            SinkWorker {
+                sender: senders
+                    .get(&config.config_path.clone())
+                    .expect("Oops")
+                    .clone(),
+                thread: thread::spawn(move || {
+                    cernan::sink::Null::new(&config).run(recv);
+                }),
+            },
+        );
     }
     if let Some(config) = mem::replace(&mut args.console, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        joins.push(thread::spawn(move || {
-            cernan::sink::Console::new(&config).run(recv);
-        }));
+        sinks.insert(
+            config.config_path.clone().unwrap(),
+            SinkWorker {
+                sender: senders
+                    .get(&config.config_path.clone().unwrap())
+                    .expect("Oops")
+                    .clone(),
+                thread: thread::spawn(move || {
+                    cernan::sink::Console::new(&config).run(recv);
+                }),
+            },
+        );
     }
     if let Some(config) = mem::replace(&mut args.wavefront, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        joins.push(thread::spawn(
-            move || match cernan::sink::Wavefront::new(config) {
-                Ok(mut w) => {
-                    w.run(recv);
-                }
-                Err(e) => {
-                    error!("Configuration error for Wavefront: {}", e);
-                    process::exit(1);
-                }
+        sinks.insert(
+            config.config_path.clone().unwrap(),
+            SinkWorker {
+                sender: senders
+                    .get(&config.config_path.clone().unwrap())
+                    .expect("Oops")
+                    .clone(),
+                thread: thread::spawn(move || {
+                    match cernan::sink::Wavefront::new(config) {
+                        Ok(mut w) => {
+                            w.run(recv);
+                        }
+                        Err(e) => {
+                            error!("Configuration error for Wavefront: {}", e);
+                            process::exit(1);
+                        }
+                    }
+                }),
             },
-        ));
+        );
     }
     if let Some(config) = mem::replace(&mut args.prometheus, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        joins.push(thread::spawn(move || {
-            cernan::sink::Prometheus::new(&config).run(recv);
-        }));
+        sinks.insert(
+            config.config_path.clone().unwrap(),
+            SinkWorker {
+                sender: senders
+                    .get(&config.config_path.clone().unwrap())
+                    .expect("Oops")
+                    .clone(),
+                thread: thread::spawn(move || {
+                    cernan::sink::Prometheus::new(&config).run(recv);
+                }),
+            },
+        );
     }
     if let Some(config) = mem::replace(&mut args.influxdb, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        joins.push(thread::spawn(move || {
-            cernan::sink::InfluxDB::new(&config).run(recv);
-        }));
+        sinks.insert(
+            config.config_path.clone().unwrap(),
+            SinkWorker {
+                sender: senders
+                    .get(&config.config_path.clone().unwrap())
+                    .expect("Oops")
+                    .clone(),
+                thread: thread::spawn(move || {
+                    cernan::sink::InfluxDB::new(&config).run(recv);
+                }),
+            },
+        );
     }
     if let Some(config) = mem::replace(&mut args.native_sink_config, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        joins.push(thread::spawn(move || {
-            cernan::sink::Native::new(config).run(recv);
-        }));
+        sinks.insert(
+            config.config_path.clone().unwrap(),
+            SinkWorker {
+                sender: senders
+                    .get(&config.config_path.clone().unwrap())
+                    .expect("Oops")
+                    .clone(),
+                thread: thread::spawn(move || {
+                    cernan::sink::Native::new(config).run(recv);
+                }),
+            },
+        );
     }
-
     if let Some(config) = mem::replace(&mut args.elasticsearch, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        joins.push(thread::spawn(move || {
-            cernan::sink::Elasticsearch::new(config).run(recv);
-        }));
+        sinks.insert(
+            config.config_path.clone().unwrap(),
+            SinkWorker {
+                sender: senders
+                    .get(&config.config_path.clone().unwrap())
+                    .expect("Oops")
+                    .clone(),
+                thread: thread::spawn(move || {
+                    cernan::sink::Elasticsearch::new(config).run(recv);
+                }),
+            },
+        );
     }
-
     if let Some(cfgs) = mem::replace(&mut args.firehosen, None) {
         for config in cfgs {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
-            joins.push(thread::spawn(move || {
-                cernan::sink::Firehose::new(config).run(recv);
-            }));
+            sinks.insert(
+                config.config_path.clone().unwrap(),
+                SinkWorker {
+                    sender: senders
+                        .get(&config.config_path.clone().unwrap())
+                        .expect("Oops")
+                        .clone(),
+                    thread: thread::spawn(move || {
+                        cernan::sink::Firehose::new(config).run(recv);
+                    }),
+                },
+            );
         }
     }
 
@@ -375,9 +495,19 @@ fn main() {
                     .expect("[INTERNAL ERROR] no config_path"),
                 &senders,
             );
-            joins.push(thread::spawn(move || {
-                cernan::filter::ProgrammableFilter::new(c).run(recv, downstream_sends);
-            }));
+            filters.insert(
+                config.config_path.clone().unwrap(),
+                SinkWorker {
+                    sender: senders
+                        .get(&config.config_path.clone().unwrap())
+                        .expect("Oops")
+                        .clone(),
+                    thread: thread::spawn(move || {
+                        cernan::filter::ProgrammableFilter::new(c)
+                            .run(recv, downstream_sends);
+                    }),
+                },
+            );
         }
     });
 
@@ -398,9 +528,19 @@ fn main() {
                     .expect("[INTERNAL ERROR] no config_path"),
                 &senders,
             );
-            joins.push(thread::spawn(move || {
-                cernan::filter::DelayFilter::new(&c).run(recv, downstream_sends);
-            }));
+            filters.insert(
+                config.config_path.clone().unwrap(),
+                SinkWorker {
+                    sender: senders
+                        .get(&config.config_path.clone().unwrap())
+                        .expect("Oops")
+                        .clone(),
+                    thread: thread::spawn(move || {
+                        cernan::filter::DelayFilter::new(&c)
+                            .run(recv, downstream_sends);
+                    }),
+                },
+            );
         }
     });
 
@@ -421,18 +561,29 @@ fn main() {
                     .expect("[INTERNAL ERROR] no config_path"),
                 &senders,
             );
-            joins.push(thread::spawn(move || {
-                cernan::filter::FlushBoundaryFilter::new(&c)
-                    .run(recv, downstream_sends);
-            }));
+            filters.insert(
+                config.config_path.clone().unwrap(),
+                SinkWorker {
+                    sender: senders
+                        .get(&config.config_path.clone().unwrap())
+                        .expect("Oops")
+                        .clone(),
+                    thread: thread::spawn(move || {
+                        cernan::filter::FlushBoundaryFilter::new(&c)
+                            .run(recv, downstream_sends);
+                    }),
+                },
+            );
         }
     });
 
     // SOURCES
     //
     mem::replace(&mut args.native_server_config, None).map(|cfg_map| {
-        for (_, config) in cfg_map {
+        for (config_path, config) in cfg_map {
             let mut native_server_send = Vec::new();
+            let poll = mio::Poll::new().unwrap();
+            let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
                 &mut native_server_send,
                 Some(&mut flush_sends),
@@ -440,13 +591,28 @@ fn main() {
                 &cfg_conf!(config),
                 &senders,
             );
-            joins.push(thread::spawn(move || {
-                cernan::source::NativeServer::new(native_server_send, config).run();
-            }))
+            sources.insert(
+                config_path.clone(),
+                SourceWorker {
+                    readiness: readiness,
+                    thread: thread::spawn(move || {
+                        poll.register(
+                            &registration,
+                            constants::SYSTEM,
+                            mio::Ready::readable(),
+                            mio::PollOpt::edge(),
+                        ).expect("Poll failed to return a result!");
+                        cernan::source::NativeServer::new(native_server_send, config)
+                            .run(poll);
+                    }),
+                },
+            );
         }
     });
 
     let internal_config = mem::replace(&mut args.internal, Default::default());
+    let poll = mio::Poll::new().unwrap();
+    let (registration, readiness) = mio::Registration::new2();
     let mut internal_send = Vec::new();
     populate_forwards(
         &mut internal_send,
@@ -455,13 +621,28 @@ fn main() {
         &cfg_conf!(internal_config),
         &senders,
     );
-    joins.push(thread::spawn(move || {
-        cernan::source::Internal::new(internal_send, internal_config).run();
-    }));
+    sources.insert(
+        internal_config.config_path.clone().unwrap(),
+        SourceWorker {
+            readiness: readiness,
+            thread: thread::spawn(move || {
+                poll.register(
+                    &registration,
+                    constants::SYSTEM,
+                    mio::Ready::readable(),
+                    mio::PollOpt::edge(),
+                ).expect("Poll failed to return a result!");
+                cernan::source::Internal::new(internal_send, internal_config)
+                    .run(poll);
+            }),
+        },
+    );
 
     mem::replace(&mut args.statsds, None).map(|cfg_map| {
-        for (_, config) in cfg_map {
+        for (config_path, config) in cfg_map {
             let mut statsd_sends = Vec::new();
+            let poll = mio::Poll::new().unwrap();
+            let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
                 &mut statsd_sends,
                 Some(&mut flush_sends),
@@ -469,15 +650,29 @@ fn main() {
                 &cfg_conf!(config),
                 &senders,
             );
-            joins.push(thread::spawn(move || {
-                cernan::source::Statsd::new(statsd_sends, config).run();
-            }));
+            sources.insert(
+                config_path.clone(),
+                SourceWorker {
+                    readiness: readiness.clone(),
+                    thread: thread::spawn(move || {
+                        poll.register(
+                            &registration,
+                            constants::SYSTEM,
+                            mio::Ready::readable(),
+                            mio::PollOpt::edge(),
+                        ).expect("Poll failed to return a result!");
+                        cernan::source::Statsd::new(statsd_sends, config).run(poll);
+                    }),
+                },
+            );
         }
     });
 
     mem::replace(&mut args.graphites, None).map(|cfg_map| {
-        for (_, config) in cfg_map {
+        for (config_path, config) in cfg_map {
             let mut graphite_sends = Vec::new();
+            let poll = mio::Poll::new().unwrap();
+            let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
                 &mut graphite_sends,
                 Some(&mut flush_sends),
@@ -485,15 +680,30 @@ fn main() {
                 &cfg_conf!(config),
                 &senders,
             );
-            joins.push(thread::spawn(move || {
-                cernan::source::Graphite::new(graphite_sends, config).run();
-            }));
+            sources.insert(
+                config_path.clone(),
+                SourceWorker {
+                    readiness: readiness,
+                    thread: thread::spawn(move || {
+                        poll.register(
+                            &registration,
+                            constants::SYSTEM,
+                            mio::Ready::readable(),
+                            mio::PollOpt::edge(),
+                        ).expect("Poll failed to return a result!");
+                        cernan::source::Graphite::new(graphite_sends, config)
+                            .run(poll);
+                    }),
+                },
+            );
         }
     });
 
     mem::replace(&mut args.files, None).map(|cfg| {
         for config in cfg {
             let mut fp_sends = Vec::new();
+            let poll = mio::Poll::new().unwrap();
+            let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
                 &mut fp_sends,
                 Some(&mut flush_sends),
@@ -501,16 +711,29 @@ fn main() {
                 &cfg_conf!(config),
                 &senders,
             );
-            joins.push(thread::spawn(move || {
-                cernan::source::FileServer::new(fp_sends, config).run();
-            }));
+            sources.insert(
+                cfg_conf!(config).clone(),
+                SourceWorker {
+                    readiness: readiness,
+                    thread: thread::spawn(move || {
+                        poll.register(
+                            &registration,
+                            constants::SYSTEM,
+                            mio::Ready::readable(),
+                            mio::PollOpt::edge(),
+                        ).expect("Poll failed to return a result!");
+                        cernan::source::FileServer::new(fp_sends, config).run(poll);
+                    }),
+                },
+            );
         }
     });
 
     // BACKGROUND
     //
-    joins.push(thread::spawn(move || {
+    thread::spawn(move || {
         let mut flush_channels = Vec::new();
+        let poll = mio::Poll::new().unwrap();
         for destination in &flush_sends {
             match senders.get(destination) {
                 Some(snd) => {
@@ -527,21 +750,31 @@ fn main() {
         }
         drop(flush_sends);
         drop(senders);
-        cernan::source::FlushTimer::new(flush_channels).run();
-    }));
+        cernan::source::FlushTimer::new(flush_channels).run(poll);
+    });
 
-    joins.push(thread::spawn(move || {
+    thread::spawn(move || {
         cernan::time::update_time();
-    }));
+    });
 
     drop(args);
     drop(config_topology);
     drop(receivers);
 
-    // TODO - Enable IPC
-    // TODO - Make use of IPC to:
-    // * Monitor child thread application-layer health.
-    // * Communicate graceful shutdown to source/sink/filter child threads on
-    // signal.
     signal.recv().unwrap();
+
+    // First, we shut down source to quiesce event generation.
+    for (id, source_worker) in sources {
+        println!("Signaling shutdown to {:?}", id);
+        source_worker
+            .readiness
+            .set_readiness(mio::Ready::readable())
+            .expect("Oops!");
+        source_worker.thread.join().expect("Failed during join!");
+    }
+
+    broadcast_shutdown(&filters);
+    broadcast_shutdown(&sinks);
+    join_all(sinks);
+    join_all(filters);
 }

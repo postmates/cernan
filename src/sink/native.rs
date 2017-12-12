@@ -234,4 +234,8 @@ impl Sink for Native {
             }
         }
     }
+
+    fn shutdown(mut self) -> () {
+        self.flush();
+    }
 }

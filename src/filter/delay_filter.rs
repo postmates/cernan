@@ -80,6 +80,9 @@ impl filter::Filter for DelayFilter {
             metric::Event::TimerFlush(f) => {
                 res.push(metric::Event::TimerFlush(f));
             }
+            metric::Event::Shutdown => {
+                res.push(metric::Event::Shutdown);
+            }
         }
         Ok(())
     }

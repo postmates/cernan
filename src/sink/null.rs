@@ -51,4 +51,8 @@ impl Sink for Null {
     fn flush(&mut self) {
         // do nothing
     }
+
+    fn shutdown(mut self) -> () {
+        self.flush();
+    }
 }

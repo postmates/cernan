@@ -264,6 +264,10 @@ impl Sink for InfluxDB {
         self.aggrs.clear();
     }
 
+    fn shutdown(mut self) -> () {
+        self.flush();
+    }
+
     fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
         self.aggrs
             .push(sync::Arc::make_mut(&mut point).take().unwrap());

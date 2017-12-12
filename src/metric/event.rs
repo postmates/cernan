@@ -18,6 +18,10 @@ pub enum Event {
     /// flushes made in this cernan's run. See `source::Flush` for the origin of
     /// these pulses in cernan operation.
     TimerFlush(u64),
+    /// Shutdown event which marks the location in the queue after which no
+    /// more events will appear.  It is expected that after receiving this
+    /// marker the given source will exit cleanly.
+    Shutdown,
 }
 
 impl Event {
@@ -48,7 +52,7 @@ impl Event {
                     None => None,
                 }
             }
-            Event::TimerFlush(_) => None,
+            Event::TimerFlush(_) | Event::Shutdown => None,
         }
     }
 }

@@ -10,18 +10,14 @@
 //!
 //! All points are retained indefinitely in their aggregation.
 
-use flate2::Compression;
+extern crate log;
+
 use flate2::write::GzEncoder;
-use hyper::header::{ContentEncoding, Encoding};
-use hyper::server::{Handler, Listening, Request, Response, Server};
+use http;
 use metric;
 use metric::{AggregationMethod, TagMap};
-use protobuf::Message;
-use protobuf::repeated::RepeatedField;
-use protocols::prometheus::*;
 use quantiles::histogram::Bound;
 use sink::{Sink, Valve};
-use std::collections::HashSet;
 use std::f64;
 use std::io;
 use std::io::Write;
@@ -31,6 +27,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
+use thread::Stoppable;
 use time;
 
 lazy_static! {
@@ -42,10 +39,8 @@ lazy_static! {
     pub static ref PROMETHEUS_AGGR_WINDOWED_LEN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total remaining metrics in aggr
     pub static ref PROMETHEUS_AGGR_REMAINING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total writes to binary
-    pub static ref PROMETHEUS_WRITE_BINARY: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total writes to text
-    pub static ref PROMETHEUS_WRITE_TEXT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total report successes
+    pub static ref PROMETHEUS_REPORT_SUCCESS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total report errors
     pub static ref PROMETHEUS_REPORT_ERROR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Sum of delays in reporting (microseconds)
@@ -63,9 +58,7 @@ pub struct Prometheus {
     thrd_aggr: sync::Arc<sync::Mutex<Option<PrometheusAggr>>>,
     aggrs: PrometheusAggr,
     age_threshold: Option<u64>,
-    // `http_srv` is never used but we must keep it in this struct to avoid the
-    // listening server being dropped
-    http_srv: Listening,
+    http_srv: http::Server,
 }
 
 /// The configuration for Prometheus sink
@@ -95,10 +88,6 @@ impl Default for PrometheusConfig {
             age_threshold: None,
         }
     }
-}
-
-struct SenderHandler {
-    aggr: sync::Arc<Mutex<Option<PrometheusAggr>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -386,57 +375,54 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-impl Handler for SenderHandler {
-    fn handle(&self, req: Request, res: Response) {
+struct PrometheusHandler {
+    aggr: sync::Arc<Mutex<Option<PrometheusAggr>>>,
+}
+
+impl http::Handler for PrometheusHandler {
+    fn handle(&self, request: http::Request) -> () {
         match *self.aggr.lock().unwrap() {
-            None => {
-                return;
-            }
+            None => {}
             Some(ref aggr) => {
                 PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
                 PROMETHEUS_AGGR_REMAINING.store(aggr.count(), Ordering::Relaxed);
-                // Typed hyper::mime is challenging to use. In particular, matching
-                // does not seem to work like I expect and handling
-                // all other MIME cases in the existing enum strikes
-                // me as a fool's errand, on account of there may be an
-                // infinite number of MIMEs that'll come right on in. We'll
-                // just be monsters and assume if you aren't asking for protobuf you're
-                // asking for plaintext.
-                let accept: Vec<&str> = req.headers
-                    .get_raw("accept")
-                    .unwrap_or(&[])
-                    .iter()
-                    .map(|x| str::from_utf8(x))
-                    .filter(|x| x.is_ok())
-                    .map(|x| x.unwrap())
-                    .collect();
-                let mut accept_proto = false;
-                for hdr in &accept {
-                    if hdr.contains("application/vnd.google.protobuf;") {
-                        accept_proto = true;
-                        break;
-                    }
-                }
                 let reportable = aggr.reportable();
                 let now = Instant::now();
-                let (res, elapsed) = if accept_proto {
-                    PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
-                    let res = write_binary(reportable, res);
-                    let elapsed = now.elapsed();
-                    (res, elapsed)
-                } else {
-                    PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
-                    let res = write_text(reportable, res);
-                    let elapsed = now.elapsed();
-                    (res, elapsed)
-                };
+                let mut buffer = Vec::new();
+                let buffer = write_text(reportable, buffer).unwrap();
+                let elapsed = now.elapsed();
                 let us = ((elapsed.as_secs() as f64) * 10_000.0)
                     + (f64::from(elapsed.subsec_nanos()) / 100_000.0);
                 PROMETHEUS_RESPONSE_DELAY_SUM
                     .fetch_add(us as usize, Ordering::Relaxed);
-                if res.is_err() {
-                    PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
-                }
+                let content_encoding = "gzip";
+                let content_type = "text/plain; version=0.0.4";
+                let headers = [
+                    http::Header::from_bytes(&b"Content-Type"[..], content_type)
+                        .unwrap(),
+                    http::Header::from_bytes(
+                        &b"Content-Encoding"[..],
+                        content_encoding,
+                    ).unwrap(),
+                ];
+
+                let response = http::Response::new(
+                    http::StatusCode::from(200),
+                    headers.to_vec(),
+                    &buffer[..],
+                    Some(buffer.len()),
+                    None,
+                );
+
+                match request.respond(response) {
+                    Ok(_) => {
+                        PROMETHEUS_REPORT_SUCCESS.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(e) => {
+                        PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
+                        warn!("Failed to send prometheus response! {:?}", e);
+                    }
+                };
             }
         }
     }
@@ -446,153 +432,31 @@ impl Prometheus {
     /// Create a new prometheus sink
     ///
     /// Please see documentation on `PrometheusConfig` for more details.
-    pub fn new(config: &PrometheusConfig) -> Prometheus {
+    pub fn new(config: &PrometheusConfig) -> Self {
         let aggrs = PrometheusAggr::new(config.capacity_in_seconds);
         let thrd_aggrs = sync::Arc::new(sync::Mutex::new(None));
         let srv_aggrs = sync::Arc::clone(&thrd_aggrs);
-        let listener = Server::http((config.host.as_str(), config.port))
-            .unwrap()
-            .handle_threads(SenderHandler { aggr: srv_aggrs }, 1)
-            .unwrap();
 
+        let host_port =
+            format!("{}:{}", config.host.as_str(), config.port.to_string());
         Prometheus {
             aggrs: aggrs,
             thrd_aggr: thrd_aggrs,
-            http_srv: listener,
             age_threshold: config.age_threshold,
+            http_srv: http::Server::new(
+                host_port,
+                PrometheusHandler { aggr: srv_aggrs },
+            ),
         }
     }
-}
-
-fn write_binary(aggrs: Iter, mut res: Response) -> io::Result<()> {
-    res.headers_mut().set_raw(
-        "content-type",
-        vec![
-            b"application/vnd.google.protobuf; \
-                       proto=io.prometheus.client.MetricFamily; encoding=delimited"
-                .to_vec(),
-        ],
-    );
-    let mut res = res.start()?;
-    for value in aggrs {
-        let sanitized_name: String = sanitize(&value.name);
-        match value.kind() {
-            AggregationMethod::Sum => if let Some(v) = value.sum() {
-                let mut metric_family = MetricFamily::new();
-                metric_family.set_name(sanitized_name);
-                let mut metric = Metric::new();
-                let mut label_pairs = Vec::with_capacity(8);
-                for &(ref k, ref v) in value.tags.iter() {
-                    let mut lp = LabelPair::new();
-                    lp.set_name(k.clone());
-                    lp.set_value(v.clone());
-                    label_pairs.push(lp);
-                }
-                metric.set_label(RepeatedField::from_vec(label_pairs));
-                let mut counter = Counter::new();
-                counter.set_value(v);
-                metric.set_counter(counter);
-                metric_family.set_field_type(MetricType::COUNTER);
-                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family.write_length_delimited_to_writer(res.by_ref())?
-            },
-            AggregationMethod::Set => if let Some(v) = value.set() {
-                let mut metric_family = MetricFamily::new();
-                metric_family.set_name(sanitized_name);
-                let mut metric = Metric::new();
-                let mut label_pairs = Vec::with_capacity(8);
-                for &(ref k, ref v) in value.tags.iter() {
-                    let mut lp = LabelPair::new();
-                    lp.set_name(k.clone());
-                    lp.set_value(v.clone());
-                    label_pairs.push(lp);
-                }
-                metric.set_label(RepeatedField::from_vec(label_pairs));
-                let mut gauge = Gauge::new();
-                gauge.set_value(v);
-                metric.set_gauge(gauge);
-                metric_family.set_field_type(MetricType::GAUGE);
-                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family.write_length_delimited_to_writer(res.by_ref())?
-            },
-            AggregationMethod::Summarize => {
-                let mut metric_family = MetricFamily::new();
-                metric_family.set_name(sanitized_name);
-                let mut metric = Metric::new();
-                let mut label_pairs = Vec::with_capacity(8);
-                for &(ref k, ref v) in value.tags.iter() {
-                    let mut lp = LabelPair::new();
-                    lp.set_name(k.clone());
-                    lp.set_value(v.clone());
-                    label_pairs.push(lp);
-                }
-                metric.set_label(RepeatedField::from_vec(label_pairs));
-                let retained_count = value.count();
-                let retained_sum = value.samples_sum().unwrap_or(0.0);
-                let mut summary = Summary::new();
-                summary.set_sample_count((retained_count + value.count()) as u64);
-                if let Some(val) = value.samples_sum() {
-                    summary.set_sample_sum(retained_sum + val);
-                }
-                let mut quantiles = Vec::with_capacity(9);
-                for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-                    let mut quantile = Quantile::new();
-                    quantile.set_quantile(*q);
-                    quantile.set_value(value.query(*q).unwrap());
-                    quantiles.push(quantile);
-                }
-                summary.set_quantile(RepeatedField::from_vec(quantiles));
-                metric.set_summary(summary);
-                metric_family.set_field_type(MetricType::SUMMARY);
-                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family.write_length_delimited_to_writer(res.by_ref())?
-            }
-            AggregationMethod::Histogram => {
-                let mut metric_family = MetricFamily::new();
-                metric_family.set_name(sanitized_name);
-                let mut metric = Metric::new();
-                let mut label_pairs = Vec::with_capacity(8);
-                for &(ref k, ref v) in value.tags.iter() {
-                    let mut lp = LabelPair::new();
-                    lp.set_name(k.clone());
-                    lp.set_value(v.clone());
-                    label_pairs.push(lp);
-                }
-                metric.set_label(RepeatedField::from_vec(label_pairs));
-                let mut histogram = Histogram::new();
-                histogram.set_sample_count(value.count() as u64);
-                if let Some(val) = value.samples_sum() {
-                    histogram.set_sample_sum(val)
-                }
-                let mut buckets = Vec::with_capacity(16);
-                if let Some(bin_iter) = value.bins() {
-                    let mut cummulative: u64 = 0;
-                    for &(bound, val) in bin_iter {
-                        let bnd = match bound {
-                            Bound::Finite(bnd) => bnd,
-                            Bound::PosInf => f64::INFINITY,
-                        };
-                        cummulative += val as u64;
-                        let mut bucket = Bucket::new();
-                        bucket.set_cumulative_count(cummulative);
-                        bucket.set_upper_bound(bnd);
-                        buckets.push(bucket);
-                    }
-                }
-                histogram.set_bucket(RepeatedField::from_vec(buckets));
-                metric.set_histogram(histogram);
-                metric_family.set_field_type(MetricType::HISTOGRAM);
-                metric_family.set_metric(RepeatedField::from_vec(vec![metric]));
-                metric_family.write_length_delimited_to_writer(res.by_ref())?
-            }
-        }
-    }
-    res.end()
 }
 
 #[allow(cyclomatic_complexity)]
 #[inline]
-fn fmt_tags(tags: &TagMap, s: &mut GzEncoder<Vec<u8>>) -> () {
+fn fmt_tags<W>(tags: &TagMap, s: &mut GzEncoder<W>) -> ()
+where
+    W: Write,
+{
     if tags.is_empty() {
         let _ = s.write(b"");
     } else {
@@ -618,15 +482,15 @@ fn fmt_tags(tags: &TagMap, s: &mut GzEncoder<Vec<u8>>) -> () {
     }
 }
 
-fn write_text(aggrs: Iter, mut res: Response) -> io::Result<()> {
-    {
-        let headers = res.headers_mut();
-        headers.set(ContentEncoding(vec![Encoding::Gzip]));
-        headers.set_raw("content-type", vec![b"text/plain; version=0.0.4".to_vec()]);
-    }
-    let mut res = res.start()?;
+fn write_text<W>(aggrs: Iter, buffer: W) -> io::Result<W>
+where
+    W: Write,
+{
+    use flate2::Compression;
+    use std::collections::HashSet;
+
     let mut seen: HashSet<String> = HashSet::new();
-    let mut enc = GzEncoder::new(Vec::with_capacity(1024), Compression::Fast);
+    let mut enc = GzEncoder::new(buffer, Compression::Fast);
     for value in aggrs {
         let sanitized_name: String = sanitize(&value.name);
         match value.kind() {
@@ -719,6 +583,7 @@ fn write_text(aggrs: Iter, mut res: Response) -> io::Result<()> {
                         enc.write_all(v.as_bytes())?;
                     }
                     enc.write_all(b"\"} ")?;
+
                     enc.write_all(value.query(*q).unwrap().to_string().as_bytes())?;
                     enc.write_all(b"\n")?;
                 }
@@ -741,9 +606,7 @@ fn write_text(aggrs: Iter, mut res: Response) -> io::Result<()> {
             }
         }
     }
-    let encoded = enc.finish()?;
-    res.write_all(&encoded)?;
-    res.end()
+    enc.finish()
 }
 
 /// Sanitize cernan Telemetry into prometheus' notion
@@ -794,6 +657,11 @@ impl Sink for Prometheus {
 
     fn deliver_line(&mut self, _: sync::Arc<Option<metric::LogLine>>) -> () {
         // nothing, intentionally
+    }
+
+    fn shutdown(mut self) -> () {
+        self.flush();
+        self.http_srv.shutdown();
     }
 
     fn valve_state(&self) -> Valve {

@@ -1,4 +1,5 @@
 use metric;
+use mio;
 use source::Source;
 use std::thread::sleep;
 use std::time::Duration;
@@ -19,7 +20,7 @@ impl FlushTimer {
 }
 
 impl Source for FlushTimer {
-    fn run(&mut self) {
+    fn run(&mut self, _poll: mio::Poll) {
         let one_second = Duration::new(1, 0);
         // idx will _always_ increase. If it's kept at u64 or greater it will
         // overflow long past the collapse of our industrial civilization only

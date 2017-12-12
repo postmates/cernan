@@ -39,10 +39,13 @@ seahash = "3.0"
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
+slab = "0.4"
 toml = "0.4"
 url = "1.6"
 uuid = {version = "0.5", features = ["v4"]}
-chan-signal = "0.3"
+chan-signal = "0.3.1"
+mio = "0.6.11"
+tiny_http = "0.5.8"
 
 [dev-dependencies]
 tempdir = "0.3"
