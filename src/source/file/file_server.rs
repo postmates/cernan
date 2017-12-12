@@ -1,7 +1,6 @@
-extern crate mio;
-
 use glob::glob;
 use metric;
+use mio;
 use source::Source;
 use source::file::file_watcher::FileWatcher;
 use source::internal::report_full_telemetry;

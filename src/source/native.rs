@@ -1,10 +1,9 @@
-extern crate mio;
-
 use super::Source;
 use byteorder::{BigEndian, ReadBytesExt};
 use constants;
 use hopper;
 use metric;
+use mio;
 use protobuf;
 use protocols::native::{AggregationMethod, Payload};
 use std::collections::HashMap;

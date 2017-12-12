@@ -1,6 +1,5 @@
-extern crate mio;
-
 use metric;
+use mio;
 use source::Source;
 use std::thread::sleep;
 use std::time::Duration;

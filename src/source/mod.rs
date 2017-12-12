@@ -3,7 +3,7 @@
 //! In cernan a `Source` is a place where all `metric::Event` come from, feeding
 //! down into the source's forwards for further processing. Statsd is a source
 //! that creates `Telemetry`, `FileServer` is a source that creates `LogLine`s.
-extern crate mio;
+use mio;
 
 mod file;
 mod flush;
