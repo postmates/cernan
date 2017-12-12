@@ -537,6 +537,14 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             let mut res = PrometheusConfig::default();
             res.config_path = Some("sinks.prometheus".to_string());
 
+            res.age_threshold = snk.get("age_threshold")
+                .map(|p| {
+                    Some(p.as_integer()
+                        .expect("could not parse sinks.prometheus.age_threshold")
+                        as u64)
+                })
+                .unwrap_or(res.age_threshold);
+
             res.port = snk.get("port")
                 .map(|p| {
                     p.as_integer()

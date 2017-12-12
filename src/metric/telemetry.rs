@@ -45,7 +45,7 @@ pub enum Value {
     /// DO NOT USE - PUBLIC FOR TESTING ONLY
     Histogram(Histogram<f64>),
     /// DO NOT USE - PUBLIC FOR TESTING ONLY
-    Quantiles(CKMS<f64>),
+    Quantiles{ ckms: CKMS<f64>, sum: f64 },
 }
 
 pub struct SoftTelemetry {
@@ -102,9 +102,10 @@ impl Add for Value {
                     y.insert(x);
                     Value::Histogram(y)
                 }
-                Value::Quantiles(mut y) => {
-                    y.insert(x);
-                    Value::Quantiles(y)
+                Value::Quantiles{ mut ckms, mut sum } => {
+                    ckms.insert(x);
+                    sum += x;
+                    Value::Quantiles{ ckms, sum }
                 }
             },
             Value::Histogram(mut x) => match rhs {
@@ -114,20 +115,21 @@ impl Add for Value {
                     x += y;
                     Value::Histogram(x)
                 }
-                Value::Quantiles(y) => Value::Quantiles(y),
+                Value::Quantiles{ ckms, sum } => Value::Quantiles{ ckms, sum },
             },
-            Value::Quantiles(mut x) => match rhs {
+            Value::Quantiles{ mut ckms, mut sum } => match rhs {
                 Value::Set(y) => Value::Set(y),
-                Value::Sum(y) => Value::Sum(x.sum().unwrap_or(0.0) + y),
+                Value::Sum(y) => Value::Sum(sum + y),
                 Value::Histogram(mut y) => {
-                    for v in x.into_vec() {
+                    for v in ckms.into_vec() {
                         y.insert(v);
                     }
                     Value::Histogram(y)
                 }
-                Value::Quantiles(y) => {
-                    x += y;
-                    Value::Quantiles(x)
+                Value::Quantiles{ ckms: rhs, sum: rhs_sum } => {
+                    ckms += rhs;
+                    sum += rhs_sum;
+                    Value::Quantiles{ ckms, sum }
                 }
             },
         }
@@ -141,7 +143,7 @@ impl Value {
             (&Value::Set(_), &Value::Set(_)) => true,
             (&Value::Sum(_), &Value::Sum(_)) => true,
             (&Value::Histogram(_), &Value::Histogram(_)) => true,
-            (&Value::Quantiles(_), &Value::Quantiles(_)) => true,
+            (&Value::Quantiles{ .. }, &Value::Quantiles{ .. }) => true,
             _ => false,
         }
     }
@@ -162,7 +164,7 @@ impl Value {
 
     pub fn query(&self, prcnt: f64) -> Option<f64> {
         match *self {
-            Value::Quantiles(ref ckms) => ckms.query(prcnt).map(|x| x.1),
+            Value::Quantiles { ref ckms, .. } => ckms.query(prcnt).map(|x| x.1),
             _ => None,
         }
     }
@@ -178,7 +180,7 @@ impl Value {
         match *self {
             Value::Set(_) | Value::Sum(_) => 1,
             Value::Histogram(ref histo) => histo.count(),
-            Value::Quantiles(ref ckms) => ckms.count(),
+            Value::Quantiles{ ref ckms, .. } => ckms.count(),
         }
     }
 
@@ -192,7 +194,7 @@ impl Value {
             } else {
                 0.0
             },
-            Value::Quantiles(ref ckms) => ckms.cma().unwrap_or(0.0),
+            Value::Quantiles { ref ckms, .. } => ckms.cma().unwrap_or(0.0),
         }
     }
 
@@ -201,7 +203,7 @@ impl Value {
             Value::Set(_) => AggregationMethod::Set,
             Value::Sum(_) => AggregationMethod::Sum,
             Value::Histogram(_) => AggregationMethod::Histogram,
-            Value::Quantiles(_) => AggregationMethod::Summarize,
+            Value::Quantiles{ .. } => AggregationMethod::Summarize,
         }
     }
 
@@ -396,7 +398,7 @@ impl SoftTelemetry {
                     (Some(iv), None) => {
                         let mut ckms = CKMS::new(error);
                         ckms.insert(iv);
-                        Value::Quantiles(ckms)
+                        Value::Quantiles { ckms, sum: iv }
                     }
                     (None, Some(tv)) => tv,
                     _ => unreachable!(),
@@ -679,8 +681,9 @@ impl Telemetry {
             Some(Value::Histogram(ref mut histo)) => {
                 histo.insert(value);
             }
-            Some(Value::Quantiles(ref mut ckms)) => {
+            Some(Value::Quantiles{ ref mut ckms, ref mut sum }) => {
                 ckms.insert(value);
+                *sum += value;
             }
             None => unreachable!(),
         }
@@ -728,11 +731,11 @@ impl Telemetry {
         match self.value {
             Some(Value::Set(_)) | Some(Value::Sum(_)) | None => None,
             Some(Value::Histogram(ref histo)) => histo.sum(),
-            Some(Value::Quantiles(ref ckms)) => {
+            Some(Value::Quantiles{ sum, .. }) => {
                 if self.override_sample_sum.is_some() {
                     self.override_sample_sum
                 } else {
-                    ckms.sum()
+                    Some(sum)
                 }
             }
         }
@@ -767,7 +770,7 @@ impl Telemetry {
         match self.value {
             Some(Value::Set(x)) => Some(x),
             Some(Value::Sum(x)) => Some(x),
-            Some(Value::Quantiles(ref ckms)) => ckms.query(1.0).map(|x| x.1),
+            Some(Value::Quantiles{ ref ckms, .. }) => ckms.query(1.0).map(|x| x.1),
             Some(Value::Histogram(ref histo)) => histo.sum(),
             None => unreachable!(),
         }
@@ -782,7 +785,7 @@ impl Telemetry {
     pub fn samples(&self) -> Vec<f64> {
         match self.value {
             Some(Value::Set(x)) | Some(Value::Sum(x)) => vec![x],
-            Some(Value::Quantiles(ref ckms)) => ckms.clone().into_vec(),
+            Some(Value::Quantiles{ ref ckms, .. }) => ckms.clone().into_vec(),
             Some(Value::Histogram(ref histo)) => histo
                 .clone()
                 .into_vec()
@@ -817,7 +820,7 @@ impl Telemetry {
         match self.value {
             Some(Value::Set(x)) | Some(Value::Sum(x)) => x == 0.0,
             Some(Value::Histogram(ref histo)) => histo.count() == 0,
-            Some(Value::Quantiles(ref ckms)) => ckms.count() == 0,
+            Some(Value::Quantiles { ref ckms, .. }) => ckms.count() == 0,
             None => unreachable!(),
         }
     }

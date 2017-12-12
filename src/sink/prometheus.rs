@@ -30,6 +30,8 @@ use std::sync;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
+use time;
 
 lazy_static! {
     /// Total reportable metrics
@@ -46,6 +48,8 @@ lazy_static! {
     pub static ref PROMETHEUS_WRITE_TEXT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total report errors
     pub static ref PROMETHEUS_REPORT_ERROR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Sum of delays in reporting (microseconds)
+    pub static ref PROMETHEUS_RESPONSE_DELAY_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
 /// The prometheus sink
@@ -58,6 +62,7 @@ lazy_static! {
 pub struct Prometheus {
     thrd_aggr: sync::Arc<sync::Mutex<Option<PrometheusAggr>>>,
     aggrs: PrometheusAggr,
+    age_threshold: Option<u64>,
     // `http_srv` is never used but we must keep it in this struct to avoid the
     // listening server being dropped
     http_srv: Listening,
@@ -75,6 +80,9 @@ pub struct PrometheusConfig {
     pub config_path: Option<String>,
     /// The maximum size of the sample window for Summarize, in seconds.
     pub capacity_in_seconds: usize,
+    /// Determine the age at which a Telemetry point will be ejected. If the
+    /// value is None no points will ever be rejected. Units are seconds.
+    pub age_threshold: Option<u64>,
 }
 
 impl Default for PrometheusConfig {
@@ -84,6 +92,7 @@ impl Default for PrometheusConfig {
             port: 8086,
             config_path: None,
             capacity_in_seconds: 600, // ten minutes
+            age_threshold: None,
         }
     }
 }
@@ -215,14 +224,19 @@ impl PrometheusAggr {
     fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
         use std::ops::Index;
 
-        match self.keys.binary_search_by(
-            |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
-        ) {
+        match self.keys.binary_search_by(|probe| {
+            probe.partial_cmp(&telem.name_tag_hash()).unwrap()
+        }) {
             Ok(hsh_idx) => {
                 let accum = self.values.index(hsh_idx).clone();
                 match accum {
                     Accumulator::Perpetual(t) => Some(t),
-                    Accumulator::Windowed { cap: _, samples, sum: _, count: _ } => {
+                    Accumulator::Windowed {
+                        cap: _,
+                        samples,
+                        sum: _,
+                        count: _,
+                    } => {
                         let mut start = samples[0].clone();
                         for t in &samples[1..] {
                             start += t.clone();
@@ -258,9 +272,9 @@ impl PrometheusAggr {
     fn insert(&mut self, telem: metric::Telemetry) -> bool {
         use std::ops::IndexMut;
         {
-            match self.keys.binary_search_by(
-                |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
-            ) {
+            match self.keys.binary_search_by(|probe| {
+                probe.partial_cmp(&telem.name_tag_hash()).unwrap()
+            }) {
                 Ok(hsh_idx) => {
                     let prev = self.values.index_mut(hsh_idx);
                     if prev.kind() == telem.kind() {
@@ -285,7 +299,7 @@ impl PrometheusAggr {
                             Accumulator::Windowed {
                                 cap: self.capacity_in_seconds,
                                 count: 1,
-                                sum: sum, 
+                                sum: sum,
                                 samples: samples,
                             }
                         }
@@ -330,19 +344,39 @@ impl<'a> Iterator for Iter<'a> {
                     self.idx += 1;
                     return Some(t.clone());
                 }
-                Accumulator::Windowed { ref samples, count, sum, .. } => {
+                Accumulator::Windowed {
+                    ref samples,
+                    count,
+                    sum,
+                    ..
+                } => {
                     self.idx += 1;
                     match samples.len() {
                         0 => unreachable!(),
                         1 => {
-                            return Some(samples[0].clone().thaw().sample_sum(sum).count(count).harden().unwrap());
+                            return Some(
+                                samples[0]
+                                    .clone()
+                                    .thaw()
+                                    .sample_sum(sum)
+                                    .count(count)
+                                    .harden()
+                                    .unwrap(),
+                            );
                         }
                         _ => {
                             let mut start = samples[0].clone();
                             for t in &samples[1..] {
                                 start += t.clone();
                             }
-                            return Some(start.thaw().sample_sum(sum).count(count).harden().unwrap());
+                            return Some(
+                                start
+                                    .thaw()
+                                    .sample_sum(sum)
+                                    .count(count)
+                                    .harden()
+                                    .unwrap(),
+                            );
                         }
                     }
                 }
@@ -384,13 +418,20 @@ impl Handler for SenderHandler {
                     }
                 }
                 let reportable = aggr.reportable();
-                let res = if accept_proto {
+                let now = Instant::now();
+                let (res, elapsed) = if accept_proto {
                     PROMETHEUS_WRITE_BINARY.fetch_add(1, Ordering::Relaxed);
-                    write_binary(reportable, res)
+                    let res = write_binary(reportable, res);
+                    let elapsed = now.elapsed();
+                    (res, elapsed)
                 } else {
                     PROMETHEUS_WRITE_TEXT.fetch_add(1, Ordering::Relaxed);
-                    write_text(reportable, res)
+                    let res = write_text(reportable, res);
+                    let elapsed = now.elapsed();
+                    (res, elapsed)
                 };
+                let us = ((elapsed.as_secs() as f64) * 10_000.0) + (elapsed.subsec_nanos() as f64 / 100_000.0);
+                PROMETHEUS_RESPONSE_DELAY_SUM.fetch_add(us as usize, Ordering::Relaxed);
                 if res.is_err() {
                     PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
                 }
@@ -416,6 +457,7 @@ impl Prometheus {
             aggrs: aggrs,
             thrd_aggr: thrd_aggrs,
             http_srv: listener,
+            age_threshold: config.age_threshold,
         }
     }
 }
@@ -738,8 +780,14 @@ impl Sink for Prometheus {
     }
 
     fn deliver(&mut self, mut point: sync::Arc<Option<metric::Telemetry>>) -> () {
-        let metric = sync::Arc::make_mut(&mut point).take().unwrap();
-        self.aggrs.insert(metric);
+        let telem: metric::Telemetry = sync::Arc::make_mut(&mut point).take().unwrap();
+        if let Some(age_threshold) = self.age_threshold {
+            if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
+                self.aggrs.insert(telem);
+            }
+        } else {
+            self.aggrs.insert(telem);
+        }
     }
 
     fn deliver_line(&mut self, _: sync::Arc<Option<metric::LogLine>>) -> () {
@@ -773,9 +821,9 @@ mod test {
             let mut values: Vec<Accumulator> = Vec::new();
             for _ in 0..limit {
                 let telem: metric::Telemetry = Arbitrary::arbitrary(g);
-                match keys.binary_search_by(
-                    |probe| probe.partial_cmp(&telem.name_tag_hash()).unwrap(),
-                ) {
+                match keys.binary_search_by(|probe| {
+                    probe.partial_cmp(&telem.name_tag_hash()).unwrap()
+                }) {
                     Ok(hsh_idx) => {
                         let prev = values.index_mut(hsh_idx);
                         if prev.kind() == telem.kind() {
