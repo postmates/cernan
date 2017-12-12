@@ -174,6 +174,7 @@ impl Sink for Elasticsearch {
         Some(self.flush_interval)
     }
 
+    #[allow(cyclomatic_complexity)]
     fn flush(&mut self) {
         if self.buffer.is_empty() {
             return;

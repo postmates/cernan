@@ -11,7 +11,6 @@ extern crate mio;
 extern crate log;
 extern crate openssl_probe;
 
-
 use cernan::constants;
 use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
                      ProgrammableFilterConfig};
@@ -375,8 +374,8 @@ fn main() {
                     .get(&config.config_path.clone().unwrap())
                     .expect("Oops")
                     .clone(),
-                thread: thread::spawn(
-                    move || match cernan::sink::Wavefront::new(config) {
+                thread: thread::spawn(move || {
+                    match cernan::sink::Wavefront::new(config) {
                         Ok(mut w) => {
                             w.run(recv);
                         }
@@ -384,8 +383,8 @@ fn main() {
                             error!("Configuration error for Wavefront: {}", e);
                             process::exit(1);
                         }
-                    },
-                ),
+                    }
+                }),
             },
         );
     }

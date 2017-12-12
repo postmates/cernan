@@ -1,8 +1,8 @@
-use mio;
-use source::Source;
 use constants;
 use metric;
+use mio;
 use protocols::graphite::parse_graphite;
+use source::Source;
 use std;
 use std::collections::HashMap;
 use std::io::BufReader;
@@ -139,9 +139,9 @@ fn handle_stream(
                                 for m in res.drain(..) {
                                     send(
                                         &mut chans,
-                                        metric::Event::Telemetry(
-                                            sync::Arc::new(Some(m)),
-                                        ),
+                                        metric::Event::Telemetry(sync::Arc::new(
+                                            Some(m),
+                                        )),
                                     );
                                 }
                                 line.clear();
@@ -221,12 +221,7 @@ impl Source for Graphite {
                     socket_map.insert(token, listener);
                 }
 
-                handle_tcp(
-                    self.chans.clone(),
-                    &self.tags,
-                    socket_map,
-                    &poll,
-                );
+                handle_tcp(self.chans.clone(), &self.tags, socket_map, &poll);
             }
             Err(e) => {
                 info!(
