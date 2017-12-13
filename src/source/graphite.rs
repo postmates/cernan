@@ -160,7 +160,7 @@ fn handle_stream(
 }
 
 fn handle_tcp(
-    chans: util::Channel,
+    mut chans: util::Channel,
     tags: &sync::Arc<metric::TagMap>,
     listeners: util::TokenSlab<mio::net::TcpListener>,
     poll: &mio::Poll,
@@ -177,6 +177,8 @@ fn handle_tcp(
                             for handler in stream_handlers {
                                 handler.shutdown();
                             }
+
+                            send(&mut chans, metric::Event::Shutdown);
                             return;
                         }
                         listener_token => {

@@ -69,20 +69,6 @@ fn join_all(workers: HashMap<String, SinkWorker>) {
     }
 }
 
-fn broadcast_shutdown(workers: &HashMap<String, SinkWorker>) {
-    let mut source_channels = Vec::new();
-    for (id, worker) in workers.iter() {
-        println!("Signaling shutdown to {:?}", id);
-        source_channels.push(worker.sender.clone());
-    }
-
-    if !source_channels.is_empty() {
-        cernan::util::send(&mut source_channels, cernan::metric::Event::Shutdown);
-    }
-
-    drop(source_channels);
-}
-
 macro_rules! cfg_conf {
     ($config:ident) => {
         $config.config_path.clone().expect("[INTERNAL ERROR] no config_path")
@@ -763,18 +749,18 @@ fn main() {
 
     signal.recv().unwrap();
 
-    // First, we shut down source to quiesce event generation.
+    // Shut down source to quiesce event generation.
+    // During shutdown sources will propgate metric::Event::Shutdown
+    // to all of its downstream consumers.
     for (id, source_worker) in sources {
-        println!("Signaling shutdown to {:?}", id);
+        info!("Signaling shutdown to {:?}", id);
         source_worker
             .readiness
             .set_readiness(mio::Ready::readable())
-            .expect("Oops!");
+            .expect("Failed to set readiness!");
         source_worker.thread.join().expect("Failed during join!");
     }
 
-    broadcast_shutdown(&filters);
-    broadcast_shutdown(&sinks);
     join_all(sinks);
     join_all(filters);
 }

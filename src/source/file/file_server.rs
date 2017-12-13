@@ -170,13 +170,17 @@ impl Source for FileServer {
             let backoff = backoff_cap.saturating_sub(global_lines_read);
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(& mut events, Some(time::Duration::from_millis(backoff as u64))){
-                Err(e) =>
-                    panic!(format!("Failed during poll {:?}", e)),
-                Ok(_num_events) =>
+                Err(e) => {
+                    panic!(format!("Failed during poll {:?}", e))
+                }
+
+                Ok(_num_events) => {
                     // File server doesn't poll for anything other than SYSTEM events.
                     // As currently there are no system events other than SHUTDOWN,
                     // we immediately exit.
-                    return,
+                    send(&mut self.chans, metric::Event::Shutdown);
+                    return;
+                }
             }
         }
     }

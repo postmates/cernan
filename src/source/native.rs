@@ -73,7 +73,7 @@ impl NativeServer {
 }
 
 fn handle_tcp(
-    chans: util::Channel,
+    mut chans: util::Channel,
     tags: &sync::Arc<metric::TagMap>,
     listeners: util::TokenSlab<mio::net::TcpListener>,
     poller: &mio::Poll,
@@ -89,6 +89,7 @@ fn handle_tcp(
                         for handler in stream_handlers {
                             handler.shutdown();
                         }
+                        util::send(&mut chans, metric::Event::Shutdown);
                         return;
                     }
                     listener_token => {

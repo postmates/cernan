@@ -120,7 +120,11 @@ fn handle_udp(
         match poll.poll(&mut events, None) {
             Ok(_num_events) => for event in events {
                 match event.token() {
-                    constants::SYSTEM => return,
+                    constants::SYSTEM => {
+                        send(&mut chans, metric::Event::Shutdown);
+                        return;
+                    }
+
                     token => {
                         // Get the socket to receive from:
                         let socket = &conns[token];
