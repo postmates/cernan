@@ -64,6 +64,12 @@ pub struct TokenSlab <E: mio::Evented> {
     tokens : slab::Slab<E>,
 }
 
+impl <E: mio::Evented> Default for TokenSlab<E> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl <E: mio::Evented> Index<mio::Token> for TokenSlab <E> {
     type Output = E;
 

@@ -5,9 +5,11 @@ use std;
 use util;
 
 type AdjacencyMap <T> = util::HashMap<String, Option<T>>;
+
 type AdjacencyMatrix <T> = util::HashMap<String, AdjacencyMap<T>>;
 
 /// Adjacency matrix struct.
+#[derive(Default)]
 pub struct Adjacency <M: Clone> {
     edges : AdjacencyMatrix<M>,
 }
@@ -30,15 +32,15 @@ impl <M: Clone> Adjacency <M> {
         let to = String::from_str(to_str).unwrap();
         let from = String::from_str(from_str).unwrap();
  
-        let vec = self.edges.entry(from).or_insert(Default::default());
+        let vec = self.edges.entry(from).or_insert_with(Default::default);
         vec.insert(to, metadata);
     }
 
     /// Adds symmetric edges between the given node and a set of other nodes.
-    pub fn add_edges(&mut self, from_str: String, to_strs: Vec<String>, metadata: Option<M>) {
+    pub fn add_edges(&mut self, from_str: &str, to_strs: Vec<String>, metadata: Option<M>) {
         for to_str in to_strs {
-            self.add_asymmetric_edge(&from_str, &to_str, metadata.clone());
-            self.add_asymmetric_edge(&to_str, &from_str, metadata.clone())
+            self.add_asymmetric_edge(from_str, &to_str, metadata.clone());
+            self.add_asymmetric_edge(&to_str, from_str, metadata.clone())
         }
     }
 

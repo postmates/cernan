@@ -47,7 +47,7 @@ fn populate_forwards(
         match available_sends.get(fwd) {
             Some(snd) => {
                 adjacency_matrix.add_asymmetric_edge(
-                    config_path.clone(),
+                    config_path,
                     &fwd.clone(),
                     Some(snd.clone()));
             }
@@ -244,7 +244,7 @@ fn main() {
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
         }
     }
     if let Some(ref configs) = args.delay_filters {
@@ -257,7 +257,7 @@ fn main() {
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
         }
     }
     if let Some(ref configs) = args.flush_boundary_filters {
@@ -270,39 +270,39 @@ fn main() {
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
         }
     }
     // SOURCES
     //
     if let Some(ref configs) = args.native_server_config {
         for (config_path, config) in configs {
-            adjacency_matrix.add_edges(config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
         }
     }
     {
         let internal_config = &args.internal;
         config_topology
             .insert(cfg_conf!(internal_config), internal_config.forwards.clone());
-        adjacency_matrix.add_edges(cfg_conf!(internal_config), internal_config.forwards.clone(), None);
+        adjacency_matrix.add_edges(&cfg_conf!(internal_config), internal_config.forwards.clone(), None);
     }
     if let Some(ref configs) = args.statsds {
         for (config_path, config) in configs {
 			config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
         }
     }
     if let Some(ref configs) = args.graphites {
         for (config_path, config) in configs {
 			config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
         }
     }
     if let Some(ref configs) = args.files {
         for config in configs {
             let config_path = cfg_conf!(config);
 			config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
         }
     }
 
