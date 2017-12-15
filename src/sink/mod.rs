@@ -132,8 +132,9 @@ pub trait Sink {
                             //    1) An upstream source injects a Shutdown event after
                             //    all of its events have been processed.
                             //
-                            //    2) Sources shutdown only after receiving Shutdown from
-                            //    each of its upstream sources/filters.
+                            // 2) Sources shutdown only after receiving Shutdown
+                            // from each of its
+                            // upstream sources/filters.
                             total_shutdowns += 1;
                             if total_shutdowns >= sources.len() {
                                 return;

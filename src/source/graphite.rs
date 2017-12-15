@@ -203,8 +203,7 @@ impl Source for Graphite {
         match addrs {
             Ok(ips) => {
                 let ips: Vec<_> = ips.collect();
-                let mut listeners =
-                    util::TokenSlab::<mio::net::TcpListener>::new();
+                let mut listeners = util::TokenSlab::<mio::net::TcpListener>::new();
                 for addr in ips {
                     let listener = mio::net::TcpListener::bind(&addr)
                         .expect("Unable to bind to TCP socket");

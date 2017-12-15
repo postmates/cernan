@@ -112,7 +112,11 @@ impl Sink for Native {
         // discard point
     }
 
-    fn run(&mut self, recv: hopper::Receiver<metric::Event>, sources: std::vec::Vec<std::string::String>) {
+    fn run(
+        &mut self,
+        recv: hopper::Receiver<metric::Event>,
+        sources: std::vec::Vec<std::string::String>,
+    ) {
         let mut attempts = 0;
         let mut recv = recv.into_iter();
         let mut last_flush_idx = 0;

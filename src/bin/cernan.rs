@@ -12,9 +12,9 @@ extern crate log;
 extern crate openssl_probe;
 
 use cernan::constants;
-use cernan::matrix;
 use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
                      ProgrammableFilterConfig};
+use cernan::matrix;
 use cernan::metric;
 use cernan::sink::Sink;
 use cernan::source::Source;
@@ -43,13 +43,13 @@ fn populate_forwards(
             let _ = (*tlf).insert(fwd.clone());
         }
 
-
         match available_sends.get(fwd) {
             Some(snd) => {
                 adjacency_matrix.add_asymmetric_edge(
                     config_path,
                     &fwd.clone(),
-                    Some(snd.clone()));
+                    Some(snd.clone()),
+                );
             }
             None => {
                 error!(
@@ -128,7 +128,8 @@ fn main() {
     let mut flush_sends = HashSet::new();
 
     let mut config_topology: HashMap<String, Vec<String>> = HashMap::new();
-    let mut adjacency_matrix = matrix::Adjacency::<hopper::Sender<metric::Event>>::new();
+    let mut adjacency_matrix =
+        matrix::Adjacency::<hopper::Sender<metric::Event>>::new();
 
     // We have to build up the mapping from source / filter / sink to its
     // forwards. We do that here. Once completed we'll have populated:
@@ -244,7 +245,11 @@ fn main() {
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     if let Some(ref configs) = args.delay_filters {
@@ -257,7 +262,11 @@ fn main() {
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     if let Some(ref configs) = args.flush_boundary_filters {
@@ -270,39 +279,63 @@ fn main() {
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     // SOURCES
     //
     if let Some(ref configs) = args.native_server_config {
         for (config_path, config) in configs {
-            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     {
         let internal_config = &args.internal;
         config_topology
             .insert(cfg_conf!(internal_config), internal_config.forwards.clone());
-        adjacency_matrix.add_edges(&cfg_conf!(internal_config), internal_config.forwards.clone(), None);
+        adjacency_matrix.add_edges(
+            &cfg_conf!(internal_config),
+            internal_config.forwards.clone(),
+            None,
+        );
     }
     if let Some(ref configs) = args.statsds {
         for (config_path, config) in configs {
             config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     if let Some(ref configs) = args.graphites {
         for (config_path, config) in configs {
             config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     if let Some(ref configs) = args.files {
         for config in configs {
             let config_path = cfg_conf!(config);
-	        config_topology.insert(config_path.clone(), config.forwards.clone());
-            adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
+            config_topology.insert(config_path.clone(), config.forwards.clone());
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
 
@@ -353,15 +386,13 @@ fn main() {
         let sources = adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            thread::spawn(move || {
-                match cernan::sink::Wavefront::new(config) {
-                    Ok(mut w) => {
-                        w.run(recv, sources);
-                    }
-                    Err(e) => {
-                        error!("Configuration error for Wavefront: {}", e);
-                        process::exit(1);
-                    }
+            thread::spawn(move || match cernan::sink::Wavefront::new(config) {
+                Ok(mut w) => {
+                    w.run(recv, sources);
+                }
+                Err(e) => {
+                    error!("Configuration error for Wavefront: {}", e);
+                    process::exit(1);
                 }
             }),
         );
@@ -419,7 +450,8 @@ fn main() {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
-            let sources = adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+            let sources =
+                adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
             sinks.insert(
                 config.config_path.clone().unwrap(),
                 thread::spawn(move || {
@@ -437,8 +469,12 @@ fn main() {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
-            let sources = adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
-            let config_path = config.config_path.clone().expect("[INTERNAL ERROR] no config_path");
+            let sources =
+                adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+            let config_path = config
+                .config_path
+                .clone()
+                .expect("[INTERNAL ERROR] no config_path");
             populate_forwards(
                 None,
                 &config.forwards,
@@ -451,8 +487,11 @@ fn main() {
             filters.insert(
                 config.config_path.clone().unwrap(),
                 thread::spawn(move || {
-                    cernan::filter::ProgrammableFilter::new(c)
-                        .run(recv, sources, downstream_sends);
+                    cernan::filter::ProgrammableFilter::new(c).run(
+                        recv,
+                        sources,
+                        downstream_sends,
+                    );
                 }),
             );
         }
@@ -464,8 +503,12 @@ fn main() {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
-            let sources = adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
-            let config_path = config.config_path.clone().expect("[INTERNAL ERROR] no config_path");
+            let sources =
+                adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+            let config_path = config
+                .config_path
+                .clone()
+                .expect("[INTERNAL ERROR] no config_path");
             populate_forwards(
                 None,
                 &config.forwards,
@@ -478,8 +521,11 @@ fn main() {
             filters.insert(
                 config.config_path.clone().unwrap(),
                 thread::spawn(move || {
-                    cernan::filter::DelayFilter::new(&c)
-                        .run(recv, sources, downstream_sends);
+                    cernan::filter::DelayFilter::new(&c).run(
+                        recv,
+                        sources,
+                        downstream_sends,
+                    );
                 }),
             );
         }
@@ -491,8 +537,12 @@ fn main() {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
-            let sources = adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
-            let config_path = config.config_path.clone().expect("[INTERNAL ERROR] no config_path");
+            let sources =
+                adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+            let config_path = config
+                .config_path
+                .clone()
+                .expect("[INTERNAL ERROR] no config_path");
             populate_forwards(
                 None,
                 &config.forwards,
@@ -505,8 +555,11 @@ fn main() {
             filters.insert(
                 config.config_path.clone().unwrap(),
                 thread::spawn(move || {
-                    cernan::filter::FlushBoundaryFilter::new(&c)
-                        .run(recv, sources, downstream_sends);
+                    cernan::filter::FlushBoundaryFilter::new(&c).run(
+                        recv,
+                        sources,
+                        downstream_sends,
+                    );
                 }),
             );
         }

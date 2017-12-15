@@ -2,6 +2,7 @@ use coco::Stack;
 use filter;
 use metric;
 use metric::{AggregationMethod, Telemetry};
+use mio;
 use sink;
 use source;
 use source::Source;
@@ -10,7 +11,6 @@ use std::sync;
 use std::sync::atomic::Ordering;
 use time;
 use util;
-use mio;
 
 lazy_static! {
     static ref Q: Stack<metric::Telemetry> = Stack::new();
