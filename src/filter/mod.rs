@@ -5,6 +5,7 @@
 //! stream members as they come through. Exact behaviour varies by filters. The
 //! filter receives on an input channel and outputs over its forwards.
 
+use std;
 use hopper;
 use metric;
 use time;
@@ -62,15 +63,25 @@ pub trait Filter {
     fn run(
         &mut self,
         recv: hopper::Receiver<metric::Event>,
+        sources: std::vec::Vec<std::string::String>,
         mut chans: util::Channel,
     ) {
         let mut attempts = 0;
         let mut events = Vec::with_capacity(64);
         let mut recv = recv.into_iter();
+        let mut total_shutdowns = 0;
         loop {
             time::delay(attempts);
             match recv.next() {
                 None => attempts += 1,
+                Some(metric::Event::Shutdown) => {
+                    util::send(&mut chans, metric::Event::Shutdown);
+                        
+                    total_shutdowns += 1;
+                    if total_shutdowns >= sources.len() {
+                            return;
+                    }
+                }
                 Some(event) => {
                     attempts = 0;
                     match self.process(event, &mut events) {

@@ -66,3 +66,4 @@ pub mod constants;
 pub mod thread;
 pub mod protocols;
 pub mod http;
+pub mod matrix;

@@ -6,6 +6,7 @@ use protobuf::repeated::RepeatedField;
 use protobuf::stream::CodedOutputStream;
 use protocols::native::{AggregationMethod, LogLine, Payload, Telemetry};
 use sink::{Sink, Valve};
+use std;
 use std::collections::HashMap;
 use std::io::BufWriter;
 use std::mem::replace;
@@ -111,10 +112,11 @@ impl Sink for Native {
         // discard point
     }
 
-    fn run(&mut self, recv: hopper::Receiver<metric::Event>) {
+    fn run(&mut self, recv: hopper::Receiver<metric::Event>, sources: std::vec::Vec<std::string::String>) {
         let mut attempts = 0;
         let mut recv = recv.into_iter();
         let mut last_flush_idx = 0;
+        let mut total_shutdowns = 0;
         loop {
             time::delay(attempts);
             if self.buffer.len() > 10_000 {
@@ -134,6 +136,12 @@ impl Sink for Native {
                             }
                             last_flush_idx = idx;
                         },
+                        metric::Event::Shutdown => {
+                            total_shutdowns += 1;
+                            if total_shutdowns == sources.len() {
+                                return;
+                            }
+                        }
                         _ => self.buffer.push(event),
                     }
                 }
