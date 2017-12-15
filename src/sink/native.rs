@@ -115,7 +115,7 @@ impl Sink for Native {
     fn run(
         &mut self,
         recv: hopper::Receiver<metric::Event>,
-        sources: std::vec::Vec<std::string::String>,
+        sources: std::vec::Vec<String>,
     ) {
         let mut attempts = 0;
         let mut recv = recv.into_iter();
