@@ -6,7 +6,6 @@
 
 use hopper;
 use metric::{Event, LogLine, Telemetry};
-use std;
 use std::sync;
 use time;
 use util::Valve;
@@ -57,7 +56,7 @@ pub trait Sink {
     /// The run-loop of the `Sink`. It's expect that few sinks will ever need to
     /// provide their own implementation. Please take care to obey `Valve`
     /// states and `flush_interval` configurations.
-    fn run(&mut self, recv: hopper::Receiver<Event>, sources: std::vec::Vec<std::string::String>) {
+    fn run(&mut self, recv: hopper::Receiver<Event>, sources: Vec<String>) {
         let mut attempts = 0;
         let mut recv = recv.into_iter();
         let mut last_flush_idx = 0;

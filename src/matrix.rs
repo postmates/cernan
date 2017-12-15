@@ -4,8 +4,8 @@ use std::str::FromStr;
 use std;
 use util;
 
-type AdjacencyMap <T> = util::HashMap<std::string::String, std::option::Option<T>>;
-type AdjacencyMatrix <T> = util::HashMap<std::string::String, AdjacencyMap<T>>;
+type AdjacencyMap <T> = util::HashMap<String, Option<T>>;
+type AdjacencyMatrix <T> = util::HashMap<String, AdjacencyMap<T>>;
 
 /// Adjacency matrix struct.
 pub struct Adjacency <M: Clone> {
@@ -26,16 +26,16 @@ impl <M: Clone> Adjacency <M> {
     } 
 
     /// Adds an outbound edge from a node to another.
-    pub fn add_asymmetric_edge(&mut self, from_str: &str, to_str: &str, metadata: std::option::Option<M>) {
-        let to = std::string::String::from_str(to_str).unwrap();
-        let from = std::string::String::from_str(from_str).unwrap();
+    pub fn add_asymmetric_edge(&mut self, from_str: &str, to_str: &str, metadata: Option<M>) {
+        let to = String::from_str(to_str).unwrap();
+        let from = String::from_str(from_str).unwrap();
  
         let vec = self.edges.entry(from).or_insert(Default::default());
         vec.insert(to, metadata);
     }
 
     /// Adds symmetric edges between the given node and a set of other nodes.
-    pub fn add_edges(&mut self, from_str: std::string::String, to_strs: std::vec::Vec<std::string::String>, metadata: std::option::Option<M>) {
+    pub fn add_edges(&mut self, from_str: String, to_strs: Vec<String>, metadata: Option<M>) {
         for to_str in to_strs {
             self.add_asymmetric_edge(&from_str, &to_str, metadata.clone());
             self.add_asymmetric_edge(&to_str, &from_str, metadata.clone())
@@ -61,17 +61,17 @@ impl <M: Clone> Adjacency <M> {
     }
 
     /// Iterates over edge relations in the matrix.
-    pub fn iter(& self) -> std::collections::hash_map::Iter<std::string::String, AdjacencyMap<M>> {
+    pub fn iter(& self) -> std::collections::hash_map::Iter<String, AdjacencyMap<M>> {
         self.edges.iter()
     }
 
     /// Pops adjacency metadata for the given node.
-    pub fn pop(&mut self, id: &str) -> std::option::Option<AdjacencyMap<M>> {
+    pub fn pop(&mut self, id: &str) -> Option<AdjacencyMap<M>> {
         self.edges.remove(id)
     }
 
     /// As pop, but returns a vec of node identifiers connected to the given node.
-    pub fn pop_keys(&mut self, id: &str) -> std::vec::Vec<std::string::String> {
+    pub fn pop_keys(&mut self, id: &str) -> Vec<String> {
         match self.pop(id) {
             Some(map) => {
                 map.into_iter()
@@ -80,14 +80,14 @@ impl <M: Clone> Adjacency <M> {
             }
 
             None => {
-                std::vec::Vec::new()
+                Vec::new()
             }
         }
     }
 
     /// As pop, but returns a vec of metadata.
     /// Option values will be unwrapped and None values filtered.
-    pub fn pop_values(&mut self, id: &str) -> std::vec::Vec<M> {
+    pub fn pop_values(&mut self, id: &str) -> Vec<M> {
         match self.pop(id) {
             Some(map) => {
                 map.into_iter()
@@ -97,7 +97,7 @@ impl <M: Clone> Adjacency <M> {
             }
 
             None => {
-                std::vec::Vec::new()
+                Vec::new()
             }
         }
     }
