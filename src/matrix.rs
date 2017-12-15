@@ -42,6 +42,8 @@ impl <M: Clone> Adjacency <M> {
             self.add_asymmetric_edge(from_str, &to_str, metadata.clone());
             self.add_asymmetric_edge(&to_str, from_str, metadata.clone())
         }
+
+        drop(metadata);
     }
 
     /// Returns the number of incident edges to the given node. 

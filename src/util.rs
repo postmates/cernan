@@ -81,7 +81,7 @@ impl <E: mio::Evented> Index<mio::Token> for TokenSlab <E> {
 
 /// Interface wrapping a subset of Slab such
 /// that we can magically translate indices to
-/// mio::tokens.
+/// `mio::token`.
 impl <E: mio::Evented> TokenSlab <E> {
 
     /// Constructs a new TokenSlab with a capacity derived from the value
