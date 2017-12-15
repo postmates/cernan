@@ -288,20 +288,20 @@ fn main() {
     }
     if let Some(ref configs) = args.statsds {
         for (config_path, config) in configs {
-			config_topology.insert(config_path.clone(), config.forwards.clone());
+            config_topology.insert(config_path.clone(), config.forwards.clone());
             adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
         }
     }
     if let Some(ref configs) = args.graphites {
         for (config_path, config) in configs {
-			config_topology.insert(config_path.clone(), config.forwards.clone());
+            config_topology.insert(config_path.clone(), config.forwards.clone());
             adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
         }
     }
     if let Some(ref configs) = args.files {
         for config in configs {
             let config_path = cfg_conf!(config);
-			config_topology.insert(config_path.clone(), config.forwards.clone());
+	        config_topology.insert(config_path.clone(), config.forwards.clone());
             adjacency_matrix.add_edges(&config_path.clone(), config.forwards.clone(), None);
         }
     }
@@ -522,7 +522,6 @@ fn main() {
                 Some(&mut flush_sends),
                 &config.forwards,
                 &config_path,
-                //&cfg_conf!(config),
                 &senders,
                 &mut adjacency_matrix,
             );
