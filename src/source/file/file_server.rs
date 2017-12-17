@@ -174,7 +174,7 @@ impl Source for FileServer {
                 Some(time::Duration::from_millis(backoff as u64)),
             ) {
                 Err(e) => panic!(format!("Failed during poll {:?}", e)),
-
+                Ok(0) => {}
                 Ok(_num_events) => {
                     // File server doesn't poll for anything other than SYSTEM events.
                     // As currently there are no system events other than SHUTDOWN,
