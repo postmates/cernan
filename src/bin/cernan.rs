@@ -45,6 +45,7 @@ fn populate_forwards(
 
         match available_sends.get(fwd) {
             Some(snd) => {
+                trace!("Populating sender from {:?} to {:?}", config_path, fwd);
                 adjacency_matrix.add_asymmetric_edge(
                     config_path,
                     &fwd.clone(),
@@ -469,8 +470,6 @@ fn main() {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
-            let sources =
-                adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
             let config_path = config
                 .config_path
                 .clone()
@@ -483,6 +482,10 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
+            let sources =
+                adjacency_matrix.filter_nodes(
+                    &config.config_path.clone().unwrap(),
+                    |&(ref _k, ref option_v)| option_v.is_none());
             let downstream_sends = adjacency_matrix.pop_values(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
@@ -503,8 +506,7 @@ fn main() {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
-            let sources =
-                adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+
             let config_path = config
                 .config_path
                 .clone()
@@ -517,6 +519,10 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
+            let sources =
+                adjacency_matrix.filter_nodes(
+                    &config.config_path.clone().unwrap(),
+                    |&(ref _k, ref option_v)| option_v.is_none());
             let downstream_sends = adjacency_matrix.pop_values(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
@@ -537,8 +543,6 @@ fn main() {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
-            let sources =
-                adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
             let config_path = config
                 .config_path
                 .clone()
@@ -551,6 +555,10 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
+            let sources =
+                adjacency_matrix.filter_nodes(
+                    &config.config_path.clone().unwrap(),
+                    |&(ref _k, ref option_v)| option_v.is_none());
             let downstream_sends = adjacency_matrix.pop_values(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),

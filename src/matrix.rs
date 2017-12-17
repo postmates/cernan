@@ -1,6 +1,7 @@
 //! Collection of matrix implementations.
 
 use std;
+use std::fmt::Debug;
 use std::str::FromStr;
 use util;
 
@@ -18,7 +19,7 @@ pub struct Adjacency<M: Clone> {
 ///
 ///  Edges are not symmetric.  Two values are symmetrically adjacent when
 ///  edges originate from each value to the other value.
-impl<M: Clone> Adjacency<M> {
+impl<M: Clone + Debug> Adjacency<M> {
     /// Construct a new adjacency matrix.
     pub fn new() -> Self {
         Adjacency {
@@ -35,7 +36,6 @@ impl<M: Clone> Adjacency<M> {
     ) {
         let to = String::from_str(to_str).unwrap();
         let from = String::from_str(from_str).unwrap();
-
         let vec = self.edges.entry(from).or_insert_with(Default::default);
         vec.insert(to, metadata);
     }
@@ -67,6 +67,14 @@ impl<M: Clone> Adjacency<M> {
     /// Returns true iff relations exist for the given id.
     pub fn contains_key(&self, id: &str) -> bool {
         self.edges.contains_key(id)
+    }
+
+    /// Filters and returns edges satisfying the given constraint.
+    pub fn filter_nodes<F>(&self, id: &str, f: F) -> Vec<String>
+    where
+        for<'r> F: FnMut(&'r (&String, &Option<M>)) -> bool
+    {
+        self.edges[id].iter().filter(f).map(|(k, _v)| k.clone()).collect()
     }
 
     /// Iterates over edge relations in the matrix.

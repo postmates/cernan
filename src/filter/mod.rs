@@ -75,9 +75,9 @@ pub trait Filter {
                 None => attempts += 1,
                 Some(metric::Event::Shutdown) => {
                     util::send(&mut chans, metric::Event::Shutdown);
-
                     total_shutdowns += 1;
                     if total_shutdowns >= sources.len() {
+                        trace!("Received shutdown from every configured source: {:?}", sources);
                         return;
                     }
                 }

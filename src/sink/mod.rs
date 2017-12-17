@@ -137,6 +137,7 @@ pub trait Sink {
                             // upstream sources/filters.
                             total_shutdowns += 1;
                             if total_shutdowns >= sources.len() {
+                                trace!("Received shutdown from every configured source: {:?}", sources);
                                 return;
                             }
                         }
