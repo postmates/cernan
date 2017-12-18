@@ -360,7 +360,7 @@ fn main() {
     //
     if let Some(config) = mem::replace(&mut args.null, None) {
         let recv = receivers.remove(&config.config_path).unwrap();
-        let sources = adjacency_matrix.pop_keys(&config.config_path);
+        let sources = adjacency_matrix.pop_nodes(&config.config_path);
         sinks.insert(
             config.config_path.clone(),
             thread::spawn(move || {
@@ -372,7 +372,7 @@ fn main() {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        let sources = adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
             thread::spawn(move || {
@@ -384,7 +384,7 @@ fn main() {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        let sources = adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
             thread::spawn(move || match cernan::sink::Wavefront::new(config) {
@@ -402,7 +402,7 @@ fn main() {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        let sources = adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
             thread::spawn(move || {
@@ -414,7 +414,7 @@ fn main() {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        let sources = adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
             thread::spawn(move || {
@@ -426,7 +426,7 @@ fn main() {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        let sources = adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
             thread::spawn(move || {
@@ -438,7 +438,7 @@ fn main() {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
-        let sources = adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
             thread::spawn(move || {
@@ -452,7 +452,7 @@ fn main() {
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
             let sources =
-                adjacency_matrix.pop_keys(&config.config_path.clone().unwrap());
+                adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
             sinks.insert(
                 config.config_path.clone().unwrap(),
                 thread::spawn(move || {
@@ -486,7 +486,7 @@ fn main() {
                 adjacency_matrix.filter_nodes(
                     &config.config_path.clone().unwrap(),
                     |&(ref _k, ref option_v)| option_v.is_none());
-            let downstream_sends = adjacency_matrix.pop_values(&config_path);
+            let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
                 thread::spawn(move || {
@@ -523,7 +523,7 @@ fn main() {
                 adjacency_matrix.filter_nodes(
                     &config.config_path.clone().unwrap(),
                     |&(ref _k, ref option_v)| option_v.is_none());
-            let downstream_sends = adjacency_matrix.pop_values(&config_path);
+            let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
                 thread::spawn(move || {
@@ -559,7 +559,7 @@ fn main() {
                 adjacency_matrix.filter_nodes(
                     &config.config_path.clone().unwrap(),
                     |&(ref _k, ref option_v)| option_v.is_none());
-            let downstream_sends = adjacency_matrix.pop_values(&config_path);
+            let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
                 thread::spawn(move || {
@@ -587,7 +587,7 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
-            let native_server_send = adjacency_matrix.pop_values(&config_path);
+            let native_server_send = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
                 SourceWorker {
@@ -619,7 +619,7 @@ fn main() {
         &mut adjacency_matrix,
     );
 
-    let internal_send = adjacency_matrix.pop_values(&internal_config_path);
+    let internal_send = adjacency_matrix.pop_metadata(&internal_config_path);
     sources.insert(
         internal_config.config_path.clone().unwrap(),
         SourceWorker {
@@ -649,7 +649,7 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
-            let statsd_sends = adjacency_matrix.pop_values(&config_path);
+            let statsd_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
                 SourceWorker {
@@ -680,7 +680,7 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
-            let graphite_sends = adjacency_matrix.pop_values(&config_path);
+            let graphite_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
                 SourceWorker {
@@ -713,7 +713,7 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
-            let fp_sends = adjacency_matrix.pop_values(&config_path);
+            let fp_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 cfg_conf!(config).clone(),
                 SourceWorker {

@@ -64,8 +64,8 @@ impl<M: Clone + Debug> Adjacency<M> {
         }
     }
 
-    /// Returns true iff relations exist for the given id.
-    pub fn contains_key(&self, id: &str) -> bool {
+    /// Returns true iff relations exist for the given node id.
+    pub fn contains_node(&self, id: &str) -> bool {
         self.edges.contains_key(id)
     }
 
@@ -89,7 +89,7 @@ impl<M: Clone + Debug> Adjacency<M> {
 
     /// As pop, but returns a vec of node identifiers connected to the given
     /// node.
-    pub fn pop_keys(&mut self, id: &str) -> Vec<String> {
+    pub fn pop_nodes(&mut self, id: &str) -> Vec<String> {
         match self.pop(id) {
             Some(map) => map.into_iter().map(|(k, _v)| k).collect(),
 
@@ -97,9 +97,9 @@ impl<M: Clone + Debug> Adjacency<M> {
         }
     }
 
-    /// As pop, but returns a vec of metadata.
+    /// As pop, but returns a vec of edge metadata.
     /// Option values will be unwrapped and None values filtered.
-    pub fn pop_values(&mut self, id: &str) -> Vec<M> {
+    pub fn pop_metadata(&mut self, id: &str) -> Vec<M> {
         match self.pop(id) {
             Some(map) => map.into_iter()
                 .filter(|&(ref _k, ref option_v)| option_v.is_some())
