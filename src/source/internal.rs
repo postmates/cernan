@@ -116,7 +116,12 @@ impl Source for Internal {
                 // Internal source doesn't register any external evented sources.
                 // Any event must be a system event which, at the time of this writing,
                 // can only be a shutdown event.
-                Ok(num_events) if num_events > 0 => return,
+                Ok(num_events) if num_events > 0 => {
+                    util::send(
+                        &mut self.chans,
+                        metric::Event::Shutdown);
+                    return;
+                }
                 Ok(_) => {
                     if !self.chans.is_empty() {
                         // source::graphite
