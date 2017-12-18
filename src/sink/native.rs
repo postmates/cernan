@@ -6,7 +6,6 @@ use protobuf::repeated::RepeatedField;
 use protobuf::stream::CodedOutputStream;
 use protocols::native::{AggregationMethod, LogLine, Payload, Telemetry};
 use sink::{Sink, Valve};
-use std;
 use std::collections::HashMap;
 use std::io::BufWriter;
 use std::mem::replace;
@@ -115,7 +114,7 @@ impl Sink for Native {
     fn run(
         &mut self,
         recv: hopper::Receiver<metric::Event>,
-        sources: std::vec::Vec<String>,
+        sources: Vec<String>,
     ) {
         let mut attempts = 0;
         let mut recv = recv.into_iter();
