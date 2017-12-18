@@ -2,6 +2,7 @@ use coco::Stack;
 use filter;
 use metric;
 use metric::{AggregationMethod, Telemetry};
+use mio;
 use sink;
 use source;
 use source::Source;
@@ -10,7 +11,6 @@ use std::sync;
 use std::sync::atomic::Ordering;
 use time;
 use util;
-use mio;
 
 lazy_static! {
     static ref Q: Stack<metric::Telemetry> = Stack::new();
@@ -116,7 +116,12 @@ impl Source for Internal {
                 // Internal source doesn't register any external evented sources.
                 // Any event must be a system event which, at the time of this writing,
                 // can only be a shutdown event.
-                Ok(num_events) if num_events > 0 => return,
+                Ok(num_events) if num_events > 0 => {
+                    util::send(
+                        &mut self.chans,
+                        metric::Event::Shutdown);
+                    return;
+                }
                 Ok(_) => {
                     if !self.chans.is_empty() {
                         // source::graphite

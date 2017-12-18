@@ -111,10 +111,15 @@ impl Sink for Native {
         // discard point
     }
 
-    fn run(&mut self, recv: hopper::Receiver<metric::Event>) {
+    fn run(
+        &mut self,
+        recv: hopper::Receiver<metric::Event>,
+        sources: Vec<String>,
+    ) {
         let mut attempts = 0;
         let mut recv = recv.into_iter();
         let mut last_flush_idx = 0;
+        let mut total_shutdowns = 0;
         loop {
             time::delay(attempts);
             if self.buffer.len() > 10_000 {
@@ -134,6 +139,12 @@ impl Sink for Native {
                             }
                             last_flush_idx = idx;
                         },
+                        metric::Event::Shutdown => {
+                            total_shutdowns += 1;
+                            if total_shutdowns == sources.len() {
+                                return;
+                            }
+                        }
                         _ => self.buffer.push(event),
                     }
                 }

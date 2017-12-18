@@ -62,15 +62,25 @@ pub trait Filter {
     fn run(
         &mut self,
         recv: hopper::Receiver<metric::Event>,
+        sources: Vec<String>,
         mut chans: util::Channel,
     ) {
         let mut attempts = 0;
         let mut events = Vec::with_capacity(64);
         let mut recv = recv.into_iter();
+        let mut total_shutdowns = 0;
         loop {
             time::delay(attempts);
             match recv.next() {
                 None => attempts += 1,
+                Some(metric::Event::Shutdown) => {
+                    util::send(&mut chans, metric::Event::Shutdown);
+                    total_shutdowns += 1;
+                    if total_shutdowns >= sources.len() {
+                        trace!("Received shutdown from every configured source: {:?}", sources);
+                        return;
+                    }
+                }
                 Some(event) => {
                     attempts = 0;
                     match self.process(event, &mut events) {

@@ -19,7 +19,6 @@ pub use self::internal::{report_full_telemetry, Internal, InternalConfig};
 pub use self::native::{NativeServer, NativeServerConfig};
 pub use self::statsd::{Statsd, StatsdConfig, StatsdParseConfig};
 
-
 /// cernan Source, the originator of all `metric::Event`.
 ///
 /// A cernan Source creates all `metric::Event`, doing so by listening to

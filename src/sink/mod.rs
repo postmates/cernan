@@ -56,10 +56,11 @@ pub trait Sink {
     /// The run-loop of the `Sink`. It's expect that few sinks will ever need to
     /// provide their own implementation. Please take care to obey `Valve`
     /// states and `flush_interval` configurations.
-    fn run(&mut self, recv: hopper::Receiver<Event>) {
+    fn run(&mut self, recv: hopper::Receiver<Event>, sources: Vec<String>) {
         let mut attempts = 0;
         let mut recv = recv.into_iter();
         let mut last_flush_idx = 0;
+        let mut total_shutdowns = 0;
         // The run-loop of a sink is two nested loops. The outer loop pulls a
         // value from the hopper queue. If that value is Some the inner loop
         // tries to do something with it, only discarding it at such time as
@@ -128,12 +129,17 @@ pub trait Sink {
                             // Invariant - In order to ensure at least once delivery
                             // at the sink level, the following properties must hold:
                             //
-                            //    1) Shutdown events only ever appear at the end
-                            //    of a queue.
+                            //    1) An upstream source injects a Shutdown event after
+                            //    all of its events have been processed.
                             //
-                            //    2) The given sink synchronously flushes any
-                            //    internal memory.
-                            return;
+                            // 2) Sources shutdown only after receiving Shutdown
+                            // from each of its
+                            // upstream sources/filters.
+                            total_shutdowns += 1;
+                            if total_shutdowns >= sources.len() {
+                                trace!("Received shutdown from every configured source: {:?}", sources);
+                                return;
+                            }
                         }
                     },
                     Valve::Closed => {

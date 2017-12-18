@@ -1,13 +1,13 @@
 //! Utility module, a grab-bag of functionality
-use std::ops::Index;
-use mio;
-use slab;
+use constants;
 use hopper;
 use metric;
+use mio;
 use seahash::SeaHasher;
+use slab;
 use std::collections;
 use std::hash;
-use constants;
+use std::ops::Index;
 
 /// Cernan hashmap
 ///
@@ -60,11 +60,17 @@ fn token_to_idx(token: &mio::Token) -> usize {
 }
 
 /// Wrapper around Slab
-pub struct TokenSlab <E: mio::Evented> {
-    tokens : slab::Slab<E>,
+pub struct TokenSlab<E: mio::Evented> {
+    tokens: slab::Slab<E>,
 }
 
-impl <E: mio::Evented> Index<mio::Token> for TokenSlab <E> {
+impl<E: mio::Evented> Default for TokenSlab<E> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<E: mio::Evented> Index<mio::Token> for TokenSlab<E> {
     type Output = E;
 
     /// Returns Evented object corresponding to Token.
@@ -75,12 +81,11 @@ impl <E: mio::Evented> Index<mio::Token> for TokenSlab <E> {
 
 /// Interface wrapping a subset of Slab such
 /// that we can magically translate indices to
-/// mio::tokens.
-impl <E: mio::Evented> TokenSlab <E> {
-
+/// `mio::token`.
+impl<E: mio::Evented> TokenSlab<E> {
     /// Constructs a new TokenSlab with a capacity derived from the value
     /// of constants::SYSTEM.
-    pub fn new () -> TokenSlab<E> {
+    pub fn new() -> TokenSlab<E> {
         TokenSlab {
             tokens: slab::Slab::with_capacity(token_to_idx(&constants::SYSTEM)),
         }
@@ -88,7 +93,7 @@ impl <E: mio::Evented> TokenSlab <E> {
 
     /// Inserts a new Evented into the slab, returning a mio::Token
     /// corresponding to the index of the newly inserted type.
-    pub fn insert(&mut self, thing : E) -> mio::Token {
+    pub fn insert(&mut self, thing: E) -> mio::Token {
         let idx = self.tokens.insert(thing);
         mio::Token::from(idx)
     }

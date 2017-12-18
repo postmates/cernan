@@ -14,10 +14,10 @@ extern crate openssl_probe;
 use cernan::constants;
 use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
                      ProgrammableFilterConfig};
+use cernan::matrix;
 use cernan::metric;
 use cernan::sink::Sink;
 use cernan::source::Source;
-use cernan::util;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 use std::mem;
@@ -31,26 +31,26 @@ struct SourceWorker {
     readiness: mio::SetReadiness,
 }
 
-#[derive(Debug)]
-struct SinkWorker {
-    thread: std::thread::JoinHandle<()>,
-    sender: hopper::Sender<metric::Event>,
-}
-
 fn populate_forwards(
-    sends: &mut util::Channel,
     mut top_level_forwards: Option<&mut HashSet<String>>,
     forwards: &[String],
     config_path: &str,
     available_sends: &HashMap<String, hopper::Sender<metric::Event>>,
+    adjacency_matrix: &mut matrix::Adjacency<hopper::Sender<metric::Event>>,
 ) {
     for fwd in forwards {
         if let Some(tlf) = top_level_forwards.as_mut() {
             let _ = (*tlf).insert(fwd.clone());
         }
+
         match available_sends.get(fwd) {
             Some(snd) => {
-                sends.push(snd.clone());
+                trace!("Populating sender from {:?} to {:?}", config_path, fwd);
+                adjacency_matrix.add_asymmetric_edge(
+                    config_path,
+                    &fwd.clone(),
+                    Some(snd.clone()),
+                );
             }
             None => {
                 error!(
@@ -63,24 +63,10 @@ fn populate_forwards(
     }
 }
 
-fn join_all(workers: HashMap<String, SinkWorker>) {
+fn join_all(workers: HashMap<String, std::thread::JoinHandle<()>>) {
     for (_worker_id, worker) in workers {
-        worker.thread.join().expect("Failed to join worker");
+        worker.join().expect("Failed to join worker");
     }
-}
-
-fn broadcast_shutdown(workers: &HashMap<String, SinkWorker>) {
-    let mut source_channels = Vec::new();
-    for (id, worker) in workers.iter() {
-        println!("Signaling shutdown to {:?}", id);
-        source_channels.push(worker.sender.clone());
-    }
-
-    if !source_channels.is_empty() {
-        cernan::util::send(&mut source_channels, cernan::metric::Event::Shutdown);
-    }
-
-    drop(source_channels);
 }
 
 macro_rules! cfg_conf {
@@ -135,14 +121,16 @@ fn main() {
     //    events, once read it is safe for these workers to flush any pending writes
     //    and shutdown.
     let mut sources: HashMap<String, SourceWorker> = HashMap::new();
-    let mut sinks: HashMap<String, SinkWorker> = HashMap::new();
-    let mut filters: HashMap<String, SinkWorker> = HashMap::new();
+    let mut sinks: HashMap<String, std::thread::JoinHandle<()>> = HashMap::new();
+    let mut filters: HashMap<String, std::thread::JoinHandle<()>> = HashMap::new();
     let mut senders: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     let mut receivers: HashMap<String, hopper::Receiver<metric::Event>> =
         HashMap::new();
     let mut flush_sends = HashSet::new();
 
     let mut config_topology: HashMap<String, Vec<String>> = HashMap::new();
+    let mut adjacency_matrix =
+        matrix::Adjacency::<hopper::Sender<metric::Event>>::new();
 
     // We have to build up the mapping from source / filter / sink to its
     // forwards. We do that here. Once completed we'll have populated:
@@ -258,6 +246,11 @@ fn main() {
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     if let Some(ref configs) = args.delay_filters {
@@ -270,6 +263,11 @@ fn main() {
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     if let Some(ref configs) = args.flush_boundary_filters {
@@ -282,34 +280,63 @@ fn main() {
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     // SOURCES
     //
     if let Some(ref configs) = args.native_server_config {
         for (config_path, config) in configs {
-            config_topology.insert(config_path.clone(), config.forwards.clone());
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     {
         let internal_config = &args.internal;
         config_topology
             .insert(cfg_conf!(internal_config), internal_config.forwards.clone());
+        adjacency_matrix.add_edges(
+            &cfg_conf!(internal_config),
+            internal_config.forwards.clone(),
+            None,
+        );
     }
     if let Some(ref configs) = args.statsds {
         for (config_path, config) in configs {
             config_topology.insert(config_path.clone(), config.forwards.clone());
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     if let Some(ref configs) = args.graphites {
         for (config_path, config) in configs {
             config_topology.insert(config_path.clone(), config.forwards.clone());
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
     if let Some(ref configs) = args.files {
         for config in configs {
             let config_path = cfg_conf!(config);
             config_topology.insert(config_path.clone(), config.forwards.clone());
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
         }
     }
 
@@ -333,127 +360,90 @@ fn main() {
     //
     if let Some(config) = mem::replace(&mut args.null, None) {
         let recv = receivers.remove(&config.config_path).unwrap();
+        let sources = adjacency_matrix.pop_nodes(&config.config_path);
         sinks.insert(
             config.config_path.clone(),
-            SinkWorker {
-                sender: senders
-                    .get(&config.config_path.clone())
-                    .expect("Oops")
-                    .clone(),
-                thread: thread::spawn(move || {
-                    cernan::sink::Null::new(&config).run(recv);
-                }),
-            },
+            thread::spawn(move || {
+                cernan::sink::Null::new(&config).run(recv, sources);
+            }),
         );
     }
     if let Some(config) = mem::replace(&mut args.console, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            SinkWorker {
-                sender: senders
-                    .get(&config.config_path.clone().unwrap())
-                    .expect("Oops")
-                    .clone(),
-                thread: thread::spawn(move || {
-                    cernan::sink::Console::new(&config).run(recv);
-                }),
-            },
+            thread::spawn(move || {
+                cernan::sink::Console::new(&config).run(recv, sources);
+            }),
         );
     }
     if let Some(config) = mem::replace(&mut args.wavefront, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            SinkWorker {
-                sender: senders
-                    .get(&config.config_path.clone().unwrap())
-                    .expect("Oops")
-                    .clone(),
-                thread: thread::spawn(move || {
-                    match cernan::sink::Wavefront::new(config) {
-                        Ok(mut w) => {
-                            w.run(recv);
-                        }
-                        Err(e) => {
-                            error!("Configuration error for Wavefront: {}", e);
-                            process::exit(1);
-                        }
-                    }
-                }),
-            },
+            thread::spawn(move || match cernan::sink::Wavefront::new(config) {
+                Ok(mut w) => {
+                    w.run(recv, sources);
+                }
+                Err(e) => {
+                    error!("Configuration error for Wavefront: {}", e);
+                    process::exit(1);
+                }
+            }),
         );
     }
     if let Some(config) = mem::replace(&mut args.prometheus, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            SinkWorker {
-                sender: senders
-                    .get(&config.config_path.clone().unwrap())
-                    .expect("Oops")
-                    .clone(),
-                thread: thread::spawn(move || {
-                    cernan::sink::Prometheus::new(&config).run(recv);
-                }),
-            },
+            thread::spawn(move || {
+                cernan::sink::Prometheus::new(&config).run(recv, sources);
+            }),
         );
     }
     if let Some(config) = mem::replace(&mut args.influxdb, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            SinkWorker {
-                sender: senders
-                    .get(&config.config_path.clone().unwrap())
-                    .expect("Oops")
-                    .clone(),
-                thread: thread::spawn(move || {
-                    cernan::sink::InfluxDB::new(&config).run(recv);
-                }),
-            },
+            thread::spawn(move || {
+                cernan::sink::InfluxDB::new(&config).run(recv, sources);
+            }),
         );
     }
     if let Some(config) = mem::replace(&mut args.native_sink_config, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            SinkWorker {
-                sender: senders
-                    .get(&config.config_path.clone().unwrap())
-                    .expect("Oops")
-                    .clone(),
-                thread: thread::spawn(move || {
-                    cernan::sink::Native::new(config).run(recv);
-                }),
-            },
+            thread::spawn(move || {
+                cernan::sink::Native::new(config).run(recv, sources);
+            }),
         );
     }
     if let Some(config) = mem::replace(&mut args.elasticsearch, None) {
         let recv = receivers
             .remove(&config.config_path.clone().unwrap())
             .unwrap();
+        let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            SinkWorker {
-                sender: senders
-                    .get(&config.config_path.clone().unwrap())
-                    .expect("Oops")
-                    .clone(),
-                thread: thread::spawn(move || {
-                    cernan::sink::Elasticsearch::new(config).run(recv);
-                }),
-            },
+            thread::spawn(move || {
+                cernan::sink::Elasticsearch::new(config).run(recv, sources);
+            }),
         );
     }
     if let Some(cfgs) = mem::replace(&mut args.firehosen, None) {
@@ -461,17 +451,13 @@ fn main() {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
+            let sources =
+                adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
             sinks.insert(
                 config.config_path.clone().unwrap(),
-                SinkWorker {
-                    sender: senders
-                        .get(&config.config_path.clone().unwrap())
-                        .expect("Oops")
-                        .clone(),
-                    thread: thread::spawn(move || {
-                        cernan::sink::Firehose::new(config).run(recv);
-                    }),
-                },
+                thread::spawn(move || {
+                    cernan::sink::Firehose::new(config).run(recv, sources);
+                }),
             );
         }
     }
@@ -484,29 +470,32 @@ fn main() {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
-            let mut downstream_sends = Vec::new();
+            let config_path = config
+                .config_path
+                .clone()
+                .expect("[INTERNAL ERROR] no config_path");
             populate_forwards(
-                &mut downstream_sends,
                 None,
                 &config.forwards,
-                &config
-                    .config_path
-                    .clone()
-                    .expect("[INTERNAL ERROR] no config_path"),
+                &config_path,
                 &senders,
+                &mut adjacency_matrix,
             );
+
+            let sources =
+                adjacency_matrix.filter_nodes(
+                    &config.config_path.clone().unwrap(),
+                    |&(ref _k, ref option_v)| option_v.is_none());
+            let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
-                SinkWorker {
-                    sender: senders
-                        .get(&config.config_path.clone().unwrap())
-                        .expect("Oops")
-                        .clone(),
-                    thread: thread::spawn(move || {
-                        cernan::filter::ProgrammableFilter::new(c)
-                            .run(recv, downstream_sends);
-                    }),
-                },
+                thread::spawn(move || {
+                    cernan::filter::ProgrammableFilter::new(c).run(
+                        recv,
+                        sources,
+                        downstream_sends,
+                    );
+                }),
             );
         }
     });
@@ -517,29 +506,33 @@ fn main() {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
-            let mut downstream_sends = Vec::new();
+
+            let config_path = config
+                .config_path
+                .clone()
+                .expect("[INTERNAL ERROR] no config_path");
             populate_forwards(
-                &mut downstream_sends,
                 None,
                 &config.forwards,
-                &config
-                    .config_path
-                    .clone()
-                    .expect("[INTERNAL ERROR] no config_path"),
+                &config_path,
                 &senders,
+                &mut adjacency_matrix,
             );
+
+            let sources =
+                adjacency_matrix.filter_nodes(
+                    &config.config_path.clone().unwrap(),
+                    |&(ref _k, ref option_v)| option_v.is_none());
+            let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
-                SinkWorker {
-                    sender: senders
-                        .get(&config.config_path.clone().unwrap())
-                        .expect("Oops")
-                        .clone(),
-                    thread: thread::spawn(move || {
-                        cernan::filter::DelayFilter::new(&c)
-                            .run(recv, downstream_sends);
-                    }),
-                },
+                thread::spawn(move || {
+                    cernan::filter::DelayFilter::new(&c).run(
+                        recv,
+                        sources,
+                        downstream_sends,
+                    );
+                }),
             );
         }
     });
@@ -550,29 +543,32 @@ fn main() {
             let recv = receivers
                 .remove(&config.config_path.clone().unwrap())
                 .unwrap();
-            let mut downstream_sends = Vec::new();
+            let config_path = config
+                .config_path
+                .clone()
+                .expect("[INTERNAL ERROR] no config_path");
             populate_forwards(
-                &mut downstream_sends,
                 None,
                 &config.forwards,
-                &config
-                    .config_path
-                    .clone()
-                    .expect("[INTERNAL ERROR] no config_path"),
+                &config_path,
                 &senders,
+                &mut adjacency_matrix,
             );
+
+            let sources =
+                adjacency_matrix.filter_nodes(
+                    &config.config_path.clone().unwrap(),
+                    |&(ref _k, ref option_v)| option_v.is_none());
+            let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
-                SinkWorker {
-                    sender: senders
-                        .get(&config.config_path.clone().unwrap())
-                        .expect("Oops")
-                        .clone(),
-                    thread: thread::spawn(move || {
-                        cernan::filter::FlushBoundaryFilter::new(&c)
-                            .run(recv, downstream_sends);
-                    }),
-                },
+                thread::spawn(move || {
+                    cernan::filter::FlushBoundaryFilter::new(&c).run(
+                        recv,
+                        sources,
+                        downstream_sends,
+                    );
+                }),
             );
         }
     });
@@ -581,16 +577,17 @@ fn main() {
     //
     mem::replace(&mut args.native_server_config, None).map(|cfg_map| {
         for (config_path, config) in cfg_map {
-            let mut native_server_send = Vec::new();
             let poll = mio::Poll::new().unwrap();
             let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
-                &mut native_server_send,
                 Some(&mut flush_sends),
                 &config.forwards,
-                &cfg_conf!(config),
+                &config_path,
                 &senders,
+                &mut adjacency_matrix,
             );
+
+            let native_server_send = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
                 SourceWorker {
@@ -611,16 +608,18 @@ fn main() {
     });
 
     let internal_config = mem::replace(&mut args.internal, Default::default());
+    let internal_config_path = internal_config.config_path.clone().unwrap();
     let poll = mio::Poll::new().unwrap();
     let (registration, readiness) = mio::Registration::new2();
-    let mut internal_send = Vec::new();
     populate_forwards(
-        &mut internal_send,
         Some(&mut flush_sends),
         &internal_config.forwards,
-        &cfg_conf!(internal_config),
+        &internal_config_path,
         &senders,
+        &mut adjacency_matrix,
     );
+
+    let internal_send = adjacency_matrix.pop_metadata(&internal_config_path);
     sources.insert(
         internal_config.config_path.clone().unwrap(),
         SourceWorker {
@@ -640,16 +639,17 @@ fn main() {
 
     mem::replace(&mut args.statsds, None).map(|cfg_map| {
         for (config_path, config) in cfg_map {
-            let mut statsd_sends = Vec::new();
             let poll = mio::Poll::new().unwrap();
             let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
-                &mut statsd_sends,
                 Some(&mut flush_sends),
                 &config.forwards,
-                &cfg_conf!(config),
+                &config_path,
                 &senders,
+                &mut adjacency_matrix,
             );
+
+            let statsd_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
                 SourceWorker {
@@ -670,16 +670,17 @@ fn main() {
 
     mem::replace(&mut args.graphites, None).map(|cfg_map| {
         for (config_path, config) in cfg_map {
-            let mut graphite_sends = Vec::new();
             let poll = mio::Poll::new().unwrap();
             let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
-                &mut graphite_sends,
                 Some(&mut flush_sends),
                 &config.forwards,
-                &cfg_conf!(config),
+                &config_path,
                 &senders,
+                &mut adjacency_matrix,
             );
+
+            let graphite_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
                 SourceWorker {
@@ -701,16 +702,18 @@ fn main() {
 
     mem::replace(&mut args.files, None).map(|cfg| {
         for config in cfg {
-            let mut fp_sends = Vec::new();
+            let config_path = config.config_path.clone().unwrap();
             let poll = mio::Poll::new().unwrap();
             let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
-                &mut fp_sends,
                 Some(&mut flush_sends),
                 &config.forwards,
-                &cfg_conf!(config),
+                &config_path,
                 &senders,
+                &mut adjacency_matrix,
             );
+
+            let fp_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 cfg_conf!(config).clone(),
                 SourceWorker {
@@ -763,18 +766,18 @@ fn main() {
 
     signal.recv().unwrap();
 
-    // First, we shut down source to quiesce event generation.
+    // Shut down source to quiesce event generation.
+    // During shutdown sources will propgate metric::Event::Shutdown
+    // to all of its downstream consumers.
     for (id, source_worker) in sources {
-        println!("Signaling shutdown to {:?}", id);
+        info!("Signaling shutdown to {:?}", id);
         source_worker
             .readiness
             .set_readiness(mio::Ready::readable())
-            .expect("Oops!");
+            .expect("Failed to set readiness!");
         source_worker.thread.join().expect("Failed during join!");
     }
 
-    broadcast_shutdown(&filters);
-    broadcast_shutdown(&sinks);
     join_all(sinks);
     join_all(filters);
 }
