@@ -115,6 +115,10 @@ impl Sink<NativeConfig> for Native {
         let mut points = Vec::with_capacity(1024);
         let mut lines = Vec::with_capacity(1024);
 
+        if self.buffer.is_empty() {
+            return;
+        }
+
         for ev in self.buffer.drain(..) {
             match ev {
                 metric::Event::Telemetry(mut m) => {
@@ -184,7 +188,8 @@ impl Sink<NativeConfig> for Native {
                 BigEndian::write_u32(&mut sz_buf, pyld_len);
                 stream.write_raw_bytes(&sz_buf).unwrap();
                 let res = pyld.write_to_with_cached_sizes(&mut stream);
-                if res.is_ok() {
+                let flsh = stream.flush();
+                if res.is_ok() && flsh.is_ok() {
                     self.buffer.clear();
                     return;
                 } else {
