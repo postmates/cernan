@@ -108,6 +108,7 @@ pub fn parse_statsd(
                                             if mask_re.is_match(name) {
                                                 metric = metric
                                                     .kind(AggregationMethod::Histogram)
+                                                    .clear_error()
                                                     .bounds(bounds.clone());
                                                 break;
                                             }
@@ -137,6 +138,7 @@ pub fn parse_statsd(
                                         if mask_re.is_match(name) {
                                             metric = metric
                                                 .kind(AggregationMethod::Histogram)
+                                                .clear_error()
                                                 .bounds(bounds.clone());
                                             break;
                                         }

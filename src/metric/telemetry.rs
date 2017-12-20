@@ -313,6 +313,17 @@ impl SoftTelemetry {
         self
     }
 
+    /// Clear quantile error bounds
+    ///
+    /// When switching between types during the construction of a Telemetry it's
+    /// possible the error bound will have been previously set. This is a
+    /// problem when the SoftTelemetry is hardened. This method clears that
+    /// previous error bound.
+    pub fn clear_error(mut self) -> SoftTelemetry {
+        self.error = None;
+        self
+    }
+
     /// Set the bounds for histogram calculation
     ///
     /// This is only necessary if the kind has been set to
@@ -907,6 +918,20 @@ mod tests {
     use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use std::cmp;
     use std::sync::Arc;
+
+    #[test]
+    fn set_bounds_no_crash() {
+        let res = Telemetry::new()
+            .name("l6")
+            .value(0.7913855)
+            .error(0.01)
+            .kind(AggregationMethod::Histogram)
+            .clear_error()
+            .bounds(vec![0.01, 1.0, 2.0, 4.0])
+            .harden();
+
+        assert!(res.is_ok());
+    }
 
     #[test]
     fn partial_ord_equal() {
