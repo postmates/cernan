@@ -25,6 +25,11 @@ pub type Channel = Vec<hopper::Sender<metric::Event>>;
 
 /// Send a `metric::Event` into a `Channel`.
 pub fn send(chans: &mut Channel, event: metric::Event) {
+    if chans.is_empty() {
+        // Nothing to send to.
+        return
+    }
+
     let max: usize = chans.len().saturating_sub(1);
     if max == 0 {
         chans[0].send(event)
