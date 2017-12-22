@@ -1,6 +1,13 @@
 use metric::{LogLine, Telemetry};
 use std::sync;
 
+/// Supported event encodings.
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub enum Encoding {
+    /// Avro
+    Avro,
+}
+
 /// Event: the central cernan datastructure
 ///
 /// Event is the heart of cernan, the enumeration that cernan works on in all
@@ -22,6 +29,8 @@ pub enum Event {
     /// more events will appear.  It is expected that after receiving this
     /// marker the given source will exit cleanly.
     Shutdown,
+    /// Raw, encoded bytes.
+    Raw(Encoding, Vec<u8>),
 }
 
 impl Event {
@@ -52,7 +61,7 @@ impl Event {
                     None => None,
                 }
             }
-            Event::TimerFlush(_) | Event::Shutdown => None,
+            Event::TimerFlush(_) | Event::Shutdown | Event::Raw(_, _) => None,
         }
     }
 }

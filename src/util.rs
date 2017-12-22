@@ -96,6 +96,11 @@ impl<E: mio::Evented> TokenSlab<E> {
         }
     }
 
+    /// Iterates over the underlying slab mapping index to mio::Evented.
+    pub fn iter(&self) -> slab::Iter<E> {
+        self.tokens.iter()
+    }
+
     /// Inserts a new Evented into the slab, returning a mio::Token
     /// corresponding to the index of the newly inserted type.
     pub fn insert(&mut self, thing: E) -> mio::Token {
