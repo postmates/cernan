@@ -15,8 +15,8 @@ use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
                      ProgrammableFilterConfig};
 use cernan::matrix;
 use cernan::metric;
-use cernan::source::Source;
 use cernan::sink::Sink;
+use cernan::source::Source;
 use cernan::thread::Stoppable;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
@@ -380,13 +380,15 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| match cernan::sink::Wavefront::new(config) {
-                Ok(mut w) => {
-                    w.run(recv, sources);
-                }
-                Err(e) => {
-                    error!("Configuration error for Wavefront: {}", e);
-                    process::exit(1);
+            cernan::thread::spawn(move |_poll| {
+                match cernan::sink::Wavefront::new(config) {
+                    Ok(mut w) => {
+                        w.run(recv, sources);
+                    }
+                    Err(e) => {
+                        error!("Configuration error for Wavefront: {}", e);
+                        process::exit(1);
+                    }
                 }
             }),
         );
@@ -475,10 +477,10 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
-            let sources =
-                adjacency_matrix.filter_nodes(
-                    &config.config_path.clone().unwrap(),
-                    |&(ref _k, ref option_v)| option_v.is_none());
+            let sources = adjacency_matrix.filter_nodes(
+                &config.config_path.clone().unwrap(),
+                |&(ref _k, ref option_v)| option_v.is_none(),
+            );
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
@@ -512,10 +514,10 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
-            let sources =
-                adjacency_matrix.filter_nodes(
-                    &config.config_path.clone().unwrap(),
-                    |&(ref _k, ref option_v)| option_v.is_none());
+            let sources = adjacency_matrix.filter_nodes(
+                &config.config_path.clone().unwrap(),
+                |&(ref _k, ref option_v)| option_v.is_none(),
+            );
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
@@ -548,10 +550,10 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
-            let sources =
-                adjacency_matrix.filter_nodes(
-                    &config.config_path.clone().unwrap(),
-                    |&(ref _k, ref option_v)| option_v.is_none());
+            let sources = adjacency_matrix.filter_nodes(
+                &config.config_path.clone().unwrap(),
+                |&(ref _k, ref option_v)| option_v.is_none(),
+            );
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
@@ -578,10 +580,11 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
-            let native_server_send : cernan::util::Channel = adjacency_matrix.pop_metadata(&config_path);
+            let native_server_send = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
-                cernan::source::NativeServer::new(native_server_send, config).run());
+                cernan::source::NativeServer::new(native_server_send, config).run(),
+            );
         }
     });
 
@@ -598,7 +601,8 @@ fn main() {
     let internal_send = adjacency_matrix.pop_metadata(&internal_config_path);
     sources.insert(
         internal_config.config_path.clone().unwrap(),
-        cernan::source::Internal::new(internal_send, internal_config).run());
+        cernan::source::Internal::new(internal_send, internal_config).run(),
+    );
 
     mem::replace(&mut args.statsds, None).map(|cfg_map| {
         for (config_path, config) in cfg_map {
@@ -613,7 +617,8 @@ fn main() {
             let statsd_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
-                cernan::source::Statsd::new(statsd_sends, config).run());
+                cernan::source::Statsd::new(statsd_sends, config).run(),
+            );
         }
     });
 
@@ -630,7 +635,8 @@ fn main() {
             let graphite_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
-                cernan::source::Graphite::new(graphite_sends, config).run());
+                cernan::source::Graphite::new(graphite_sends, config).run(),
+            );
         }
     });
 
@@ -648,7 +654,8 @@ fn main() {
             let fp_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 cfg_conf!(config).clone(),
-                cernan::source::FileServer::new(fp_sends, config).run());
+                cernan::source::FileServer::new(fp_sends, config).run(),
+            );
         }
     });
 
@@ -657,22 +664,23 @@ fn main() {
     let mut flush_channels = Vec::new();
     for destination in &flush_sends {
         match senders.get(destination) {
-           Some(snd) => {
-               flush_channels.push(snd.clone());
-           }
-           None => {
-               error!(
-                   "Unable to fulfill configured top-level flush to {}",
-                   destination
-               );
-               process::exit(0);
-           }
+            Some(snd) => {
+                flush_channels.push(snd.clone());
+            }
+            None => {
+                error!(
+                    "Unable to fulfill configured top-level flush to {}",
+                    destination
+                );
+                process::exit(0);
+            }
         }
     }
 
     drop(flush_sends);
     drop(senders);
-    cernan::source::FlushTimer::new(flush_channels, cernan::source::FlushTimerConfig).run();
+    cernan::source::FlushTimer::new(flush_channels, cernan::source::FlushTimerConfig)
+        .run();
 
     cernan::thread::spawn(move |_poll| {
         cernan::time::update_time();

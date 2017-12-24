@@ -40,16 +40,10 @@ impl source::Source<FlushTimer, FlushTimerConfig> for FlushTimer {
     /// Create a new FlushTimer. This will not produce a new thread, that must
     /// be managed by the end-user.
     fn new(chans: util::Channel, _config: FlushTimerConfig) -> FlushTimer {
-        FlushTimer {
-            chans: chans,
-        }
+        FlushTimer { chans: chans }
     }
 
     fn run(self) -> thread::ThreadHandle {
-        thread::spawn(
-            move |poll| {
-                tick_tock(self.chans, poll)
-            }
-        )
+        thread::spawn(move |poll| tick_tock(self.chans, poll))
     }
 }

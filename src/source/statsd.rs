@@ -95,13 +95,11 @@ impl source::Source<Statsd, StatsdConfig> for Statsd {
         let mut conns = util::TokenSlab::<mio::net::UdpSocket>::new();
         let addrs = (config.host.as_str(), config.port).to_socket_addrs();
         match addrs {
-            Ok(ips) => {
-                for addr in ips {
-                    let socket = mio::net::UdpSocket::bind(&addr)
-                        .expect("Unable to bind to UDP socket");
-                    conns.insert(socket);
-                }
-            }
+            Ok(ips) => for addr in ips {
+                let socket = mio::net::UdpSocket::bind(&addr)
+                    .expect("Unable to bind to UDP socket");
+                conns.insert(socket);
+            },
             Err(e) => {
                 info!(
                     "Unable to perform DNS lookup on host {} with error {}",
@@ -120,12 +118,14 @@ impl source::Source<Statsd, StatsdConfig> for Statsd {
     fn run(self) -> thread::ThreadHandle {
         thread::spawn(move |poller| {
             for (idx, socket) in self.conns.iter() {
-                poller.register(
-                    socket,
-                    mio::Token::from(idx),
-                    mio::Ready::readable(),
-                    mio::PollOpt::edge(),
-                ).unwrap();
+                poller
+                    .register(
+                        socket,
+                        mio::Token::from(idx),
+                        mio::Ready::readable(),
+                        mio::PollOpt::edge(),
+                    )
+                    .unwrap();
             }
 
             handle_udp(
@@ -133,7 +133,8 @@ impl source::Source<Statsd, StatsdConfig> for Statsd {
                 &sync::Arc::new(self.config.tags),
                 &sync::Arc::new(self.config.parse_config),
                 &self.conns,
-                &poller)
+                &poller,
+            )
         })
     }
 }

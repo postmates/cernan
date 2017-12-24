@@ -183,10 +183,6 @@ impl source::Source<FileServer, FileServerConfig> for FileServer {
     }
 
     fn run(self) -> thread::ThreadHandle {
-        thread::spawn(
-            move |poll| {
-                file_server(self.chans, self.config, poll)
-            }
-        )
+        thread::spawn(move |poll| file_server(self.chans, self.config, poll))
     }
 }

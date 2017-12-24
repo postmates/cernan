@@ -51,7 +51,7 @@ pub trait Sink {
     /// implementation.
     fn deliver_line(&mut self, line: sync::Arc<Option<LogLine>>) -> ();
     ///// Deliver a 'Raw' series of encoded bytes to the sink.
-    //fn deliver_raw(&mut self, encoding: Encoding, bytes: Vec<u8>);
+    // fn deliver_raw(&mut self, encoding: Encoding, bytes: Vec<u8>);
     /// Provide a hook to shutdown a sink. This is necessary for sinks which
     /// have their own long-running threads.
     fn shutdown(self) -> ();
@@ -128,7 +128,7 @@ pub trait Sink {
                             break;
                         }
                         Event::Raw(_encoding, _bytes) => {
-                            //self.deliver_raw(encoding, bytes);
+                            // self.deliver_raw(encoding, bytes);
                             break;
                         }
                         Event::Shutdown => {

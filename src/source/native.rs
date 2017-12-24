@@ -8,7 +8,6 @@ use protocols::native::{AggregationMethod, Payload};
 use source;
 use std::io;
 use std::io::Read;
-use std::net::ToSocketAddrs;
 use std::str;
 use std::sync;
 use thread;

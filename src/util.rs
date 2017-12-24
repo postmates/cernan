@@ -27,7 +27,7 @@ pub type Channel = Vec<hopper::Sender<metric::Event>>;
 pub fn send(chans: &mut Channel, event: metric::Event) {
     if chans.is_empty() {
         // Nothing to send to.
-        return
+        return;
     }
 
     let max: usize = chans.len().saturating_sub(1);

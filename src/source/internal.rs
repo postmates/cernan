@@ -88,7 +88,11 @@ macro_rules! atom_non_zero_telem {
     }
 }
 
-fn handle_internal_metrics(mut chans: util::Channel, config: InternalConfig, poll: mio::Poll) {
+fn handle_internal_metrics(
+    mut chans: util::Channel,
+    config: InternalConfig,
+    poll: mio::Poll,
+) {
     let slp = std::time::Duration::from_millis(1_000);
     loop {
         let mut events = mio::Events::with_capacity(1024);
@@ -98,9 +102,7 @@ fn handle_internal_metrics(mut chans: util::Channel, config: InternalConfig, pol
             // Any event must be a system event which, at the time of this writing,
             // can only be a shutdown event.
             Ok(num_events) if num_events > 0 => {
-                util::send(
-                    &mut chans,
-                    metric::Event::Shutdown);
+                util::send(&mut chans, metric::Event::Shutdown);
                 return;
             }
             Ok(_) => {
@@ -223,17 +225,17 @@ fn handle_internal_metrics(mut chans: util::Channel, config: InternalConfig, pol
                        chans
                    );
                     atom_non_zero_telem!(
-                       "cernan.sinks.elasticsearch.error.api.action_document_missing",
-                       sink::elasticsearch::ELASTIC_ERROR_API_DOCUMENT_MISSING,
-                       config.tags,
-                       chans
-                   );
+                        "cernan.sinks.elasticsearch.error.api.action_document_missing",
+                        sink::elasticsearch::ELASTIC_ERROR_API_DOCUMENT_MISSING,
+                        config.tags,
+                        chans
+                    );
                     atom_non_zero_telem!(
-                       "cernan.sinks.elasticsearch.error.api.index_already_exists",
-                       sink::elasticsearch::ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS,
-                       config.tags,
-                       chans
-                   );
+                        "cernan.sinks.elasticsearch.error.api.index_already_exists",
+                        sink::elasticsearch::ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS,
+                        config.tags,
+                        chans
+                    );
                     atom_non_zero_telem!(
                         "cernan.sinks.elasticsearch.error.api.unknown",
                         sink::elasticsearch::ELASTIC_ERROR_API_UNKNOWN,
@@ -428,10 +430,8 @@ impl source::Source<Internal, InternalConfig> for Internal {
     }
 
     fn run(self) -> thread::ThreadHandle {
-        thread::spawn(
-            move |poll| {
-                handle_internal_metrics(self.chans, self.config, poll)
-            }
-        )
+        thread::spawn(move |poll| {
+            handle_internal_metrics(self.chans, self.config, poll)
+        })
     }
 }

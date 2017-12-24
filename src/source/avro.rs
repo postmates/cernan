@@ -4,14 +4,14 @@ use metric;
 use mio;
 use serde_avro;
 use source;
-use std::io::Read;
 use std::{io, sync};
+use std::io::Read;
 use thread;
 use util;
 
 /// Avro source state
 pub struct Avro {
-    server: source::TCP
+    server: source::TCP,
 }
 
 /// Monitors for inbound system and TCP events.
@@ -19,8 +19,8 @@ fn stream_handler(
     chans: util::Channel,
     tags: &sync::Arc<metric::TagMap>,
     poller: &mio::Poll,
-    stream: mio::net::TcpStream) 
-{
+    stream: mio::net::TcpStream,
+) {
     let mut reader = io::BufReader::new(stream);
     loop {
         let mut events = mio::Events::with_capacity(1024);
@@ -33,11 +33,10 @@ fn stream_handler(
                         handle_avro_payload(chans.clone(), tags, &mut reader);
                     }
                 }
-            }
+            },
         };
     }
 }
-
 
 /// Pulls length prefixed (4 bytes, BE), avro encoded
 /// binaries off the wire and populates them in the configured
@@ -60,7 +59,7 @@ fn handle_avro_payload(
     match serde_avro::de::Deserializer::from_container(&buf[..]) {
         Ok(_avro_de) => {
             trace!("Successfully deserialized container.");
-            //TODO - Enforce configurable type naming requirements.
+            // TODO - Enforce configurable type naming requirements.
         }
 
         Err(e) => {
@@ -74,13 +73,13 @@ fn handle_avro_payload(
 
 impl source::Source<Avro, source::TCPConfig> for Avro {
     /// Creates and starts an Avro source witht the given config.
-    fn new (chans: util::Channel, config: source::TCPConfig) -> Self {
+    fn new(chans: util::Channel, config: source::TCPConfig) -> Self {
         Avro {
-            server: source::TCP::new(chans, config)
+            server: source::TCP::new(chans, config),
         }
     }
 
-	fn run(self) -> thread::ThreadHandle {
-		self.server.run(stream_handler)
-	}
+    fn run(self) -> thread::ThreadHandle {
+        self.server.run(stream_handler)
+    }
 }

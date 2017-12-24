@@ -1,12 +1,12 @@
+use constants;
 use metric;
 use mio;
-use util;
-use constants;
 use std;
 use std::net::ToSocketAddrs;
 use std::sync;
 use thread;
 use thread::Stoppable;
+use util;
 
 /// Configured for the `metric::Telemetry` source.
 #[derive(Debug, Deserialize, Clone)]
@@ -22,7 +22,6 @@ pub struct TCPConfig {
     pub tags: metric::TagMap,
     /// The forwards that the source will send all its Telemetry.
     pub forwards: Vec<String>,
-
 }
 
 impl Default for TCPConfig {
@@ -52,7 +51,12 @@ fn spawn_stream_handlers<H>(
     stream_handlers: &mut Vec<thread::ThreadHandle>,
 ) -> ()
 where
-    H: Send + Sync + Copy + 'static + FnOnce(util::Channel, &sync::Arc<metric::TagMap>, &mio::Poll, mio::net::TcpStream) -> ()
+    H: Send
+        + Sync
+        + Copy
+        + 'static
+        + FnOnce(util::Channel, &sync::Arc<metric::TagMap>, &mio::Poll, mio::net::TcpStream)
+        -> (),
 {
     loop {
         match listener.accept() {
@@ -84,7 +88,6 @@ where
     }
 }
 
-
 fn accept_loop<H>(
     mut chans: util::Channel,
     tags: &sync::Arc<metric::TagMap>,
@@ -93,7 +96,12 @@ fn accept_loop<H>(
     handler_fn: H,
 ) -> ()
 where
-    H: Send + Sync + Copy + 'static + FnOnce(util::Channel, &sync::Arc<metric::TagMap>, &mio::Poll, mio::net::TcpStream) -> ()
+    H: Send
+        + Sync
+        + Copy
+        + 'static
+        + FnOnce(util::Channel, &sync::Arc<metric::TagMap>, &mio::Poll, mio::net::TcpStream)
+        -> (),
 {
     let mut stream_handlers: Vec<thread::ThreadHandle> = Vec::new();
     loop {
@@ -129,10 +137,8 @@ where
 }
 
 impl TCP {
-
     /// Constructs and starts a new TCP source.
-    pub fn new (chans: util::Channel, config: TCPConfig) -> Self
-    {
+    pub fn new(chans: util::Channel, config: TCPConfig) -> Self {
         let addrs = (config.host.as_str(), config.port).to_socket_addrs();
         let mut listeners = util::TokenSlab::<mio::net::TcpListener>::new();
         match addrs {
@@ -149,7 +155,10 @@ impl TCP {
             Err(e) => {
                 panic!(
                     "Unable to perform DNS lookup on {:?}:{:?} with error {}",
-                    config.host.as_str(), config.port, e);
+                    config.host.as_str(),
+                    config.port,
+                    e
+                );
             }
         };
 
@@ -161,27 +170,35 @@ impl TCP {
     }
 
     /// Starts the accept loop.
-	pub fn run<H> (self, stream_handler: H) -> thread::ThreadHandle
-
+    pub fn run<H>(self, stream_handler: H) -> thread::ThreadHandle
     where
-        H: Send + Sync + Copy + 'static + FnOnce(util::Channel, &sync::Arc<metric::TagMap>, &mio::Poll, mio::net::TcpStream) -> ()
+        H: Send
+            + Sync
+            + Copy
+            + 'static
+            + FnOnce(
+            util::Channel,
+            &sync::Arc<metric::TagMap>,
+            &mio::Poll,
+            mio::net::TcpStream,
+        ) -> (),
     {
-        thread::spawn(
-            move |poll| {
-                for (token, listener) in self.listeners.iter() {
-                    poll.register(
-                        listener,
-                        mio::Token::from(token),
-                        mio::Ready::readable(),
-                        mio::PollOpt::edge(),
-                    ).unwrap();
-                };
-                accept_loop(
-                    self.chans,
-                    &sync::Arc::new(self.config.tags),
-                    poll,
-                    self.listeners,
-                    stream_handler)
+        thread::spawn(move |poll| {
+            for (token, listener) in self.listeners.iter() {
+                poll.register(
+                    listener,
+                    mio::Token::from(token),
+                    mio::Ready::readable(),
+                    mio::PollOpt::edge(),
+                ).unwrap();
+            }
+            accept_loop(
+                self.chans,
+                &sync::Arc::new(self.config.tags),
+                poll,
+                self.listeners,
+                stream_handler,
+            )
         })
     }
 }
