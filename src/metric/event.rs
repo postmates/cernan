@@ -4,6 +4,8 @@ use std::sync;
 /// Supported event encodings.
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub enum Encoding {
+    /// Raw bytes, no encoding.
+    None,
     /// Avro
     Avro,
 }
@@ -30,7 +32,12 @@ pub enum Event {
     /// marker the given source will exit cleanly.
     Shutdown,
     /// Raw, encoded bytes.
-    Raw(Encoding, Vec<u8>),
+    Raw{
+        /// Encoding for the included bytes.
+        encoding: Encoding,
+        /// Encoded payload.
+        bytes: Vec<u8>,
+    }
 }
 
 impl Event {
@@ -61,7 +68,7 @@ impl Event {
                     None => None,
                 }
             }
-            Event::TimerFlush(_) | Event::Shutdown | Event::Raw(_, _) => None,
+            Event::TimerFlush(_) | Event::Shutdown | Event::Raw{..} => None,
         }
     }
 }
