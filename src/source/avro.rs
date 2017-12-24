@@ -44,7 +44,7 @@ fn stream_handler(
 /// channel.
 fn handle_avro_payload(
     mut chans: util::Channel,
-    tags: &sync::Arc<metric::TagMap>,
+    _tags: &sync::Arc<metric::TagMap>,
     reader: &mut io::BufReader<mio::net::TcpStream>,
 ) {
     let mut buf = Vec::with_capacity(4000);
@@ -58,7 +58,7 @@ fn handle_avro_payload(
     }
 
     match serde_avro::de::Deserializer::from_container(&buf[..]) {
-        Ok(avro_de) => {
+        Ok(_avro_de) => {
             trace!("Successfully deserialized container.");
             //TODO - Enforce configurable type naming requirements.
         }
@@ -72,22 +72,15 @@ fn handle_avro_payload(
     util::send(&mut chans, metric::Event::Raw(metric::Encoding::Avro, buf));
 }
 
-impl thread::Stoppable for Avro {
-    fn join(self) {
-        self.server.join();
-    }
-
-    fn shutdown(self) {
-        self.server.shutdown();
-    }
-}
-
-impl Avro {
-
+impl source::Source<Avro, source::TCPConfig> for Avro {
     /// Creates and starts an Avro source witht the given config.
-    pub fn new (chans: util::Channel, config: source::TCPConfig) -> Self {
+    fn new (chans: util::Channel, config: source::TCPConfig) -> Self {
         Avro {
-            server: source::TCP::new(chans, config, stream_handler)
+            server: source::TCP::new(chans, config)
         }
     }
+
+	fn run(self) -> thread::ThreadHandle {
+		self.server.run(stream_handler)
+	}
 }

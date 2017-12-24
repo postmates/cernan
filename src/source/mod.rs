@@ -4,6 +4,8 @@
 //! down into the source's forwards for further processing. Statsd is a source
 //! that creates `Telemetry`, `FileServer` is a source that creates `LogLine`s.
 use mio;
+use thread;
+use util;
 
 mod avro;
 mod file;
@@ -16,7 +18,7 @@ mod tcp;
 
 pub use self::avro::Avro;
 pub use self::file::{FileServer, FileServerConfig};
-pub use self::flush::FlushTimer;
+pub use self::flush::{FlushTimer, FlushTimerConfig};
 pub use self::graphite::{Graphite, GraphiteConfig};
 pub use self::internal::{report_full_telemetry, Internal, InternalConfig};
 pub use self::native::{NativeServer, NativeServerConfig};
@@ -28,7 +30,12 @@ pub use self::tcp::{TCP, TCPConfig};
 /// A cernan Source creates all `metric::Event`, doing so by listening to
 /// network IO, reading from files, etc etc. All sources push into the routing
 /// topology.
-pub trait Source {
-    /// Run the Source, the exact mechanism here depends on the Source itself.
-    fn run(&mut self, _poll: mio::Poll) -> ();
+pub trait Source <T, TConfig> {
+
+    /// Constructs initial state for the given source.
+    fn new(chans: util::Channel, config: TConfig) -> T;
+
+    /// Run the Source, consuming initial state and returning a
+    /// handle to the running thread.
+    fn run(self) -> thread::ThreadHandle;
 }

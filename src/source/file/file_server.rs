@@ -1,13 +1,14 @@
 use glob::glob;
 use metric;
 use mio;
-use source::Source;
+use source;
 use source::file::file_watcher::FileWatcher;
 use source::internal::report_full_telemetry;
 use std::mem;
 use std::path::PathBuf;
 use std::str;
 use std::time;
+use thread;
 use util;
 use util::send;
 
@@ -22,9 +23,7 @@ use util::send;
 /// its path in at most 60 seconds.
 pub struct FileServer {
     chans: util::Channel,
-    pattern: PathBuf,
-    max_lines_read: usize,
-    tags: metric::TagMap,
+    config: FileServerConfig,
 }
 
 /// The configuration struct for `FileServer`.
@@ -56,15 +55,106 @@ impl Default for FileServerConfig {
     }
 }
 
-impl FileServer {
-    /// Make a FileServer
-    ///
-    pub fn new(chans: util::Channel, config: FileServerConfig) -> FileServer {
-        FileServer {
-            chans: chans,
-            pattern: config.path.expect("must specify a 'path' for FileServer"),
-            tags: config.tags,
-            max_lines_read: config.max_lines_read,
+fn file_server(mut chans: util::Channel, config: FileServerConfig, poller: mio::Poll) {
+    let pattern = config.path.expect("must specify a 'path' for FileServer");
+    let mut buffer = String::new();
+
+    let mut fp_map: util::HashMap<PathBuf, FileWatcher> = Default::default();
+    let mut fp_map_alt: util::HashMap<PathBuf, FileWatcher> = Default::default();
+
+    let mut backoff_cap: usize = 1;
+    let mut lines = Vec::new();
+    // Alright friends, how does this work?
+    //
+    // We want to avoid burning up users' CPUs. To do this we sleep after
+    // reading lines out of files. But! We want to be responsive as well. We
+    // keep track of a 'backoff_cap' to decide how long we'll wait in any
+    // given loop. This cap grows each time we fail to read lines in an
+    // exponential fashion to some hard-coded cap.
+    loop {
+        let mut global_lines_read: usize = 0;
+        // glob poll
+        for entry in glob(pattern.to_str().expect("no ability to glob"))
+            .expect("Failed to read glob pattern")
+        {
+            if let Ok(path) = entry {
+                let entry = fp_map.entry(path.clone());
+                if let Ok(fw) = FileWatcher::new(&path) {
+                    entry.or_insert(fw);
+                };
+            }
+        }
+        // line polling
+        for (path, mut watcher) in fp_map.drain() {
+            let mut lines_read: usize = 0;
+            while let Ok(sz) = watcher.read_line(&mut buffer) {
+                if sz > 0 {
+                    lines_read += 1;
+                    lines.push(
+                        metric::LogLine::new(
+                            path.to_str().expect("not a valid path"),
+                            &buffer,
+                        ).overlay_tags_from_map(&config.tags),
+                    );
+                    buffer.clear();
+                } else {
+                    break;
+                }
+                if lines_read > config.max_lines_read {
+                    break;
+                }
+            }
+            report_full_telemetry(
+                "cernan.sources.file.lines_read",
+                lines_read as f64,
+                Some(vec![
+                    ("file_path", path.to_str().expect("not a valid path")),
+                ]),
+            );
+            // A FileWatcher is dead when the underlying file has
+            // disappeared. If the FileWatcher is dead we don't stick it in
+            // the fp_map_alt and deallocate it.
+            if !watcher.dead() {
+                fp_map_alt.insert(path, watcher);
+            }
+            global_lines_read = global_lines_read.saturating_add(lines_read);
+        }
+        for l in lines.drain(..) {
+            send(&mut chans, metric::Event::new_log(l));
+        }
+        // We've drained the live FileWatchers into fp_map_alt in the line
+        // polling loop. Now we swapped them back to fp_map so next time we
+        // loop through we'll read from the live FileWatchers.
+        mem::swap(&mut fp_map, &mut fp_map_alt);
+        // When no lines have been read we kick the backup_cap up by twice,
+        // limited by the hard-coded cap. Else, we set the backup_cap to its
+        // minimum on the assumption that next time through there will be
+        // more lines to read promptly.
+        if global_lines_read == 0 {
+            let lim = backoff_cap.saturating_mul(2);
+            if lim > 2_048 {
+                backoff_cap = 2_048;
+            } else {
+                backoff_cap = lim;
+            }
+        } else {
+            backoff_cap = 1;
+        }
+        let backoff = backoff_cap.saturating_sub(global_lines_read);
+        let mut events = mio::Events::with_capacity(1024);
+        match poller.poll(
+            &mut events,
+            Some(time::Duration::from_millis(backoff as u64)),
+        ) {
+            Err(e) => panic!(format!("Failed during poll {:?}", e)),
+            Ok(0) => {}
+            Ok(_num_events) => {
+                // File server doesn't poll for anything other than SYSTEM events.
+                // As currently there are no system events other than SHUTDOWN,
+                // we immediately exit.
+                send(&mut chans, metric::Event::Shutdown);
+                return;
+            }
         }
     }
 }
@@ -82,107 +172,21 @@ impl FileServer {
 ///
 /// Specific operating systems support evented interfaces that correct this
 /// problem but your intrepid authors know of no generic solution.
-impl Source for FileServer {
-    fn run(&mut self, poller: mio::Poll) {
-        let mut buffer = String::new();
-
-        let mut fp_map: util::HashMap<PathBuf, FileWatcher> = Default::default();
-        let mut fp_map_alt: util::HashMap<PathBuf, FileWatcher> = Default::default();
-
-        let mut backoff_cap: usize = 1;
-        let mut lines = Vec::new();
-        // Alright friends, how does this work?
-        //
-        // We want to avoid burning up users' CPUs. To do this we sleep after
-        // reading lines out of files. But! We want to be responsive as well. We
-        // keep track of a 'backoff_cap' to decide how long we'll wait in any
-        // given loop. This cap grows each time we fail to read lines in an
-        // exponential fashion to some hard-coded cap.
-        loop {
-            let mut global_lines_read: usize = 0;
-            // glob poll
-            for entry in glob(self.pattern.to_str().expect("no ability to glob"))
-                .expect("Failed to read glob pattern")
-            {
-                if let Ok(path) = entry {
-                    let entry = fp_map.entry(path.clone());
-                    if let Ok(fw) = FileWatcher::new(&path) {
-                        entry.or_insert(fw);
-                    };
-                }
-            }
-            // line polling
-            for (path, mut watcher) in fp_map.drain() {
-                let mut lines_read: usize = 0;
-                while let Ok(sz) = watcher.read_line(&mut buffer) {
-                    if sz > 0 {
-                        lines_read += 1;
-                        lines.push(
-                            metric::LogLine::new(
-                                path.to_str().expect("not a valid path"),
-                                &buffer,
-                            ).overlay_tags_from_map(&self.tags),
-                        );
-                        buffer.clear();
-                    } else {
-                        break;
-                    }
-                    if lines_read > self.max_lines_read {
-                        break;
-                    }
-                }
-                report_full_telemetry(
-                    "cernan.sources.file.lines_read",
-                    lines_read as f64,
-                    Some(vec![
-                        ("file_path", path.to_str().expect("not a valid path")),
-                    ]),
-                );
-                // A FileWatcher is dead when the underlying file has
-                // disappeared. If the FileWatcher is dead we don't stick it in
-                // the fp_map_alt and deallocate it.
-                if !watcher.dead() {
-                    fp_map_alt.insert(path, watcher);
-                }
-                global_lines_read = global_lines_read.saturating_add(lines_read);
-            }
-            for l in lines.drain(..) {
-                send(&mut self.chans, metric::Event::new_log(l));
-            }
-            // We've drained the live FileWatchers into fp_map_alt in the line
-            // polling loop. Now we swapped them back to fp_map so next time we
-            // loop through we'll read from the live FileWatchers.
-            mem::swap(&mut fp_map, &mut fp_map_alt);
-            // When no lines have been read we kick the backup_cap up by twice,
-            // limited by the hard-coded cap. Else, we set the backup_cap to its
-            // minimum on the assumption that next time through there will be
-            // more lines to read promptly.
-            if global_lines_read == 0 {
-                let lim = backoff_cap.saturating_mul(2);
-                if lim > 2_048 {
-                    backoff_cap = 2_048;
-                } else {
-                    backoff_cap = lim;
-                }
-            } else {
-                backoff_cap = 1;
-            }
-            let backoff = backoff_cap.saturating_sub(global_lines_read);
-            let mut events = mio::Events::with_capacity(1024);
-            match poller.poll(
-                &mut events,
-                Some(time::Duration::from_millis(backoff as u64)),
-            ) {
-                Err(e) => panic!(format!("Failed during poll {:?}", e)),
-                Ok(0) => {}
-                Ok(_num_events) => {
-                    // File server doesn't poll for anything other than SYSTEM events.
-                    // As currently there are no system events other than SHUTDOWN,
-                    // we immediately exit.
-                    send(&mut self.chans, metric::Event::Shutdown);
-                    return;
-                }
-            }
+impl source::Source<FileServer, FileServerConfig> for FileServer {
+    /// Make a FileServer
+    ///
+    fn new(chans: util::Channel, config: FileServerConfig) -> FileServer {
+        FileServer {
+            chans: chans,
+            config: config,
         }
+    }
+
+    fn run(self) -> thread::ThreadHandle {
+        thread::spawn(
+            move |poll| {
+                file_server(self.chans, self.config, poll)
+            }
+        )
     }
 }

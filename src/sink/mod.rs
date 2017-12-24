@@ -5,7 +5,7 @@
 //! different choices.
 
 use hopper;
-use metric::{Encoding, Event, LogLine, Telemetry};
+use metric::{Event, LogLine, Telemetry};
 use std::sync;
 use time;
 use util::Valve;

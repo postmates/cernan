@@ -11,25 +11,18 @@ extern crate mio;
 extern crate log;
 extern crate openssl_probe;
 
-use cernan::constants;
 use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
                      ProgrammableFilterConfig};
 use cernan::matrix;
 use cernan::metric;
-use cernan::sink::Sink;
 use cernan::source::Source;
+use cernan::sink::Sink;
+use cernan::thread::Stoppable;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::process;
 use std::str;
-use std::thread;
-
-#[derive(Debug)]
-struct SourceWorker {
-    thread: std::thread::JoinHandle<()>,
-    readiness: mio::SetReadiness,
-}
 
 fn populate_forwards(
     mut top_level_forwards: Option<&mut HashSet<String>>,
@@ -63,9 +56,9 @@ fn populate_forwards(
     }
 }
 
-fn join_all(workers: HashMap<String, std::thread::JoinHandle<()>>) {
+fn join_all(workers: HashMap<String, cernan::thread::ThreadHandle>) {
     for (_worker_id, worker) in workers {
-        worker.join().expect("Failed to join worker");
+        worker.join();
     }
 }
 
@@ -120,9 +113,9 @@ fn main() {
     //    after all sources have shutdown.  Shutdown events serve to bookend queued
     //    events, once read it is safe for these workers to flush any pending writes
     //    and shutdown.
-    let mut sources: HashMap<String, SourceWorker> = HashMap::new();
-    let mut sinks: HashMap<String, std::thread::JoinHandle<()>> = HashMap::new();
-    let mut filters: HashMap<String, std::thread::JoinHandle<()>> = HashMap::new();
+    let mut sources: HashMap<String, cernan::thread::ThreadHandle> = HashMap::new();
+    let mut sinks: HashMap<String, cernan::thread::ThreadHandle> = HashMap::new();
+    let mut filters: HashMap<String, cernan::thread::ThreadHandle> = HashMap::new();
     let mut senders: HashMap<String, hopper::Sender<metric::Event>> = HashMap::new();
     let mut receivers: HashMap<String, hopper::Receiver<metric::Event>> =
         HashMap::new();
@@ -363,7 +356,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path);
         sinks.insert(
             config.config_path.clone(),
-            thread::spawn(move || {
+            cernan::thread::spawn(move |_poll| {
                 cernan::sink::Null::new(&config).run(recv, sources);
             }),
         );
@@ -375,7 +368,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            thread::spawn(move || {
+            cernan::thread::spawn(move |_poll| {
                 cernan::sink::Console::new(&config).run(recv, sources);
             }),
         );
@@ -387,7 +380,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            thread::spawn(move || match cernan::sink::Wavefront::new(config) {
+            cernan::thread::spawn(move |_poll| match cernan::sink::Wavefront::new(config) {
                 Ok(mut w) => {
                     w.run(recv, sources);
                 }
@@ -405,7 +398,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            thread::spawn(move || {
+            cernan::thread::spawn(move |_poll| {
                 cernan::sink::Prometheus::new(&config).run(recv, sources);
             }),
         );
@@ -417,7 +410,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            thread::spawn(move || {
+            cernan::thread::spawn(move |_poll| {
                 cernan::sink::InfluxDB::new(&config).run(recv, sources);
             }),
         );
@@ -429,7 +422,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            thread::spawn(move || {
+            cernan::thread::spawn(move |_poll| {
                 cernan::sink::Native::new(config).run(recv, sources);
             }),
         );
@@ -441,7 +434,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            thread::spawn(move || {
+            cernan::thread::spawn(move |_poll| {
                 cernan::sink::Elasticsearch::new(config).run(recv, sources);
             }),
         );
@@ -455,7 +448,7 @@ fn main() {
                 adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
             sinks.insert(
                 config.config_path.clone().unwrap(),
-                thread::spawn(move || {
+                cernan::thread::spawn(move |_poll| {
                     cernan::sink::Firehose::new(config).run(recv, sources);
                 }),
             );
@@ -489,7 +482,7 @@ fn main() {
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
-                thread::spawn(move || {
+                cernan::thread::spawn(move |_poll| {
                     cernan::filter::ProgrammableFilter::new(c).run(
                         recv,
                         sources,
@@ -526,7 +519,7 @@ fn main() {
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
-                thread::spawn(move || {
+                cernan::thread::spawn(move |_poll| {
                     cernan::filter::DelayFilter::new(&c).run(
                         recv,
                         sources,
@@ -562,7 +555,7 @@ fn main() {
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
                 config.config_path.clone().unwrap(),
-                thread::spawn(move || {
+                cernan::thread::spawn(move |_poll| {
                     cernan::filter::FlushBoundaryFilter::new(&c).run(
                         recv,
                         sources,
@@ -577,8 +570,6 @@ fn main() {
     //
     mem::replace(&mut args.native_server_config, None).map(|cfg_map| {
         for (config_path, config) in cfg_map {
-            let poll = mio::Poll::new().unwrap();
-            let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
                 Some(&mut flush_sends),
                 &config.forwards,
@@ -587,30 +578,15 @@ fn main() {
                 &mut adjacency_matrix,
             );
 
-            let native_server_send = adjacency_matrix.pop_metadata(&config_path);
+            let native_server_send : cernan::util::Channel = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
-                SourceWorker {
-                    readiness: readiness,
-                    thread: thread::spawn(move || {
-                        poll.register(
-                            &registration,
-                            constants::SYSTEM,
-                            mio::Ready::readable(),
-                            mio::PollOpt::edge(),
-                        ).expect("Poll failed to return a result!");
-                        cernan::source::NativeServer::new(native_server_send, config)
-                            .run(poll);
-                    }),
-                },
-            );
+                cernan::source::NativeServer::new(native_server_send, config).run());
         }
     });
 
     let internal_config = mem::replace(&mut args.internal, Default::default());
     let internal_config_path = internal_config.config_path.clone().unwrap();
-    let poll = mio::Poll::new().unwrap();
-    let (registration, readiness) = mio::Registration::new2();
     populate_forwards(
         Some(&mut flush_sends),
         &internal_config.forwards,
@@ -622,25 +598,10 @@ fn main() {
     let internal_send = adjacency_matrix.pop_metadata(&internal_config_path);
     sources.insert(
         internal_config.config_path.clone().unwrap(),
-        SourceWorker {
-            readiness: readiness,
-            thread: thread::spawn(move || {
-                poll.register(
-                    &registration,
-                    constants::SYSTEM,
-                    mio::Ready::readable(),
-                    mio::PollOpt::edge(),
-                ).expect("Poll failed to return a result!");
-                cernan::source::Internal::new(internal_send, internal_config)
-                    .run(poll);
-            }),
-        },
-    );
+        cernan::source::Internal::new(internal_send, internal_config).run());
 
     mem::replace(&mut args.statsds, None).map(|cfg_map| {
         for (config_path, config) in cfg_map {
-            let poll = mio::Poll::new().unwrap();
-            let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
                 Some(&mut flush_sends),
                 &config.forwards,
@@ -652,26 +613,12 @@ fn main() {
             let statsd_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
-                SourceWorker {
-                    readiness: readiness.clone(),
-                    thread: thread::spawn(move || {
-                        poll.register(
-                            &registration,
-                            constants::SYSTEM,
-                            mio::Ready::readable(),
-                            mio::PollOpt::edge(),
-                        ).expect("Poll failed to return a result!");
-                        cernan::source::Statsd::new(statsd_sends, config).run(poll);
-                    }),
-                },
-            );
+                cernan::source::Statsd::new(statsd_sends, config).run());
         }
     });
 
     mem::replace(&mut args.graphites, None).map(|cfg_map| {
         for (config_path, config) in cfg_map {
-            let poll = mio::Poll::new().unwrap();
-            let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
                 Some(&mut flush_sends),
                 &config.forwards,
@@ -683,28 +630,13 @@ fn main() {
             let graphite_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 config_path.clone(),
-                SourceWorker {
-                    readiness: readiness,
-                    thread: thread::spawn(move || {
-                        poll.register(
-                            &registration,
-                            constants::SYSTEM,
-                            mio::Ready::readable(),
-                            mio::PollOpt::edge(),
-                        ).expect("Poll failed to return a result!");
-                        cernan::source::Graphite::new(graphite_sends, config)
-                            .run(poll);
-                    }),
-                },
-            );
+                cernan::source::Graphite::new(graphite_sends, config).run());
         }
     });
 
     mem::replace(&mut args.files, None).map(|cfg| {
         for config in cfg {
             let config_path = config.config_path.clone().unwrap();
-            let poll = mio::Poll::new().unwrap();
-            let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
                 Some(&mut flush_sends),
                 &config.forwards,
@@ -716,47 +648,33 @@ fn main() {
             let fp_sends = adjacency_matrix.pop_metadata(&config_path);
             sources.insert(
                 cfg_conf!(config).clone(),
-                SourceWorker {
-                    readiness: readiness,
-                    thread: thread::spawn(move || {
-                        poll.register(
-                            &registration,
-                            constants::SYSTEM,
-                            mio::Ready::readable(),
-                            mio::PollOpt::edge(),
-                        ).expect("Poll failed to return a result!");
-                        cernan::source::FileServer::new(fp_sends, config).run(poll);
-                    }),
-                },
-            );
+                cernan::source::FileServer::new(fp_sends, config).run());
         }
     });
 
     // BACKGROUND
     //
-    thread::spawn(move || {
-        let mut flush_channels = Vec::new();
-        let poll = mio::Poll::new().unwrap();
-        for destination in &flush_sends {
-            match senders.get(destination) {
-                Some(snd) => {
-                    flush_channels.push(snd.clone());
-                }
-                None => {
-                    error!(
-                        "Unable to fulfill configured top-level flush to {}",
-                        destination
-                    );
-                    process::exit(0);
-                }
-            }
+    let mut flush_channels = Vec::new();
+    for destination in &flush_sends {
+        match senders.get(destination) {
+           Some(snd) => {
+               flush_channels.push(snd.clone());
+           }
+           None => {
+               error!(
+                   "Unable to fulfill configured top-level flush to {}",
+                   destination
+               );
+               process::exit(0);
+           }
         }
-        drop(flush_sends);
-        drop(senders);
-        cernan::source::FlushTimer::new(flush_channels).run(poll);
-    });
+    }
 
-    thread::spawn(move || {
+    drop(flush_sends);
+    drop(senders);
+    cernan::source::FlushTimer::new(flush_channels, cernan::source::FlushTimerConfig).run();
+
+    cernan::thread::spawn(move |_poll| {
         cernan::time::update_time();
     });
 
@@ -771,11 +689,7 @@ fn main() {
     // to all of its downstream consumers.
     for (id, source_worker) in sources {
         info!("Signaling shutdown to {:?}", id);
-        source_worker
-            .readiness
-            .set_readiness(mio::Ready::readable())
-            .expect("Failed to set readiness!");
-        source_worker.thread.join().expect("Failed during join!");
+        source_worker.shutdown();
     }
 
     join_all(sinks);

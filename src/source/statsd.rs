@@ -3,12 +3,13 @@ use metric;
 use mio;
 use protocols::statsd::parse_statsd;
 use regex::Regex;
-use source::Source;
+use source;
 use std::net::ToSocketAddrs;
 use std::str;
 use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use thread;
 use util;
 use util::send;
 
@@ -24,10 +25,8 @@ lazy_static! {
 /// statsd protocol family.
 pub struct Statsd {
     chans: util::Channel,
-    host: String,
-    port: u16,
-    tags: sync::Arc<metric::TagMap>,
-    parse_config: sync::Arc<StatsdParseConfig>,
+    config: StatsdConfig,
+    conns: util::TokenSlab<mio::net::UdpSocket>,
 }
 
 /// The mask type for metrics in `StatsdParseConfig`.
@@ -90,16 +89,52 @@ impl Default for StatsdConfig {
     }
 }
 
-impl Statsd {
-    /// Create a new statsd
-    pub fn new(chans: util::Channel, config: StatsdConfig) -> Statsd {
+impl source::Source<Statsd, StatsdConfig> for Statsd {
+    /// Create and spawn a new statsd source
+    fn new(chans: util::Channel, config: StatsdConfig) -> Statsd {
+        let mut conns = util::TokenSlab::<mio::net::UdpSocket>::new();
+        let addrs = (config.host.as_str(), config.port).to_socket_addrs();
+        match addrs {
+            Ok(ips) => {
+                for addr in ips {
+                    let socket = mio::net::UdpSocket::bind(&addr)
+                        .expect("Unable to bind to UDP socket");
+                    conns.insert(socket);
+                }
+            }
+            Err(e) => {
+                info!(
+                    "Unable to perform DNS lookup on host {} with error {}",
+                    config.host, e
+                );
+            }
+        };
+
         Statsd {
             chans: chans,
-            host: config.host,
-            port: config.port,
-            tags: sync::Arc::new(config.tags),
-            parse_config: sync::Arc::new(config.parse_config),
+            config: config,
+            conns: conns,
         }
+    }
+
+    fn run(self) -> thread::ThreadHandle {
+        thread::spawn(move |poller| {
+            for (idx, socket) in self.conns.iter() {
+                poller.register(
+                    socket,
+                    mio::Token::from(idx),
+                    mio::Ready::readable(),
+                    mio::PollOpt::edge(),
+                ).unwrap();
+            }
+
+            handle_udp(
+                self.chans,
+                &sync::Arc::new(self.config.tags),
+                &sync::Arc::new(self.config.parse_config),
+                &self.conns,
+                &poller)
+        })
     }
 }
 
@@ -162,35 +197,3 @@ fn handle_udp(
         }
     } // loop
 } // handle_udp
-
-impl Source for Statsd {
-    fn run(&mut self, poll: mio::Poll) {
-        let addrs = (self.host.as_str(), self.port).to_socket_addrs();
-        match addrs {
-            Ok(ips) => {
-                let mut conns = util::TokenSlab::<mio::net::UdpSocket>::new();
-                for addr in ips {
-                    let socket = mio::net::UdpSocket::bind(&addr)
-                        .expect("Unable to bind to UDP socket");
-                    let token = conns.insert(socket);
-                    poll.register(
-                        &conns[token],
-                        token,
-                        mio::Ready::readable(),
-                        mio::PollOpt::edge(),
-                    ).unwrap();
-                }
-
-                let chans = self.chans.clone();
-                info!("server started on *:{}", self.port);
-                handle_udp(chans, &self.tags, &self.parse_config, &conns, &poll);
-            }
-            Err(e) => {
-                info!(
-                    "Unable to perform DNS lookup on host {} with error {}",
-                    self.host, e
-                );
-            }
-        }
-    }
-}

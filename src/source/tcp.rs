@@ -2,7 +2,6 @@ use metric;
 use mio;
 use util;
 use constants;
-use source::Source;
 use std;
 use std::net::ToSocketAddrs;
 use std::sync;
@@ -40,42 +39,9 @@ impl Default for TCPConfig {
 
 /// State for a TCP backed source.
 pub struct TCP {
+    chans: util::Channel,
     config: TCPConfig,
-    thread:  thread::ThreadHandle,
-}
-
-impl Source for TCP {
-
-    fn run(&mut self, _poll: mio::Poll) {
-        //let addrs = (host_port.to_socket_addrs();
-        //match addrs {
-        //    Ok(ips) => {
-        //        let ips: Vec<_> = ips.collect();
-        //        let mut listeners = util::TokenSlab::<mio::net::TcpListener>::new();
-
-        //        for addr in ips {
-        //            let listener = mio::net::TcpListener::bind(&addr)
-        //                .expect("Unable to bind to TCP socket");
-        //            info!("registered listener for {:?}", addr);
-        //            let token = listeners.insert(listener);
-        //            poll.register(
-        //                &listeners[token],
-        //                token,
-        //                mio::Ready::readable(),
-        //                mio::PollOpt::edge(),
-        //            ).unwrap();
-        //        }
-
-        //        accept_loop(poll, listeners);
-        //    }
-
-        //    Err(e) => {
-        //        panic!(
-        //            "Unable to perform DNS lookup on {} with error {}",
-        //            host_port, e);
-        //    }
-        //}
-    }
+    listeners: util::TokenSlab<mio::net::TcpListener>,
 }
 
 fn spawn_stream_handlers<H>(
@@ -84,7 +50,7 @@ fn spawn_stream_handlers<H>(
     listener: &mio::net::TcpListener,
     handler_fn: H,
     stream_handlers: &mut Vec<thread::ThreadHandle>,
-) -> () 
+) -> ()
 where
     H: Send + Sync + Copy + 'static + FnOnce(util::Channel, &sync::Arc<metric::TagMap>, &mio::Poll, mio::net::TcpStream) -> ()
 {
@@ -123,7 +89,7 @@ fn accept_loop<H>(
     mut chans: util::Channel,
     tags: &sync::Arc<metric::TagMap>,
     poll: mio::Poll,
-    listeners: util::TokenSlab<mio::net::TcpListener>, 
+    listeners: util::TokenSlab<mio::net::TcpListener>,
     handler_fn: H,
 ) -> ()
 where
@@ -162,25 +128,12 @@ where
     }
 }
 
-impl Stoppable for TCP {
-    fn join(self) {
-        self.thread.join();
-    }
-
-    fn shutdown(self) {
-        self.thread.shutdown();
-    }
-}
-
 impl TCP {
 
     /// Constructs and starts a new TCP source.
-    pub fn new <H>(chans: util::Channel, config: TCPConfig, stream_handler: H) -> Self 
-    where
-        H: Send + Sync + Copy + 'static + FnOnce(util::Channel, &sync::Arc<metric::TagMap>, &mio::Poll, mio::net::TcpStream) -> ()
+    pub fn new (chans: util::Channel, config: TCPConfig) -> Self
     {
         let addrs = (config.host.as_str(), config.port).to_socket_addrs();
-        trace!("ADDRS {:?}", addrs);
         let mut listeners = util::TokenSlab::<mio::net::TcpListener>::new();
         match addrs {
             Ok(ips) => {
@@ -199,12 +152,23 @@ impl TCP {
                     config.host.as_str(), config.port, e);
             }
         };
-   
-        let tags = sync::Arc::new(config.clone().tags);
+
         TCP {
+            chans: chans,
             config: config,
-            thread: thread::spawn(move |poll| {
-                for (token, listener) in listeners.iter() {
+            listeners: listeners,
+        }
+    }
+
+    /// Starts the accept loop.
+	pub fn run<H> (self, stream_handler: H) -> thread::ThreadHandle
+
+    where
+        H: Send + Sync + Copy + 'static + FnOnce(util::Channel, &sync::Arc<metric::TagMap>, &mio::Poll, mio::net::TcpStream) -> ()
+    {
+        thread::spawn(
+            move |poll| {
+                for (token, listener) in self.listeners.iter() {
                     poll.register(
                         listener,
                         mio::Token::from(token),
@@ -212,7 +176,12 @@ impl TCP {
                         mio::PollOpt::edge(),
                     ).unwrap();
                 };
-                accept_loop(chans, &tags, poll, listeners, stream_handler)}),
-        }
+                accept_loop(
+                    self.chans,
+                    &sync::Arc::new(self.config.tags),
+                    poll,
+                    self.listeners,
+                    stream_handler)
+        })
     }
 }

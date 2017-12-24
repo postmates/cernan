@@ -1,4 +1,3 @@
-use super::Source;
 use byteorder::{BigEndian, ReadBytesExt};
 use constants;
 use hopper;
@@ -6,13 +5,13 @@ use metric;
 use mio;
 use protobuf;
 use protocols::native::{AggregationMethod, Payload};
+use source;
 use std::io;
 use std::io::Read;
 use std::net::ToSocketAddrs;
 use std::str;
 use std::sync;
 use thread;
-use thread::Stoppable;
 use util;
 
 /// The native source
@@ -23,10 +22,7 @@ use util;
 /// without having to obey the translation required in other sources or
 /// operators may set up cernan to cernan communication.
 pub struct NativeServer {
-    chans: util::Channel,
-    ip: String,
-    port: u16,
-    tags: metric::TagMap,
+    server: source::tcp::TCP,
 }
 
 /// Configuration for the native source
@@ -57,89 +53,14 @@ impl Default for NativeServerConfig {
     }
 }
 
-impl NativeServer {
-    /// Create a new NativeServer
-    pub fn new(
-        chans: Vec<hopper::Sender<metric::Event>>,
-        config: NativeServerConfig,
-    ) -> NativeServer {
-        NativeServer {
-            chans: chans,
-            ip: config.ip,
-            port: config.port,
-            tags: config.tags,
-        }
-    }
-}
-
-fn handle_tcp(
-    mut chans: util::Channel,
-    tags: &sync::Arc<metric::TagMap>,
-    listeners: util::TokenSlab<mio::net::TcpListener>,
-    poller: &mio::Poll,
-) {
-    let mut stream_handlers: Vec<thread::ThreadHandle> = Vec::new();
-    loop {
-        let mut events = mio::Events::with_capacity(1024);
-        match poller.poll(&mut events, None) {
-            Err(e) => panic!(format!("Failed during poll {:?}", e)),
-            Ok(_num_events) => for event in events {
-                match event.token() {
-                    constants::SYSTEM => {
-                        for handler in stream_handlers {
-                            handler.shutdown();
-                        }
-                        util::send(&mut chans, metric::Event::Shutdown);
-                        return;
-                    }
-                    listener_token => {
-                        let listener = &listeners[listener_token];
-                        spawn_stream_handlers(
-                            chans.clone(),
-                            tags,
-                            listener,
-                            &mut stream_handlers,
-                        )
-                    }
-                }
-            },
-        }
-    }
-}
-
-fn spawn_stream_handlers(
-    chans: util::Channel,
-    tags: &sync::Arc<metric::TagMap>,
-    listener: &mio::net::TcpListener,
-    stream_handlers: &mut Vec<thread::ThreadHandle>,
-) -> () {
-    loop {
-        match listener.accept() {
-            Ok((stream, _addr)) => {
-                let rtags = sync::Arc::clone(tags);
-                let rchans = chans.clone();
-
-                let new_stream = thread::spawn(move |poller| {
-                    poller
-                        .register(
-                            &stream,
-                            mio::Token(0),
-                            mio::Ready::readable(),
-                            mio::PollOpt::edge(),
-                        )
-                        .unwrap();
-
-                    handle_stream(rchans, &rtags, &poller, stream);
-                });
-                stream_handlers.push(new_stream);
-            }
-
-            Err(e) => match e.kind() {
-                io::ErrorKind::WouldBlock => {
-                    break;
-                }
-                _ => unimplemented!(),
-            },
+impl From<NativeServerConfig> for source::tcp::TCPConfig {
+    fn from(item: NativeServerConfig) -> Self {
+        source::tcp::TCPConfig {
+            host: item.ip,
+            port: item.port,
+            tags: item.tags,
+            forwards: item.forwards,
+            config_path: item.config_path,
         }
     }
 }
@@ -248,30 +169,18 @@ fn handle_stream_payload(
     }
 }
 
-impl Source for NativeServer {
-    fn run(&mut self, poller: mio::Poll) {
-        let srv: Vec<_> = (self.ip.as_str(), self.port)
-            .to_socket_addrs()
-            .expect("unable to make socket addr")
-            .collect();
+impl source::Source<NativeServer, NativeServerConfig> for NativeServer {
+    /// Create a new NativeServer
+    fn new(
+        chans: Vec<hopper::Sender<metric::Event>>,
+        config: NativeServerConfig,
+    ) -> NativeServer {
+        NativeServer {
+            server: source::TCP::new(chans, config.into()),
+        }
+    }
 
-        let mut listeners: util::TokenSlab<mio::net::TcpListener> =
-            util::TokenSlab::new();
-        let listener = mio::net::TcpListener::bind(srv.first().unwrap())
-            .expect("Unable to bind to TCP socket");
-        let token = listeners.insert(listener);
-        poller
-            .register(
-                &listeners[token],
-                token,
-                mio::Ready::readable(),
-                mio::PollOpt::edge(),
-            )
-            .unwrap();
-
-        let chans = self.chans.clone();
-        let tags = sync::Arc::new(self.tags.clone());
-        info!("server started on {}:{}", self.ip, self.port);
-        handle_tcp(chans, &tags, listeners, &poller);
+    fn run(self) -> thread::ThreadHandle {
+        self.server.run(handle_stream)
     }
 }
