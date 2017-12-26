@@ -5,7 +5,7 @@ use std::sync;
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub enum Encoding {
     /// Raw bytes, no encoding.
-    None,
+    Raw,
     /// Avro
     Avro,
 }
