@@ -204,6 +204,7 @@ dependencies = [
  "regex 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_core 0.29.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_firehose 0.29.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rusoto_kinesis 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "seahash 3.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.24 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde-avro 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1279,6 +1280,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusoto_core"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "base64 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hex 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper 0.10.13 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper-native-tls 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ring 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rusoto_credential 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustc_version 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.24 (registry+https://github.com/rust-lang/crates.io-index)",
+ "time 0.1.38 (registry+https://github.com/rust-lang/crates.io-index)",
+ "url 1.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "xml-rs 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "rusoto_credential"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1299,6 +1320,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "hyper 0.10.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_core 0.29.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.24 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.24 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_json 1.0.8 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "rusoto_kinesis"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "hyper 0.10.13 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rusoto_core 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.24 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.24 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2030,8 +2063,10 @@ dependencies = [
 "checksum reqwest 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f73a8482e3b2b20ef5c07168b27048fc3778a012ce9b11a021556a450a01e9b5"
 "checksum ring 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)" = "6f7d28b30a72c01b458428e0ae988d4149c20d902346902be881e3edc4bb325c"
 "checksum rusoto_core 0.29.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a1655b3c1599e0506c0b2327cceccdf00d46961fb4fc0346054cc45430174767"
+"checksum rusoto_core 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)" = "416154f868e6d42ae9fb6f8df6b008eab0c92c4af4c7b9bd71cca64a0010e310"
 "checksum rusoto_credential 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)" = "4e1cbcb471900c15925afa14c04a30f978f466800eeabc8d60a2e9622561d140"
 "checksum rusoto_firehose 0.29.0 (registry+https://github.com/rust-lang/crates.io-index)" = "99bb2106edd9ec663d41f968c4fddcb29dfe8b72c1430bcc2d347ab68c5f48bf"
+"checksum rusoto_kinesis 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)" = "577ece6b5020051248510c82fbec16d76bf8e80a9cf3e5bc38e49b18bcdafc77"
 "checksum rustc-demangle 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "aee45432acc62f7b9a108cc054142dac51f979e69e71ddce7d6fc7adf29e817e"
 "checksum rustc-serialize 0.3.24 (registry+https://github.com/rust-lang/crates.io-index)" = "dcf128d1287d2ea9d80910b5f1120d0b8eede3fbf1abe91c40d39ea7d51e6fda"
 "checksum rustc_version 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b9743a7670d88d5d52950408ecdb7c71d8986251ab604d4689dd2ca25c9bca69"

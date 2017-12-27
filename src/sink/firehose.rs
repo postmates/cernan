@@ -1,3 +1,5 @@
+//! Sink for AWS Firehose.
+
 use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
@@ -58,11 +60,9 @@ pub struct Firehose {
     flush_interval: u64,
 }
 
-impl Firehose {
-    /// Create a new `Firehose`
-    ///
-    /// See documentation on `FirehoseConfig` for further details.
-    pub fn new(config: FirehoseConfig) -> Firehose {
+impl Sink<FirehoseConfig> for Firehose {
+
+    fn init(config: FirehoseConfig) -> Self {
         Firehose {
             buffer: Vec::new(),
             delivery_stream_name: config
@@ -73,9 +73,7 @@ impl Firehose {
             flush_interval: config.flush_interval,
         }
     }
-}
 
-impl Sink for Firehose {
     fn flush_interval(&self) -> Option<u64> {
         Some(self.flush_interval)
     }

@@ -366,9 +366,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path);
         sinks.insert(
             config.config_path.clone(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::Null::new(&config).run(recv, sources);
-            }),
+            cernan::sink::Null::new(recv, sources, config).run()
         );
     }
     if let Some(config) = mem::replace(&mut args.console, None) {
@@ -378,9 +376,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::Console::new(&config).run(recv, sources);
-            }),
+            cernan::sink::Console::new(recv, sources, config).run()
         );
     }
     if let Some(config) = mem::replace(&mut args.wavefront, None) {
@@ -390,17 +386,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                match cernan::sink::Wavefront::new(config) {
-                    Ok(mut w) => {
-                        w.run(recv, sources);
-                    }
-                    Err(e) => {
-                        error!("Configuration error for Wavefront: {}", e);
-                        process::exit(1);
-                    }
-                }
-            }),
+            cernan::sink::Wavefront::new(recv, sources, config).run()
         );
     }
     if let Some(config) = mem::replace(&mut args.prometheus, None) {
@@ -410,9 +396,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::Prometheus::new(&config).run(recv, sources);
-            }),
+            cernan::sink::Prometheus::new(recv, sources, config).run()
         );
     }
     if let Some(config) = mem::replace(&mut args.influxdb, None) {
@@ -422,9 +406,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::InfluxDB::new(&config).run(recv, sources);
-            }),
+            cernan::sink::InfluxDB::new(recv, sources, config).run()
         );
     }
     if let Some(config) = mem::replace(&mut args.native_sink_config, None) {
@@ -434,9 +416,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::Native::new(config).run(recv, sources);
-            }),
+            cernan::sink::Native::new(recv, sources, config).run()
         );
     }
     if let Some(config) = mem::replace(&mut args.elasticsearch, None) {
@@ -446,9 +426,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::Elasticsearch::new(config).run(recv, sources);
-            }),
+            cernan::sink::Elasticsearch::new(recv, sources, config).run()
         );
     }
     if let Some(cfgs) = mem::replace(&mut args.firehosen, None) {
@@ -460,9 +438,7 @@ fn main() {
                 adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
             sinks.insert(
                 config.config_path.clone().unwrap(),
-                cernan::thread::spawn(move |_poll| {
-                    cernan::sink::Firehose::new(config).run(recv, sources);
-                }),
+                cernan::sink::Firehose::new(recv, sources, config).run()
             );
         }
     }

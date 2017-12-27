@@ -47,6 +47,7 @@ chan-signal = "0.3.1"
 mio = "0.6.11"
 tiny_http = "0.5.8"
 serde-avro = "0.5.0"
+rusoto_kinesis = "0.30.0"
 
 [dev-dependencies]
 tempdir = "0.3"

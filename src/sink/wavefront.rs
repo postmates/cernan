@@ -73,7 +73,7 @@ pub struct Wavefront {
 /// Configuration for `wavefront`. The challenge of Wavefront is controlling
 /// point spreads emission and accuracy of aggregation. The knobs in this struct
 /// reflect that.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct WavefrontConfig {
     /// The width of aggregation bins. A `bin_width` of N will consider points
     /// with timestamps N seconds appart to have occured at the 'same time'.
@@ -380,27 +380,6 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
 }
 
 impl Wavefront {
-    /// Create a new wavefront sink.
-    pub fn new(config: WavefrontConfig) -> Result<Wavefront, String> {
-        if config.host == "" {
-            return Err("Host can not be empty".to_string());
-        }
-        let stream = connect(&config.host, config.port);
-        Ok(Wavefront {
-            host: config.host,
-            port: config.port,
-            bin_width: config.bin_width,
-            aggrs: buckets::Buckets::new(config.bin_width),
-            delivery_attempts: 0,
-            percentiles: config.percentiles,
-            stats: String::with_capacity(8_192),
-            stream: stream,
-            flush_interval: config.flush_interval,
-            age_threshold: config.age_threshold,
-            last_seen: HashMap::default(),
-            pad_control: config.pad_control,
-        })
-    }
 
     /// Convert the buckets into a String that
     /// can be sent to the the wavefront proxy
@@ -586,7 +565,29 @@ impl Wavefront {
     }
 }
 
-impl Sink for Wavefront {
+impl Sink<WavefrontConfig> for Wavefront {
+
+    fn init(config: WavefrontConfig) -> Self {
+        if config.host == "" {
+            panic!("Host can not be empty".to_string());
+        }
+        let stream = connect(&config.host, config.port);
+        Wavefront {
+            host: config.host,
+            port: config.port,
+            bin_width: config.bin_width,
+            aggrs: buckets::Buckets::new(config.bin_width),
+            delivery_attempts: 0,
+            percentiles: config.percentiles,
+            stats: String::with_capacity(8_192),
+            stream: stream,
+            flush_interval: config.flush_interval,
+            age_threshold: config.age_threshold,
+            last_seen: HashMap::default(),
+            pad_control: config.pad_control,
+        }
+    }
+
     fn flush_interval(&self) -> Option<u64> {
         Some(self.flush_interval)
     }
