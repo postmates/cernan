@@ -119,22 +119,6 @@ pub struct Elasticsearch {
 }
 
 impl Elasticsearch {
-    /// Construct a new Elasticsearch.
-    ///
-    /// Refer to the documentation on Elasticsearch for more details.
-    pub fn new(config: ElasticsearchConfig) -> Elasticsearch {
-        Elasticsearch {
-            buffer: Vec::new(),
-            secure: config.secure,
-            host: config.host,
-            port: config.port,
-            index_prefix: config.index_prefix,
-            index_type: config.index_type,
-            delivery_attempt_limit: config.delivery_attempt_limit,
-            flush_interval: config.flush_interval,
-        }
-    }
-
     fn bulk_body(&self, buffer: &mut String) -> () {
         assert!(!self.buffer.is_empty());
         use serde_json::{to_string, Value};
@@ -169,7 +153,20 @@ impl Elasticsearch {
     }
 }
 
-impl Sink for Elasticsearch {
+impl Sink<ElasticsearchConfig> for Elasticsearch {
+    fn init(config: ElasticsearchConfig) -> Self {
+        Elasticsearch {
+            buffer: Vec::new(),
+            secure: config.secure,
+            host: config.host,
+            port: config.port,
+            index_prefix: config.index_prefix,
+            index_type: config.index_type,
+            delivery_attempt_limit: config.delivery_attempt_limit,
+            flush_interval: config.flush_interval,
+        }
+    }
+
     fn flush_interval(&self) -> Option<u64> {
         Some(self.flush_interval)
     }

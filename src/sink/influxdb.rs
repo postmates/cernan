@@ -44,7 +44,7 @@ pub struct InfluxDB {
 ///
 /// The cernan `InfluxDB` integration is done by HTTP/S. The options present
 /// here assume that integration, as well as cernan inside-baseball.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct InfluxDBConfig {
     /// If secure, use HTTPS. Else, HTTP.
     pub secure: bool,
@@ -103,22 +103,6 @@ where
 }
 
 impl InfluxDB {
-    /// Create a new `InfluxDB` given an InfluxDBConfig
-    pub fn new(config: &InfluxDBConfig) -> InfluxDB {
-        let scheme = if config.secure { "https" } else { "http" };
-        let uri = Url::parse(&format!(
-            "{}://{}:{}/write?db={}",
-            scheme, config.host, config.port, config.db
-        )).expect("malformed url");
-
-        InfluxDB {
-            aggrs: Vec::with_capacity(4048),
-            delivery_attempts: 0,
-            flush_interval: config.flush_interval,
-            client: Client::new(),
-            uri: uri,
-        }
-    }
 
     /// Convert the slice into a payload that can be sent to InfluxDB
     fn format_stats(&self, buffer: &mut String, telems: &[Telemetry]) -> () {
@@ -210,7 +194,24 @@ impl InfluxDB {
     }
 }
 
-impl Sink for InfluxDB {
+impl Sink<InfluxDBConfig> for InfluxDB {
+
+    fn init(config: InfluxDBConfig) -> Self {
+        let scheme = if config.secure { "https" } else { "http" };
+        let uri = Url::parse(&format!(
+            "{}://{}:{}/write?db={}",
+            scheme, config.host, config.port, config.db
+        )).expect("malformed url");
+
+        InfluxDB {
+            aggrs: Vec::with_capacity(4048),
+            delivery_attempts: 0,
+            flush_interval: config.flush_interval,
+            client: Client::new(),
+            uri: uri,
+        }
+    }
+
     fn flush_interval(&self) -> Option<u64> {
         Some(self.flush_interval)
     }
