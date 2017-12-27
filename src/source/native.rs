@@ -168,12 +168,12 @@ fn handle_stream_payload(
     }
 }
 
-impl source::Source<NativeServer, NativeServerConfig> for NativeServer {
+impl source::Source<NativeServerConfig> for NativeServer {
     /// Create a new NativeServer
     fn new(
         chans: Vec<hopper::Sender<metric::Event>>,
         config: NativeServerConfig,
-    ) -> NativeServer {
+    ) -> Self {
         NativeServer {
             server: source::TCP::new(chans, config.into()),
         }

@@ -71,7 +71,7 @@ fn handle_avro_payload(
     util::send(&mut chans, metric::Event::Raw{encoding:metric::Encoding::Avro, bytes: buf});
 }
 
-impl source::Source<Avro, source::TCPConfig> for Avro {
+impl source::Source<source::TCPConfig> for Avro {
     /// Creates and starts an Avro source witht the given config.
     fn new(chans: util::Channel, config: source::TCPConfig) -> Self {
         Avro {

@@ -420,9 +420,9 @@ fn handle_internal_metrics(
 /// Internal's configured tags and push said telemetry into operator configured
 /// channels. If no channels are configured we toss the Telemetry onto the
 /// floor.
-impl source::Source<Internal, InternalConfig> for Internal {
+impl source::Source<InternalConfig> for Internal {
     /// Create a new Internal
-    fn new(chans: util::Channel, config: InternalConfig) -> Internal {
+    fn new(chans: util::Channel, config: InternalConfig) -> Self {
         Internal {
             chans: chans,
             config: config,

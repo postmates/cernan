@@ -117,9 +117,9 @@ fn handle_stream(
     }
 }
 
-impl source::Source<Graphite, GraphiteConfig> for Graphite {
+impl source::Source<GraphiteConfig> for Graphite {
     /// Create a new Graphite
-    fn new(chans: util::Channel, config: GraphiteConfig) -> Graphite {
+    fn new(chans: util::Channel, config: GraphiteConfig) -> Self {
         Graphite {
             server: source::TCP::new(chans, config.into()),
         }

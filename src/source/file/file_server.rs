@@ -172,10 +172,10 @@ fn file_server(mut chans: util::Channel, config: FileServerConfig, poller: mio::
 ///
 /// Specific operating systems support evented interfaces that correct this
 /// problem but your intrepid authors know of no generic solution.
-impl source::Source<FileServer, FileServerConfig> for FileServer {
+impl source::Source<FileServerConfig> for FileServer {
     /// Make a FileServer
     ///
-    fn new(chans: util::Channel, config: FileServerConfig) -> FileServer {
+    fn new(chans: util::Channel, config: FileServerConfig) -> Self {
         FileServer {
             chans: chans,
             config: config,

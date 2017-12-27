@@ -36,10 +36,10 @@ fn tick_tock(mut chans: util::Channel, _poll: mio::Poll) {
     }
 }
 
-impl source::Source<FlushTimer, FlushTimerConfig> for FlushTimer {
+impl source::Source<FlushTimerConfig> for FlushTimer {
     /// Create a new FlushTimer. This will not produce a new thread, that must
     /// be managed by the end-user.
-    fn new(chans: util::Channel, _config: FlushTimerConfig) -> FlushTimer {
+    fn new(chans: util::Channel, _config: FlushTimerConfig) -> Self {
         FlushTimer { chans: chans }
     }
 

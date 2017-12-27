@@ -29,9 +29,9 @@ pub use self::tcp::{TCPConfig, TCP};
 /// A cernan Source creates all `metric::Event`, doing so by listening to
 /// network IO, reading from files, etc etc. All sources push into the routing
 /// topology.
-pub trait Source<T, TConfig> {
+pub trait Source<TConfig> {
     /// Constructs initial state for the given source.
-    fn new(chans: util::Channel, config: TConfig) -> T;
+    fn new(chans: util::Channel, config: TConfig) -> Self;
 
     /// Run the Source, consuming initial state and returning a
     /// handle to the running thread.

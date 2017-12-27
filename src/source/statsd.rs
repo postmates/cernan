@@ -89,9 +89,9 @@ impl Default for StatsdConfig {
     }
 }
 
-impl source::Source<Statsd, StatsdConfig> for Statsd {
+impl source::Source<StatsdConfig> for Statsd {
     /// Create and spawn a new statsd source
-    fn new(chans: util::Channel, config: StatsdConfig) -> Statsd {
+    fn new(chans: util::Channel, config: StatsdConfig) -> Self {
         let mut conns = util::TokenSlab::<mio::net::UdpSocket>::new();
         let addrs = (config.host.as_str(), config.port).to_socket_addrs();
         match addrs {
