@@ -32,6 +32,7 @@ use source::FileServerConfig;
 use source::GraphiteConfig;
 use source::InternalConfig;
 use source::NativeServerConfig;
+use source::TCPConfig;
 
 // This stinks and is verbose. Once
 // https://github.com/rust-lang/rust/issues/41681 lands we'll be able to do this
@@ -104,6 +105,8 @@ pub struct Args {
     pub internal: InternalConfig,
     /// See `sources::Graphite` for more.
     pub graphites: Option<HashMap<String, GraphiteConfig>>,
+    /// See `sources::Avro` for more.
+    pub avros: Option<HashMap<String, TCPConfig>>,
     /// See `sources::Native` for more.
     pub native_server_config: Option<HashMap<String, NativeServerConfig>>,
     /// See `sources::Statsd` for more.
@@ -135,6 +138,7 @@ impl Default for Args {
             // sources
             statsds: None,
             graphites: None,
+            avros: None,
             native_server_config: None,
             files: None,
             internal: InternalConfig::default(),
@@ -904,6 +908,54 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             graphites
         });
 
+        args.avros = sources.get("avro").map(|src| {
+            let mut avros = HashMap::default();
+            for (name, tbl) in src.as_table().unwrap().iter() {
+                let is_enabled = tbl.get("enabled")
+                    .unwrap_or(&toml::Value::Boolean(true))
+                    .as_bool()
+                    .expect("must be a bool");
+                if is_enabled {
+                    let mut res = TCPConfig::default();
+                    res.config_path = Some(name.clone());
+
+                    res.port = tbl.get("port")
+                        .map(|p| {
+                            p.as_integer().expect("could not parse avro port")
+                                as u16
+                        })
+                        .unwrap_or(res.port);
+
+                    res.host = tbl.get("host")
+                        .map(|p| {
+                            p.as_str()
+                                .expect("could not parse avro host")
+                                .to_string()
+                        })
+                        .unwrap_or(res.host);
+
+                    res.forwards = tbl.get("forwards")
+                        .map(|fwd| {
+                            fwd.as_array()
+                                .expect("forwards must be an array")
+                                .to_vec()
+                                .iter()
+                                .map(|s| s.as_str().unwrap().to_string())
+                                .collect()
+                        })
+                        .unwrap_or(res.forwards);
+
+                    res.tags = global_tags.clone();
+
+                    assert!(res.config_path.is_some());
+                    assert!(!res.forwards.is_empty());
+
+                    avros.insert(format!("sources.avro.{}", name), res);
+                }
+            }
+            avros
+        });
+
         args.native_server_config = sources.get("native").map(|src| {
             let mut native_server_config = HashMap::default();
             for (name, tbl) in src.as_table().unwrap().iter() {
@@ -1296,6 +1348,61 @@ scripts-directory = "/foo/bar"
         let config1 = graphites.get("sources.graphite.higher").unwrap();
         assert_eq!(config1.port, 2004);
         assert_eq!(config1.forwards, vec!["sinks.wavefront".to_string()]);
+    }
+
+    #[test]
+    fn config_avro_sources_style() {
+        let config = r#"
+[sources]
+  [sources.avro.primary]
+  enabled = true
+  host = "localhost"
+  port = 2003
+  forwards = ["filters.collectd_scrub"]
+"#;
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.avros.is_some());
+        let avros = args.avros.unwrap();
+        assert_eq!(avros.len(), 1);
+
+        let config0 = avros.get("sources.avro.primary").unwrap();
+        assert_eq!(config0.port, 2003);
+        assert_eq!(config0.host, "localhost");
+        assert_eq!(config0.forwards, vec!["filters.collectd_scrub".to_string()]);
+    }
+
+    #[test]
+    fn config_avro_sources_style_multiple() {
+        let config = r#"
+[sources]
+  [sources.avro.lower]
+  enabled = true
+  port = 2003
+  forwards = ["filters.collectd_scrub"]
+
+  [sources.avro.higher]
+  enabled = true
+  port = 2004
+  forwards = ["sinks.kinesis"]
+"#;
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.avros.is_some());
+
+        assert!(args.avros.is_some());
+        let avros = args.avros.unwrap();
+        assert_eq!(avros.len(), 2);
+
+        let config0 = avros.get("sources.avro.lower").unwrap();
+        assert_eq!(config0.port, 2003);
+        assert_eq!(config0.forwards, vec!["filters.collectd_scrub".to_string()]);
+
+        let config1 = avros.get("sources.avro.higher").unwrap();
+        assert_eq!(config1.port, 2004);
+        assert_eq!(config1.forwards, vec!["sinks.kinesis".to_string()]);
     }
 
     #[test]

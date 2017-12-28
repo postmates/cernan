@@ -321,6 +321,16 @@ fn main() {
             );
         }
     }
+    if let Some(ref configs) = args.avros {
+        for (config_path, config) in configs {
+            config_topology.insert(config_path.clone(), config.forwards.clone());
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
+        }
+    }
     if let Some(ref configs) = args.files {
         for config in configs {
             let config_path = cfg_conf!(config);
@@ -636,6 +646,24 @@ fn main() {
             sources.insert(
                 config_path.clone(),
                 cernan::source::Graphite::new(graphite_sends, config).run(),
+            );
+        }
+    });
+
+    mem::replace(&mut args.avros, None).map(|cfg_map| {
+        for (config_path, config) in cfg_map {
+            populate_forwards(
+                Some(&mut flush_sends),
+                &config.forwards,
+                &config_path,
+                &senders,
+                &mut adjacency_matrix,
+            );
+
+            let avro_sends = adjacency_matrix.pop_metadata(&config_path);
+            sources.insert(
+                config_path.clone(),
+                cernan::source::Avro::new(avro_sends, config).run(),
             );
         }
     });

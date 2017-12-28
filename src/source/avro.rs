@@ -46,12 +46,12 @@ fn handle_avro_payload(
     _tags: &sync::Arc<metric::TagMap>,
     reader: &mut io::BufReader<mio::net::TcpStream>,
 ) {
-    let mut buf = Vec::with_capacity(4000);
     let payload_size_in_bytes = match reader.read_u32::<BigEndian>() {
         Ok(i) => i as usize,
         Err(_) => return,
     };
-    buf.resize(payload_size_in_bytes, 0);
+
+    let mut buf = Vec::with_capacity(payload_size_in_bytes);
     if reader.read_exact(&mut buf).is_err() {
         return;
     }
@@ -72,13 +72,14 @@ fn handle_avro_payload(
 }
 
 impl source::Source<source::TCPConfig> for Avro {
-    /// Creates and starts an Avro source witht the given config.
+    /// Creates an Avro source with the given config.
     fn new(chans: util::Channel, config: source::TCPConfig) -> Self {
         Avro {
             server: source::TCP::new(chans, config),
         }
     }
 
+    /// Starts the given Avro source, consuming its state in the process.
     fn run(self) -> thread::ThreadHandle {
         self.server.run(stream_handler)
     }
