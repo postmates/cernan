@@ -1,26 +1,32 @@
 use metric;
 use mio;
-use source::Source;
+use source;
+use std::sync;
 use std::thread::sleep;
 use std::time::Duration;
 use util;
 use util::send;
 
-/// The source of all flush pulses. See `FlushTimer::run` for more details.
-pub struct FlushTimer {
-    chans: util::Channel,
-}
+/// The source of all flush pulses.
+pub struct FlushTimer;
 
-impl FlushTimer {
+/// Nil config for FlushTimer.
+#[derive(Clone, Debug, Deserialize)]
+pub struct FlushTimerConfig;
+
+impl source::Source<FlushTimerConfig> for FlushTimer {
     /// Create a new FlushTimer. This will not produce a new thread, that must
     /// be managed by the end-user.
-    pub fn new(chans: util::Channel) -> FlushTimer {
-        FlushTimer { chans: chans }
+    fn init(_config: FlushTimerConfig) -> Self {
+        FlushTimer {}
     }
-}
 
-impl Source for FlushTimer {
-    fn run(&mut self, _poll: mio::Poll) {
+    fn run(
+        self,
+        mut chans: util::Channel,
+        _tags: &sync::Arc<metric::TagMap>,
+        _poller: mio::Poll,
+    ) -> () {
         let one_second = Duration::new(1, 0);
         // idx will _always_ increase. If it's kept at u64 or greater it will
         // overflow long past the collapse of our industrial civilization only
@@ -37,7 +43,7 @@ impl Source for FlushTimer {
             // system boot.
             idx += 1;
             sleep(one_second);
-            send(&mut self.chans, metric::Event::TimerFlush(idx));
+            send(&mut chans, metric::Event::TimerFlush(idx));
         }
     }
 }

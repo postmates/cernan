@@ -1,12 +1,13 @@
 use glob::glob;
 use metric;
 use mio;
-use source::Source;
+use source;
 use source::file::file_watcher::FileWatcher;
 use source::internal::report_full_telemetry;
 use std::mem;
 use std::path::PathBuf;
 use std::str;
+use std::sync;
 use std::time;
 use util;
 use util::send;
@@ -21,14 +22,12 @@ use util::send;
 /// exist at cernan startup. `FileServer` will discover new files which match
 /// its path in at most 60 seconds.
 pub struct FileServer {
-    chans: util::Channel,
     pattern: PathBuf,
     max_lines_read: usize,
-    tags: metric::TagMap,
 }
 
 /// The configuration struct for `FileServer`.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct FileServerConfig {
     /// The path that `FileServer` will watch. Globs are allowed and
     /// `FileServer` will watch multiple files.
@@ -36,7 +35,8 @@ pub struct FileServerConfig {
     /// The maximum number of lines to read from a file before switching to a
     /// new file.
     pub max_lines_read: usize,
-    /// The default tags to apply to each discovered LogLine.
+    /// The tags the Native source will associate with every Telemetry it
+    /// creates.
     pub tags: metric::TagMap,
     /// The forwards which `FileServer` will obey.
     pub forwards: Vec<String>,
@@ -56,19 +56,6 @@ impl Default for FileServerConfig {
     }
 }
 
-impl FileServer {
-    /// Make a FileServer
-    ///
-    pub fn new(chans: util::Channel, config: FileServerConfig) -> FileServer {
-        FileServer {
-            chans: chans,
-            pattern: config.path.expect("must specify a 'path' for FileServer"),
-            tags: config.tags,
-            max_lines_read: config.max_lines_read,
-        }
-    }
-}
-
 /// `FileServer` as Source
 ///
 /// The 'run' of `FileServer` performs the cooperative scheduling of reads over
@@ -82,8 +69,23 @@ impl FileServer {
 ///
 /// Specific operating systems support evented interfaces that correct this
 /// problem but your intrepid authors know of no generic solution.
-impl Source for FileServer {
-    fn run(&mut self, poller: mio::Poll) {
+impl source::Source<FileServerConfig> for FileServer {
+    /// Make a FileServer
+    ///
+    fn init(config: FileServerConfig) -> Self {
+        let pattern = config.path.expect("must specify a 'path' for FileServer");
+        FileServer {
+            pattern: pattern,
+            max_lines_read: config.max_lines_read,
+        }
+    }
+
+    fn run(
+        self,
+        mut chans: util::Channel,
+        tags: &sync::Arc<metric::TagMap>,
+        poller: mio::Poll,
+    ) -> () {
         let mut buffer = String::new();
 
         let mut fp_map: util::HashMap<PathBuf, FileWatcher> = Default::default();
@@ -121,7 +123,7 @@ impl Source for FileServer {
                             metric::LogLine::new(
                                 path.to_str().expect("not a valid path"),
                                 &buffer,
-                            ).overlay_tags_from_map(&self.tags),
+                            ).overlay_tags_from_map(tags),
                         );
                         buffer.clear();
                     } else {
@@ -147,7 +149,7 @@ impl Source for FileServer {
                 global_lines_read = global_lines_read.saturating_add(lines_read);
             }
             for l in lines.drain(..) {
-                send(&mut self.chans, metric::Event::new_log(l));
+                send(&mut chans, metric::Event::new_log(l));
             }
             // We've drained the live FileWatchers into fp_map_alt in the line
             // polling loop. Now we swapped them back to fp_map so next time we
@@ -179,7 +181,7 @@ impl Source for FileServer {
                     // File server doesn't poll for anything other than SYSTEM events.
                     // As currently there are no system events other than SHUTDOWN,
                     // we immediately exit.
-                    send(&mut self.chans, metric::Event::Shutdown);
+                    send(&mut chans, metric::Event::Shutdown);
                     return;
                 }
             }

@@ -72,9 +72,13 @@ impl<M: Clone + Debug> Adjacency<M> {
     /// Filters and returns edges satisfying the given constraint.
     pub fn filter_nodes<F>(&self, id: &str, f: F) -> Vec<String>
     where
-        for<'r> F: FnMut(&'r (&String, &Option<M>)) -> bool
+        for<'r> F: FnMut(&'r (&String, &Option<M>)) -> bool,
     {
-        self.edges[id].iter().filter(f).map(|(k, _v)| k.clone()).collect()
+        self.edges[id]
+            .iter()
+            .filter(f)
+            .map(|(k, _v)| k.clone())
+            .collect()
     }
 
     /// Iterates over edge relations in the matrix.

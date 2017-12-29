@@ -5,7 +5,7 @@
 //! different choices.
 
 use hopper;
-use metric::{Event, LogLine, Telemetry};
+use metric::{Encoding, Event, LogLine, Telemetry};
 use std::sync;
 use time;
 use util::Valve;
@@ -50,6 +50,11 @@ pub trait Sink {
     /// Deliver a `LogLine` to the `Sink`. Exact behaviour varies by
     /// implementation.
     fn deliver_line(&mut self, line: sync::Arc<Option<LogLine>>) -> ();
+    /// Deliver a 'Raw' series of encoded bytes to the sink.
+    fn deliver_raw(&mut self, _encoding: Encoding, _bytes: Vec<u8>) -> () {
+        // Not all sinks accept raw events.  By default, we do nothing.
+        return;
+    }
     /// Provide a hook to shutdown a sink. This is necessary for sinks which
     /// have their own long-running threads.
     fn shutdown(self) -> ();
@@ -123,6 +128,10 @@ pub trait Sink {
                         }
                         Event::Log(line) => {
                             self.deliver_line(line);
+                            break;
+                        }
+                        Event::Raw { encoding, bytes } => {
+                            self.deliver_raw(encoding, bytes);
                             break;
                         }
                         Event::Shutdown => {

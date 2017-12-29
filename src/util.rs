@@ -27,7 +27,7 @@ pub type Channel = Vec<hopper::Sender<metric::Event>>;
 pub fn send(chans: &mut Channel, event: metric::Event) {
     if chans.is_empty() {
         // Nothing to send to.
-        return
+        return;
     }
 
     let max: usize = chans.len().saturating_sub(1);
@@ -94,6 +94,11 @@ impl<E: mio::Evented> TokenSlab<E> {
         TokenSlab {
             tokens: slab::Slab::with_capacity(token_to_idx(&constants::SYSTEM)),
         }
+    }
+
+    /// Iterates over the underlying slab mapping index to mio::Evented.
+    pub fn iter(&self) -> slab::Iter<E> {
+        self.tokens.iter()
     }
 
     /// Inserts a new Evented into the slab, returning a mio::Token
