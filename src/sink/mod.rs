@@ -130,7 +130,7 @@ pub trait Sink {
                             self.deliver_line(line);
                             break;
                         }
-                        Event::Raw{encoding, bytes} => {
+                        Event::Raw { encoding, bytes } => {
                             self.deliver_raw(encoding, bytes);
                             break;
                         }

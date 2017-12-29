@@ -921,16 +921,13 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                     res.port = tbl.get("port")
                         .map(|p| {
-                            p.as_integer().expect("could not parse avro port")
-                                as u16
+                            p.as_integer().expect("could not parse avro port") as u16
                         })
                         .unwrap_or(res.port);
 
                     res.host = tbl.get("host")
                         .map(|p| {
-                            p.as_str()
-                                .expect("could not parse avro host")
-                                .to_string()
+                            p.as_str().expect("could not parse avro host").to_string()
                         })
                         .unwrap_or(res.host);
 

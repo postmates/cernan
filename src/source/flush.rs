@@ -18,10 +18,15 @@ impl source::Source<FlushTimerConfig> for FlushTimer {
     /// Create a new FlushTimer. This will not produce a new thread, that must
     /// be managed by the end-user.
     fn init(_config: FlushTimerConfig) -> Self {
-        FlushTimer { }
+        FlushTimer {}
     }
 
-    fn run(self, mut chans: util::Channel, _tags: &sync::Arc<metric::TagMap>, _poller: mio::Poll) -> () {
+    fn run(
+        self,
+        mut chans: util::Channel,
+        _tags: &sync::Arc<metric::TagMap>,
+        _poller: mio::Poll,
+    ) -> () {
         let one_second = Duration::new(1, 0);
         // idx will _always_ increase. If it's kept at u64 or greater it will
         // overflow long past the collapse of our industrial civilization only

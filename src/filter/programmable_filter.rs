@@ -638,8 +638,11 @@ impl filter::Filter for ProgrammableFilter {
                 }
                 Ok(())
             }
-            metric::Event::Raw{encoding, bytes} => {
-                res.push(metric::Event::Raw{encoding: encoding, bytes: bytes});
+            metric::Event::Raw { encoding, bytes } => {
+                res.push(metric::Event::Raw {
+                    encoding: encoding,
+                    bytes: bytes,
+                });
                 Ok(())
             }
             metric::Event::Shutdown => {

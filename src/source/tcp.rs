@@ -40,26 +40,31 @@ impl Default for TCPConfig {
 
 /// Simple single threaded TCP Stream handler.
 pub trait TCPStreamHandler: 'static + Default + Clone + Sync + Send {
-
     /// Constructs a new handler for mio::net::TCPStreams.
     fn new() -> Self {
         Default::default()
     }
 
     /// Handler for a single HTTP request.
-    fn handle_stream(&mut self, util::Channel, &sync::Arc<metric::TagMap>, &mio::Poll, mio::net::TcpStream)-> ();
+    fn handle_stream(
+        &mut self,
+        util::Channel,
+        &sync::Arc<metric::TagMap>,
+        &mio::Poll,
+        mio::net::TcpStream,
+    ) -> ();
 }
 
 /// State for a TCP backed source.
-pub struct TCP <H> {
+pub struct TCP<H> {
     listeners: util::TokenSlab<mio::net::TcpListener>,
     handlers: Vec<thread::ThreadHandle>,
     phantom: PhantomData<H>,
 }
 
-impl <H> Source<TCPConfig> for TCP<H>
-    where
-        H: TCPStreamHandler
+impl<H> Source<TCPConfig> for TCP<H>
+where
+    H: TCPStreamHandler,
 {
     /// Constructs and starts a new TCP source.
     fn init(config: TCPConfig) -> Self {
@@ -94,38 +99,37 @@ impl <H> Source<TCPConfig> for TCP<H>
     }
 
     /// Starts the accept loop.
-    fn run(self, chans: util::Channel, tags: &sync::Arc<metric::TagMap>, poller: mio::Poll) -> ()
-    {
+    fn run(
+        self,
+        chans: util::Channel,
+        tags: &sync::Arc<metric::TagMap>,
+        poller: mio::Poll,
+    ) -> () {
         for (idx, listener) in self.listeners.iter() {
-            poller.register(
-                listener,
-                mio::Token::from(idx),
-                mio::Ready::readable(),
-                mio::PollOpt::edge(),
-            ).unwrap();
+            poller
+                .register(
+                    listener,
+                    mio::Token::from(idx),
+                    mio::Ready::readable(),
+                    mio::PollOpt::edge(),
+                )
+                .unwrap();
         }
 
-        self.accept_loop(
-            chans,
-            tags,
-            poller,
-        )
+        self.accept_loop(chans, tags, poller)
     }
-
 }
 
 impl<H> TCP<H>
-    where
-        H: TCPStreamHandler,
+where
+    H: TCPStreamHandler,
 {
-
     fn accept_loop(
         mut self,
         mut chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
         poll: mio::Poll,
-    ) -> ()
-    {
+    ) -> () {
         loop {
             let mut events = mio::Events::with_capacity(1024);
             match poll.poll(&mut events, None) {
@@ -160,9 +164,7 @@ impl<H> TCP<H>
         chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
         listener_token: mio::Token,
-    ) -> ()
-    {
-
+    ) -> () {
         let listener = &(self.listeners[listener_token]);
         loop {
             match listener.accept() {

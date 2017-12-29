@@ -19,7 +19,7 @@ lazy_static! {
 /// self-telemeter. This is an improvement over past methods as an explicit
 /// Source gives operators the ability to define a filter topology for such
 /// telemetry and makes it easier for modules to report on themeselves.
-pub struct Internal ;
+pub struct Internal;
 
 /// The configuration struct for 'Internal'
 #[derive(Debug, Deserialize, Clone)]
@@ -97,8 +97,12 @@ impl source::Source<InternalConfig> for Internal {
         Internal {}
     }
 
-    fn run(self, mut chans: util::Channel, tags: &sync::Arc<metric::TagMap>, poller: mio::Poll) -> ()
-    {
+    fn run(
+        self,
+        mut chans: util::Channel,
+        tags: &sync::Arc<metric::TagMap>,
+        poller: mio::Poll,
+    ) -> () {
         let slp = std::time::Duration::from_millis(1_000);
         loop {
             let mut events = mio::Events::with_capacity(1024);

@@ -6,8 +6,8 @@ use source::file::file_watcher::FileWatcher;
 use source::internal::report_full_telemetry;
 use std::mem;
 use std::path::PathBuf;
-use std::sync;
 use std::str;
+use std::sync;
 use std::time;
 use util;
 use util::send;
@@ -80,7 +80,12 @@ impl source::Source<FileServerConfig> for FileServer {
         }
     }
 
-    fn run(self, mut chans: util::Channel, tags: &sync::Arc<metric::TagMap>, poller: mio::Poll) -> () {
+    fn run(
+        self,
+        mut chans: util::Channel,
+        tags: &sync::Arc<metric::TagMap>,
+        poller: mio::Poll,
+    ) -> () {
         let mut buffer = String::new();
 
         let mut fp_map: util::HashMap<PathBuf, FileWatcher> = Default::default();

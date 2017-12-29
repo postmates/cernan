@@ -594,7 +594,11 @@ fn main() {
             let native_tags = std::sync::Arc::new(config.tags.clone());
             sources.insert(
                 config_path.clone(),
-                cernan::source::NativeServer::new(native_server_send, native_tags, config.into()).run(),
+                cernan::source::NativeServer::new(
+                    native_server_send,
+                    native_tags,
+                    config.into(),
+                ).run(),
             );
         }
     });
@@ -649,7 +653,8 @@ fn main() {
             let tags = std::sync::Arc::new(config.tags.clone());
             sources.insert(
                 config_path.clone(),
-                cernan::source::Graphite::new(graphite_sends, tags, config.into()).run(),
+                cernan::source::Graphite::new(graphite_sends, tags, config.into())
+                    .run(),
             );
         }
     });
@@ -714,8 +719,11 @@ fn main() {
     drop(flush_sends);
     drop(senders);
     let flush_tags = std::sync::Arc::new(cernan::metric::TagMap::default());
-    cernan::source::FlushTimer::new(flush_channels, flush_tags, cernan::source::FlushTimerConfig)
-        .run();
+    cernan::source::FlushTimer::new(
+        flush_channels,
+        flush_tags,
+        cernan::source::FlushTimerConfig,
+    ).run();
 
     cernan::thread::spawn(move |_poll| {
         cernan::time::update_time();

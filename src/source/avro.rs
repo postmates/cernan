@@ -3,20 +3,25 @@ use constants;
 use metric;
 use mio;
 use serde_avro;
-use source::{TCP, TCPStreamHandler};
+use source::{TCPStreamHandler, TCP};
 use std::{io, sync};
 use std::io::Read;
 use util;
 
 #[derive(Default, Debug, Clone, Deserialize)]
-pub struct AvroStreamHandler ;
+pub struct AvroStreamHandler;
 
 impl TCPStreamHandler for AvroStreamHandler {
-
     /// Receives and buffers Avro events from the given stream.
     ///
     /// The stream handler exits gracefully whhen a shutdown event is received.
-    fn handle_stream(&mut self, chans: util::Channel, tags: &sync::Arc<metric::TagMap>, poller: &mio::Poll, stream: mio::net::TcpStream)-> () {
+    fn handle_stream(
+        &mut self,
+        chans: util::Channel,
+        tags: &sync::Arc<metric::TagMap>,
+        poller: &mio::Poll,
+        stream: mio::net::TcpStream,
+    ) -> () {
         let mut reader = io::BufReader::new(stream);
         loop {
             let mut events = mio::Events::with_capacity(1024);
@@ -36,7 +41,6 @@ impl TCPStreamHandler for AvroStreamHandler {
 }
 
 impl AvroStreamHandler {
-
     /// Pulls length prefixed (4 bytes, BE), avro encoded
     /// binaries off the wire and populates them in the configured
     /// channel.
@@ -68,7 +72,13 @@ impl AvroStreamHandler {
             }
         }
 
-        util::send(&mut chans, metric::Event::Raw{encoding:metric::Encoding::Avro, bytes: buf});
+        util::send(
+            &mut chans,
+            metric::Event::Raw {
+                encoding: metric::Encoding::Avro,
+                bytes: buf,
+            },
+        );
     }
 }
 

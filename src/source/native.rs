@@ -4,7 +4,7 @@ use metric;
 use mio;
 use protobuf;
 use protocols::native::{AggregationMethod, Payload};
-use source::{TCPStreamHandler, TCPConfig, TCP};
+use source::{TCPConfig, TCPStreamHandler, TCP};
 use std::io;
 use std::io::Read;
 use std::str;
@@ -60,11 +60,16 @@ impl From<NativeServerConfig> for TCPConfig {
 }
 
 #[derive(Default, Debug, Clone, Deserialize)]
-pub struct NativeStreamHandler ;
+pub struct NativeStreamHandler;
 
 impl TCPStreamHandler for NativeStreamHandler {
-
-    fn handle_stream(&mut self, chans: util::Channel, tags: &sync::Arc<metric::TagMap>, poller: &mio::Poll, stream: mio::net::TcpStream)-> () {
+    fn handle_stream(
+        &mut self,
+        chans: util::Channel,
+        tags: &sync::Arc<metric::TagMap>,
+        poller: &mio::Poll,
+        stream: mio::net::TcpStream,
+    ) -> () {
         let mut reader = io::BufReader::new(stream);
         loop {
             let mut events = mio::Events::with_capacity(1024);
@@ -82,11 +87,9 @@ impl TCPStreamHandler for NativeStreamHandler {
             }
         }
     }
-
 }
 
 impl NativeStreamHandler {
-
     fn handle_stream_payload(
         &mut self,
         mut chans: util::Channel,

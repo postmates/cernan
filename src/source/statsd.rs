@@ -112,7 +112,12 @@ impl source::Source<StatsdConfig> for Statsd {
         }
     }
 
-    fn run(self, mut chans: util::Channel, tags: &sync::Arc<metric::TagMap>, poller: mio::Poll) -> () {
+    fn run(
+        self,
+        mut chans: util::Channel,
+        tags: &sync::Arc<metric::TagMap>,
+        poller: mio::Poll,
+    ) -> () {
         for (idx, socket) in self.conns.iter() {
             poller
                 .register(
@@ -158,7 +163,10 @@ impl source::Source<StatsdConfig> for Statsd {
                                     &self.parse_config,
                                 ) {
                                     for m in metrics.drain(..) {
-                                        send(&mut chans, metric::Event::new_telemetry(m));
+                                        send(
+                                            &mut chans,
+                                            metric::Event::new_telemetry(m),
+                                        );
                                     }
                                     STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
                                 } else {

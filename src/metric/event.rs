@@ -32,12 +32,12 @@ pub enum Event {
     /// marker the given source will exit cleanly.
     Shutdown,
     /// Raw, encoded bytes.
-    Raw{
+    Raw {
         /// Encoding for the included bytes.
         encoding: Encoding,
         /// Encoded payload.
         bytes: Vec<u8>,
-    }
+    },
 }
 
 impl Event {
@@ -68,7 +68,7 @@ impl Event {
                     None => None,
                 }
             }
-            Event::TimerFlush(_) | Event::Shutdown | Event::Raw{..} => None,
+            Event::TimerFlush(_) | Event::Shutdown | Event::Raw { .. } => None,
         }
     }
 }
