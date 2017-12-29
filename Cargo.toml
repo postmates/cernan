@@ -33,8 +33,8 @@ openssl-probe = "0.1"
 protobuf = "1.4"
 quantiles = { version = "0.7", features = ["serde_support"] }
 regex = "0.2"
-rusoto_core = "0.29"
-rusoto_firehose = "0.29"
+rusoto_core = "0.30"
+rusoto_firehose = "0.30"
 seahash = "3.0"
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
@@ -47,6 +47,7 @@ chan-signal = "0.3.1"
 mio = "0.6.11"
 tiny_http = "0.5.8"
 serde-avro = "0.5.0"
+base64 = "0.9.0"
 rusoto_kinesis = "0.30.0"
 
 [dev-dependencies]

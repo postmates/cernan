@@ -6,6 +6,7 @@
 
 use hopper;
 use metric::{Encoding, Event, LogLine, Telemetry};
+use std::marker::PhantomData;
 use std::sync;
 use thread;
 use time;
@@ -19,11 +20,13 @@ pub mod native;
 pub mod influxdb;
 pub mod prometheus;
 pub mod elasticsearch;
+pub mod kinesis;
 
 pub use self::console::{Console, ConsoleConfig};
 pub use self::elasticsearch::{Elasticsearch, ElasticsearchConfig};
 pub use self::firehose::{Firehose, FirehoseConfig};
 pub use self::influxdb::{InfluxDB, InfluxDBConfig};
+pub use self::kinesis::{Kinesis, KinesisConfig};
 pub use self::native::{Native, NativeConfig};
 pub use self::null::{Null, NullConfig};
 pub use self::prometheus::{Prometheus, PrometheusConfig};
@@ -31,43 +34,44 @@ pub use self::wavefront::{Wavefront, WavefrontConfig};
 
 
 /// Wrapper around a given sink implementation and its config.
-pub struct StatefulSink<S, SConfig>
+pub struct RunnableSink<S, SConfig>
     where
-        S: Send + Sync + Sink<SConfig>,
-        SConfig: 'static + Send + Sync + Clone,
+        S: Send + Sink<SConfig>,
+        SConfig: 'static + Send + Clone,
 {
     recv: hopper::Receiver<Event>,
     sources: Vec<String>,
-    #[allow(dead_code)] // Only here to avoid using PhantomData.
-    config: SConfig,
     state: S,
+
+    // Yes, compiler, we know that we aren't storing
+    // anything of type SConfig.
+    config: PhantomData<SConfig>,
 }
 
-impl <S, SConfig> StatefulSink <S, SConfig> where S: 'static + Send + Sync + Sink<SConfig>, SConfig: 'static + Clone + Send + Sync
+impl <S, SConfig> RunnableSink <S, SConfig> where S: 'static + Send + Sink<SConfig>, SConfig: 'static + Clone + Send
 {
 
-    /// Generic constructor for StatefulSink - execution wrapper around objects implementing Sink.
-    pub fn new (recv: hopper::Receiver<Event>, sources: Vec<String>, config: SConfig) -> StatefulSink<S, SConfig>
+    /// Generic constructor for RunnableSink - execution wrapper around objects implementing Sink.
+    pub fn new (recv: hopper::Receiver<Event>, sources: Vec<String>, config: SConfig) -> RunnableSink<S, SConfig>
     {
-        StatefulSink {
+        RunnableSink {
             recv: recv,
             sources: sources,
-            config: config.clone(),
             state: S::init(config),
+            config: PhantomData,
         }
-
     }
 
     /// Spawns / consumes the given stateful sink, returning the corresponding thread.
     pub fn run(self) -> thread::ThreadHandle {
         thread::spawn(
             move |_poll| {
-                self.consume_loop();
+                self.consume();
             }
         )
     }
 
-    fn consume_loop(mut self) -> () //recv: hopper::Receiver<Event>, sources: Vec<String>, mut state: S) -> ()
+    fn consume(mut self) -> () //recv: hopper::Receiver<Event>, sources: Vec<String>, mut state: S) -> ()
     {
         let mut attempts = 0;
         let mut recv = self.recv.into_iter();
@@ -172,14 +176,14 @@ impl <S, SConfig> StatefulSink <S, SConfig> where S: 'static + Send + Sync + Sin
 /// A 'sink' is a sink for metrics.
 pub trait Sink<SConfig>
     where
-        Self: 'static + Send + Sync + Sized,
-        SConfig: 'static + Send + Sync + Clone
+        Self: 'static + Send + Sized,
+        SConfig: 'static + Send + Clone
 {
 
     /// Generic constructor for sinks implementing this trait.
-    fn new(recv: hopper::Receiver<Event>, sources: Vec<String>, config: SConfig) -> StatefulSink<Self, SConfig>
+    fn new(recv: hopper::Receiver<Event>, sources: Vec<String>, config: SConfig) -> RunnableSink<Self, SConfig>
     {
-        StatefulSink::<Self, SConfig>::new(recv, sources, config)
+        RunnableSink::<Self, SConfig>::new(recv, sources, config)
     }
 
     /// Constructs a new sink.
