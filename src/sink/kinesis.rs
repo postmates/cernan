@@ -94,6 +94,11 @@ impl Sink<KinesisConfig> for Kinesis {
     /// If the given record would put the buffer at capacity, then the contents
     /// are first flushed before the given record is added.
     fn deliver_raw(&mut self, _encoding: metric::Encoding, bytes: Vec<u8>) {
+        let record_too_big = bytes.len() > self.max_bytes_per_batch;
+        if record_too_big {
+            warn!("Discarding record with size {:?} as it is too large to publish!", bytes.len());
+        }
+
         let buffer_too_big = self.buffer_size + bytes.len() > self.max_bytes_per_batch;
         let buffer_too_long = self.buffer.len() > self.max_records_per_batch;;
         if buffer_too_big || buffer_too_long {
