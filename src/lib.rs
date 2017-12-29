@@ -17,6 +17,7 @@
 //! our [wiki](https://github.com/postmates/cernan/wiki/).
 #![allow(unknown_lints)]
 #![deny(trivial_numeric_casts, missing_docs, unstable_features, unused_import_braces)]
+extern crate base64;
 extern crate byteorder;
 extern crate chrono;
 extern crate clap;
@@ -34,6 +35,7 @@ extern crate quantiles;
 extern crate regex;
 extern crate rusoto_core;
 extern crate rusoto_firehose;
+extern crate rusoto_kinesis;
 extern crate seahash;
 extern crate serde_avro;
 #[macro_use]
