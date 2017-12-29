@@ -9,7 +9,6 @@ use std::str;
 use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use thread;
 use util;
 use util::send;
 
@@ -24,9 +23,8 @@ lazy_static! {
 /// work done out of Etsy. Cernan tries to support a cow-path subset of the
 /// statsd protocol family.
 pub struct Statsd {
-    chans: util::Channel,
-    config: StatsdConfig,
     conns: util::TokenSlab<mio::net::UdpSocket>,
+    parse_config: sync::Arc<StatsdParseConfig>,
 }
 
 /// The mask type for metrics in `StatsdParseConfig`.
@@ -91,7 +89,7 @@ impl Default for StatsdConfig {
 
 impl source::Source<StatsdConfig> for Statsd {
     /// Create and spawn a new statsd source
-    fn new(chans: util::Channel, config: StatsdConfig) -> Self {
+    fn init(config: StatsdConfig) -> Self {
         let mut conns = util::TokenSlab::<mio::net::UdpSocket>::new();
         let addrs = (config.host.as_str(), config.port).to_socket_addrs();
         match addrs {
@@ -109,92 +107,73 @@ impl source::Source<StatsdConfig> for Statsd {
         };
 
         Statsd {
-            chans: chans,
-            config: config,
             conns: conns,
+            parse_config: sync::Arc::new(config.parse_config),
         }
     }
 
-    fn run(self) -> thread::ThreadHandle {
-        thread::spawn(move |poller| {
-            for (idx, socket) in self.conns.iter() {
-                poller
-                    .register(
-                        socket,
-                        mio::Token::from(idx),
-                        mio::Ready::readable(),
-                        mio::PollOpt::edge(),
-                    )
-                    .unwrap();
-            }
+    fn run(self, mut chans: util::Channel, tags: &sync::Arc<metric::TagMap>, poller: mio::Poll) -> () {
+        for (idx, socket) in self.conns.iter() {
+            poller
+                .register(
+                    socket,
+                    mio::Token::from(idx),
+                    mio::Ready::readable(),
+                    mio::PollOpt::edge(),
+                )
+                .unwrap();
+        }
 
-            handle_udp(
-                self.chans,
-                &sync::Arc::new(self.config.tags),
-                &sync::Arc::new(self.config.parse_config),
-                &self.conns,
-                &poller,
-            )
-        })
-    }
-}
+        let mut buf = vec![0; 16_250];
+        let mut metrics = Vec::new();
+        let basic_metric = sync::Arc::new(Some(
+            metric::Telemetry::default().overlay_tags_from_map(tags),
+        ));
+        loop {
+            let mut events = mio::Events::with_capacity(1024);
+            match poller.poll(&mut events, None) {
+                Ok(_num_events) => for event in events {
+                    match event.token() {
+                        constants::SYSTEM => {
+                            send(&mut chans, metric::Event::Shutdown);
+                            return;
+                        }
 
-fn handle_udp(
-    mut chans: util::Channel,
-    tags: &sync::Arc<metric::TagMap>,
-    parse_config: &sync::Arc<StatsdParseConfig>,
-    conns: &util::TokenSlab<mio::net::UdpSocket>,
-    poll: &mio::Poll,
-) {
-    let mut buf = vec![0; 16_250];
-    let mut metrics = Vec::new();
-    let basic_metric = sync::Arc::new(Some(
-        metric::Telemetry::default().overlay_tags_from_map(tags),
-    ));
-    loop {
-        let mut events = mio::Events::with_capacity(1024);
-        match poll.poll(&mut events, None) {
-            Ok(_num_events) => for event in events {
-                match event.token() {
-                    constants::SYSTEM => {
-                        send(&mut chans, metric::Event::Shutdown);
-                        return;
-                    }
+                        token => {
+                            // Get the socket to receive from:
+                            let socket = &self.conns[token];
 
-                    token => {
-                        // Get the socket to receive from:
-                        let socket = &conns[token];
-
-                        let (len, _) = match socket.recv_from(&mut buf) {
-                            Ok(r) => r,
-                            Err(e) => panic!(format!(
-                                "Could not read UDP socket with error {:?}",
-                                e
-                            )),
-                        };
-                        match str::from_utf8(&buf[..len]) {
-                            Ok(val) => if parse_statsd(
-                                val,
-                                &mut metrics,
-                                &basic_metric,
-                                parse_config,
-                            ) {
-                                for m in metrics.drain(..) {
-                                    send(&mut chans, metric::Event::new_telemetry(m));
+                            let (len, _) = match socket.recv_from(&mut buf) {
+                                Ok(r) => r,
+                                Err(e) => panic!(format!(
+                                    "Could not read UDP socket with error {:?}",
+                                    e
+                                )),
+                            };
+                            match str::from_utf8(&buf[..len]) {
+                                Ok(val) => if parse_statsd(
+                                    val,
+                                    &mut metrics,
+                                    &basic_metric,
+                                    &self.parse_config,
+                                ) {
+                                    for m in metrics.drain(..) {
+                                        send(&mut chans, metric::Event::new_telemetry(m));
+                                    }
+                                    STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
+                                } else {
+                                    STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
+                                    error!("BAD PACKET: {:?}", val);
+                                },
+                                Err(e) => {
+                                    error!("Payload not valid UTF-8: {:?}", e);
                                 }
-                                STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
-                            } else {
-                                STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
-                                error!("BAD PACKET: {:?}", val);
-                            },
-                            Err(e) => {
-                                error!("Payload not valid UTF-8: {:?}", e);
                             }
                         }
                     }
-                }
-            },
-            Err(e) => panic!(format!("Failed during poll {:?}", e)),
-        }
-    } // loop
-} // handle_udp
+                },
+                Err(e) => panic!(format!("Failed during poll {:?}", e)),
+            }
+        } // loop
+    } // run
+}

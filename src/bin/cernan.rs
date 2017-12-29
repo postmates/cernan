@@ -591,9 +591,10 @@ fn main() {
             );
 
             let native_server_send = adjacency_matrix.pop_metadata(&config_path);
+            let native_tags = std::sync::Arc::new(config.tags.clone());
             sources.insert(
                 config_path.clone(),
-                cernan::source::NativeServer::new(native_server_send, config).run(),
+                cernan::source::NativeServer::new(native_server_send, native_tags, config.into()).run(),
             );
         }
     });
@@ -609,9 +610,10 @@ fn main() {
     );
 
     let internal_send = adjacency_matrix.pop_metadata(&internal_config_path);
+    let tags = std::sync::Arc::new(internal_config.tags.clone());
     sources.insert(
         internal_config.config_path.clone().unwrap(),
-        cernan::source::Internal::new(internal_send, internal_config).run(),
+        cernan::source::Internal::new(internal_send, tags, internal_config).run(),
     );
 
     mem::replace(&mut args.statsds, None).map(|cfg_map| {
@@ -625,9 +627,10 @@ fn main() {
             );
 
             let statsd_sends = adjacency_matrix.pop_metadata(&config_path);
+            let tags = std::sync::Arc::new(config.tags.clone());
             sources.insert(
                 config_path.clone(),
-                cernan::source::Statsd::new(statsd_sends, config).run(),
+                cernan::source::Statsd::new(statsd_sends, tags, config).run(),
             );
         }
     });
@@ -643,9 +646,10 @@ fn main() {
             );
 
             let graphite_sends = adjacency_matrix.pop_metadata(&config_path);
+            let tags = std::sync::Arc::new(config.tags.clone());
             sources.insert(
                 config_path.clone(),
-                cernan::source::Graphite::new(graphite_sends, config).run(),
+                cernan::source::Graphite::new(graphite_sends, tags, config.into()).run(),
             );
         }
     });
@@ -661,9 +665,10 @@ fn main() {
             );
 
             let avro_sends = adjacency_matrix.pop_metadata(&config_path);
+            let tags = std::sync::Arc::new(config.tags.clone());
             sources.insert(
                 config_path.clone(),
-                cernan::source::Avro::new(avro_sends, config).run(),
+                cernan::source::Avro::new(avro_sends, tags, config).run(),
             );
         }
     });
@@ -680,9 +685,10 @@ fn main() {
             );
 
             let fp_sends = adjacency_matrix.pop_metadata(&config_path);
+            let tags = std::sync::Arc::new(config.tags.clone());
             sources.insert(
                 cfg_conf!(config).clone(),
-                cernan::source::FileServer::new(fp_sends, config).run(),
+                cernan::source::FileServer::new(fp_sends, tags, config).run(),
             );
         }
     });
@@ -707,7 +713,8 @@ fn main() {
 
     drop(flush_sends);
     drop(senders);
-    cernan::source::FlushTimer::new(flush_channels, cernan::source::FlushTimerConfig)
+    let flush_tags = std::sync::Arc::new(cernan::metric::TagMap::default());
+    cernan::source::FlushTimer::new(flush_channels, flush_tags, cernan::source::FlushTimerConfig)
         .run();
 
     cernan::thread::spawn(move |_poll| {
