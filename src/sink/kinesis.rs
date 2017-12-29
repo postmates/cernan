@@ -1,6 +1,7 @@
 //! Kinesis sink for Raw events.
 
 extern crate base64;
+extern crate rand;
 extern crate rusoto_core;
 extern crate rusoto_kinesis;
 
@@ -8,13 +9,12 @@ use rusoto_core::default_tls_client;
 use rusoto_core::DefaultCredentialsProvider;
 use rusoto_kinesis::Kinesis as RusotoKinesis;
 
-use rusoto_kinesis::{KinesisClient, PutRecordInput, PutRecordError};
+use rusoto_kinesis::{KinesisClient, PutRecordsRequestEntry, PutRecordsInput, PutRecordsOutput, PutRecordsError};
 
 use sink::Sink;
 use hyper;
 use metric;
 use metric::{LogLine, Telemetry};
-use std::ops::DerefMut;
 use std::sync;
 use util::Valve;
 
@@ -22,12 +22,14 @@ use util::Valve;
 #[derive(Clone, Debug, Deserialize)]
 pub struct KinesisConfig {
     stream_name: Option<String>,
+    flush_interval: Option<u64>,
 }
 
 impl Default for KinesisConfig {
     fn default() -> KinesisConfig {
         KinesisConfig {
             stream_name: None,
+            flush_interval: None
         }
     }
 }
@@ -36,7 +38,16 @@ impl Default for KinesisConfig {
 pub struct Kinesis {
     client: Box<KinesisClient<DefaultCredentialsProvider, hyper::client::Client>>,
 
+    flush_interval: u64,
+    max_records_per_batch: usize,
+    max_bytes_per_batch: usize,
+
+    /// Name of the stream we are publishing to.
     stream_name: String,
+    /// Number of bytes the current buffer represents.
+    buffer_size: usize,
+    /// Kinesis prepped event blobs.
+    buffer: Vec<PutRecordsRequestEntry>,
 }
 
 impl Sink<KinesisConfig> for Kinesis {
@@ -49,14 +60,24 @@ impl Sink<KinesisConfig> for Kinesis {
         let tls = default_tls_client().unwrap();
         let provider = DefaultCredentialsProvider::new().unwrap();
         let region = rusoto_core::region::default_region();
+        let flush_interval = if let Some(config_interval) = config.flush_interval { config_interval } else { 1 };
+        let max_records = 1000;
+        let max_bytes = 1 << 20; // 1MB
         Kinesis {
             client: Box::new(KinesisClient::new(tls, provider, region)),
             stream_name: config.stream_name.unwrap(),
+
+            /// Publication limits.  See - https://docs.aws.amazon.com/streams/latest/dev/service-sizes-and-limits.html
+            flush_interval: flush_interval,
+            buffer: Vec::with_capacity(max_records),
+            buffer_size: 0,
+            max_records_per_batch: max_records,
+            max_bytes_per_batch: max_bytes, //1 MB
         }
     }
 
     fn valve_state(&self) -> Valve {
-        // TODO - Something more clever.
+        // We never close up shop.
         Valve::Open
     }
 
@@ -68,44 +89,87 @@ impl Sink<KinesisConfig> for Kinesis {
         // Discard line
     }
 
+    /// Encodes and records the given event into the internal buffer.
+    ///
+    /// If the given record would put the buffer at capacity, then the contents
+    /// are first flushed before the given record is added.
     fn deliver_raw(&mut self, _encoding: metric::Encoding, bytes: Vec<u8>) {
-        //  Try to publish to Kinesis
-        let client = self.client.deref_mut();
-        let input = PutRecordInput {
-            stream_name: self.stream_name.clone(),
+        let buffer_too_big = self.buffer_size + bytes.len() > self.max_bytes_per_batch;
+        let buffer_too_long = self.buffer.len() > self.max_records_per_batch;;
+        if buffer_too_big || buffer_too_long {
+            self.flush();
+        }
+
+        // TODO (Feature) - Allow users to specify their partition key.
+        let default_partition_key = (0..64).map(|_| rand::random::<char>()).collect();
+        let entry = PutRecordsRequestEntry {
             data: base64::encode(&bytes).into_bytes(),
             explicit_hash_key: None,
-            partition_key: String::from("foobar"),
-            sequence_number_for_ordering: None,
+            partition_key: default_partition_key,
         };
+        self.buffer.push(entry);
+    }
 
-        loop {
-            match client.put_record(&input) {
-                Ok(_output) => {
-                    // Nothing to see here.  All is well.
+    fn flush(&mut self) {
+        self.publish_buffer();
+    }
+
+    fn flush_interval(&self) -> Option<u64> {
+        Some(self.flush_interval)
+    }
+
+    fn shutdown(mut self) -> () {
+        self.flush();
+    }
+}
+
+impl Kinesis {
+
+    /// Syn. publishes the entire contents of the buffer.
+    ///
+    /// Records which fail to publish are reattempted indefinitely.
+    pub fn publish_buffer(&mut self) {
+        self.buffer_size = 0;
+        let mut buffer : Vec<PutRecordsRequestEntry> = self.buffer.drain(..).collect();
+
+        while buffer.len() > 0 {
+            let put_records_input = PutRecordsInput {
+                records: self.buffer.clone(),
+                stream_name: self.stream_name.clone(),
+            };
+
+            match self.client.put_records(&put_records_input) {
+                Ok(put_records_output) => {
+                    self.filter_successful(&mut buffer, put_records_output);
                     break;
                 }
 
-                Err(PutRecordError::ProvisionedThroughputExceeded(_)) => {
-                    info!("Provisioned throughput exceeded on {:?}.  Retrying...", self.stream_name)
+                Err(PutRecordsError::ProvisionedThroughputExceeded(_)) => {
+                    info!("Provisioned throughput exceeded on {:?}.  Retrying...", self.stream_name);
                 }
 
                 Err(err) => {
-                    panic!("Fatal exception during put_record: {:?}", err);
+                    panic!("Fatal exception during put_records: {:?}", err);
                 }
             }
         }
     }
 
-    fn flush(&mut self) {
-        // We don't care about flushes.
-    }
+    /// Filters record request entries from the source buffer if they have been successfully
+    /// published.
+    pub fn filter_successful(&self, buffer: &mut Vec<PutRecordsRequestEntry>, put_records_output: PutRecordsOutput) {
+        if put_records_output.failed_record_count.is_none() {
+            buffer.clear();
+            return;
+        }
 
-    fn flush_interval(&self) -> Option<u64> {
-        Some(1)
-    }
-
-    fn shutdown(self) -> () {
-        // Nothing to do as we don't batch internally.
+        for (idx, record_result) in put_records_output.records.iter().enumerate().rev() {
+            if record_result.sequence_number.is_some() {
+                buffer.remove(idx);
+            } else {
+                // Something went wrong
+                trace!("Record failed to publish: {:?} - {:?}", record_result.error_code.clone().unwrap(), record_result.error_message.clone().unwrap())
+            }
+        }
     }
 }
