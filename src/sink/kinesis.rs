@@ -94,12 +94,15 @@ impl Sink<KinesisConfig> for Kinesis {
     /// If the given record would put the buffer at capacity, then the contents
     /// are first flushed before the given record is added.
     fn deliver_raw(&mut self, _encoding: metric::Encoding, bytes: Vec<u8>) {
-        let record_too_big = bytes.len() > self.max_bytes_per_batch;
+        let encoded_bytes = base64::encode(&bytes).into_bytes();
+        let encoded_bytes_len = encoded_bytes.len();
+        let record_too_big = encoded_bytes_len > self.max_bytes_per_batch;
         if record_too_big {
-            warn!("Discarding record with size {:?} as it is too large to publish!", bytes.len());
+            warn!("Discarding encoded record with size {:?} as it is too large to publish!", encoded_bytes_len);
+            return;
         }
 
-        let buffer_too_big = self.buffer_size + bytes.len() > self.max_bytes_per_batch;
+        let buffer_too_big = self.buffer_size + encoded_bytes_len > self.max_bytes_per_batch;
         let buffer_too_long = self.buffer.len() > self.max_records_per_batch;;
         if buffer_too_big || buffer_too_long {
             self.flush();
@@ -108,11 +111,12 @@ impl Sink<KinesisConfig> for Kinesis {
         // TODO (Feature) - Allow users to specify their partition key.
         let default_partition_key = (0..64).map(|_| rand::random::<char>()).collect();
         let entry = PutRecordsRequestEntry {
-            data: base64::encode(&bytes).into_bytes(),
+            data: encoded_bytes,
             explicit_hash_key: None,
             partition_key: default_partition_key,
         };
         self.buffer.push(entry);
+        self.buffer_size += encoded_bytes_len;
     }
 
     fn flush(&mut self) {
