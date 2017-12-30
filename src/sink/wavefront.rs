@@ -986,7 +986,7 @@ mod test {
             pad_control: pad_control,
             age_threshold: None,
         };
-        let mut wavefront = Wavefront::new(config).unwrap();
+        let mut wavefront = Wavefront::init(config);
         let dt_0 = Utc.ymd(1990, 6, 12)
             .and_hms_milli(9, 10, 11, 00)
             .timestamp();
