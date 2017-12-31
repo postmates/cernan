@@ -21,15 +21,23 @@ use util::Valve;
 /// Config options for Kinesis config.
 #[derive(Clone, Debug, Deserialize)]
 pub struct KinesisConfig {
-    stream_name: Option<String>,
-    flush_interval: Option<u64>,
+    /// Canonical name for the given Kinesis sink.
+    pub config_path: Option<String>,
+    /// Region `stream_name` exists in.
+    pub region: rusoto_core::Region,
+    /// Kinesis stream identifier to publish to.
+    pub stream_name: Option<String>,
+    /// How often (seconds) the local buffer is published.  Default = 1 second.
+    pub flush_interval: u64,
 }
 
 impl Default for KinesisConfig {
     fn default() -> KinesisConfig {
         KinesisConfig {
+            config_path: None,
+            region: rusoto_core::region::default_region(),
             stream_name: None,
-            flush_interval: None
+            flush_interval: 1,
         }
     }
 }
@@ -59,8 +67,8 @@ impl Sink<KinesisConfig> for Kinesis {
 
         let tls = default_tls_client().unwrap();
         let provider = DefaultCredentialsProvider::new().unwrap();
-        let region = rusoto_core::region::default_region();
-        let flush_interval = if let Some(config_interval) = config.flush_interval { config_interval } else { 1 };
+        let region = config.region;
+        let flush_interval = config.flush_interval;
         let max_records = 1000;
         let max_bytes = 1 << 20; // 1MB
         Kinesis {

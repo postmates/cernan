@@ -228,6 +228,19 @@ fn main() {
             config_topology.insert(config_path.clone(), Default::default());
         }
     }
+    if let Some(ref configs) = args.kinesises {
+        for config in configs {
+            let config_path = cfg_conf!(config);
+            let (send, recv) = hopper::channel_with_max_bytes(
+                &config_path,
+                &args.data_directory,
+                args.max_hopper_queue_bytes,
+            ).unwrap();
+            senders.insert(config_path.clone(), send);
+            receivers.insert(config_path.clone(), recv);
+            config_topology.insert(config_path.clone(), Default::default());
+        }
+    }
     // FILTERS
     if let Some(ref configs) = args.programmable_filters {
         for (config_path, config) in configs {
@@ -439,6 +452,19 @@ fn main() {
             sinks.insert(
                 config.config_path.clone().unwrap(),
                 cernan::sink::Firehose::new(recv, sources, config).run()
+            );
+        }
+    }
+    if let Some(cfgs) = mem::replace(&mut args.kinesises, None) {
+        for config in cfgs {
+            let recv = receivers
+                .remove(&config.config_path.clone().unwrap())
+                .unwrap();
+            let sources =
+                adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
+            sinks.insert(
+                config.config_path.clone().unwrap(),
+                cernan::sink::Kinesis::new(recv, sources, config).run()
             );
         }
     }
