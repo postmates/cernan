@@ -33,7 +33,11 @@ pub use self::prometheus::{Prometheus, PrometheusConfig};
 pub use self::wavefront::{Wavefront, WavefrontConfig};
 
 
-/// Wrapper around a given sink implementation and its config.
+/// Generic interface used to capture global sink configuration
+/// parameters as well as sink specific parameters.
+///
+/// Stored configuration is consumed when the sink is spawned,
+/// resulting in a new thread executing the given sink.
 pub struct RunnableSink<S, SConfig>
     where
         S: Send + Sink<SConfig>,
