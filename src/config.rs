@@ -736,15 +736,15 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     res.config_path = Some(format!("sinks.kinesis.{}", name));
 
                     let stream_name = tbl.get("stream_name").map(|x| {
-                        x.as_str().expect("stream_name must be a string")
+                        x.as_str().expect("stream_name must be a string").to_string()
                     });
 
                     if stream_name.is_none() {
+                        warn!("kinesis sink {:?} skipped as it does not provide a stream_name!", res.config_path);
                         continue;
                     };
 
-                    res.stream_name = stream_name.map(|s| s.to_string());
-
+                    res.stream_name = stream_name;
                     res.flush_interval = tbl.get("flush_interval")
                         .map(|fi| {
                             fi.as_integer().expect(
@@ -1199,6 +1199,40 @@ scripts-directory = "/foo/bar"
         assert_eq!(es.secure, true);
         assert_eq!(es.flush_interval, 2020);
         assert_eq!(es.delivery_attempt_limit, 33);
+    }
+
+    #[test]
+    fn config_kinesis_sink() {
+        let config = r#"
+[sinks]
+  [sinks.kinesis]
+  stream_name = "foobar"
+  region = "us-west-2"
+  flush_interval = 100
+"#;
+
+        let args = parse_config_file(config, 4);
+
+        assert!(args.kinesises.is_some());
+        for ks in args.kinesises.unwrap() {
+            assert_eq!(ks.stream_name, Some(String::from("foobar")));
+            assert_eq!(ks.region, Region::UsWest2);
+            assert_eq!(ks.flush_interval, 100);
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn config_kinesis_skip_when_stream_name_is_absent() {
+        let config = r#"
+[sinks]
+  [sinks.kinesis]
+  region = "us-west-2"
+  flush_interval = 100
+"#;
+
+        let args = parse_config_file(config, 4);
+        assert!(args.kinesises.is_none());
     }
 
     #[test]
