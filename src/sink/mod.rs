@@ -32,16 +32,15 @@ pub use self::null::{Null, NullConfig};
 pub use self::prometheus::{Prometheus, PrometheusConfig};
 pub use self::wavefront::{Wavefront, WavefrontConfig};
 
-
 /// Generic interface used to capture global sink configuration
 /// parameters as well as sink specific parameters.
 ///
 /// Stored configuration is consumed when the sink is spawned,
 /// resulting in a new thread executing the given sink.
 pub struct RunnableSink<S, SConfig>
-    where
-        S: Send + Sink<SConfig>,
-        SConfig: 'static + Send + Clone,
+where
+    S: Send + Sink<SConfig>,
+    SConfig: 'static + Send + Clone,
 {
     recv: hopper::Receiver<Event>,
     sources: Vec<String>,
@@ -52,12 +51,18 @@ pub struct RunnableSink<S, SConfig>
     config: PhantomData<SConfig>,
 }
 
-impl <S, SConfig> RunnableSink <S, SConfig> where S: 'static + Send + Sink<SConfig>, SConfig: 'static + Clone + Send
+impl<S, SConfig> RunnableSink<S, SConfig>
+where
+    S: 'static + Send + Sink<SConfig>,
+    SConfig: 'static + Clone + Send,
 {
-
-    /// Generic constructor for RunnableSink - execution wrapper around objects implementing Sink.
-    pub fn new (recv: hopper::Receiver<Event>, sources: Vec<String>, config: SConfig) -> RunnableSink<S, SConfig>
-    {
+    /// Generic constructor for RunnableSink - execution wrapper around objects
+    /// implementing Sink.
+    pub fn new(
+        recv: hopper::Receiver<Event>,
+        sources: Vec<String>,
+        config: SConfig,
+    ) -> RunnableSink<S, SConfig> {
         RunnableSink {
             recv: recv,
             sources: sources,
@@ -66,13 +71,12 @@ impl <S, SConfig> RunnableSink <S, SConfig> where S: 'static + Send + Sink<SConf
         }
     }
 
-    /// Spawns / consumes the given stateful sink, returning the corresponding thread.
+    /// Spawns / consumes the given stateful sink, returning the corresponding
+    /// thread.
     pub fn run(self) -> thread::ThreadHandle {
-        thread::spawn(
-            move |_poll| {
-                self.consume();
-            }
-        )
+        thread::spawn(move |_poll| {
+            self.consume();
+        })
     }
 
     fn consume(mut self) -> () //recv: hopper::Receiver<Event>, sources: Vec<String>, mut state: S) -> ()
@@ -128,7 +132,9 @@ impl <S, SConfig> RunnableSink <S, SConfig> where S: 'static + Send + Sink<SConf
                                 // every timer pulse we query the flush_interval
                                 // of the sink. If the interval and the idx
                                 // match up, we flush. Else, not.
-                                if let Some(flush_interval) = self.state.flush_interval() {
+                                if let Some(flush_interval) =
+                                    self.state.flush_interval()
+                                {
                                     if idx % flush_interval == 0 {
                                         self.state.flush();
                                     }
@@ -145,7 +151,7 @@ impl <S, SConfig> RunnableSink <S, SConfig> where S: 'static + Send + Sink<SConf
                             self.state.deliver_line(line);
                             break;
                         }
-                        Event::Raw{ encoding, bytes } => {
+                        Event::Raw { encoding, bytes } => {
                             self.state.deliver_raw(encoding, bytes);
                             break;
                         }
@@ -179,14 +185,16 @@ impl <S, SConfig> RunnableSink <S, SConfig> where S: 'static + Send + Sink<SConf
 
 /// A 'sink' is a sink for metrics.
 pub trait Sink<SConfig>
-    where
-        Self: 'static + Send + Sized,
-        SConfig: 'static + Send + Clone
+where
+    Self: 'static + Send + Sized,
+    SConfig: 'static + Send + Clone,
 {
-
     /// Generic constructor for sinks implementing this trait.
-    fn new(recv: hopper::Receiver<Event>, sources: Vec<String>, config: SConfig) -> RunnableSink<Self, SConfig>
-    {
+    fn new(
+        recv: hopper::Receiver<Event>,
+        sources: Vec<String>,
+        config: SConfig,
+    ) -> RunnableSink<Self, SConfig> {
         RunnableSink::<Self, SConfig>::new(recv, sources, config)
     }
 

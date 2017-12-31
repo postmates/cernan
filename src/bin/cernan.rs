@@ -379,7 +379,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path);
         sinks.insert(
             config.config_path.clone(),
-            cernan::sink::Null::new(recv, sources, config).run()
+            cernan::sink::Null::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.console, None) {
@@ -389,7 +389,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::sink::Console::new(recv, sources, config).run()
+            cernan::sink::Console::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.wavefront, None) {
@@ -399,7 +399,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::sink::Wavefront::new(recv, sources, config).run()
+            cernan::sink::Wavefront::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.prometheus, None) {
@@ -409,7 +409,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::sink::Prometheus::new(recv, sources, config).run()
+            cernan::sink::Prometheus::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.influxdb, None) {
@@ -419,7 +419,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::sink::InfluxDB::new(recv, sources, config).run()
+            cernan::sink::InfluxDB::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.native_sink_config, None) {
@@ -429,7 +429,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::sink::Native::new(recv, sources, config).run()
+            cernan::sink::Native::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.elasticsearch, None) {
@@ -439,7 +439,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::sink::Elasticsearch::new(recv, sources, config).run()
+            cernan::sink::Elasticsearch::new(recv, sources, config).run(),
         );
     }
     if let Some(cfgs) = mem::replace(&mut args.firehosen, None) {
@@ -451,7 +451,7 @@ fn main() {
                 adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
             sinks.insert(
                 config.config_path.clone().unwrap(),
-                cernan::sink::Firehose::new(recv, sources, config).run()
+                cernan::sink::Firehose::new(recv, sources, config).run(),
             );
         }
     }
@@ -464,7 +464,7 @@ fn main() {
                 adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
             sinks.insert(
                 config.config_path.clone().unwrap(),
-                cernan::sink::Kinesis::new(recv, sources, config).run()
+                cernan::sink::Kinesis::new(recv, sources, config).run(),
             );
         }
     }

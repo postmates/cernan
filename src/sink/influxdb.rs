@@ -103,7 +103,6 @@ where
 }
 
 impl InfluxDB {
-
     /// Convert the slice into a payload that can be sent to InfluxDB
     fn format_stats(&self, buffer: &mut String, telems: &[Telemetry]) -> () {
         use metric::AggregationMethod;
@@ -195,7 +194,6 @@ impl InfluxDB {
 }
 
 impl Sink<InfluxDBConfig> for InfluxDB {
-
     fn init(config: InfluxDBConfig) -> Self {
         let scheme = if config.secure { "https" } else { "http" };
         let uri = Url::parse(&format!(

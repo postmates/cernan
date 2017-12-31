@@ -380,7 +380,6 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
 }
 
 impl Wavefront {
-
     /// Convert the buckets into a String that
     /// can be sent to the the wavefront proxy
     pub fn format_stats(&mut self) -> () {
@@ -566,7 +565,6 @@ impl Wavefront {
 }
 
 impl Sink<WavefrontConfig> for Wavefront {
-
     fn init(config: WavefrontConfig) -> Self {
         if config.host == "" {
             panic!("Host can not be empty".to_string());

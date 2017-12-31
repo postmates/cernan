@@ -5,16 +5,15 @@ extern crate rand;
 extern crate rusoto_core;
 extern crate rusoto_kinesis;
 
-use rusoto_core::default_tls_client;
-use rusoto_core::DefaultCredentialsProvider;
-use rusoto_kinesis::Kinesis as RusotoKinesis;
-
-use rusoto_kinesis::{KinesisClient, PutRecordsRequestEntry, PutRecordsInput, PutRecordsOutput, PutRecordsError};
-
-use sink::Sink;
 use hyper;
 use metric;
 use metric::{LogLine, Telemetry};
+use rusoto_core::DefaultCredentialsProvider;
+use rusoto_core::default_tls_client;
+use rusoto_kinesis::{KinesisClient, PutRecordsError, PutRecordsInput,
+                     PutRecordsOutput, PutRecordsRequestEntry};
+use rusoto_kinesis::Kinesis as RusotoKinesis;
+use sink::Sink;
 use std::sync;
 use util::Valve;
 
@@ -59,7 +58,6 @@ pub struct Kinesis {
 }
 
 impl Sink<KinesisConfig> for Kinesis {
-
     fn init(config: KinesisConfig) -> Self {
         if config.stream_name.is_none() {
             panic!("No Kinesis stream provided!");
@@ -80,7 +78,7 @@ impl Sink<KinesisConfig> for Kinesis {
             buffer: Vec::with_capacity(max_records),
             buffer_size: 0,
             max_records_per_batch: max_records,
-            max_bytes_per_batch: max_bytes, //1 MB
+            max_bytes_per_batch: max_bytes, // 1 MB
         }
     }
 
@@ -110,8 +108,9 @@ impl Sink<KinesisConfig> for Kinesis {
             return;
         }
 
-        let buffer_too_big = self.buffer_size + encoded_bytes_len > self.max_bytes_per_batch;
-        let buffer_too_long = self.buffer.len() > self.max_records_per_batch;;
+        let buffer_too_big =
+            self.buffer_size + encoded_bytes_len > self.max_bytes_per_batch;
+        let buffer_too_long = self.buffer.len() > self.max_records_per_batch;
         if buffer_too_big || buffer_too_long {
             self.flush();
         }
@@ -141,13 +140,12 @@ impl Sink<KinesisConfig> for Kinesis {
 }
 
 impl Kinesis {
-
     /// Syn. publishes the entire contents of the buffer.
     ///
     /// Records which fail to publish are reattempted indefinitely.
     pub fn publish_buffer(&mut self) {
         self.buffer_size = 0;
-        let mut buffer : Vec<PutRecordsRequestEntry> = self.buffer.drain(..).collect();
+        let mut buffer: Vec<PutRecordsRequestEntry> = self.buffer.drain(..).collect();
 
         while buffer.len() > 0 {
             let put_records_input = PutRecordsInput {
@@ -162,7 +160,10 @@ impl Kinesis {
                 }
 
                 Err(PutRecordsError::ProvisionedThroughputExceeded(_)) => {
-                    info!("Provisioned throughput exceeded on {:?}.  Retrying...", self.stream_name);
+                    info!(
+                        "Provisioned throughput exceeded on {:?}.  Retrying...",
+                        self.stream_name
+                    );
                 }
 
                 Err(err) => {
@@ -172,20 +173,29 @@ impl Kinesis {
         }
     }
 
-    /// Filters record request entries from the source buffer if they have been successfully
-    /// published.
-    pub fn filter_successful(&self, buffer: &mut Vec<PutRecordsRequestEntry>, put_records_output: PutRecordsOutput) {
+    /// Filters record request entries from the source buffer if they have been
+    /// successfully published.
+    pub fn filter_successful(
+        &self,
+        buffer: &mut Vec<PutRecordsRequestEntry>,
+        put_records_output: PutRecordsOutput,
+    ) {
         if put_records_output.failed_record_count.is_none() {
             buffer.clear();
             return;
         }
 
-        for (idx, record_result) in put_records_output.records.iter().enumerate().rev() {
+        for (idx, record_result) in put_records_output.records.iter().enumerate().rev()
+        {
             if record_result.sequence_number.is_some() {
                 buffer.remove(idx);
             } else {
                 // Something went wrong
-                trace!("Record failed to publish: {:?} - {:?}", record_result.error_code.clone().unwrap(), record_result.error_message.clone().unwrap())
+                trace!(
+                    "Record failed to publish: {:?} - {:?}",
+                    record_result.error_code.clone().unwrap(),
+                    record_result.error_message.clone().unwrap()
+                )
             }
         }
     }

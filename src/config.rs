@@ -8,10 +8,10 @@ use metric::TagMap;
 use rusoto_core::Region;
 use std::collections::HashMap;
 use std::env;
-use std::str::FromStr;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use toml;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
@@ -724,7 +724,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             firehosen
         });
 
-    args.kinesises = sinks.get("kinesis").map(|snk| {
+        args.kinesises = sinks.get("kinesis").map(|snk| {
             let mut kinesises = Vec::new();
             for (name, tbl) in snk.as_table().unwrap().iter() {
                 let is_enabled = tbl.get("enabled")
@@ -736,7 +736,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     res.config_path = Some(format!("sinks.kinesis.{}", name));
 
                     let stream_name = tbl.get("stream_name").map(|x| {
-                        x.as_str().expect("stream_name must be a string").to_string()
+                        x.as_str()
+                            .expect("stream_name must be a string")
+                            .to_string()
                     });
 
                     if stream_name.is_none() {
@@ -753,9 +755,11 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         })
                         .unwrap_or(args.flush_interval);
 
-                    let region_str = tbl.get("region").map(|x| x.as_str().expect("region must be a string"));
+                    let region_str = tbl.get("region")
+                        .map(|x| x.as_str().expect("region must be a string"));
                     if region_str.is_some() {
-                        res.region = Region::from_str(region_str.unwrap()).expect("Invalid region identifier")
+                        res.region = Region::from_str(region_str.unwrap())
+                            .expect("Invalid region identifier")
                     }
 
                     kinesises.push(res);
@@ -763,7 +767,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             }
             kinesises
         });
-
     }
 
     // sources

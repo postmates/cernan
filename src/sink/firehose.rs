@@ -61,7 +61,6 @@ pub struct Firehose {
 }
 
 impl Sink<FirehoseConfig> for Firehose {
-
     fn init(config: FirehoseConfig) -> Self {
         Firehose {
             buffer: Vec::new(),

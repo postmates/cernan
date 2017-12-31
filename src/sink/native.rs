@@ -83,7 +83,6 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
 }
 
 impl Sink<NativeConfig> for Native {
-
     fn init(config: NativeConfig) -> Self {
         let stream = connect(&config.host, config.port);
         Native {

@@ -27,7 +27,6 @@ impl NullConfig {
 }
 
 impl Sink<NullConfig> for Null {
-
     fn init(_config: NullConfig) -> Self {
         Null {}
     }
