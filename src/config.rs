@@ -8,6 +8,7 @@ use metric::TagMap;
 use rusoto_core::Region;
 use std::collections::HashMap;
 use std::env;
+use std::str::FromStr;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -22,6 +23,7 @@ use sink::ConsoleConfig;
 use sink::ElasticsearchConfig;
 use sink::FirehoseConfig;
 use sink::InfluxDBConfig;
+use sink::KinesisConfig;
 use sink::NativeConfig;
 use sink::NullConfig;
 use sink::PrometheusConfig;
@@ -99,6 +101,8 @@ pub struct Args {
     pub elasticsearch: Option<ElasticsearchConfig>,
     /// See `sinks::Firehose` for more.
     pub firehosen: Option<Vec<FirehoseConfig>>,
+    /// See `sinks::Kinesis` for more.
+    pub kinesises: Option<Vec<KinesisConfig>>,
     /// See `sources::FileServer` for more.
     pub files: Option<Vec<FileServerConfig>>,
     /// See `sources::Internal` for more.
@@ -135,6 +139,7 @@ impl Default for Args {
             native_sink_config: None,
             elasticsearch: None,
             firehosen: None,
+            kinesises: None,
             // sources
             statsds: None,
             graphites: None,
@@ -718,6 +723,47 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             }
             firehosen
         });
+
+    args.kinesises = sinks.get("kinesis").map(|snk| {
+            let mut kinesises = Vec::new();
+            for (name, tbl) in snk.as_table().unwrap().iter() {
+                let is_enabled = tbl.get("enabled")
+                    .unwrap_or(&toml::Value::Boolean(true))
+                    .as_bool()
+                    .expect("must be a bool");
+                if is_enabled {
+                    let mut res = KinesisConfig::default();
+                    res.config_path = Some(format!("sinks.kinesis.{}", name));
+
+                    let stream_name = tbl.get("stream_name").map(|x| {
+                        x.as_str().expect("stream_name must be a string")
+                    });
+
+                    if stream_name.is_none() {
+                        continue;
+                    };
+
+                    res.stream_name = stream_name.map(|s| s.to_string());
+
+                    res.flush_interval = tbl.get("flush_interval")
+                        .map(|fi| {
+                            fi.as_integer().expect(
+                                "could not parse sinks.firehose.flush_interval",
+                            ) as u64
+                        })
+                        .unwrap_or(args.flush_interval);
+
+                    let region_str = tbl.get("region").map(|x| x.as_str().expect("region must be a string"));
+                    if region_str.is_some() {
+                        res.region = Region::from_str(region_str.unwrap()).expect("Invalid region identifier")
+                    }
+
+                    kinesises.push(res);
+                }
+            }
+            kinesises
+        });
+
     }
 
     // sources
