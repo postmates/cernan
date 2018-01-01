@@ -14,8 +14,18 @@ use rusoto_kinesis::{KinesisClient, PutRecordsError, PutRecordsInput,
                      PutRecordsOutput, PutRecordsRequestEntry};
 use rusoto_kinesis::Kinesis as RusotoKinesis;
 use sink::Sink;
-use std::sync;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use util::Valve;
+
+lazy_static! {
+    /// Total records emitted.
+    pub static ref KINESIS_PUBLISH_SUCCESS_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total retryable publication errors.
+    pub static ref KINESIS_PUBLISH_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total fatal publication errors.
+    pub static ref KINESIS_PUBLISH_FATAL_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+}
 
 /// Config options for Kinesis config.
 #[derive(Clone, Debug, Deserialize)]
@@ -87,11 +97,11 @@ impl Sink<KinesisConfig> for Kinesis {
         Valve::Open
     }
 
-    fn deliver(&mut self, _: sync::Arc<Option<Telemetry>>) -> () {
+    fn deliver(&mut self, _: Arc<Option<Telemetry>>) -> () {
         // Discard point
     }
 
-    fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
+    fn deliver_line(&mut self, _: Arc<Option<LogLine>>) -> () {
         // Discard line
     }
 
@@ -167,6 +177,7 @@ impl Kinesis {
                 }
 
                 Err(err) => {
+                    KINESIS_PUBLISH_FATAL_SUM.fetch_add(1, Ordering::Relaxed);
                     panic!("Fatal exception during put_records: {:?}", err);
                 }
             }
@@ -189,13 +200,15 @@ impl Kinesis {
         {
             if record_result.sequence_number.is_some() {
                 buffer.remove(idx);
+                KINESIS_PUBLISH_SUCCESS_SUM.fetch_add(1, Ordering::Relaxed);
             } else {
                 // Something went wrong
                 trace!(
                     "Record failed to publish: {:?} - {:?}",
                     record_result.error_code.clone().unwrap(),
                     record_result.error_message.clone().unwrap()
-                )
+                );
+                KINESIS_PUBLISH_FAILURE_SUM.fetch_add(1, Ordering::Relaxed);
             }
         }
     }
