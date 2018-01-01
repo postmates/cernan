@@ -12,11 +12,11 @@ use thread;
 use time;
 use util::Valve;
 
-pub mod console;
-pub mod firehose;
-pub mod null;
+mod console;
+mod firehose;
+mod null;
 pub mod wavefront;
-pub mod native;
+mod native;
 pub mod influxdb;
 pub mod prometheus;
 pub mod elasticsearch;
