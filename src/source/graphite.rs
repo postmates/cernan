@@ -84,7 +84,7 @@ impl TCPStreamHandler for GraphiteStreamHandler {
                     match event.token() {
                         constants::SYSTEM => return,
                         _stream_token => {
-                            if let Ok(len) = line_reader.read_line(&mut line) {
+                            while let Ok(len) = line_reader.read_line(&mut line) {
                                 if len > 0 {
                                     if parse_graphite(&line, &mut res, &basic_metric) {
                                         assert!(!res.is_empty());
