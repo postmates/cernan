@@ -1,3 +1,5 @@
+//! Console Event logger.
+
 use buckets::Buckets;
 use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
@@ -15,31 +17,10 @@ pub struct Console {
     flush_interval: u64,
 }
 
-impl Console {
-    /// Create a new Console
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::sink::{Console, ConsoleConfig};
-    /// let config = ConsoleConfig { config_path:
-    /// Some("sinks.console".to_string()),
-    /// bin_width: 2, flush_interval: 60 };
-    /// let c = Console::new(&config);
-    /// ```
-    pub fn new(config: &ConsoleConfig) -> Console {
-        Console {
-            aggrs: Buckets::new(config.bin_width),
-            buffer: Vec::new(),
-            flush_interval: config.flush_interval,
-        }
-    }
-}
-
 /// The configuration struct for Console. There's not a whole lot to configure
 /// here, independent of other sinks, but Console does do aggregations and that
 /// requires knowing what the user wants for `bin_width`.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct ConsoleConfig {
     /// The sink's unique name in the routing topology.
     pub config_path: Option<String>,
@@ -80,7 +61,15 @@ impl ConsoleConfig {
     }
 }
 
-impl Sink for Console {
+impl Sink<ConsoleConfig> for Console {
+    fn init(config: ConsoleConfig) -> Self {
+        Console {
+            aggrs: Buckets::new(config.bin_width),
+            buffer: Vec::new(),
+            flush_interval: config.flush_interval,
+        }
+    }
+
     fn valve_state(&self) -> Valve {
         Valve::Open
     }

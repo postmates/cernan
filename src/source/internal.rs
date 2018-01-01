@@ -375,6 +375,25 @@ impl source::Source<InternalConfig> for Internal {
                             tags,
                             chans
                         );
+                        // sink::kinesis
+                        atom_non_zero_telem!(
+                            "cernan.sinks.kinesis.publish.success",
+                            sink::kinesis::KINESIS_PUBLISH_SUCCESS_SUM,
+                            tags,
+                            chans
+                        );
+                        atom_non_zero_telem!(
+                            "cernan.sinks.kinesis.publish.failure",
+                            sink::kinesis::KINESIS_PUBLISH_FAILURE_SUM,
+                            tags,
+                            chans
+                        );
+                        atom_non_zero_telem!(
+                            "cernan.sinks.kinesis.publish.fatal",
+                            sink::kinesis::KINESIS_PUBLISH_FATAL_SUM,
+                            tags,
+                            chans
+                        );
                         // filter::delay_filter
                         atom_non_zero_telem!(
                             "cernan.filters.delay.telemetry.accept",

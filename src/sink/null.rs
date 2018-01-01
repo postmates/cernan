@@ -1,3 +1,5 @@
+//! Sink equivalent of /dev/null.
+
 use metric::{LogLine, Telemetry};
 use sink::{Sink, Valve};
 use std::sync;
@@ -8,15 +10,8 @@ use std::sync;
 /// it receives will be deallocated.
 pub struct Null {}
 
-impl Null {
-    /// Create a new Null sink
-    pub fn new(_config: &NullConfig) -> Null {
-        Null {}
-    }
-}
-
 /// Configuration for the `Null` sink
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct NullConfig {
     /// The sink's unique name in the routing topology.
     pub config_path: String,
@@ -31,7 +26,11 @@ impl NullConfig {
     }
 }
 
-impl Sink for Null {
+impl Sink<NullConfig> for Null {
+    fn init(_config: NullConfig) -> Self {
+        Null {}
+    }
+
     fn valve_state(&self) -> Valve {
         Valve::Open
     }

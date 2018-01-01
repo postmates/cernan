@@ -6,7 +6,9 @@
 
 use hopper;
 use metric::{Encoding, Event, LogLine, Telemetry};
+use std::marker::PhantomData;
 use std::sync;
+use thread;
 use time;
 use util::Valve;
 
@@ -18,52 +20,69 @@ mod native;
 pub mod influxdb;
 pub mod prometheus;
 pub mod elasticsearch;
+pub mod kinesis;
 
 pub use self::console::{Console, ConsoleConfig};
 pub use self::elasticsearch::{Elasticsearch, ElasticsearchConfig};
 pub use self::firehose::{Firehose, FirehoseConfig};
 pub use self::influxdb::{InfluxDB, InfluxDBConfig};
+pub use self::kinesis::{Kinesis, KinesisConfig};
 pub use self::native::{Native, NativeConfig};
 pub use self::null::{Null, NullConfig};
 pub use self::prometheus::{Prometheus, PrometheusConfig};
 pub use self::wavefront::{Wavefront, WavefrontConfig};
 
-/// A 'sink' is a sink for metrics.
-pub trait Sink {
-    /// Lookup the `Sink`'s specific flush interval. This determines how often a
-    /// sink will obey the periodic flush pulse.
-    ///
-    /// If the value is `None` this is a signal that the sink will NEVER flush
-    /// EXCEPT in the case where the sink's valve_state is Closed.
-    fn flush_interval(&self) -> Option<u64>;
-    /// Perform the `Sink` specific flush. The rate at which this occurs is
-    /// determined by the global `flush_interval` or the sink specific flush
-    /// interval. Pulses occur at a rate of once per second, subject to
-    /// communication delays in the routing topology.
-    fn flush(&mut self) -> ();
-    /// Lookup the `Sink` valve state. See `Valve` documentation for more
-    /// information.
-    fn valve_state(&self) -> Valve;
-    /// Deliver a `Telemetry` to the `Sink`. Exact behaviour varies by
-    /// implementation.
-    fn deliver(&mut self, point: sync::Arc<Option<Telemetry>>) -> ();
-    /// Deliver a `LogLine` to the `Sink`. Exact behaviour varies by
-    /// implementation.
-    fn deliver_line(&mut self, line: sync::Arc<Option<LogLine>>) -> ();
-    /// Deliver a 'Raw' series of encoded bytes to the sink.
-    fn deliver_raw(&mut self, _encoding: Encoding, _bytes: Vec<u8>) -> () {
-        // Not all sinks accept raw events.  By default, we do nothing.
-        return;
+/// Generic interface used to capture global sink configuration
+/// parameters as well as sink specific parameters.
+///
+/// Stored configuration is consumed when the sink is spawned,
+/// resulting in a new thread executing the given sink.
+pub struct RunnableSink<S, SConfig>
+where
+    S: Send + Sink<SConfig>,
+    SConfig: 'static + Send + Clone,
+{
+    recv: hopper::Receiver<Event>,
+    sources: Vec<String>,
+    state: S,
+
+    // Yes, compiler, we know that we aren't storing
+    // anything of type SConfig.
+    config: PhantomData<SConfig>,
+}
+
+impl<S, SConfig> RunnableSink<S, SConfig>
+where
+    S: 'static + Send + Sink<SConfig>,
+    SConfig: 'static + Clone + Send,
+{
+    /// Generic constructor for RunnableSink - execution wrapper around objects
+    /// implementing Sink.
+    pub fn new(
+        recv: hopper::Receiver<Event>,
+        sources: Vec<String>,
+        config: SConfig,
+    ) -> RunnableSink<S, SConfig> {
+        RunnableSink {
+            recv: recv,
+            sources: sources,
+            state: S::init(config),
+            config: PhantomData,
+        }
     }
-    /// Provide a hook to shutdown a sink. This is necessary for sinks which
-    /// have their own long-running threads.
-    fn shutdown(self) -> ();
-    /// The run-loop of the `Sink`. It's expect that few sinks will ever need to
-    /// provide their own implementation. Please take care to obey `Valve`
-    /// states and `flush_interval` configurations.
-    fn run(&mut self, recv: hopper::Receiver<Event>, sources: Vec<String>) {
+
+    /// Spawns / consumes the given stateful sink, returning the corresponding
+    /// thread.
+    pub fn run(self) -> thread::ThreadHandle {
+        thread::spawn(move |_poll| {
+            self.consume();
+        })
+    }
+
+    fn consume(mut self) -> () //recv: hopper::Receiver<Event>, sources: Vec<String>, mut state: S) -> ()
+    {
         let mut attempts = 0;
-        let mut recv = recv.into_iter();
+        let mut recv = self.recv.into_iter();
         let mut last_flush_idx = 0;
         let mut total_shutdowns = 0;
         // The run-loop of a sink is two nested loops. The outer loop pulls a
@@ -94,7 +113,7 @@ pub trait Sink {
                 // then we flush. If the flush_interval is Some and DOES NOT
                 // match then we do not flush. If the flush_interval is NONE
                 // then we never flush.
-                match self.valve_state() {
+                match self.state.valve_state() {
                     Valve::Open => match event {
                         Event::TimerFlush(idx) => {
                             // Flush timers are interesting. The timer thread
@@ -113,9 +132,11 @@ pub trait Sink {
                                 // every timer pulse we query the flush_interval
                                 // of the sink. If the interval and the idx
                                 // match up, we flush. Else, not.
-                                if let Some(flush_interval) = self.flush_interval() {
+                                if let Some(flush_interval) =
+                                    self.state.flush_interval()
+                                {
                                     if idx % flush_interval == 0 {
-                                        self.flush();
+                                        self.state.flush();
                                     }
                                 }
                                 last_flush_idx = idx;
@@ -123,15 +144,15 @@ pub trait Sink {
                             break;
                         }
                         Event::Telemetry(metric) => {
-                            self.deliver(metric);
+                            self.state.deliver(metric);
                             break;
                         }
                         Event::Log(line) => {
-                            self.deliver_line(line);
+                            self.state.deliver_line(line);
                             break;
                         }
                         Event::Raw { encoding, bytes } => {
-                            self.deliver_raw(encoding, bytes);
+                            self.state.deliver_raw(encoding, bytes);
                             break;
                         }
                         Event::Shutdown => {
@@ -145,18 +166,67 @@ pub trait Sink {
                             // from each of its
                             // upstream sources/filters.
                             total_shutdowns += 1;
-                            if total_shutdowns >= sources.len() {
-                                trace!("Received shutdown from every configured source: {:?}", sources);
+                            if total_shutdowns >= self.sources.len() {
+                                trace!("Received shutdown from every configured source: {:?}", self.sources);
+                                self.state.shutdown();
                                 return;
                             }
                         }
                     },
                     Valve::Closed => {
-                        self.flush();
+                        self.state.flush();
                         continue;
                     }
                 }
             }
         }
     }
+}
+
+/// A 'sink' is a sink for metrics.
+pub trait Sink<SConfig>
+where
+    Self: 'static + Send + Sized,
+    SConfig: 'static + Send + Clone,
+{
+    /// Generic constructor for sinks implementing this trait.
+    fn new(
+        recv: hopper::Receiver<Event>,
+        sources: Vec<String>,
+        config: SConfig,
+    ) -> RunnableSink<Self, SConfig> {
+        RunnableSink::<Self, SConfig>::new(recv, sources, config)
+    }
+
+    /// Constructs a new sink.
+    fn init(config: SConfig) -> Self;
+
+    /// Lookup the `Sink`'s specific flush interval. This determines how often a
+    /// sink will obey the periodic flush pulse.
+    ///
+    /// If the value is `None` this is a signal that the sink will NEVER flush
+    /// EXCEPT in the case where the sink's valve_state is Closed.
+    fn flush_interval(&self) -> Option<u64>;
+    /// Perform the `Sink` specific flush. The rate at which this occurs is
+    /// determined by the global `flush_interval` or the sink specific flush
+    /// interval. Pulses occur at a rate of once per second, subject to
+    /// communication delays in the routing topology.
+    fn flush(&mut self) -> ();
+    /// Lookup the `Sink` valve state. See `Valve` documentation for more
+    /// information.
+    fn valve_state(&self) -> Valve;
+    /// Deliver a `Telemetry` to the `Sink`. Exact behaviour varies by
+    /// implementation.
+    fn deliver(&mut self, point: sync::Arc<Option<Telemetry>>) -> ();
+    /// Deliver a `LogLine` to the `Sink`. Exact behaviour varies by
+    /// implementation.
+    fn deliver_line(&mut self, line: sync::Arc<Option<LogLine>>) -> ();
+    /// Deliver a 'Raw' series of encoded bytes to the sink.
+    fn deliver_raw(&mut self, _encoding: Encoding, _bytes: Vec<u8>) -> () {
+        // Not all sinks accept raw events.  By default, we do nothing.
+        return;
+    }
+    /// Provide a hook to shutdown a sink. This is necessary for sinks which
+    /// have their own long-running threads.
+    fn shutdown(self) -> ();
 }
