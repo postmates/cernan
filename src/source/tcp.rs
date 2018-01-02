@@ -116,7 +116,7 @@ where
                 .unwrap();
         }
 
-        self.accept_loop(chans, tags, poller)
+        self.accept_loop(chans, tags, &poller)
     }
 }
 
@@ -128,7 +128,7 @@ where
         mut self,
         mut chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
-        poll: mio::Poll,
+        poll: &mio::Poll,
     ) -> () {
         loop {
             let mut events = mio::Events::with_capacity(1024);
@@ -138,7 +138,7 @@ where
                     for event in events {
                         match event.token() {
                             constants::SYSTEM => {
-                                for handler in self.handlers.into_iter() {
+                                for handler in self.handlers {
                                     handler.shutdown();
                                 }
 

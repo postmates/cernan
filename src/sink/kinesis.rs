@@ -160,7 +160,7 @@ impl Kinesis {
         self.buffer_size = 0;
         let mut buffer: Vec<PutRecordsRequestEntry> = self.buffer.drain(..).collect();
 
-        while buffer.len() > 0 {
+        while !buffer.is_empty() {
             let put_records_input = PutRecordsInput {
                 records: self.buffer.clone(),
                 stream_name: self.stream_name.clone(),
@@ -168,7 +168,7 @@ impl Kinesis {
 
             match self.client.put_records(&put_records_input) {
                 Ok(put_records_output) => {
-                    self.filter_successful(&mut buffer, put_records_output);
+                    self.filter_successful(&mut buffer, &put_records_output);
                     break;
                 }
 
@@ -192,7 +192,7 @@ impl Kinesis {
     pub fn filter_successful(
         &self,
         buffer: &mut Vec<PutRecordsRequestEntry>,
-        put_records_output: PutRecordsOutput,
+        put_records_output: &PutRecordsOutput,
     ) {
         if put_records_output.failed_record_count.is_none() {
             buffer.clear();

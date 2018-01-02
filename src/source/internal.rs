@@ -97,6 +97,7 @@ impl source::Source<InternalConfig> for Internal {
         Internal {}
     }
 
+    #[allow(cyclomatic_complexity)]
     fn run(
         self,
         mut chans: util::Channel,
@@ -427,7 +428,7 @@ impl source::Source<InternalConfig> for Internal {
                         );
                         while let Some(mut telem) = Q.pop() {
                             if !chans.is_empty() {
-                                telem = telem.overlay_tags_from_map(&tags);
+                                telem = telem.overlay_tags_from_map(tags);
                                 util::send(
                                     &mut chans,
                                     metric::Event::new_telemetry(telem),

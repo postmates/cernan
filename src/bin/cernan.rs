@@ -491,7 +491,7 @@ fn main() {
 
             let sources = adjacency_matrix.filter_nodes(
                 &config.config_path.clone().unwrap(),
-                |&(ref _k, ref option_v)| option_v.is_none(),
+                |&(_k, option_v)| option_v.is_none(),
             );
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
@@ -528,7 +528,7 @@ fn main() {
 
             let sources = adjacency_matrix.filter_nodes(
                 &config.config_path.clone().unwrap(),
-                |&(ref _k, ref option_v)| option_v.is_none(),
+                |&(_k, option_v)| option_v.is_none(),
             );
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
@@ -564,7 +564,7 @@ fn main() {
 
             let sources = adjacency_matrix.filter_nodes(
                 &config.config_path.clone().unwrap(),
-                |&(ref _k, ref option_v)| option_v.is_none(),
+                |&(_k, option_v)| option_v.is_none(),
             );
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
