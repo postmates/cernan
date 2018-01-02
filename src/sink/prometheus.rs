@@ -62,7 +62,7 @@ pub struct Prometheus {
 }
 
 /// The configuration for Prometheus sink
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct PrometheusConfig {
     /// The host to listen for prometheus. This will be used to bind an HTTP
     /// server to the given host. Host may be an IP address or a DNS hostname.
@@ -428,29 +428,6 @@ impl http::Handler for PrometheusHandler {
     }
 }
 
-impl Prometheus {
-    /// Create a new prometheus sink
-    ///
-    /// Please see documentation on `PrometheusConfig` for more details.
-    pub fn new(config: &PrometheusConfig) -> Self {
-        let aggrs = PrometheusAggr::new(config.capacity_in_seconds);
-        let thrd_aggrs = sync::Arc::new(sync::Mutex::new(None));
-        let srv_aggrs = sync::Arc::clone(&thrd_aggrs);
-
-        let host_port =
-            format!("{}:{}", config.host.as_str(), config.port.to_string());
-        Prometheus {
-            aggrs: aggrs,
-            thrd_aggr: thrd_aggrs,
-            age_threshold: config.age_threshold,
-            http_srv: http::Server::new(
-                host_port,
-                PrometheusHandler { aggr: srv_aggrs },
-            ),
-        }
-    }
-}
-
 #[allow(cyclomatic_complexity)]
 #[inline]
 fn fmt_tags<W>(tags: &TagMap, s: &mut GzEncoder<W>) -> ()
@@ -632,7 +609,25 @@ fn sanitize(name: &str) -> String {
     String::from_utf8(new_name).unwrap()
 }
 
-impl Sink for Prometheus {
+impl Sink<PrometheusConfig> for Prometheus {
+    fn init(config: PrometheusConfig) -> Self {
+        let aggrs = PrometheusAggr::new(config.capacity_in_seconds);
+        let thrd_aggrs = sync::Arc::new(sync::Mutex::new(None));
+        let srv_aggrs = sync::Arc::clone(&thrd_aggrs);
+
+        let host_port =
+            format!("{}:{}", config.host.as_str(), config.port.to_string());
+        Prometheus {
+            aggrs: aggrs,
+            thrd_aggr: thrd_aggrs,
+            age_threshold: config.age_threshold,
+            http_srv: http::Server::new(
+                host_port,
+                PrometheusHandler { aggr: srv_aggrs },
+            ),
+        }
+    }
+
     fn flush_interval(&self) -> Option<u64> {
         Some(1)
     }

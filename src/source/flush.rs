@@ -10,7 +10,7 @@ use util::send;
 /// The source of all flush pulses.
 pub struct FlushTimer;
 
-/// Nil config for FlushTimer.
+/// Nil config for `FlushTimer`.
 #[derive(Clone, Debug, Deserialize)]
 pub struct FlushTimerConfig;
 

@@ -97,6 +97,7 @@ impl source::Source<InternalConfig> for Internal {
         Internal {}
     }
 
+    #[allow(cyclomatic_complexity)]
     fn run(
         self,
         mut chans: util::Channel,
@@ -375,6 +376,31 @@ impl source::Source<InternalConfig> for Internal {
                             tags,
                             chans
                         );
+                        // sink::kinesis
+                        atom_non_zero_telem!(
+                            "cernan.sinks.kinesis.publish.success",
+                            sink::kinesis::KINESIS_PUBLISH_SUCCESS_SUM,
+                            tags,
+                            chans
+                        );
+                        atom_non_zero_telem!(
+                            "cernan.sinks.kinesis.publish.discard",
+                            sink::kinesis::KINESIS_PUBLISH_DISCARD_SUM,
+                            tags,
+                            chans
+                        );
+                        atom_non_zero_telem!(
+                            "cernan.sinks.kinesis.publish.failure",
+                            sink::kinesis::KINESIS_PUBLISH_FAILURE_SUM,
+                            tags,
+                            chans
+                        );
+                        atom_non_zero_telem!(
+                            "cernan.sinks.kinesis.publish.fatal",
+                            sink::kinesis::KINESIS_PUBLISH_FATAL_SUM,
+                            tags,
+                            chans
+                        );
                         // filter::delay_filter
                         atom_non_zero_telem!(
                             "cernan.filters.delay.telemetry.accept",
@@ -402,7 +428,7 @@ impl source::Source<InternalConfig> for Internal {
                         );
                         while let Some(mut telem) = Q.pop() {
                             if !chans.is_empty() {
-                                telem = telem.overlay_tags_from_map(&tags);
+                                telem = telem.overlay_tags_from_map(tags);
                                 util::send(
                                     &mut chans,
                                     metric::Event::new_telemetry(telem),

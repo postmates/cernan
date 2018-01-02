@@ -10,9 +10,16 @@ type AdjacencyMap<T> = util::HashMap<String, Option<T>>;
 type AdjacencyMatrix<T> = util::HashMap<String, AdjacencyMap<T>>;
 
 /// Adjacency matrix struct.
-#[derive(Default)]
 pub struct Adjacency<M: Clone> {
     edges: AdjacencyMatrix<M>,
+}
+
+impl<M: Clone + Debug> Default for Adjacency<M>{
+    fn default() -> Adjacency<M> {
+        Adjacency {
+            edges: Default::default(),
+        }
+    }
 }
 
 ///  Poor man's adjacency matrix biased towards incident edge queries.

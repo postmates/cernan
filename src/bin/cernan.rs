@@ -228,6 +228,19 @@ fn main() {
             config_topology.insert(config_path.clone(), Default::default());
         }
     }
+    if let Some(ref configs) = args.kinesises {
+        for config in configs {
+            let config_path = cfg_conf!(config);
+            let (send, recv) = hopper::channel_with_max_bytes(
+                &config_path,
+                &args.data_directory,
+                args.max_hopper_queue_bytes,
+            ).unwrap();
+            senders.insert(config_path.clone(), send);
+            receivers.insert(config_path.clone(), recv);
+            config_topology.insert(config_path.clone(), Default::default());
+        }
+    }
     // FILTERS
     if let Some(ref configs) = args.programmable_filters {
         for (config_path, config) in configs {
@@ -366,9 +379,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path);
         sinks.insert(
             config.config_path.clone(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::Null::new(&config).run(recv, sources);
-            }),
+            cernan::sink::Null::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.console, None) {
@@ -378,9 +389,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::Console::new(&config).run(recv, sources);
-            }),
+            cernan::sink::Console::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.wavefront, None) {
@@ -390,17 +399,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                match cernan::sink::Wavefront::new(config) {
-                    Ok(mut w) => {
-                        w.run(recv, sources);
-                    }
-                    Err(e) => {
-                        error!("Configuration error for Wavefront: {}", e);
-                        process::exit(1);
-                    }
-                }
-            }),
+            cernan::sink::Wavefront::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.prometheus, None) {
@@ -410,9 +409,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::Prometheus::new(&config).run(recv, sources);
-            }),
+            cernan::sink::Prometheus::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.influxdb, None) {
@@ -422,9 +419,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::InfluxDB::new(&config).run(recv, sources);
-            }),
+            cernan::sink::InfluxDB::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.native_sink_config, None) {
@@ -434,9 +429,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::Native::new(config).run(recv, sources);
-            }),
+            cernan::sink::Native::new(recv, sources, config).run(),
         );
     }
     if let Some(config) = mem::replace(&mut args.elasticsearch, None) {
@@ -446,9 +439,7 @@ fn main() {
         let sources = adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
         sinks.insert(
             config.config_path.clone().unwrap(),
-            cernan::thread::spawn(move |_poll| {
-                cernan::sink::Elasticsearch::new(config).run(recv, sources);
-            }),
+            cernan::sink::Elasticsearch::new(recv, sources, config).run(),
         );
     }
     if let Some(cfgs) = mem::replace(&mut args.firehosen, None) {
@@ -460,9 +451,20 @@ fn main() {
                 adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
             sinks.insert(
                 config.config_path.clone().unwrap(),
-                cernan::thread::spawn(move |_poll| {
-                    cernan::sink::Firehose::new(config).run(recv, sources);
-                }),
+                cernan::sink::Firehose::new(recv, sources, config).run(),
+            );
+        }
+    }
+    if let Some(cfgs) = mem::replace(&mut args.kinesises, None) {
+        for config in cfgs {
+            let recv = receivers
+                .remove(&config.config_path.clone().unwrap())
+                .unwrap();
+            let sources =
+                adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
+            sinks.insert(
+                config.config_path.clone().unwrap(),
+                cernan::sink::Kinesis::new(recv, sources, config).run(),
             );
         }
     }
@@ -489,7 +491,7 @@ fn main() {
 
             let sources = adjacency_matrix.filter_nodes(
                 &config.config_path.clone().unwrap(),
-                |&(ref _k, ref option_v)| option_v.is_none(),
+                |&(_k, option_v)| option_v.is_none(),
             );
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
@@ -526,7 +528,7 @@ fn main() {
 
             let sources = adjacency_matrix.filter_nodes(
                 &config.config_path.clone().unwrap(),
-                |&(ref _k, ref option_v)| option_v.is_none(),
+                |&(_k, option_v)| option_v.is_none(),
             );
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(
@@ -562,7 +564,7 @@ fn main() {
 
             let sources = adjacency_matrix.filter_nodes(
                 &config.config_path.clone().unwrap(),
-                |&(ref _k, ref option_v)| option_v.is_none(),
+                |&(_k, option_v)| option_v.is_none(),
             );
             let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
             filters.insert(

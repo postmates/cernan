@@ -1,5 +1,6 @@
+//! Sink for Cernan's native protocol.
+
 use byteorder::{BigEndian, ByteOrder};
-use hopper;
 use metric;
 use protobuf::Message;
 use protobuf::repeated::RepeatedField;
@@ -30,7 +31,7 @@ pub struct Native {
 }
 
 /// Configuration for the native sink
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct NativeConfig {
     /// The port to communicate with the native host
     pub port: u16,
@@ -50,23 +51,6 @@ impl Default for NativeConfig {
             host: "localhost".to_string(),
             config_path: None,
             flush_interval: 60,
-        }
-    }
-}
-
-impl Native {
-    /// Create a new native sink
-    ///
-    /// Please see the documentation of NativeConfig for further details.
-    pub fn new(config: NativeConfig) -> Native {
-        let stream = connect(&config.host, config.port);
-        Native {
-            port: config.port,
-            host: config.host,
-            buffer: Vec::new(),
-            flush_interval: config.flush_interval,
-            delivery_attempts: 0,
-            stream: stream,
         }
     }
 }
@@ -98,54 +82,29 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
     }
 }
 
-impl Sink for Native {
+impl Sink<NativeConfig> for Native {
+    fn init(config: NativeConfig) -> Self {
+        let stream = connect(&config.host, config.port);
+        Native {
+            port: config.port,
+            host: config.host,
+            buffer: Vec::new(),
+            flush_interval: config.flush_interval,
+            delivery_attempts: 0,
+            stream: stream,
+        }
+    }
+
     fn valve_state(&self) -> Valve {
         Valve::Open
     }
 
-    fn deliver(&mut self, _: sync::Arc<Option<metric::Telemetry>>) -> () {
-        // discard point
+    fn deliver(&mut self, telemetry: sync::Arc<Option<metric::Telemetry>>) -> () {
+        self.buffer.push(metric::Event::Telemetry(telemetry));
     }
 
-    fn deliver_line(&mut self, _: sync::Arc<Option<metric::LogLine>>) -> () {
-        // discard point
-    }
-
-    fn run(&mut self, recv: hopper::Receiver<metric::Event>, sources: Vec<String>) {
-        let mut attempts = 0;
-        let mut recv = recv.into_iter();
-        let mut last_flush_idx = 0;
-        let mut total_shutdowns = 0;
-        loop {
-            time::delay(attempts);
-            if self.buffer.len() > 10_000 {
-                attempts += 1;
-                continue;
-            }
-            match recv.next() {
-                None => attempts += 1,
-                Some(event) => {
-                    attempts = 0;
-                    match event {
-                        metric::Event::TimerFlush(idx) => if idx > last_flush_idx {
-                            if let Some(flush_interval) = self.flush_interval() {
-                                if idx % flush_interval == 0 {
-                                    self.flush();
-                                }
-                            }
-                            last_flush_idx = idx;
-                        },
-                        metric::Event::Shutdown => {
-                            total_shutdowns += 1;
-                            if total_shutdowns == sources.len() {
-                                return;
-                            }
-                        }
-                        _ => self.buffer.push(event),
-                    }
-                }
-            }
-        }
+    fn deliver_line(&mut self, line: sync::Arc<Option<metric::LogLine>>) -> () {
+        self.buffer.push(metric::Event::Log(line));
     }
 
     fn flush_interval(&self) -> Option<u64> {
