@@ -19,8 +19,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use util::Valve;
 
 lazy_static! {
-    /// Total records emitted.
+    /// Total records published.
     pub static ref KINESIS_PUBLISH_SUCCESS_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total records discarded due to constraint violations.
+    pub static ref KINESIS_PUBLISH_DISCARD_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total retryable publication errors.
     pub static ref KINESIS_PUBLISH_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total fatal publication errors.
@@ -114,13 +116,14 @@ impl Sink<KinesisConfig> for Kinesis {
         let encoded_bytes_len = encoded_bytes.len();
         let record_too_big = encoded_bytes_len > self.max_bytes_per_batch;
         if record_too_big {
+            KINESIS_PUBLISH_DISCARD_SUM.fetch_add(1, Ordering::Relaxed);
             warn!("Discarding encoded record with size {:?} as it is too large to publish!", encoded_bytes_len);
             return;
         }
 
         let buffer_too_big =
-            self.buffer_size + encoded_bytes_len > self.max_bytes_per_batch;
-        let buffer_too_long = self.buffer.len() > self.max_records_per_batch;
+            (self.buffer_size + encoded_bytes_len) > self.max_bytes_per_batch;
+        let buffer_too_long = self.buffer.len() >= self.max_records_per_batch;
         if buffer_too_big || buffer_too_long {
             self.flush();
         }

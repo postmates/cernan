@@ -383,6 +383,12 @@ impl source::Source<InternalConfig> for Internal {
                             chans
                         );
                         atom_non_zero_telem!(
+                            "cernan.sinks.kinesis.publish.discard",
+                            sink::kinesis::KINESIS_PUBLISH_DISCARD_SUM,
+                            tags,
+                            chans
+                        );
+                        atom_non_zero_telem!(
                             "cernan.sinks.kinesis.publish.failure",
                             sink::kinesis::KINESIS_PUBLISH_FAILURE_SUM,
                             tags,
