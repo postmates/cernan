@@ -11,6 +11,7 @@ use util;
 #[derive(Default, Debug, Clone, Deserialize)]
 pub struct AvroStreamHandler;
 
+#[repr(C, packed)]
 pub struct Header {
     pub version: u32,
     pub order_by: u64,
