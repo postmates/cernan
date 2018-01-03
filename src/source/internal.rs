@@ -156,6 +156,19 @@ impl source::Source<InternalConfig> for Internal {
                             tags,
                             chans
                         );
+                        // source::avro
+                        atom_non_zero_telem!(
+                            "cernan.avro.payload.success",
+                            source::avro::AVRO_PAYLOAD_SUCCESS_SUM,
+                            tags,
+                            chans
+                        );
+                        atom_non_zero_telem!(
+                            "cernan.avro.payload.fatal",
+                            source::avro::AVRO_PAYLOAD_FATAL_SUM,
+                            tags,
+                            chans
+                        );
                         // sink::elasticsearch
                         atom_non_zero_telem!(
                             "cernan.sinks.elasticsearch.records.delivery",

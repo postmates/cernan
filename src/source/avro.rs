@@ -6,7 +6,16 @@ use serde_avro;
 use source::{TCPStreamHandler, TCP};
 use std::{io, mem, sync};
 use std::io::{Cursor, Read};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
+
+lazy_static! {
+    /// Total payloads processed.
+    pub static ref AVRO_PAYLOAD_SUCCESS_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total fatal failures to parse.
+    pub static ref AVRO_PAYLOAD_FATAL_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+}
 
 #[derive(Default, Debug, Clone, Deserialize)]
 pub struct AvroStreamHandler;
@@ -90,10 +99,12 @@ impl TCPStreamHandler for AvroStreamHandler {
                         _stream_token => {
                             match self.handle_avro_payload(chans.clone(), tags, &mut reader) {
                                 Ok(_) => {
-                                    trace!("Avro payload processed successfully.");
+                                    trace!("Avro payloads processed successfully.");
+                                    AVRO_PAYLOAD_SUCCESS_SUM.fetch_add(1, Ordering::Relaxed);
                                 }
                                 Err(e) => {
-                                    warn!("Failed to process avro payload: {:?}", e);
+                                    error!("Failed to process avro payload: {:?}", e);
+                                    AVRO_PAYLOAD_FATAL_SUM.fetch_add(1, Ordering::Relaxed);
                                     return;
                                 }
                             }
