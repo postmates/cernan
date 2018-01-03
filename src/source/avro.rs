@@ -94,6 +94,7 @@ impl AvroStreamHandler {
             return;
         }
 
+        // Read the header off the wire.
         let mut header_raw = Vec::with_capacity(header_size_in_bytes);
         if reader.read_exact(&mut header_raw).is_err() {
             warn!("Failed to read header from stream!");
@@ -101,7 +102,9 @@ impl AvroStreamHandler {
         }
         let header : Header = header_raw.into();
 
-        let mut buf = Vec::with_capacity(payload_size_in_bytes);
+        // Read the avro payload off the wire
+        let avro_size_in_bytes = payload_size_in_bytes - header_size_in_bytes;
+        let mut buf = Vec::with_capacity(avro_size_in_bytes);
         if reader.read_exact(&mut buf).is_err() {
             return;
         }
