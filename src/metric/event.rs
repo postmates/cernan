@@ -33,6 +33,8 @@ pub enum Event {
     Shutdown,
     /// Raw, encoded bytes.
     Raw {
+        /// Ordering value used by some sinks accepting Raw events.
+        order_by: u64,
         /// Encoding for the included bytes.
         encoding: Encoding,
         /// Encoded payload.
