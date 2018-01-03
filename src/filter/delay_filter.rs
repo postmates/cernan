@@ -80,11 +80,8 @@ impl filter::Filter for DelayFilter {
             metric::Event::TimerFlush(f) => {
                 res.push(metric::Event::TimerFlush(f));
             }
-            metric::Event::Raw { encoding, bytes } => {
-                res.push(metric::Event::Raw {
-                    encoding: encoding,
-                    bytes: bytes,
-                });
+            raw @ metric::Event::Raw { .. } => {
+                res.push(raw);
             }
             metric::Event::Shutdown => {
                 res.push(metric::Event::Shutdown);
