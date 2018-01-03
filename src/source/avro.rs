@@ -4,7 +4,7 @@ use metric;
 use mio;
 use serde_avro;
 use source::{TCPStreamHandler, TCP};
-use std::{io, mem, sync};
+use std::{io, mem, net, sync};
 use std::io::{Cursor, Read};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -88,14 +88,18 @@ impl TCPStreamHandler for AvroStreamHandler {
         poller: &mio::Poll,
         stream: mio::net::TcpStream,
     ) -> () {
-        let mut reader = io::BufReader::new(stream);
-        loop {
+        let mut streaming = true;
+        let mut reader = io::BufReader::new(stream.try_clone().unwrap());
+        while streaming {
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(&mut events, None) {
                 Err(e) => panic!(format!("Failed during poll {:?}", e)),
                 Ok(_num_events) => for event in events {
                     match event.token() {
-                        constants::SYSTEM => return,
+                        constants::SYSTEM => {
+                            streaming = false;
+                            break;
+                        },
                         _stream_token => {
                             match self.handle_avro_payload(chans.clone(), tags, &mut reader) {
                                 Ok(_) => {
@@ -105,7 +109,8 @@ impl TCPStreamHandler for AvroStreamHandler {
                                 Err(e) => {
                                     error!("Failed to process avro payload: {:?}", e);
                                     AVRO_PAYLOAD_FATAL_SUM.fetch_add(1, Ordering::Relaxed);
-                                    return;
+                                    streaming = false;
+                                    break;
                                 }
                             }
                         }
@@ -113,6 +118,8 @@ impl TCPStreamHandler for AvroStreamHandler {
                 },
             };
         }
+
+        stream.shutdown(net::Shutdown::Both).expect("Failed to close TcpStream!");
     }
 }
 
