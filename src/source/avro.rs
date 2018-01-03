@@ -11,25 +11,59 @@ use util;
 #[derive(Default, Debug, Clone, Deserialize)]
 pub struct AvroStreamHandler;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C, packed)]
 pub struct Header {
     pub version: u32,
     pub order_by: u64,
 }
 
-impl From<Vec<u8>> for Header {
+impl<'a> From<&'a mut Cursor<Vec<u8>>> for Header {
     /// Parses payload headers from raw bytes.
     /// All values assumed to be big endian.
     ///
     /// | version |    order_by     |
     /// | 0 - 31  |    32 - 95      |
-    fn from(item: Vec<u8>) -> Self {
-        let mut cursor = Cursor::new(item);
+    fn from(cursor: &'a mut Cursor<Vec<u8>>) -> Self {
         let version = cursor.read_u32::<BigEndian>().unwrap();
         let order_by = cursor.read_u64::<BigEndian>().unwrap();
         Header {
             version: version,
             order_by: order_by,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Payload {
+    Invalid(String),
+    Valid { header: Header, avro_blob: Vec<u8> },
+}
+
+impl From<Cursor<Vec<u8>>> for Payload {
+    /// Transforms cursors of payloads into Payload objects.
+    fn from(mut cursor: Cursor<Vec<u8>>) -> Payload {
+        let header: Header = (&mut cursor).into();
+
+        // Read the avro payload off the wire
+        let mut avro_blob = Vec::new();
+        if cursor.read_to_end(&mut avro_blob).is_err() {
+            return Payload::Invalid(format!("Failed to read avro payload!"));
+        }
+
+        // TODO - Enforce configurable type naming requirements.
+        // Check that the blob provided is valid Avro.
+        if let Err(e) = serde_avro::de::Deserializer::from_container(&avro_blob[..]) {
+            return Payload::Invalid(format!(
+                "Failed to deserialize container - {:?}.",
+                e
+            ));
+        };
+
+        trace!("Successfully deserialized container.");
+        Payload::Valid {
+            header: header,
+            avro_blob: avro_blob,
         }
     }
 }
@@ -54,7 +88,15 @@ impl TCPStreamHandler for AvroStreamHandler {
                     match event.token() {
                         constants::SYSTEM => return,
                         _stream_token => {
-                            self.handle_avro_payload(chans.clone(), tags, &mut reader);
+                            match self.handle_avro_payload(chans.clone(), tags, &mut reader) {
+                                Ok(_) => {
+                                    trace!("Avro payload processed successfully.");
+                                }
+                                Err(e) => {
+                                    warn!("Failed to process avro payload: {:?}", e);
+                                    return;
+                                }
+                            }
                         }
                     }
                 },
@@ -82,55 +124,93 @@ impl AvroStreamHandler {
         mut chans: util::Channel,
         _tags: &sync::Arc<metric::TagMap>,
         reader: &mut io::BufReader<mio::net::TcpStream>,
-    ) {
+    ) -> Result<(), String>{
+        let header_size_in_bytes = mem::size_of::<Header>();
         let payload_size_in_bytes = match reader.read_u32::<BigEndian>() {
             Ok(i) => i as usize,
-            Err(_) => return,
+            Err(_) => return Err(format!("Failed to parse payload length from the wire!"))
         };
 
-        let header_size_in_bytes = mem::size_of::<Header>();
         if payload_size_in_bytes <= header_size_in_bytes {
-            warn!("Invalid payload detected!  Discarding!");
-            return;
+            return Err(format!("Received payload is too small!"))
         }
 
-        // Read the header off the wire.
-        let mut header_raw = Vec::with_capacity(header_size_in_bytes);
-        if reader.read_exact(&mut header_raw).is_err() {
-            warn!("Failed to read header from stream!");
-            return;
-        }
-        let header : Header = header_raw.into();
-
-        // Read the avro payload off the wire
-        let avro_size_in_bytes = payload_size_in_bytes - header_size_in_bytes;
-        let mut buf = Vec::with_capacity(avro_size_in_bytes);
+        let mut buf = Vec::with_capacity(payload_size_in_bytes);
         if reader.read_exact(&mut buf).is_err() {
-            return;
+            return Err(format!("Failed to read payload from the wire!"))
         }
 
-        match serde_avro::de::Deserializer::from_container(&buf[..]) {
-            Ok(_avro_de) => {
-                trace!("Successfully deserialized container.");
-                // TODO - Enforce configurable type naming requirements.
+        match Cursor::new(buf).into() {
+            Payload::Valid { header, avro_blob } => {
+                util::send(
+                    &mut chans,
+                    metric::Event::Raw {
+                        order_by: header.order_by,
+                        encoding: metric::Encoding::Avro,
+                        bytes: avro_blob,
+                    },
+                );
+                Ok(())
             }
 
-            Err(e) => {
-                trace!("Failed to deserialize container: {:?}", e.description());
-                return;
+            Payload::Invalid(e) => {
+                return Err(format!("Failed while parsing payload contents: {:?}", e))
             }
         }
-
-        util::send(
-            &mut chans,
-            metric::Event::Raw {
-                order_by: header.order_by,
-                encoding: metric::Encoding::Avro,
-                bytes: buf,
-            },
-        );
     }
 }
 
 /// Source for Avro events.
 pub type Avro = TCP<AvroStreamHandler>;
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use byteorder::WriteBytesExt;
+    use glob;
+    use std::fs::File;
+    use std::io::Write;
+
+    #[test]
+    fn parse_payload_happy_path() {
+        let test_data_path =
+            format!("{}/resources/tests/data/*.avro", env!("CARGO_MANIFEST_DIR"));
+        for test_path in
+            glob::glob(&test_data_path).expect("Failed to glob test data!")
+        {
+            match test_path {
+                Err(e) => {
+                    warn!("Failed to load avro test file {:?}", e);
+                    assert!(false);
+                }
+
+                Ok(test_file) => {
+                    println!("Testing {:?}", test_file);
+                    let mut test_file_data = File::open(test_file).unwrap();
+                    let mut avro_blob = Vec::new();
+                    test_file_data
+                        .read_to_end(&mut avro_blob)
+                        .expect("Failed to read testdata!");
+
+                    let buf = Vec::new();
+                    let mut write_cursor = Cursor::new(buf);
+                    assert!(write_cursor.write_u32::<BigEndian>(0).is_ok());
+                    assert!(write_cursor.write_u64::<BigEndian>(0).is_ok());
+                    assert!(write_cursor.write_all(&avro_blob[..]).is_ok());
+
+                    let read_cursor = Cursor::new(write_cursor.into_inner());
+                    let payload: Payload = read_cursor.into();
+
+                    let expected = Payload::Valid {
+                        header: Header {
+                            version: 0,
+                            order_by: 0,
+                        },
+                        avro_blob: Vec::from(avro_blob),
+                    };
+                    assert!(payload == expected);
+                }
+            }
+        }
+    }
+}

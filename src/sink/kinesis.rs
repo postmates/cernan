@@ -111,7 +111,12 @@ impl Sink<KinesisConfig> for Kinesis {
     ///
     /// If the given record would put the buffer at capacity, then the contents
     /// are first flushed before the given record is added.
-    fn deliver_raw(&mut self, order_by: u64, _encoding: metric::Encoding, bytes: Vec<u8>) {
+    fn deliver_raw(
+        &mut self,
+        order_by: u64,
+        _encoding: metric::Encoding,
+        bytes: Vec<u8>,
+    ) {
         let encoded_bytes = base64::encode(&bytes).into_bytes();
         let encoded_bytes_len = encoded_bytes.len();
         let record_too_big = encoded_bytes_len > self.max_bytes_per_batch;

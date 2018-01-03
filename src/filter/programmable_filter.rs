@@ -638,7 +638,7 @@ impl filter::Filter for ProgrammableFilter {
                 }
                 Ok(())
             }
-            raw @ metric::Event::Raw {..} => {
+            raw @ metric::Event::Raw { .. } => {
                 res.push(raw);
                 Ok(())
             }

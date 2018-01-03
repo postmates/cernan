@@ -151,7 +151,11 @@ where
                             self.state.deliver_line(line);
                             break;
                         }
-                        Event::Raw { order_by, encoding, bytes } => {
+                        Event::Raw {
+                            order_by,
+                            encoding,
+                            bytes,
+                        } => {
                             self.state.deliver_raw(order_by, encoding, bytes);
                             break;
                         }
@@ -222,7 +226,12 @@ where
     /// implementation.
     fn deliver_line(&mut self, line: sync::Arc<Option<LogLine>>) -> ();
     /// Deliver a 'Raw' series of encoded bytes to the sink.
-    fn deliver_raw(&mut self, _order_by: u64, _encoding: Encoding, _bytes: Vec<u8>) -> () {
+    fn deliver_raw(
+        &mut self,
+        _order_by: u64,
+        _encoding: Encoding,
+        _bytes: Vec<u8>,
+    ) -> () {
         // Not all sinks accept raw events.  By default, we do nothing.
         return;
     }

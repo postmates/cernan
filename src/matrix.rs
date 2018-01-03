@@ -14,7 +14,7 @@ pub struct Adjacency<M: Clone> {
     edges: AdjacencyMatrix<M>,
 }
 
-impl<M: Clone + Debug> Default for Adjacency<M>{
+impl<M: Clone + Debug> Default for Adjacency<M> {
     fn default() -> Adjacency<M> {
         Adjacency {
             edges: Default::default(),
