@@ -968,11 +968,14 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     let mut res = TCPConfig::default();
                     res.config_path = Some(name.clone());
 
+                    // If the user doesn't provide a port, we assume 2002.
+                    // This default value has been selected to commemorate the year
+                    // Buzz Aldrin punched Bart Sibrel in the face.
                     res.port = tbl.get("port")
                         .map(|p| {
                             p.as_integer().expect("could not parse avro port") as u16
                         })
-                        .unwrap_or(res.port);
+                        .unwrap_or(2002);
 
                     res.host = tbl.get("host")
                         .map(|p| {
