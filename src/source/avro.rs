@@ -1,11 +1,11 @@
-use byteorder::{BigEndian, ReadBytesExt};
+use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use constants;
 use metric;
 use mio;
 use serde_avro;
 use source::{TCPStreamHandler, TCP};
 use std::{io, mem, net, sync};
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
@@ -24,6 +24,8 @@ pub struct AvroStreamHandler;
 #[repr(C, packed)]
 pub struct Header {
     pub version: u32,
+    pub control: u32,
+    pub id: u64,
     pub order_by: u64,
 }
 
@@ -31,15 +33,39 @@ impl<'a> From<&'a mut Cursor<Vec<u8>>> for Header {
     /// Parses payload headers from raw bytes.
     /// All values assumed to be big endian.
     ///
-    /// | version |    order_by     |
-    /// | 0 - 31  |    32 - 95      |
+    /// | version - 4 bytes   |   control - 4 bytes  |
+    /// |               id - 8 bytes                 |
+    /// |           order_by - 8 bytes               |
+    ///
+    /// The above fields have the following semantics:
+    ///
+    /// * version   -   Version of Avro source wire protocol.
+    /// * control   -   Metadata governing how the payload is to be published.
+    /// * id        -   Client assigned id for the payload.  Sent in reply on
+    ///                 successful publication when the control field indicates
+    ///                 a sync publish.
+    /// * order_by  -   Value used by some sinks to order payloads within buckets.
     fn from(cursor: &'a mut Cursor<Vec<u8>>) -> Self {
         let version = cursor.read_u32::<BigEndian>().unwrap();
+        let control = cursor.read_u32::<BigEndian>().unwrap();
+        let id = cursor.read_u64::<BigEndian>().unwrap();
         let order_by = cursor.read_u64::<BigEndian>().unwrap();
         Header {
             version: version,
+            control: control,
+            id: id,
             order_by: order_by,
         }
+    }
+}
+
+impl Header {
+    /// Client expects an acknowledgement after publish to Hopper.
+    const CONTROL_SYNC : u32  = 1 << 0;
+
+    /// Does the given header indicate the payload as a sync. publish?
+    pub fn sync(self) -> bool {
+       (self.control & Header::CONTROL_SYNC) > 0
     }
 }
 
@@ -86,7 +112,7 @@ impl TCPStreamHandler for AvroStreamHandler {
         chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
         poller: &mio::Poll,
-        stream: mio::net::TcpStream,
+        mut stream: mio::net::TcpStream,
     ) -> () {
         let mut streaming = true;
         let mut reader = io::BufReader::new(stream.try_clone().unwrap());
@@ -102,9 +128,15 @@ impl TCPStreamHandler for AvroStreamHandler {
                         },
                         _stream_token => {
                             match self.handle_avro_payload(chans.clone(), tags, &mut reader) {
-                                Ok(_) => {
+                                Ok(maybe_id) => {
                                     trace!("Avro payloads processed successfully.");
                                     AVRO_PAYLOAD_SUCCESS_SUM.fetch_add(1, Ordering::Relaxed);
+
+                                    if maybe_id.is_some() {
+                                        let mut resp = Cursor::new(Vec::new());
+                                        resp.write_u64::<BigEndian>(maybe_id.unwrap()).expect("Failed to write response id!");
+                                        stream.write_all(resp.get_ref()).expect("Failed to write response!");
+                                    }
                                 }
                                 Err(e) => {
                                     error!("Failed to process avro payload: {:?}", e);
@@ -142,7 +174,7 @@ impl AvroStreamHandler {
         mut chans: util::Channel,
         _tags: &sync::Arc<metric::TagMap>,
         reader: &mut io::BufReader<mio::net::TcpStream>,
-    ) -> Result<(), String>{
+    ) -> Result<Option<u64>, String>{
         let header_size_in_bytes = mem::size_of::<Header>();
         let payload_size_in_bytes = match reader.read_u32::<BigEndian>() {
             Ok(i) => i as usize,
@@ -168,7 +200,12 @@ impl AvroStreamHandler {
                         bytes: avro_blob,
                     },
                 );
-                Ok(())
+
+                if header.sync() {
+                    Ok(Some(header.id))
+                } else {
+                    Ok(None)
+                }
             }
 
             Payload::Invalid(e) => {
@@ -188,6 +225,30 @@ mod test {
     use glob;
     use std::fs::File;
     use std::io::Write;
+
+   #[test]
+    fn header_async() {
+        let header = Header {
+            version: 0,
+            control: 0,
+            id: 0,
+            order_by: 0,
+        };
+
+        assert!(!header.sync());
+    }
+
+   #[test]
+    fn header_sync() {
+        let header = Header {
+            version: 0,
+            control: Header::CONTROL_SYNC,
+            id: 0,
+            order_by: 0,
+        };
+
+        assert!(header.sync());
+    }
 
     #[test]
     fn parse_payload_happy_path() {
@@ -213,6 +274,8 @@ mod test {
                     let buf = Vec::new();
                     let mut write_cursor = Cursor::new(buf);
                     assert!(write_cursor.write_u32::<BigEndian>(0).is_ok());
+                    assert!(write_cursor.write_u32::<BigEndian>(0).is_ok());
+                    assert!(write_cursor.write_u64::<BigEndian>(0).is_ok());
                     assert!(write_cursor.write_u64::<BigEndian>(0).is_ok());
                     assert!(write_cursor.write_all(&avro_blob[..]).is_ok());
 
@@ -222,6 +285,8 @@ mod test {
                     let expected = Payload::Valid {
                         header: Header {
                             version: 0,
+                            control: 0,
+                            id: 0,
                             order_by: 0,
                         },
                         avro_blob: Vec::from(avro_blob),
