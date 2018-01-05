@@ -187,6 +187,8 @@ impl AvroStreamHandler {
 
         // with_capacity is not enough for read_exact to function.
         // We must manually resize the underlying slice.
+        //
+        // See - https://doc.rust-lang.org/std/vec/struct.Vec.html#capacity-and-reallocation
         let mut buf = Vec::new();
         buf.resize(payload_size_in_bytes, 0);
         if reader.read_exact(&mut buf).is_err() {
