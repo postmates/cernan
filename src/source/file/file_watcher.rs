@@ -186,6 +186,16 @@ impl FileWatcher {
             let current_size = reader.get_ref().metadata().unwrap().size();
             if self.previous_size > current_size {
                 assert!(reader.seek(io::SeekFrom::Start(0)).is_ok());
+                report_full_telemetry(
+                    "cernan.sources.file.truncation",
+                    (self.previous_size - current_size) as f64,
+                    Some(vec![
+                        (
+                            "file_path",
+                            self.path.to_str().expect("could not make path"),
+                        ),
+                    ]),
+                );
             }
             self.previous_size = current_size;
             // match here on error, if metadata doesn't match up open_at_start
