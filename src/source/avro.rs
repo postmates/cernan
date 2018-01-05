@@ -185,7 +185,10 @@ impl AvroStreamHandler {
             return Err(format!("Received payload is too small!"))
         }
 
-        let mut buf = Vec::with_capacity(payload_size_in_bytes);
+        // with_capacity is not enough for read_exact to function.
+        // We must manually resize the underlying slice.
+        let mut buf = Vec::new();
+        buf.resize(payload_size_in_bytes, 0);
         if reader.read_exact(&mut buf).is_err() {
             return Err(format!("Failed to read payload from the wire!"))
         }
