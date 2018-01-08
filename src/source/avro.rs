@@ -5,7 +5,7 @@ use mio;
 use serde_avro;
 use source::{TCPStreamHandler, TCP};
 use std::{io, mem, net, sync};
-use std::io::{Cursor, Read, Write};
+use std::io::{Cursor, Read, Write, ErrorKind};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
@@ -103,6 +103,14 @@ impl From<Cursor<Vec<u8>>> for Payload {
     }
 }
 
+/// Handler error types returned by handle_avro_payload.
+enum HandlerErr {
+    /// EOF reached on the stream.
+    EOF,
+    /// Payload parsing failure.
+    Protocol(String),
+}
+
 impl TCPStreamHandler for AvroStreamHandler {
     /// Receives and buffers Avro events from the given stream.
     ///
@@ -138,7 +146,11 @@ impl TCPStreamHandler for AvroStreamHandler {
                                         stream.write_all(resp.get_ref()).expect("Failed to write response!");
                                     }
                                 }
-                                Err(e) => {
+                                Err(HandlerErr::EOF) => {
+                                    trace!("TCP stream closed.");
+                                    break;
+                                }
+                                Err(HandlerErr::Protocol(e)) => {
                                     error!("Failed to process avro payload: {:?}", e);
                                     AVRO_PAYLOAD_FATAL_SUM.fetch_add(1, Ordering::Relaxed);
                                     streaming = false;
@@ -151,7 +163,9 @@ impl TCPStreamHandler for AvroStreamHandler {
             };
         }
 
-        stream.shutdown(net::Shutdown::Both).expect("Failed to close TcpStream!");
+        // On some systems shutting down an already closed connection (client or otherwise)
+        // results in an Err.  See -https://doc.rust-lang.org/beta/std/net/struct.TcpStream.html#platform-specific-behavior
+        let _shutdown_result = stream.shutdown(net::Shutdown::Both);
     }
 }
 
@@ -174,15 +188,20 @@ impl AvroStreamHandler {
         mut chans: util::Channel,
         _tags: &sync::Arc<metric::TagMap>,
         reader: &mut io::BufReader<mio::net::TcpStream>,
-    ) -> Result<Option<u64>, String>{
+    ) -> Result<Option<u64>, HandlerErr>{
         let header_size_in_bytes = mem::size_of::<Header>();
         let payload_size_in_bytes = match reader.read_u32::<BigEndian>() {
             Ok(i) => i as usize,
-            Err(_) => return Err(format!("Failed to parse payload length from the wire!"))
+            Err(ref e) if e.kind() == ErrorKind::UnexpectedEof => {
+                return Err(HandlerErr::EOF)
+            }
+            Err(e) => {
+                return Err(HandlerErr::Protocol(format!("Failed to parse payload length - {:?}!", e)))
+            }
         };
 
         if payload_size_in_bytes <= header_size_in_bytes {
-            return Err(format!("Received payload is too small!"))
+            return Err(HandlerErr::Protocol(format!("Received payload is too small!")))
         }
 
         // with_capacity is not enough for read_exact to function.
@@ -192,7 +211,7 @@ impl AvroStreamHandler {
         let mut buf = Vec::new();
         buf.resize(payload_size_in_bytes, 0);
         if reader.read_exact(&mut buf).is_err() {
-            return Err(format!("Failed to read payload from the wire!"))
+            return Err(HandlerErr::Protocol(format!("Failed to read payload from the wire!")))
         }
 
         match Cursor::new(buf).into() {
@@ -214,7 +233,7 @@ impl AvroStreamHandler {
             }
 
             Payload::Invalid(e) => {
-                return Err(format!("Failed while parsing payload contents: {:?}", e))
+                return Err(HandlerErr::Protocol(format!("Failed while parsing payload contents: {:?}!", e)))
             }
         }
     }
