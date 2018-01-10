@@ -1,6 +1,4 @@
 use source::internal::report_full_telemetry;
-#[cfg(test)]
-use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::io::BufRead;
@@ -21,8 +19,6 @@ pub struct FileWatcher {
     file_id: Option<(u64, u64)>,
     previous_size: u64,
     reopen: bool,
-
-    #[cfg(test)] pub file_ids: HashSet<FileId>,
 }
 
 type Devno = u64;
@@ -54,53 +50,23 @@ impl FileWatcher {
                 let ino = metadata.ino();
                 let mut rdr = io::BufReader::new(f);
                 assert!(rdr.seek(io::SeekFrom::End(0)).is_ok());
-                #[cfg(not(test))]
-                {
-                    Ok(FileWatcher {
-                        path: path.clone(),
-                        reader: Some(rdr),
-                        file_id: Some((dev, ino)),
-                        previous_size: 0,
-                        reopen: false,
-                    })
-                }
-                #[cfg(test)]
-                {
-                    let mut file_ids = HashSet::new();
-                    file_ids.insert((dev, ino));
-                    Ok(FileWatcher {
-                        path: path.clone(),
-                        reader: Some(rdr),
-                        file_id: Some((dev, ino)),
-                        previous_size: 0,
-                        reopen: false,
-                        file_ids: file_ids,
-                    })
-                }
+                Ok(FileWatcher {
+                    path: path.clone(),
+                    reader: Some(rdr),
+                    file_id: Some((dev, ino)),
+                    previous_size: 0,
+                    reopen: false,
+                })
             }
             Err(e) => match e.kind() {
                 io::ErrorKind::NotFound => {
                     let fw = {
-                        #[cfg(not(test))]
-                        {
-                            FileWatcher {
-                                path: path.clone(),
-                                reader: None,
-                                file_id: None,
-                                previous_size: 0,
-                                reopen: false,
-                            }
-                        }
-                        #[cfg(test)]
-                        {
-                            FileWatcher {
-                                path: path.clone(),
-                                reader: None,
-                                file_id: None,
-                                previous_size: 0,
-                                reopen: false,
-                                file_ids: HashSet::new(),
-                            }
+                        FileWatcher {
+                            path: path.clone(),
+                            reader: None,
+                            file_id: None,
+                            previous_size: 0,
+                            reopen: false,
                         }
                     };
                     Ok(fw)
@@ -115,10 +81,6 @@ impl FileWatcher {
             let metadata = f.metadata().unwrap(); // we _must_ be able to read the metadata
             let dev = metadata.dev();
             let ino = metadata.ino();
-            #[cfg(test)]
-            {
-                self.file_ids.insert((dev, ino));
-            }
             self.file_id = Some((dev, ino));
             self.previous_size = metadata.size();
             self.reader = Some(io::BufReader::new(f));
