@@ -467,7 +467,7 @@ where
     use std::collections::HashSet;
 
     let mut seen: HashSet<String> = HashSet::new();
-    let mut enc = GzEncoder::new(buffer, Compression::Fast);
+    let mut enc = GzEncoder::new(buffer, Compression::fast());
     for value in aggrs {
         let sanitized_name: String = sanitize(&value.name);
         match value.kind() {
