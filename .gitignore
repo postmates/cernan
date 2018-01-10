@@ -5,3 +5,4 @@ src/metrics/graphite.rs
 *.bk
 /tags
 /.vscode
+tmp/
