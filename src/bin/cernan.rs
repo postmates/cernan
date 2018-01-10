@@ -75,11 +75,11 @@ fn main() {
     let mut args = cernan::config::parse_args();
 
     let level = match args.verbose {
-        0 => log::LogLevelFilter::Error,
-        1 => log::LogLevelFilter::Warn,
-        2 => log::LogLevelFilter::Info,
-        3 => log::LogLevelFilter::Debug,
-        _ => log::LogLevelFilter::Trace,
+        0 => log::LevelFilter::Error,
+        1 => log::LevelFilter::Warn,
+        2 => log::LevelFilter::Info,
+        3 => log::LevelFilter::Debug,
+        _ => log::LevelFilter::Trace,
     };
 
     let signal =
@@ -89,8 +89,8 @@ fn main() {
         .format(|out, message, record| {
             out.finish(format_args!(
                 "[{}][{}][{}][{}] {}",
-                record.location().module_path(),
-                record.location().line(),
+                record.module_path().unwrap(),
+                record.line().unwrap(),
                 Utc::now().to_rfc3339(),
                 record.level(),
                 message
