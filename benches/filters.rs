@@ -5,7 +5,6 @@ mod benches {
         extern crate cernan;
         extern crate test;
 
-
         use self::cernan::filter::{Filter, ProgrammableFilter,
                                    ProgrammableFilterConfig};
         use self::cernan::metric;

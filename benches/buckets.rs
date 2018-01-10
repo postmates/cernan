@@ -198,7 +198,6 @@ fn bench_multi_counters(b: &mut Bencher) {
         .and_hms_milli(5, 40, 56, 0)
         .timestamp();
 
-
     b.iter(|| {
         let mut bucket = buckets::Buckets::default();
 
