@@ -310,7 +310,7 @@ impl source::Source<InternalConfig> for Internal {
                             chans
                         );
                         atom_non_zero_telem!(
-                            "cernan.sinks.wavefront.value.closed",
+                            "cernan.sinks.wavefront.valve.closed",
                             sink::wavefront::WAVEFRONT_VALVE_CLOSED,
                             tags,
                             chans
