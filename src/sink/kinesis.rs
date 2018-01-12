@@ -1,11 +1,7 @@
 //! Kinesis sink for Raw events.
-
-extern crate base64;
-extern crate rand;
-extern crate rusoto_core;
-extern crate rusoto_kinesis;
-
+use base64;
 use hyper;
+use rusoto_core;
 use metric;
 use metric::{LogLine, Telemetry};
 use rusoto_core::DefaultCredentialsProvider;

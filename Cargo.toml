@@ -7,14 +7,16 @@ license = "MIT"
 name = "cernan"
 readme = "README.md"
 repository = "https://github.com/postmates/cernan"
-version = "0.8.7"
+version = "0.8.8-pre"
 
 [[bin]]
 name = "cernan"
 doc = false
 
 [dependencies]
+base64 = "0.9.0"
 byteorder = "1.0"
+chan-signal = "0.3.1"
 chrono = "0.4"
 clap = "2.27"
 coco = "0.3"
@@ -24,11 +26,12 @@ fern = "0.5"
 flate2 = "1.0"
 glob = "0.2.11"
 hopper = "0.3"
-hyper = "0.10"
+hyper = "0.10" # 0.10 specifically required by rusoto_kinesis' KinesisClient
 lazy_static = "1.0"
 libc = "0.2"
 log = "0.4"
 lua = { git = "https://github.com/blt/rust-lua53.git", branch = "master" }
+mio = "0.6.11"
 openssl-probe = "0.1"
 protobuf = "1.4"
 quantiles = { version = "0.7", features = ["serde_support"] }
@@ -36,20 +39,17 @@ rand = "0.4"
 regex = "0.2"
 rusoto_core = "0.30"
 rusoto_firehose = "0.30"
+rusoto_kinesis = "0.30.0"
 seahash = "3.0"
 serde = { version = "1.0", features = ["rc"] }
+serde-avro = "0.5.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 slab = "0.4"
+tiny_http = "0.5.8"
 toml = "0.4"
 url = "1.6"
 uuid = {version = "0.5", features = ["v4"]}
-chan-signal = "0.3.1"
-mio = "0.6.11"
-tiny_http = "0.5.8"
-serde-avro = "0.5.0"
-base64 = "0.9.0"
-rusoto_kinesis = "0.30.0"
 
 [dev-dependencies]
 tempdir = "0.3"
