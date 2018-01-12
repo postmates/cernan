@@ -28,7 +28,7 @@ extern crate glob;
 extern crate hopper;
 extern crate hyper;
 extern crate libc;
-extern crate lua;
+extern crate mond;
 extern crate mio;
 extern crate protobuf;
 extern crate quantiles;
