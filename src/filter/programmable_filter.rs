@@ -1,8 +1,8 @@
 use filter;
 use libc::c_int;
-use lua;
-use lua::{Function, State, ThreadStatus};
-use lua::ffi::lua_State;
+use mond;
+use mond::{Function, State, ThreadStatus};
+use mond::ffi::lua_State;
 use metric;
 use std::path::PathBuf;
 use std::sync;
@@ -87,7 +87,7 @@ impl<'a> Payload<'a> {
 
     #[allow(non_snake_case)]
     unsafe extern "C" fn lua_push_metric(L: *mut lua_State) -> c_int {
-        let mut state = State::from_ptr(L);
+        let state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         let val = state.to_number(3);
         match state.to_str(2) {
@@ -109,7 +109,7 @@ impl<'a> Payload<'a> {
 
     #[allow(non_snake_case)]
     unsafe extern "C" fn lua_clear_metrics(L: *mut lua_State) -> c_int {
-        let mut state = State::from_ptr(L);
+        let state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         (*pyld).metrics.clear();
         0
@@ -117,7 +117,7 @@ impl<'a> Payload<'a> {
 
     #[allow(non_snake_case)]
     unsafe extern "C" fn lua_push_log(L: *mut lua_State) -> c_int {
-        let mut state = State::from_ptr(L);
+        let state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         match state.to_str(2) {
             Some(line) => {
@@ -134,7 +134,7 @@ impl<'a> Payload<'a> {
 
     #[allow(non_snake_case)]
     unsafe extern "C" fn lua_clear_logs(L: *mut lua_State) -> c_int {
-        let mut state = State::from_ptr(L);
+        let state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
         (*pyld).logs.clear();
         0
@@ -405,7 +405,7 @@ const PAYLOAD_LIB: [(&str, Function); 16] = [
 /// The programmable filter is a general purpose filter that can be programmed
 /// by end-users with a lua script.
 pub struct ProgrammableFilter {
-    state: lua::State,
+    state: mond::State,
     path: String,
     global_tags: metric::TagMap,
     last_flush_idx: u64,
@@ -441,7 +441,7 @@ impl Default for ProgrammableFilterConfig {
 impl ProgrammableFilter {
     /// Create a new ProgrammableFilter
     pub fn new(config: ProgrammableFilterConfig) -> ProgrammableFilter {
-        let mut state = lua::State::new();
+        let mut state = mond::State::new();
         state.open_libs();
 
         state.get_global("package");
