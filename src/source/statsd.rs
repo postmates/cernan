@@ -4,6 +4,7 @@ use mio;
 use protocols::statsd::parse_statsd;
 use regex::Regex;
 use source;
+use std::io::ErrorKind;
 use std::net::ToSocketAddrs;
 use std::str;
 use std::sync;
@@ -87,6 +88,63 @@ impl Default for StatsdConfig {
     }
 }
 
+impl Statsd {
+    fn handle_datagrams(
+        &mut self,
+        mut chans: &mut util::Channel,
+        tags: &sync::Arc<metric::TagMap>,
+        token : mio::Token,
+        mut buf : &mut Vec<u8>)
+    {
+        let socket = &self.conns[token];
+        let mut metrics = Vec::new();
+        let basic_metric = sync::Arc::new(Some(
+            metric::Telemetry::default().overlay_tags_from_map(tags),
+        ));
+        loop {
+            match socket.recv_from(&mut buf) {
+                Ok((len, _)) => {
+                    match str::from_utf8(&buf[..len]) {
+                        Ok(val) => if parse_statsd(
+                            val,
+                            &mut metrics,
+                            &basic_metric,
+                            &self.parse_config,
+                        ) {
+                            for m in metrics.drain(..) {
+                                send(
+                                    &mut chans,
+                                    metric::Event::new_telemetry(m),
+                                );
+                            }
+                            STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
+                        } else {
+                            STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
+                            error!("BAD PACKET: {:?}", val);
+                        },
+                        Err(e) => {
+                            error!("Payload not valid UTF-8: {:?}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    match e.kind() {
+                        ErrorKind::WouldBlock => {
+                            break;
+                        }
+                        _ => {
+                            panic!(format!(
+                            "Could not read UDP socket with error {:?}",
+                            e
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl source::Source<StatsdConfig> for Statsd {
     /// Create and spawn a new statsd source
     fn init(config: StatsdConfig) -> Self {
@@ -113,7 +171,7 @@ impl source::Source<StatsdConfig> for Statsd {
     }
 
     fn run(
-        self,
+        mut self,
         mut chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
         poller: mio::Poll,
@@ -130,10 +188,6 @@ impl source::Source<StatsdConfig> for Statsd {
         }
 
         let mut buf = vec![0; 16_250];
-        let mut metrics = Vec::new();
-        let basic_metric = sync::Arc::new(Some(
-            metric::Telemetry::default().overlay_tags_from_map(tags),
-        ));
         loop {
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(&mut events, None) {
@@ -145,38 +199,7 @@ impl source::Source<StatsdConfig> for Statsd {
                         }
 
                         token => {
-                            // Get the socket to receive from:
-                            let socket = &self.conns[token];
-
-                            let (len, _) = match socket.recv_from(&mut buf) {
-                                Ok(r) => r,
-                                Err(e) => panic!(format!(
-                                    "Could not read UDP socket with error {:?}",
-                                    e
-                                )),
-                            };
-                            match str::from_utf8(&buf[..len]) {
-                                Ok(val) => if parse_statsd(
-                                    val,
-                                    &mut metrics,
-                                    &basic_metric,
-                                    &self.parse_config,
-                                ) {
-                                    for m in metrics.drain(..) {
-                                        send(
-                                            &mut chans,
-                                            metric::Event::new_telemetry(m),
-                                        );
-                                    }
-                                    STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
-                                } else {
-                                    STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
-                                    error!("BAD PACKET: {:?}", val);
-                                },
-                                Err(e) => {
-                                    error!("Payload not valid UTF-8: {:?}", e);
-                                }
-                            }
+                            self.handle_datagrams(&mut chans, tags, token, &mut buf);
                         }
                     }
                 },
