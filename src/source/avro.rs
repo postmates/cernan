@@ -107,7 +107,7 @@ impl From<Vec<u8>> for Payload {
 impl TCPStreamHandler for AvroStreamHandler {
     /// Receives and buffers Avro events from the given stream.
     ///
-    /// The stream handler exits gracefully whhen a shutdown event is received.
+    /// The stream handler exits gracefully when a shutdown event is received.
     fn handle_stream(
         &mut self,
         chans: util::Channel,
@@ -298,8 +298,7 @@ mod test {
                     assert!(write_cursor.write_u64::<BigEndian>(0).is_ok());
                     assert!(write_cursor.write_all(&avro_blob[..]).is_ok());
 
-                    let read_cursor = Cursor::new(write_cursor.into_inner());
-                    let payload: Payload = read_cursor.into();
+                    let payload: Payload = write_cursor.into_inner().into();
 
                     let expected = Payload::Valid {
                         header: Header {
