@@ -16,6 +16,7 @@ mod flush;
 mod graphite;
 mod internal;
 mod native;
+mod nonblocking;
 mod statsd;
 mod tcp;
 
@@ -24,6 +25,7 @@ pub use self::file::{FileServer, FileServerConfig};
 pub use self::flush::{FlushTimer, FlushTimerConfig};
 pub use self::graphite::{Graphite, GraphiteConfig};
 pub use self::internal::{report_full_telemetry, Internal, InternalConfig};
+pub use self::nonblocking::{BufferedPayload, PayloadErr};
 pub use self::native::{NativeServer, NativeServerConfig};
 pub use self::statsd::{Statsd, StatsdConfig, StatsdParseConfig};
 pub use self::tcp::{TCPConfig, TCPStreamHandler, TCP};
