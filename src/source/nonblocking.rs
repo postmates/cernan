@@ -19,13 +19,10 @@ pub enum PayloadErr {
 
 impl From<io::Error> for PayloadErr {
     fn from(e: io::Error) -> PayloadErr {
-        match e.kind() {
-            io::ErrorKind::WouldBlock => {
-                PayloadErr::WouldBlock
-            }
-            _ => {
-                PayloadErr::IO(e)
-            }
+        if e.kind() == io::ErrorKind::WouldBlock {
+            PayloadErr::WouldBlock
+        } else {
+            PayloadErr::IO(e)
         }
     }
 }
@@ -52,7 +49,7 @@ pub struct BufferedPayload {
 
 impl BufferedPayload {
 
-    /// Constructs a a new BufferedPayload
+    /// Constructs a new BufferedPayload.
     pub fn new(stream: mio::net::TcpStream) -> Self {
         BufferedPayload {
             remaining_bytes: None,
@@ -71,14 +68,13 @@ impl BufferedPayload {
     {
         // Are we actively reading a payload already?
         if self.remaining_bytes.is_none() {
-            self.read_length()?
+            self.read_length()?;
         }
 
         // At this point we can assume that we have successfully
         // read the length off the wire.
         let remaining_bytes = self.remaining_bytes.clone().unwrap();
-        let mut buf = Vec::new();
-        buf.resize(remaining_bytes, 0);
+        let mut buf = vec![0u8; remaining_bytes];
         self.read_payload(&mut buf)?;
 
         // By this point we assert that we have read exactly
