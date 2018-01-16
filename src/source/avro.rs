@@ -13,8 +13,10 @@ use util;
 lazy_static! {
     /// Total payloads processed.
     pub static ref AVRO_PAYLOAD_SUCCESS_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total fatal failures to parse.
-    pub static ref AVRO_PAYLOAD_FATAL_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total fatal parse failures.
+    pub static ref AVRO_PAYLOAD_PARSE_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total fatal IO related errors.
+    pub static ref AVRO_PAYLOAD_IO_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
 #[derive(Default, Debug, Clone, Deserialize)]
@@ -133,6 +135,8 @@ impl TCPStreamHandler for AvroStreamHandler {
                                     Ok(payload) => {
                                         let handle_res = self.handle_avro_payload(chans.clone(),tags, payload);
                                         if handle_res.is_err() {
+                                            AVRO_PAYLOAD_PARSE_FAILURE_SUM
+                                                .fetch_add(1, Ordering::Relaxed);
                                             streaming = false;
                                             break;
                                         }
@@ -167,7 +171,7 @@ impl TCPStreamHandler for AvroStreamHandler {
                                     Err(e) => {
                                         //Something unexpected / fatal.
                                         error!("Failed to process avro payload: {:?}", e);
-                                        AVRO_PAYLOAD_FATAL_SUM.fetch_add(1, Ordering::Relaxed);
+                                        AVRO_PAYLOAD_IO_FAILURE_SUM.fetch_add(1, Ordering::Relaxed);
                                         streaming = false;
                                         break;
                                     }
@@ -180,7 +184,8 @@ impl TCPStreamHandler for AvroStreamHandler {
         } // while streaming
 
         // On some systems shutting down an already closed connection (client or
-        // otherwise) results in an Err.  See -https://doc.rust-lang.org/beta/std/net/struct.TcpStream.html#platform-specific-behavior
+        // otherwise) results in an Err.  See -
+        // https://doc.rust-lang.org/beta/std/net/struct.TcpStream.html#platform-specific-behavior
         let _shutdown_result = stream.shutdown(net::Shutdown::Both);
     }
 }

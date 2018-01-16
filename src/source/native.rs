@@ -109,7 +109,8 @@ impl TCPStreamHandler for NativeStreamHandler {
         } // while connected
 
         // On some systems shutting down an already closed connection (client or
-        // otherwise) results in an Err.  See -https://doc.rust-lang.org/beta/std/net/struct.TcpStream.html#platform-specific-behavior
+        // otherwise) results in an Err.  See -
+        // https://doc.rust-lang.org/beta/std/net/struct.TcpStream.html#platform-specific-behavior
         let _shutdown_result = stream.shutdown(net::Shutdown::Both);
     } // handle_stream
 }

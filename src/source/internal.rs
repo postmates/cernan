@@ -164,8 +164,14 @@ impl source::Source<InternalConfig> for Internal {
                             chans
                         );
                         atom_non_zero_telem!(
-                            "cernan.avro.payload.fatal",
-                            source::avro::AVRO_PAYLOAD_FATAL_SUM,
+                            "cernan.avro.payload.parse.failure",
+                            source::avro::AVRO_PAYLOAD_PARSE_FAILURE_SUM,
+                            tags,
+                            chans
+                        );
+                        atom_non_zero_telem!(
+                            "cernan.avro.payload.io.failure",
+                            source::avro::AVRO_PAYLOAD_IO_FAILURE_SUM,
                             tags,
                             chans
                         );
