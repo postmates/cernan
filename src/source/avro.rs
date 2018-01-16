@@ -4,8 +4,9 @@ use metric;
 use mio;
 use serde_avro;
 use source::{TCPStreamHandler, TCP};
-use std::{io, mem, net, sync};
-use std::io::{Cursor, ErrorKind, Read, Write};
+use source::nonblocking::{write_all, BufferedPayload, PayloadErr};
+use std::{net, sync};
+use std::io::{Cursor, Read};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
@@ -13,8 +14,10 @@ use util;
 lazy_static! {
     /// Total payloads processed.
     pub static ref AVRO_PAYLOAD_SUCCESS_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total fatal failures to parse.
-    pub static ref AVRO_PAYLOAD_FATAL_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total fatal parse failures.
+    pub static ref AVRO_PAYLOAD_PARSE_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total fatal IO related errors.
+    pub static ref AVRO_PAYLOAD_IO_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
 #[derive(Default, Debug, Clone, Deserialize)]
@@ -75,9 +78,10 @@ enum Payload {
     Valid { header: Header, avro_blob: Vec<u8> },
 }
 
-impl From<Cursor<Vec<u8>>> for Payload {
+impl From<Vec<u8>> for Payload {
     /// Transforms cursors of payloads into Payload objects.
-    fn from(mut cursor: Cursor<Vec<u8>>) -> Payload {
+    fn from(vec: Vec<u8>) -> Payload {
+        let mut cursor = Cursor::new(vec);
         let header: Header = (&mut cursor).into();
 
         // Read the avro payload off the wire
@@ -103,18 +107,10 @@ impl From<Cursor<Vec<u8>>> for Payload {
     }
 }
 
-/// Handler error types returned by handle_avro_payload.
-enum HandlerErr {
-    /// EOF reached on the stream.
-    EOF,
-    /// Payload parsing failure.
-    Protocol(String),
-}
-
 impl TCPStreamHandler for AvroStreamHandler {
     /// Receives and buffers Avro events from the given stream.
     ///
-    /// The stream handler exits gracefully whhen a shutdown event is received.
+    /// The stream handler exits gracefully when a shutdown event is received.
     fn handle_stream(
         &mut self,
         chans: util::Channel,
@@ -123,7 +119,7 @@ impl TCPStreamHandler for AvroStreamHandler {
         mut stream: mio::net::TcpStream,
     ) -> () {
         let mut streaming = true;
-        let mut reader = io::BufReader::new(stream.try_clone().unwrap());
+        let mut reader = BufferedPayload::new(stream.try_clone().unwrap());
         while streaming {
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(&mut events, None) {
@@ -134,43 +130,76 @@ impl TCPStreamHandler for AvroStreamHandler {
                             streaming = false;
                             break;
                         }
-                        _stream_token => match self.handle_avro_payload(
-                            chans.clone(),
-                            tags,
-                            &mut reader,
-                        ) {
-                            Ok(maybe_id) => {
-                                trace!("Avro payloads processed successfully.");
-                                AVRO_PAYLOAD_SUCCESS_SUM
-                                    .fetch_add(1, Ordering::Relaxed);
+                        _stream_token => {
+                            while streaming {
+                                match reader.read() {
+                                    Ok(payload) => {
+                                        let handle_res = self.handle_avro_payload(
+                                            chans.clone(),
+                                            tags,
+                                            payload,
+                                        );
+                                        if handle_res.is_err() {
+                                            AVRO_PAYLOAD_PARSE_FAILURE_SUM
+                                                .fetch_add(1, Ordering::Relaxed);
+                                            streaming = false;
+                                            break;
+                                        }
 
-                                if maybe_id.is_some() {
-                                    let mut resp = Cursor::new(Vec::new());
-                                    resp.write_u64::<BigEndian>(maybe_id.unwrap())
-                                        .expect("Failed to write response id!");
-                                    stream
-                                        .write_all(resp.get_ref())
-                                        .expect("Failed to write response!");
+                                        trace!(
+                                            "Avro payloads processed successfully."
+                                        );
+                                        AVRO_PAYLOAD_SUCCESS_SUM
+                                            .fetch_add(1, Ordering::Relaxed);
+
+                                        let maybe_id = handle_res.unwrap();
+                                        if let Some(id) = maybe_id {
+                                            let mut resp = Cursor::new(Vec::new());
+                                            resp.write_u64::<BigEndian>(id).expect(
+                                                "Failed to write response id!",
+                                            );
+                                            write_all(&mut stream, resp.get_ref())
+                                                .expect("Failed to write response!");
+                                            trace!("Acked {:?}", id);
+                                        }
+                                    }
+
+                                    Err(PayloadErr::WouldBlock) => {
+                                        // Not enough data on the wire.  Try again
+                                        // later.
+                                        break;
+                                    }
+
+                                    Err(PayloadErr::EOF) => {
+                                        // Client went away.  Shut it down
+                                        // (gracefully).
+                                        trace!("TCP stream closed.");
+                                        streaming = false;
+                                        break;
+                                    }
+
+                                    Err(e) => {
+                                        // Something unexpected / fatal.
+                                        error!(
+                                            "Failed to process avro payload: {:?}",
+                                            e
+                                        );
+                                        AVRO_PAYLOAD_IO_FAILURE_SUM
+                                            .fetch_add(1, Ordering::Relaxed);
+                                        streaming = false;
+                                        break;
+                                    }
                                 }
-                            }
-                            Err(HandlerErr::EOF) => {
-                                trace!("TCP stream closed.");
-                                break;
-                            }
-                            Err(HandlerErr::Protocol(e)) => {
-                                error!("Failed to process avro payload: {:?}", e);
-                                AVRO_PAYLOAD_FATAL_SUM.fetch_add(1, Ordering::Relaxed);
-                                streaming = false;
-                                break;
-                            }
-                        },
+                            } // WouldBlock loop
+                        }
                     }
                 },
-            };
-        }
+            }
+        } // while streaming
 
         // On some systems shutting down an already closed connection (client or
-        // otherwise) results in an Err.  See -https://doc.rust-lang.org/beta/std/net/struct.TcpStream.html#platform-specific-behavior
+        // otherwise) results in an Err.  See -
+        // https://doc.rust-lang.org/beta/std/net/struct.TcpStream.html#platform-specific-behavior
         let _shutdown_result = stream.shutdown(net::Shutdown::Both);
     }
 }
@@ -193,41 +222,9 @@ impl AvroStreamHandler {
         &mut self,
         mut chans: util::Channel,
         _tags: &sync::Arc<metric::TagMap>,
-        reader: &mut io::BufReader<mio::net::TcpStream>,
-    ) -> Result<Option<u64>, HandlerErr> {
-        let header_size_in_bytes = mem::size_of::<Header>();
-        let payload_size_in_bytes = match reader.read_u32::<BigEndian>() {
-            Ok(i) => i as usize,
-            Err(ref e) if e.kind() == ErrorKind::UnexpectedEof => {
-                return Err(HandlerErr::EOF)
-            }
-            Err(e) => {
-                return Err(HandlerErr::Protocol(format!(
-                    "Failed to parse payload length - {:?}!",
-                    e
-                )))
-            }
-        };
-
-        if payload_size_in_bytes <= header_size_in_bytes {
-            return Err(HandlerErr::Protocol(format!(
-                "Received payload is too small!"
-            )));
-        }
-
-        // with_capacity is not enough for read_exact to function.
-        // We must manually resize the underlying slice.
-        //
-        // See - https://doc.rust-lang.org/std/vec/struct.Vec.html#capacity-and-reallocation
-        let mut buf = Vec::new();
-        buf.resize(payload_size_in_bytes, 0);
-        if reader.read_exact(&mut buf).is_err() {
-            return Err(HandlerErr::Protocol(format!(
-                "Failed to read payload from the wire!"
-            )));
-        }
-
-        match Cursor::new(buf).into() {
+        payload: Vec<u8>,
+    ) -> Result<Option<u64>, PayloadErr> {
+        match payload.into() {
             Payload::Valid { header, avro_blob } => {
                 util::send(
                     &mut chans,
@@ -246,7 +243,7 @@ impl AvroStreamHandler {
             }
 
             Payload::Invalid(e) => {
-                return Err(HandlerErr::Protocol(format!(
+                return Err(PayloadErr::Protocol(format!(
                     "Failed while parsing payload contents: {:?}!",
                     e
                 )))
@@ -319,8 +316,7 @@ mod test {
                     assert!(write_cursor.write_u64::<BigEndian>(0).is_ok());
                     assert!(write_cursor.write_all(&avro_blob[..]).is_ok());
 
-                    let read_cursor = Cursor::new(write_cursor.into_inner());
-                    let payload: Payload = read_cursor.into();
+                    let payload: Payload = write_cursor.into_inner().into();
 
                     let expected = Payload::Valid {
                         header: Header {

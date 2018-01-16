@@ -1,12 +1,10 @@
-use byteorder::{BigEndian, ReadBytesExt};
 use constants;
 use metric;
 use mio;
 use protobuf;
 use protocols::native::{AggregationMethod, Payload};
-use source::{TCPConfig, TCPStreamHandler, TCP};
-use std::io;
-use std::io::Read;
+use source::{BufferedPayload, PayloadErr, TCPConfig, TCPStreamHandler, TCP};
+use std::net;
 use std::str;
 use std::sync;
 use util;
@@ -70,23 +68,58 @@ impl TCPStreamHandler for NativeStreamHandler {
         poller: &mio::Poll,
         stream: mio::net::TcpStream,
     ) -> () {
-        let mut reader = io::BufReader::new(stream);
-        loop {
+        let mut streaming = true;
+        let mut reader = BufferedPayload::new(stream.try_clone().unwrap());
+        while streaming {
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(&mut events, None) {
                 Err(e) => panic!(format!("Failed during poll {:?}", e)),
-                Ok(_num_events) => for event in events {
-                    match event.token() {
-                        constants::SYSTEM => return,
-                        _stream_token => {
-                            let rchans = chans.clone();
-                            self.handle_stream_payload(rchans, tags, &mut reader);
+                Ok(_num_events) => {
+                    for event in events {
+                        match event.token() {
+                            constants::SYSTEM => return,
+                            _stream_token => {
+                                while streaming {
+                                    match reader.read() {
+                                        Ok(mut raw) => {
+                                            let rchans = chans.clone();
+                                            self.handle_stream_payload(
+                                                rchans,
+                                                tags,
+                                                &mut raw,
+                                            );
+                                        }
+                                        Err(PayloadErr::WouldBlock) => {
+                                            // Not enough data yet.  Try again.
+                                            break;
+                                        }
+                                        Err(PayloadErr::EOF) =>
+                                        {
+                                            // Client went away.  Shut it down
+                                            // (gracefully).
+                                            trace!("TCP stream closed.");
+                                            streaming = false;
+                                            break;
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to process native payload! {:?}", e);
+                                            streaming = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                },
-            }
-        }
-    }
+                } // events processing
+            } // poll
+        } // while connected
+
+        // On some systems shutting down an already closed connection (client or
+        // otherwise) results in an Err.  See -
+        // https://doc.rust-lang.org/beta/std/net/struct.TcpStream.html#platform-specific-behavior
+        let _shutdown_result = stream.shutdown(net::Shutdown::Both);
+    } // handle_stream
 }
 
 impl NativeStreamHandler {
@@ -94,18 +127,9 @@ impl NativeStreamHandler {
         &mut self,
         mut chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
-        reader: &mut io::BufReader<mio::net::TcpStream>,
+        buf: &mut Vec<u8>,
     ) {
-        let mut buf = Vec::with_capacity(4000);
-        let payload_size_in_bytes = match reader.read_u32::<BigEndian>() {
-            Ok(i) => i as usize,
-            Err(_) => return,
-        };
-        buf.resize(payload_size_in_bytes, 0);
-        if reader.read_exact(&mut buf).is_err() {
-            return;
-        }
-        match protobuf::parse_from_bytes::<Payload>(&buf) {
+        match protobuf::parse_from_bytes::<Payload>(buf) {
             // TODO we have to handle bin_bounds. We'll use samples to get
             // the values of each bounds' counter.
             Ok(mut pyld) => {
