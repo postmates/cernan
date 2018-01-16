@@ -129,7 +129,6 @@ impl BufferedPayload {
     fn read_payload(&mut self) -> Result<(), PayloadErr> {
         // At this point we can assume that we have successfully
         // read the length off the wire.
-        let payload_pos = self.payload_pos;
         let payload_size = self.payload_size.clone().unwrap();
 
         if self.payload.len() != payload_size {
@@ -137,24 +136,26 @@ impl BufferedPayload {
             self.payload.resize(payload_size, 0);
         }
 
-        match self.buffer.read(&mut self.payload[self.payload_pos..payload_size]) {
-            Ok(bytes_read) if (payload_pos + bytes_read) == payload_size => {
-                // We successfully pulled a payload off the wire.
-                // Reset bytes remaining for the next payload.
-                self.payload_size = None;
-                self.payload_pos = 0;
-                Ok(())
-            }
+        loop {
+            match self.buffer.read(&mut self.payload[self.payload_pos..payload_size]) {
+                Ok(bytes_read) if (self.payload_pos + bytes_read) == payload_size => {
+                    // We successfully pulled a payload off the wire.
+                    // Reset bytes remaining for the next payload.
+                    self.payload_size = None;
+                    self.payload_pos = 0;
+                    return Ok(())
+                }
 
-            Ok(bytes_read) => {
-                // We read some data, but not yet enough.
-                // Store the difference and try again later.
-                self.payload_pos += bytes_read;
-                Err(PayloadErr::WouldBlock)
-            }
+                Ok(bytes_read) => {
+                    // We read some data, but not yet enough.
+                    // Store the difference and try again later.
+                    self.payload_pos += bytes_read;
+                    continue;
+                }
 
-            Err(e) => {
-                Err(e.into())
+                Err(e) => {
+                    return Err(e.into())
+                }
             }
         }
     }
