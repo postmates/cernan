@@ -35,6 +35,8 @@ pub fn write_all(mut stream: &mio::net::TcpStream, bytes: &Vec<u8>) -> Result<()
 /// Handler error types returned by handle_avro_payload.
 #[derive(Debug)]
 pub enum PayloadErr {
+    /// End of stream has been reached.
+    EOF,
     /// Not enough data present to construct the payload.
     /// Try again later.
     WouldBlock,
@@ -48,6 +50,8 @@ impl From<io::Error> for PayloadErr {
     fn from(e: io::Error) -> PayloadErr {
         if e.kind() == io::ErrorKind::WouldBlock {
             PayloadErr::WouldBlock
+        } else if e.kind() == io::ErrorKind::UnexpectedEof {
+            PayloadErr::EOF
         } else {
             PayloadErr::IO(e)
         }
@@ -138,6 +142,10 @@ impl BufferedPayload {
 
         loop {
             match self.buffer.read(&mut self.payload[self.payload_pos..payload_size]) {
+                Ok(0) => {
+                    return Err(PayloadErr::EOF)
+                }
+
                 Ok(bytes_read) if (self.payload_pos + bytes_read) == payload_size => {
                     // We successfully pulled a payload off the wire.
                     // Reset bytes remaining for the next payload.

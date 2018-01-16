@@ -6,7 +6,7 @@ use serde_avro;
 use source::{TCPStreamHandler, TCP};
 use source::nonblocking::{write_all, BufferedPayload, PayloadErr};
 use std::{net, sync};
-use std::io::{Cursor, ErrorKind, Read};
+use std::io::{Cursor, Read};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
@@ -170,9 +170,7 @@ impl TCPStreamHandler for AvroStreamHandler {
                                         break;
                                     }
 
-                                    Err(PayloadErr::IO(ref e))
-                                        if e.kind() == ErrorKind::UnexpectedEof =>
-                                    {
+                                    Err(PayloadErr::EOF) => {
                                         // Client went away.  Shut it down
                                         // (gracefully).
                                         trace!("TCP stream closed.");

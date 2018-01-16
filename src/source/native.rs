@@ -4,7 +4,6 @@ use mio;
 use protobuf;
 use protocols::native::{AggregationMethod, Payload};
 use source::{BufferedPayload, PayloadErr, TCPConfig, TCPStreamHandler, TCP};
-use std::io::ErrorKind;
 use std::net;
 use std::str;
 use std::sync;
@@ -94,9 +93,7 @@ impl TCPStreamHandler for NativeStreamHandler {
                                             // Not enough data yet.  Try again.
                                             break;
                                         }
-                                        Err(PayloadErr::IO(ref e))
-                                            if e.kind()
-                                                == ErrorKind::UnexpectedEof =>
+                                        Err(PayloadErr::EOF) =>
                                         {
                                             // Client went away.  Shut it down
                                             // (gracefully).
