@@ -160,6 +160,7 @@ impl TCPStreamHandler for AvroStreamHandler {
                                             );
                                             write_all(&mut stream, resp.get_ref())
                                                 .expect("Failed to write response!");
+                                            trace!("Acked {:?}", id);
                                         }
                                     }
 
