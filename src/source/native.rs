@@ -3,7 +3,7 @@ use metric;
 use mio;
 use protobuf;
 use protocols::native::{AggregationMethod, Payload};
-use source::{TCPConfig, TCPStreamHandler, TCP, BufferedPayload, PayloadErr};
+use source::{BufferedPayload, PayloadErr, TCPConfig, TCPStreamHandler, TCP};
 use std::io::ErrorKind;
 use std::net;
 use std::str;
@@ -75,36 +75,46 @@ impl TCPStreamHandler for NativeStreamHandler {
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(&mut events, None) {
                 Err(e) => panic!(format!("Failed during poll {:?}", e)),
-                Ok(_num_events) => for event in events {
-                    match event.token() {
-                        constants::SYSTEM => return,
-                        _stream_token => {
-                            while streaming {
-                                match reader.read() {
-                                    Ok(mut raw) => {
-                                        let rchans = chans.clone();
-                                        self.handle_stream_payload(rchans, tags, &mut raw);
-                                    }
-                                    Err(PayloadErr::WouldBlock) => {
-                                        //Not enough data yet.  Try again.
-                                        break;
-                                    }
-                                    Err(PayloadErr::IO(ref e)) if e.kind() == ErrorKind::UnexpectedEof => {
-                                        //Client went away.  Shut it down (gracefully).
-                                        trace!("TCP stream closed.");
-                                        streaming = false;
-                                        break;
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to process native payload! {:?}", e);
-                                        streaming = false;
-                                        break;
+                Ok(_num_events) => {
+                    for event in events {
+                        match event.token() {
+                            constants::SYSTEM => return,
+                            _stream_token => {
+                                while streaming {
+                                    match reader.read() {
+                                        Ok(mut raw) => {
+                                            let rchans = chans.clone();
+                                            self.handle_stream_payload(
+                                                rchans,
+                                                tags,
+                                                &mut raw,
+                                            );
+                                        }
+                                        Err(PayloadErr::WouldBlock) => {
+                                            // Not enough data yet.  Try again.
+                                            break;
+                                        }
+                                        Err(PayloadErr::IO(ref e))
+                                            if e.kind()
+                                                == ErrorKind::UnexpectedEof =>
+                                        {
+                                            // Client went away.  Shut it down
+                                            // (gracefully).
+                                            trace!("TCP stream closed.");
+                                            streaming = false;
+                                            break;
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to process native payload! {:?}", e);
+                                            streaming = false;
+                                            break;
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }, // events processing
+                } // events processing
             } // poll
         } // while connected
 

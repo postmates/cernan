@@ -48,7 +48,6 @@ pub struct BufferedPayload {
 }
 
 impl BufferedPayload {
-
     /// Constructs a new BufferedPayload.
     pub fn new(stream: mio::net::TcpStream) -> Self {
         BufferedPayload {
@@ -64,8 +63,7 @@ impl BufferedPayload {
     /// On non-blocking streams, it is up to the user to call
     /// this method repeatedly until PayloadErr::WouldBlock
     /// is returned.
-    pub fn read(&mut self) -> Result<Vec<u8>, PayloadErr>
-    {
+    pub fn read(&mut self) -> Result<Vec<u8>, PayloadErr> {
         // Are we actively reading a payload already?
         if self.remaining_bytes.is_none() {
             self.read_length()?;
@@ -97,7 +95,7 @@ impl BufferedPayload {
     /// Attempts to read at least one payload worth of data.  If there
     /// isn't enough data between the inner buffer and the underlying stream, then
     /// PayloadErr::WouldBlock is returned.
-    fn read_payload(&mut self, mut buf : &mut Vec<u8>) -> Result<(), PayloadErr> {
+    fn read_payload(&mut self, mut buf: &mut Vec<u8>) -> Result<(), PayloadErr> {
         match self.buffer.read_exact(&mut buf) {
             Ok(_) => {
                 // We successfully pulled a payload off the wire.
@@ -106,10 +104,7 @@ impl BufferedPayload {
                 Ok(())
             }
 
-            Err(e) => {
-                Err(e.into())
-            }
+            Err(e) => Err(e.into()),
         }
     }
 }
-

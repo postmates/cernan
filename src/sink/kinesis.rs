@@ -1,9 +1,9 @@
 //! Kinesis sink for Raw events.
 use base64;
 use hyper;
-use rusoto_core;
 use metric;
 use metric::{LogLine, Telemetry};
+use rusoto_core;
 use rusoto_core::DefaultCredentialsProvider;
 use rusoto_core::default_tls_client;
 use rusoto_kinesis::{KinesisClient, PutRecordsError, PutRecordsInput,

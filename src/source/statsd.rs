@@ -93,9 +93,9 @@ impl Statsd {
         &mut self,
         mut chans: &mut util::Channel,
         tags: &sync::Arc<metric::TagMap>,
-        token : mio::Token,
-        mut buf : &mut Vec<u8>)
-    {
+        token: mio::Token,
+        mut buf: &mut Vec<u8>,
+    ) {
         let socket = &self.conns[token];
         let mut metrics = Vec::new();
         let basic_metric = sync::Arc::new(Some(
@@ -103,43 +103,36 @@ impl Statsd {
         ));
         loop {
             match socket.recv_from(&mut buf) {
-                Ok((len, _)) => {
-                    match str::from_utf8(&buf[..len]) {
-                        Ok(val) => if parse_statsd(
-                            val,
-                            &mut metrics,
-                            &basic_metric,
-                            &self.parse_config,
-                        ) {
-                            for m in metrics.drain(..) {
-                                send(
-                                    &mut chans,
-                                    metric::Event::new_telemetry(m),
-                                );
-                            }
-                            STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
-                        } else {
-                            STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
-                            error!("BAD PACKET: {:?}", val);
-                        },
-                        Err(e) => {
-                            error!("Payload not valid UTF-8: {:?}", e);
+                Ok((len, _)) => match str::from_utf8(&buf[..len]) {
+                    Ok(val) => if parse_statsd(
+                        val,
+                        &mut metrics,
+                        &basic_metric,
+                        &self.parse_config,
+                    ) {
+                        for m in metrics.drain(..) {
+                            send(&mut chans, metric::Event::new_telemetry(m));
                         }
+                        STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
+                    } else {
+                        STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
+                        error!("BAD PACKET: {:?}", val);
+                    },
+                    Err(e) => {
+                        error!("Payload not valid UTF-8: {:?}", e);
                     }
-                }
-                Err(e) => {
-                    match e.kind() {
-                        ErrorKind::WouldBlock => {
-                            break;
-                        }
-                        _ => {
-                            panic!(format!(
+                },
+                Err(e) => match e.kind() {
+                    ErrorKind::WouldBlock => {
+                        break;
+                    }
+                    _ => {
+                        panic!(format!(
                             "Could not read UDP socket with error {:?}",
                             e
-                            ));
-                        }
+                        ));
                     }
-                }
+                },
             }
         }
     }

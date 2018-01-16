@@ -3,7 +3,7 @@ use constants;
 use metric;
 use mio;
 use serde_avro;
-use source::{TCPStreamHandler, TCP, BufferedPayload, PayloadErr};
+use source::{BufferedPayload, PayloadErr, TCPStreamHandler, TCP};
 use std::{net, sync};
 use std::io::{Cursor, ErrorKind, Read, Write};
 use std::sync::Arc;
@@ -133,7 +133,11 @@ impl TCPStreamHandler for AvroStreamHandler {
                             while streaming {
                                 match reader.read() {
                                     Ok(payload) => {
-                                        let handle_res = self.handle_avro_payload(chans.clone(),tags, payload);
+                                        let handle_res = self.handle_avro_payload(
+                                            chans.clone(),
+                                            tags,
+                                            payload,
+                                        );
                                         if handle_res.is_err() {
                                             AVRO_PAYLOAD_PARSE_FAILURE_SUM
                                                 .fetch_add(1, Ordering::Relaxed);
@@ -141,15 +145,18 @@ impl TCPStreamHandler for AvroStreamHandler {
                                             break;
                                         }
 
-                                        trace!("Avro payloads processed successfully.");
-                                            AVRO_PAYLOAD_SUCCESS_SUM
+                                        trace!(
+                                            "Avro payloads processed successfully."
+                                        );
+                                        AVRO_PAYLOAD_SUCCESS_SUM
                                             .fetch_add(1, Ordering::Relaxed);
 
                                         let maybe_id = handle_res.unwrap();
                                         if let Some(id) = maybe_id {
                                             let mut resp = Cursor::new(Vec::new());
-                                            resp.write_u64::<BigEndian>(id)
-                                                    .expect("Failed to write response id!");
+                                            resp.write_u64::<BigEndian>(id).expect(
+                                                "Failed to write response id!",
+                                            );
                                             stream
                                                 .write_all(resp.get_ref())
                                                 .expect("Failed to write response!");
@@ -157,21 +164,29 @@ impl TCPStreamHandler for AvroStreamHandler {
                                     }
 
                                     Err(PayloadErr::WouldBlock) => {
-                                        //Not enough data on the wire.  Try again later.
+                                        // Not enough data on the wire.  Try again
+                                        // later.
                                         break;
                                     }
 
-                                    Err(PayloadErr::IO(ref e)) if e.kind() == ErrorKind::UnexpectedEof => {
-                                        //Client went away.  Shut it down (gracefully).
+                                    Err(PayloadErr::IO(ref e))
+                                        if e.kind() == ErrorKind::UnexpectedEof =>
+                                    {
+                                        // Client went away.  Shut it down
+                                        // (gracefully).
                                         trace!("TCP stream closed.");
                                         streaming = false;
                                         break;
                                     }
 
                                     Err(e) => {
-                                        //Something unexpected / fatal.
-                                        error!("Failed to process avro payload: {:?}", e);
-                                        AVRO_PAYLOAD_IO_FAILURE_SUM.fetch_add(1, Ordering::Relaxed);
+                                        // Something unexpected / fatal.
+                                        error!(
+                                            "Failed to process avro payload: {:?}",
+                                            e
+                                        );
+                                        AVRO_PAYLOAD_IO_FAILURE_SUM
+                                            .fetch_add(1, Ordering::Relaxed);
                                         streaming = false;
                                         break;
                                     }
@@ -179,7 +194,7 @@ impl TCPStreamHandler for AvroStreamHandler {
                             } // WouldBlock loop
                         }
                     }
-                }
+                },
             }
         } // while streaming
 
@@ -189,7 +204,6 @@ impl TCPStreamHandler for AvroStreamHandler {
         let _shutdown_result = stream.shutdown(net::Shutdown::Both);
     }
 }
-
 
 impl AvroStreamHandler {
     /// Pulls length prefixed (4 bytes, BE), avro encoded

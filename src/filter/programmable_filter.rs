@@ -1,9 +1,9 @@
 use filter;
 use libc::c_int;
+use metric;
 use mond;
 use mond::{Function, State, ThreadStatus};
 use mond::ffi::lua_State;
-use metric;
 use std::path::PathBuf;
 use std::sync;
 
