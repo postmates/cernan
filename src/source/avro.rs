@@ -3,9 +3,10 @@ use constants;
 use metric;
 use mio;
 use serde_avro;
-use source::{BufferedPayload, PayloadErr, TCPStreamHandler, TCP};
+use source::{TCPStreamHandler, TCP};
+use source::nonblocking::{write_all, BufferedPayload, PayloadErr};
 use std::{net, sync};
-use std::io::{Cursor, ErrorKind, Read, Write};
+use std::io::{Cursor, ErrorKind, Read};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
@@ -157,8 +158,7 @@ impl TCPStreamHandler for AvroStreamHandler {
                                             resp.write_u64::<BigEndian>(id).expect(
                                                 "Failed to write response id!",
                                             );
-                                            stream
-                                                .write_all(resp.get_ref())
+                                            write_all(&mut stream, resp.get_ref())
                                                 .expect("Failed to write response!");
                                         }
                                     }

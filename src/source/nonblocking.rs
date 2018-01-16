@@ -3,7 +3,34 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use mio;
 use std::io;
-use std::io::Read;
+use std::io::{Read, Write};
+
+/// Like std::net::TcpStream::write_all, except it handles WouldBlock too.
+pub fn write_all(mut stream: &mio::net::TcpStream, bytes: &Vec<u8>) -> Result<(), io::Error> {
+    let mut written = 0;
+
+    while written < bytes.len() {
+        match stream.write(&bytes[written..]) {
+            Ok(bytes_written) => {
+                written += bytes_written;
+            }
+
+            Err(e) => {
+                match e.kind() {
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted => {
+                        continue;
+                    }
+
+                    _ => {
+                        error!("Failed to write bytes onto stream! {:?}", e);
+                        return Err(e)
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
 
 /// Handler error types returned by handle_avro_payload.
 #[derive(Debug)]
