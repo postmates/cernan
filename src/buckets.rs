@@ -82,9 +82,12 @@ impl Buckets {
     /// ```
     /// extern crate cernan;
     ///
-    /// let metric =
-    /// cernan::metric::Telemetry::new().name("foo").value(1.0).kind(cernan::
-    /// metric::AggregationMethod::Sum).harden().unwrap();
+    /// let metric = cernan::metric::Telemetry::new()
+    ///     .name("foo")
+    ///     .value(1.0)
+    ///     .kind(cernan::metric::AggregationMethod::Sum)
+    ///     .harden()
+    ///     .unwrap();
     /// let mut buckets = cernan::buckets::Buckets::default();
     ///
     /// assert_eq!(true, buckets.is_empty());
@@ -131,9 +134,12 @@ impl Buckets {
     /// ```
     /// extern crate cernan;
     ///
-    /// let metric =
-    /// cernan::metric::Telemetry::new().name("foo").value(1.0).kind(cernan::
-    /// metric::AggregationMethod::Sum).harden().unwrap();
+    /// let metric = cernan::metric::Telemetry::new()
+    ///     .name("foo")
+    ///     .value(1.0)
+    ///     .kind(cernan::metric::AggregationMethod::Sum)
+    ///     .harden()
+    ///     .unwrap();
     /// let mut bucket = cernan::buckets::Buckets::default();
     /// bucket.add(metric);
     /// ```
@@ -206,6 +212,11 @@ impl Buckets {
             key_index: 0,
             value_index: 0,
         }
+    }
+
+    #[cfg(test)]
+    pub fn bin_width(&self) -> i64 {
+        self.bin_width
     }
 }
 
@@ -431,9 +442,7 @@ mod test {
                     "DID NOT FIND ONE FOR {:?} |::|::| MODEL: {:?}
     |::|::| SUT: \
                                    {:?}",
-                    v,
-                    mp,
-                    ms
+                    v, mp, ms
                 );
             }
             TestResult::passed()

@@ -388,7 +388,8 @@ impl Wavefront {
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
         let mut tmp_last_seen = HashMap::new();
-        let mut aggrs = mem::replace(&mut self.aggrs, buckets::Buckets::default());
+        let mut aggrs =
+            mem::replace(&mut self.aggrs, buckets::Buckets::new(self.bin_width));
         let mut last_seen = mem::replace(&mut self.last_seen, Default::default());
 
         for pad in padding(aggrs.iter(), self.bin_width, &last_seen, self.pad_control)
@@ -946,6 +947,48 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new().quickcheck(inner as fn(u8, Vec<Telemetry>) -> TestResult);
+    }
+
+    #[test]
+    fn format_retain_bin_width() {
+        let mut tags = TagMap::default();
+        tags.insert("source".into(), "test-src".into());
+        let percentiles = vec![
+            ("min".to_string(), 0.0),
+            ("max".to_string(), 1.0),
+            ("2".to_string(), 0.02),
+            ("9".to_string(), 0.09),
+            ("25".to_string(), 0.25),
+            ("50".to_string(), 0.5),
+            ("75".to_string(), 0.75),
+            ("90".to_string(), 0.90),
+            ("91".to_string(), 0.91),
+            ("95".to_string(), 0.95),
+            ("98".to_string(), 0.98),
+            ("99".to_string(), 0.99),
+            ("999".to_string(), 0.999),
+        ];
+        let pad_control = PadControl {
+            set: true,
+            sum: true,
+            summarize: true,
+            histogram: true,
+        };
+        let config = WavefrontConfig {
+            bin_width: 1024,
+            host: "127.0.0.1".to_string(),
+            port: 1987,
+            config_path: Some("sinks.wavefront".to_string()),
+            tags: tags.clone(),
+            percentiles: percentiles,
+            flush_interval: 60,
+            pad_control: pad_control,
+            age_threshold: None,
+        };
+        let mut wavefront = Wavefront::init(config);
+        wavefront.format_stats();
+
+        assert_eq!(wavefront.bin_width, wavefront.aggrs.bin_width());
     }
 
     #[test]
