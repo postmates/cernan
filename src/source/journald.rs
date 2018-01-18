@@ -1,9 +1,11 @@
+use constants;
 use metric::{Event, LogLine, TagMap};
+use mio;
 use source::Source;
 use std::collections::BTreeMap;
 use std::io::Result;
 use std::sync::Arc;
-use systemd::journal::{Journal, JournalFiles, JournalRecord, JournalSeek};
+use systemd::journal::{Journal, JournalFiles, JournalRecord, JournalSeek, JournalWaitResult};
 use util::Channel;
 use util::send;
 
@@ -69,23 +71,31 @@ impl Journald {
     }
 }
 
-
 impl Source for Journald {
-    fn run(&mut self) {
+    fn run(&mut self, poll: mio::Poll) {
         let mut journal = Journal::open(self.journal_files.clone(),
                               self.runtime_only.clone(),
                               self.local_only.clone())
             .expect("Unable to open journal");
 
         for (key, val) in self.matches.iter() {
+            info!("journald_source: adding match {} = {}", key, val);
             journal.match_add(key, val.as_bytes())
                 .expect("Unable to add match to journal");
         }
 
         // seek to end of journal
-        journal.seek(JournalSeek::Tail).expect("Unable to seek to tail of journal");
+        match journal.seek(JournalSeek::Tail) {
+            Err(err) => warn!("Unable to seek to tail of journal: {}", err),
+            Ok(_) => (),
+        }
 
         let tags = Arc::clone(&self.tags);
+
+        const token : mio::Token = mio::Token(0);
+        let fd = journal.get_fd().expect("Unable to get journald fd");
+        poll.register(&mio::unix::EventedFd(&fd), token, mio::Ready::readable(), mio::PollOpt::edge()).expect("Unable to register polls");
+
         let gen_log = |mut rec: JournalRecord| -> Result<Event> {
             let path = rec.remove("_SYSTEMD_UNIT")
                 .or_else(|| rec.remove("_SYSTEMD_USER_UNIT"))
@@ -121,19 +131,55 @@ impl Source for Journald {
         };
 
         loop {
+            let mut events = mio::Events::with_capacity(1024);
             let mut chans = self.chans.clone();
-            let process_records = |rec: JournalRecord| {
-                match gen_log(rec) {
-                    Ok(logline) => {
-                        debug!("send with chans: {:?} and logline: {:?}", chans, logline);
-                        send(&mut chans, logline);
-                    },
-                    Err(err) => warn!("cannot generate log. error: {}", err),
+
+            let mut process_record = || {
+                match journal.process() {
+                    Ok(JournalWaitResult::Nop) => return Ok(None),
+                    Ok(_) => (),
+                    Err(err) => {
+                        warn!("journald_source: journal.process failed: {}", err);
+                        return Err(err);
+                    }
+                };
+                match journal.next_record()? {
+                    None => Ok(None),
+                    Some(rec) => match gen_log(rec) {
+                        Ok(logline) => {
+                            Ok(Some(logline))
+                        },
+                        Err(err) => {
+                            warn!("cannot generate log. error: {}", err);
+                            Ok(None)
+                        }
+                    }
                 }
-                Ok(())
             };
 
-            match journal.watch_all_elements(process_records) {
+            match poll.poll(&mut events, None) {
+                Ok(_num_events) => for event in events {
+                    match event.token() {
+                        constants::SYSTEM => {
+                            send(&mut chans, Event::Shutdown);
+                            return;
+                        },
+                        token => {
+                            match process_record() {
+                                Ok(Some(logline)) => {
+                                    debug!("send with chans: {:?} and logline: {:?}", chans, logline);
+                                    send(&mut chans, logline);
+                                }
+                                Ok(None) => continue,
+                                Err(err) => {
+                                    warn!("Cannot process record: {}", err);
+                                    continue;
+                                }
+                            }
+                        },
+                        _ => unreachable!(),
+                    }
+                },
                 Err(err) => {
                     // Error code 74 is BADMSG
                     // Skip invalid records (due to corrupt journal)
@@ -145,7 +191,6 @@ impl Source for Journald {
                         return;
                     }
                 }
-                Ok(()) => continue,
             }
         }
     }

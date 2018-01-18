@@ -739,17 +739,33 @@ fn main() {
 
     mem::replace(&mut args.journalds, None).map(|cfg_map| {
         for (_, config) in cfg_map {
-            let mut journald_sends = Vec::new();
+            let config_path = config.config_path.clone().unwrap();
+            let poll = mio::Poll::new().unwrap();
+            let (registration, readiness) = mio::Registration::new2();
             populate_forwards(
-                &mut journald_sends,
                 Some(&mut flush_sends),
                 &config.forwards,
-                &cfg_conf!(config),
+                &config_path,
                 &senders,
+                &mut adjacency_matrix,
             );
-            joins.push(thread::spawn(move || {
-                cernan::source::Journald::new(journald_sends, config).run();
-            }));
+
+            let journald_sends = adjacency_matrix.pop_metadata(&config_path);
+            sources.insert(
+                cfg_conf!(config).clone(),
+                SourceWorker {
+                    readiness: readiness,
+                    thread: thread::spawn(move || {
+                        poll.register(
+                            &registration,
+                            constants::SYSTEM,
+                            mio::Ready::readable(),
+                            mio::PollOpt::edge(),
+                        ).expect("Poll failed to return a result!");
+                        cernan::source::Journald::new(journald_sends, config).run(poll);
+                    }),
+                },
+            );
         }
     });
 
