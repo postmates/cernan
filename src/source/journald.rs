@@ -110,9 +110,9 @@ impl Source for Journald {
 
             let mut l = LogLine::new(path.as_ref(), value.as_ref());
 
-            // Copy timestamp from CLOCK_REALTIME
-            l = match rec.get("_SOURCE_REALTIME_TIMESTAMP").map(|s| s.parse()) {
-                Some(Ok(t)) => l.time(t),
+            // Copy timestamp from the record's CLOCK_REALTIME
+            l = match rec.get("_SOURCE_REALTIME_TIMESTAMP").map(|s| s.parse::<f64>()) {
+                Some(Ok(t)) => l.time((t * 0.000_001 ) as i64),
                 _ => {
                     info!("Unable to get _SOURCE_REALTIME_TIMESTAMP from journald record.");
                     l

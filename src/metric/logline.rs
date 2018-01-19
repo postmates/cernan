@@ -38,7 +38,7 @@ impl LogLine {
         }
     }
 
-    /// Set the time of the Logline
+    /// Set the time of the Logline (in seconds)
     ///
     /// # Examples
     /// ```
