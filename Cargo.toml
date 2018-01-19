@@ -68,3 +68,11 @@ codegen-units = 1
 [[bench]]
 name = "buckets"
 harness = false
+
+[[bench]]
+name = "protocols_statsd"
+harness = false
+
+[[bench]]
+name = "protocols_graphite"
+harness = false

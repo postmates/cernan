@@ -1,3 +1,4 @@
+.criterion/
 data/
 target/
 src/metrics/statsd.rs

@@ -72,8 +72,8 @@ impl ::std::fmt::Display for ExperimentInput {
 
 fn benchmark(c: &mut Criterion) {
     let mut inputs = Vec::with_capacity(32);
-    for i in 1..11 {
-        for j in 1..11 {
+    for i in 6..8 {
+        for j in 6..10 {
             inputs.push(ExperimentInput {
                 total_adds: 2usize.pow(i),
                 name_pool_size: 2usize.pow(j),
