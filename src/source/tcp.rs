@@ -134,44 +134,41 @@ where
             let mut events = mio::Events::with_capacity(1024);
             match poll.poll(&mut events, None) {
                 Err(e) => panic!(format!("Failed during poll {:?}", e)),
-                Ok(_num_events) => {
-                    for event in events {
-                        match event.token() {
-                            constants::SYSTEM => {
-                                for handler in self.handlers {
-                                    handler.shutdown();
-                                }
-
-                                util::send(&mut chans, metric::Event::Shutdown);
-                                return;
+                Ok(_num_events) => for event in events {
+                    match event.token() {
+                        constants::SYSTEM => {
+                            for handler in self.handlers {
+                                handler.shutdown();
                             }
-                            listener_token => {
-                                let listener = &(self.listeners[listener_token]);
-                                match self.spawn_stream_handlers(
-                                    chans.clone(),
-                                    tags,
-                                    listener,
-                                )
-                                {
-                                    Ok(new_handlers) => {
-                                        self.handlers.extend(new_handlers);
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to spawn stream handlers! {:?}", e);
-                                        error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
-                                        let _ = poll.deregister(listener);
-                                    }
+
+                            util::send(&mut chans, metric::Event::Shutdown);
+                            return;
+                        }
+                        listener_token => {
+                            let listener = &(self.listeners[listener_token]);
+                            match self.spawn_stream_handlers(
+                                chans.clone(),
+                                tags,
+                                listener,
+                            ) {
+                                Ok(new_handlers) => {
+                                    self.handlers.extend(new_handlers);
+                                }
+                                Err(e) => {
+                                    error!("Failed to spawn stream handlers! {:?}", e);
+                                    error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
+                                    let _ = poll.deregister(listener);
                                 }
                             }
                         }
                     }
-                }
+                },
             }
         }
     }
 
     fn spawn_stream_handlers(
-        & self,
+        &self,
         chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
         listener: &mio::net::TcpListener,
@@ -202,9 +199,7 @@ where
                     std::io::ErrorKind::WouldBlock => {
                         break;
                     }
-                    _ => {
-                        return Err(e)
-                    }
+                    _ => return Err(e),
                 },
             };
         }

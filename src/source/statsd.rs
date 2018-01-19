@@ -92,15 +92,14 @@ enum StatsdHandlerErr {
     Fatal,
 }
 
-
 impl Statsd {
     fn handle_datagrams(
-        & self,
+        &self,
         mut chans: &mut util::Channel,
         tags: &sync::Arc<metric::TagMap>,
         socket: &mio::net::UdpSocket,
         mut buf: &mut Vec<u8>,
-    ) -> Result<(), StatsdHandlerErr>{
+    ) -> Result<(), StatsdHandlerErr> {
         let mut metrics = Vec::new();
         let basic_metric = sync::Arc::new(Some(
             metric::Telemetry::default().overlay_tags_from_map(tags),
@@ -137,7 +136,7 @@ impl Statsd {
                 },
             }
         }
-        return Ok(())
+        return Ok(());
     }
 }
 
@@ -196,7 +195,12 @@ impl source::Source<StatsdConfig> for Statsd {
 
                         token => {
                             let mut socket = &self.conns[token];
-                            match self.handle_datagrams(&mut chans, tags, &socket, &mut buf) {
+                            match self.handle_datagrams(
+                                &mut chans,
+                                tags,
+                                &socket,
+                                &mut buf,
+                            ) {
                                 Ok(_) => {}
                                 Err(_fatal) => {
                                     error!("Deregistering {:?} due to unrecoverable error!", *socket);
