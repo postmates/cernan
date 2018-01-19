@@ -483,6 +483,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         as u64
                 })
                 .unwrap_or(args.flush_interval);
+            if res.bin_width > (res.flush_interval as i64) {
+                warn!("bin_width > flush_interval. bin_width will be effectively flush_interval due to flush behaviour.")
+            }
 
             res.tags = global_tags.clone();
 
