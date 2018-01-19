@@ -55,6 +55,8 @@ uuid = {version = "0.5", features = ["v4"]}
 [dev-dependencies]
 tempdir = "0.3"
 quickcheck = "0.6"
+criterion = "0.1"
+rand = "0.4"
 
 [profile.dev]
 codegen-units = 4
@@ -62,3 +64,15 @@ codegen-units = 4
 [profile.release]
 lto = true
 codegen-units = 1
+
+[[bench]]
+name = "buckets"
+harness = false
+
+[[bench]]
+name = "protocols_statsd"
+harness = false
+
+[[bench]]
+name = "protocols_graphite"
+harness = false
