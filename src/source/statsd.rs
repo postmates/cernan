@@ -172,7 +172,7 @@ impl source::Source<StatsdConfig> for Statsd {
         poller: mio::Poll,
     ) -> () {
         for (idx, socket) in self.conns.iter() {
-            match poller
+            if let Err(e) = poller
                 .register(
                     socket,
                     mio::Token::from(idx),
@@ -180,10 +180,7 @@ impl source::Source<StatsdConfig> for Statsd {
                     mio::PollOpt::edge(),
                 )
             {
-                Ok(_) => {}
-                Err(e) => {
-                    error!("Failed to register {:?} - {:?}!", socket, e);
-                }
+                error!("Failed to register {:?} - {:?}!", socket, e);
             }
         }
 
@@ -200,17 +197,15 @@ impl source::Source<StatsdConfig> for Statsd {
 
                         token => {
                             let mut socket = &self.conns[token];
-                            match self.handle_datagrams(
-                                &mut chans,
-                                tags,
-                                &socket,
-                                &mut buf,
-                            ) {
-                                Ok(_) => {}
-                                Err(_fatal) => {
-                                    error!("Deregistering {:?} due to unrecoverable error!", *socket);
-                                    let _ = poller.deregister(socket);
-                                }
+                            if let Err(_e) = self
+                                .handle_datagrams(
+                                    &mut chans,
+                                    tags,
+                                    &socket,
+                                    &mut buf,
+                                )
+                            {
+                                error!("Deregistering {:?} due to unrecoverable error!", *socket);
                             }
                         }
                     }

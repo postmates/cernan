@@ -106,7 +106,7 @@ where
         poller: mio::Poll,
     ) -> () {
         for (idx, listener) in self.listeners.iter() {
-            match poller
+            if let Err(e) = poller
                 .register(
                     listener,
                     mio::Token::from(idx),
@@ -114,10 +114,7 @@ where
                     mio::PollOpt::edge(),
                 )
             {
-                Ok(_) => {}
-                Err(e) => {
-                    error!("Failed to register {:?} - {:?}!", socket, e);
-                }
+                error!("Failed to register {:?} - {:?}!", listener, e);
             }
         }
 
