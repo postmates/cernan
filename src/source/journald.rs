@@ -92,9 +92,9 @@ impl Source for Journald {
 
         let tags = Arc::clone(&self.tags);
 
-        const token : mio::Token = mio::Token(0);
+        const TOKEN : mio::Token = mio::Token(0);
         let fd = journal.get_fd().expect("Unable to get journald fd");
-        poll.register(&mio::unix::EventedFd(&fd), token, mio::Ready::readable(), mio::PollOpt::edge()).expect("Unable to register polls");
+        poll.register(&mio::unix::EventedFd(&fd), TOKEN, mio::Ready::readable(), mio::PollOpt::edge()).expect("Unable to register polls");
 
         let gen_log = |mut rec: JournalRecord| -> Result<Event> {
             let path = rec.remove("_SYSTEMD_UNIT")
@@ -164,7 +164,7 @@ impl Source for Journald {
                             send(&mut chans, Event::Shutdown);
                             return;
                         },
-                        token => {
+                        TOKEN => {
                             match process_record() {
                                 Ok(Some(logline)) => {
                                     debug!("send with chans: {:?} and logline: {:?}", chans, logline);
