@@ -79,7 +79,7 @@ impl TCPStreamHandler for GraphiteStreamHandler {
         loop {
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(&mut events, None) {
-                Err(e) => panic!(format!("Failed during poll {:?}", e)),
+                Err(e) => panic!("Failed during poll {:?}", e),
                 Ok(_num_events) => for event in events {
                     match event.token() {
                         constants::SYSTEM => return,

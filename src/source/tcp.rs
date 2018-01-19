@@ -76,7 +76,7 @@ where
                 for addr in ips {
                     let listener = mio::net::TcpListener::bind(&addr)
                         .expect("Unable to bind to TCP socket");
-                    info!("registered listener for {:?}", addr);
+                    info!("Registered listener for {:?}", addr);
                     listeners.insert(listener);
                 }
             }
@@ -146,11 +146,22 @@ where
                                 return;
                             }
                             listener_token => {
-                                self.spawn_stream_handlers(
-                                    chans.clone(), // TODO: do not clone, make an Arc
+                                let listener = &(self.listeners[listener_token]);
+                                match self.spawn_stream_handlers(
+                                    chans.clone(),
                                     tags,
-                                    listener_token,
-                                );
+                                    listener,
+                                )
+                                {
+                                    Ok(new_handlers) => {
+                                        self.handlers.extend(new_handlers);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to spawn stream handlers! {:?}", e);
+                                        error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
+                                        let _ = poll.deregister(listener);
+                                    }
+                                }
                             }
                         }
                     }
@@ -160,12 +171,12 @@ where
     }
 
     fn spawn_stream_handlers(
-        &mut self,
+        & self,
         chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
-        listener_token: mio::Token,
-    ) -> () {
-        let listener = &(self.listeners[listener_token]);
+        listener: &mio::net::TcpListener,
+    ) -> Result<Vec<thread::ThreadHandle>, std::io::Error> {
+        let mut handlers = Vec::new();
         loop {
             match listener.accept() {
                 Ok((stream, _addr)) => {
@@ -184,16 +195,19 @@ where
                         let mut handler = H::new();
                         handler.handle_stream(rchans, &rtags, &poller, stream);
                     });
-                    self.handlers.push(new_stream);
+                    handlers.push(new_stream);
                 }
 
                 Err(e) => match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
                         break;
                     }
-                    _ => unimplemented!(),
+                    _ => {
+                        return Err(e)
+                    }
                 },
             };
         }
+        Ok(handlers)
     }
 }
