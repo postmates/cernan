@@ -1,312 +1,94 @@
-#![feature(test)]
+#[macro_use]
+extern crate criterion;
+
+use criterion::Criterion;
 
 extern crate cernan;
 extern crate chrono;
-extern crate test;
+extern crate rand;
 
-use self::test::Bencher;
 use cernan::buckets;
 use cernan::metric::{AggregationMethod, Telemetry};
 use chrono::{TimeZone, Utc};
+use rand::{Rng, SeedableRng, XorShiftRng};
 
-#[bench]
-fn bench_single_timer(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
+fn experiment(input: &ExperimentInput) {
+    let total_adds = input.total_adds;
+    let name_pool_size = input.name_pool_size;
+    let mut rng: XorShiftRng = SeedableRng::from_seed([1, 2, 3, 4]);
+    let aggregations = [
+        AggregationMethod::Histogram,
+        AggregationMethod::Set,
+        AggregationMethod::Sum,
+        AggregationMethod::Summarize,
+    ];
+    let times = [
+        Utc.ymd(1972, 12, 11)
+            .and_hms_milli(11, 59, 49, 0)
+            .timestamp(),
+        Utc.ymd(1972, 12, 11)
+            .and_hms_milli(11, 59, 50, 0)
+            .timestamp(),
+        Utc.ymd(1972, 12, 11)
+            .and_hms_milli(11, 59, 51, 0)
+            .timestamp(),
+        Utc.ymd(1972, 12, 11)
+            .and_hms_milli(11, 59, 52, 0)
+            .timestamp(),
+        Utc.ymd(1972, 12, 11)
+            .and_hms_milli(11, 59, 52, 0)
+            .timestamp(),
+    ];
+    let mut pool: Vec<String> = Vec::with_capacity(name_pool_size);
+    for _ in 0..name_pool_size {
+        pool.push(rng.gen_ascii_chars().take(10).collect());
+    }
+    let mut bucket = buckets::Buckets::default();
 
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
-
+    for _ in 0..total_adds {
         bucket.add(
             Telemetry::new()
-                .name("a")
-                .value(1.0)
-                .kind(AggregationMethod::Summarize)
+                .value(rng.gen::<f64>())
+                .name(rng.choose(&pool).unwrap().clone())
+                .kind(*rng.choose(&aggregations).unwrap())
                 .harden()
                 .unwrap()
-                .timestamp(dt_0),
+                .timestamp(*rng.choose(&times).unwrap()),
         );
-    });
+    }
 }
 
-#[bench]
-fn bench_single_timer_100(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
+#[derive(Debug)]
+struct ExperimentInput {
+    total_adds: usize,
+    name_pool_size: usize,
+}
 
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
+impl ::std::fmt::Display for ExperimentInput {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(f, "({}, {})", self.total_adds, self.name_pool_size)
+    }
+}
 
-        for _ in 0..100 {
-            bucket.add(
-                Telemetry::new()
-                    .name("a")
-                    .value(1.0)
-                    .kind(AggregationMethod::Summarize)
-                    .harden()
-                    .unwrap()
-                    .timestamp(dt_0),
-            );
+fn benchmark(c: &mut Criterion) {
+    let mut inputs = Vec::with_capacity(32);
+    for i in 1..11 {
+        for j in 1..11 {
+            inputs.push(ExperimentInput {
+                total_adds: 2usize.pow(i),
+                name_pool_size: 2usize.pow(j),
+            });
         }
-    });
+    }
+
+    c.bench_function_over_inputs(
+        "bucket_add",
+        |b, input| {
+            b.iter(|| experiment(input));
+        },
+        inputs,
+    );
 }
 
-#[bench]
-fn bench_single_timer_1000(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
-
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
-
-        for _ in 0..1000 {
-            bucket.add(
-                Telemetry::new()
-                    .name("a")
-                    .value(1.0)
-                    .kind(AggregationMethod::Summarize)
-                    .harden()
-                    .unwrap()
-                    .timestamp(dt_0),
-            );
-        }
-    });
-}
-
-#[bench]
-fn bench_single_timer_10000(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
-
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
-
-        for _ in 0..10_000 {
-            bucket.add(
-                Telemetry::new()
-                    .name("a")
-                    .value(1.0)
-                    .kind(AggregationMethod::Summarize)
-                    .harden()
-                    .unwrap()
-                    .timestamp(dt_0),
-            );
-        }
-    });
-}
-
-#[bench]
-fn bench_single_histogram(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
-
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
-
-        bucket.add(
-            Telemetry::new()
-                .name("a")
-                .value(1.0)
-                .kind(AggregationMethod::Summarize)
-                .harden()
-                .unwrap()
-                .timestamp(dt_0),
-        );
-    });
-}
-
-#[bench]
-fn bench_single_histogram_100(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
-
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
-
-        for _ in 0..100 {
-            bucket.add(
-                Telemetry::new()
-                    .name("a")
-                    .value(1.0)
-                    .kind(AggregationMethod::Summarize)
-                    .harden()
-                    .unwrap()
-                    .timestamp(dt_0),
-            );
-        }
-    });
-}
-
-#[bench]
-fn bench_single_histogram_1000(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
-
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
-
-        for _ in 0..1_000 {
-            bucket.add(
-                Telemetry::new()
-                    .name("a")
-                    .value(1.0)
-                    .kind(AggregationMethod::Summarize)
-                    .harden()
-                    .unwrap()
-                    .timestamp(dt_0),
-            );
-        }
-    });
-}
-
-#[bench]
-fn bench_single_histogram_10000(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
-
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
-
-        for _ in 0..10_000 {
-            bucket.add(
-                Telemetry::new()
-                    .name("a")
-                    .value(1.0)
-                    .kind(AggregationMethod::Summarize)
-                    .harden()
-                    .unwrap()
-                    .timestamp(dt_0),
-            );
-        }
-    });
-}
-
-#[bench]
-fn bench_multi_counters(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
-    let dt_1 = Utc.ymd(1972, 12, 14)
-        .and_hms_milli(5, 40, 56, 0)
-        .timestamp();
-
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
-
-        for name in &["a", "aa", "aaa", "aaaa", "aaaaa", "aaaaaa", "aaaaaa"] {
-            // 7
-            for i in &[-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0] {
-                // 11
-                bucket.add(
-                    Telemetry::new()
-                        .name(*name)
-                        .value(*i)
-                        .kind(AggregationMethod::Sum)
-                        .harden()
-                        .unwrap()
-                        .timestamp(dt_0),
-                );
-                bucket.add(
-                    Telemetry::new()
-                        .name(*name)
-                        .value(*i)
-                        .kind(AggregationMethod::Sum)
-                        .harden()
-                        .unwrap()
-                        .timestamp(dt_1),
-                );
-            }
-        }
-        // total inserts 7 * 11 * 2 * 3 = 462
-    });
-}
-
-#[bench]
-fn bench_single_counter(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
-
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
-
-        bucket.add(
-            Telemetry::new()
-                .name("a")
-                .value(1.0)
-                .kind(AggregationMethod::Sum)
-                .harden()
-                .unwrap()
-                .timestamp(dt_0),
-        );
-    });
-}
-
-#[bench]
-fn bench_multi_gauges(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
-    let dt_1 = Utc.ymd(1972, 12, 14)
-        .and_hms_milli(5, 40, 56, 0)
-        .timestamp();
-
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
-
-        for name in &["a", "aa", "aaa", "aaaa", "aaaaa", "aaaaaa", "aaaaaa"] {
-            // 7
-            for i in &[-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0] {
-                // 11
-                bucket.add(
-                    Telemetry::new()
-                        .name(*name)
-                        .value(*i)
-                        .kind(AggregationMethod::Set)
-                        .harden()
-                        .unwrap()
-                        .timestamp(dt_0),
-                );
-                bucket.add(
-                    Telemetry::new()
-                        .name(*name)
-                        .value(*i)
-                        .kind(AggregationMethod::Set)
-                        .harden()
-                        .unwrap()
-                        .timestamp(dt_1),
-                );
-            }
-        }
-        // total inserts 7 * 11 * 2 = 154
-    });
-}
-
-#[bench]
-fn bench_single_gauge(b: &mut Bencher) {
-    let dt_0 = Utc.ymd(1972, 12, 11)
-        .and_hms_milli(11, 59, 49, 0)
-        .timestamp();
-
-    b.iter(|| {
-        let mut bucket = buckets::Buckets::default();
-
-        bucket.add(
-            Telemetry::new()
-                .name("a")
-                .value(1.0)
-                .kind(AggregationMethod::Set)
-                .harden()
-                .unwrap()
-                .timestamp(dt_0),
-        );
-    });
-}
+criterion_group!(benches, benchmark);
+criterion_main!(benches);
