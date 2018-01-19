@@ -136,7 +136,7 @@ impl Statsd {
                 },
             }
         }
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -172,14 +172,12 @@ impl source::Source<StatsdConfig> for Statsd {
         poller: mio::Poll,
     ) -> () {
         for (idx, socket) in self.conns.iter() {
-            if let Err(e) = poller
-                .register(
-                    socket,
-                    mio::Token::from(idx),
-                    mio::Ready::readable(),
-                    mio::PollOpt::edge(),
-                )
-            {
+            if let Err(e) = poller.register(
+                socket,
+                mio::Token::from(idx),
+                mio::Ready::readable(),
+                mio::PollOpt::edge(),
+            ) {
                 error!("Failed to register {:?} - {:?}!", socket, e);
             }
         }
@@ -188,28 +186,28 @@ impl source::Source<StatsdConfig> for Statsd {
         loop {
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(&mut events, None) {
-                Ok(_num_events) => for event in events {
-                    match event.token() {
-                        constants::SYSTEM => {
-                            send(&mut chans, metric::Event::Shutdown);
-                            return;
-                        }
+                Ok(_num_events) => {
+                    for event in events {
+                        match event.token() {
+                            constants::SYSTEM => {
+                                send(&mut chans, metric::Event::Shutdown);
+                                return;
+                            }
 
-                        token => {
-                            let mut socket = &self.conns[token];
-                            if let Err(_e) = self
-                                .handle_datagrams(
+                            token => {
+                                let mut socket = &self.conns[token];
+                                if let Err(_e) = self.handle_datagrams(
                                     &mut chans,
                                     tags,
-                                    &socket,
+                                    socket,
                                     &mut buf,
-                                )
-                            {
-                                error!("Deregistering {:?} due to unrecoverable error!", *socket);
+                                ) {
+                                    error!("Deregistering {:?} due to unrecoverable error!", *socket);
+                                }
                             }
                         }
                     }
-                },
+                }
                 Err(e) => panic!(format!("Failed during poll {:?}", e)),
             }
         } // loop

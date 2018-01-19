@@ -64,7 +64,7 @@ impl<'a> From<&'a mut Cursor<Vec<u8>>> for Header {
 
 impl Header {
     /// Client expects an acknowledgement after publish to Hopper.
-    const CONTROL_SYNC: u32 = 1 << 0;
+    const CONTROL_SYNC: u32 = 1;
 
     /// Does the given header indicate the payload as a sync. publish?
     pub fn sync(self) -> bool {
@@ -87,7 +87,7 @@ impl From<Vec<u8>> for Payload {
         // Read the avro payload off the wire
         let mut avro_blob = Vec::new();
         if cursor.read_to_end(&mut avro_blob).is_err() {
-            return Payload::Invalid(format!("Failed to read avro payload!"));
+            return Payload::Invalid("Failed to read avro payload!".to_string());
         }
 
         // TODO - Enforce configurable type naming requirements.
@@ -116,7 +116,7 @@ impl TCPStreamHandler for AvroStreamHandler {
         chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
         poller: &mio::Poll,
-        mut stream: mio::net::TcpStream,
+        stream: mio::net::TcpStream,
     ) -> () {
         let mut streaming = true;
         let mut reader = BufferedPayload::new(stream.try_clone().unwrap());
@@ -158,7 +158,7 @@ impl TCPStreamHandler for AvroStreamHandler {
                                             resp.write_u64::<BigEndian>(id).expect(
                                                 "Failed to write response id!",
                                             );
-                                            write_all(&mut stream, resp.get_ref())
+                                            write_all(&stream, resp.get_ref())
                                                 .expect("Failed to write response!");
                                             trace!("Acked {:?}", id);
                                         }
@@ -242,12 +242,10 @@ impl AvroStreamHandler {
                 }
             }
 
-            Payload::Invalid(e) => {
-                return Err(PayloadErr::Protocol(format!(
-                    "Failed while parsing payload contents: {:?}!",
-                    e
-                )))
-            }
+            Payload::Invalid(e) => Err(PayloadErr::Protocol(format!(
+                "Failed while parsing payload contents: {:?}!",
+                e
+            ))),
         }
     }
 }

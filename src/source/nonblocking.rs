@@ -5,8 +5,11 @@ use mio;
 use std::{io, mem};
 use std::io::{Read, Write};
 
-/// Like std::net::TcpStream::write_all, except it handles WouldBlock too.
-pub fn write_all(mut stream: &mio::net::TcpStream, bytes: &Vec<u8>) -> Result<(), io::Error> {
+/// Like `std::net::TcpStream::write_all`, except it handles `WouldBlock` too.
+pub fn write_all(
+    mut stream: &mio::net::TcpStream,
+    bytes: &[u8],
+) -> Result<(), io::Error> {
     let mut written = 0;
 
     while written < bytes.len() {
@@ -15,24 +18,22 @@ pub fn write_all(mut stream: &mio::net::TcpStream, bytes: &Vec<u8>) -> Result<()
                 written += bytes_written;
             }
 
-            Err(e) => {
-                match e.kind() {
-                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted => {
-                        continue;
-                    }
-
-                    _ => {
-                        error!("Failed to write bytes onto stream! {:?}", e);
-                        return Err(e)
-                    }
+            Err(e) => match e.kind() {
+                io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted => {
+                    continue;
                 }
-            }
+
+                _ => {
+                    error!("Failed to write bytes onto stream! {:?}", e);
+                    return Err(e);
+                }
+            },
         }
     }
     Ok(())
 }
 
-/// Handler error types returned by handle_avro_payload.
+/// Handler error types returned by `handle_avro_payload`.
 #[derive(Debug)]
 pub enum PayloadErr {
     /// End of stream has been reached.
@@ -133,7 +134,7 @@ impl BufferedPayload {
     fn read_payload(&mut self) -> Result<(), PayloadErr> {
         // At this point we can assume that we have successfully
         // read the length off the wire.
-        let payload_size = self.payload_size.clone().unwrap();
+        let payload_size = self.payload_size.unwrap();
 
         if self.payload.len() != payload_size {
             trace!("Resizing internal buffer to {:?}", payload_size);
@@ -141,17 +142,17 @@ impl BufferedPayload {
         }
 
         loop {
-            match self.buffer.read(&mut self.payload[self.payload_pos..payload_size]) {
-                Ok(0) => {
-                    return Err(PayloadErr::EOF)
-                }
+            match self.buffer
+                .read(&mut self.payload[self.payload_pos..payload_size])
+            {
+                Ok(0) => return Err(PayloadErr::EOF),
 
                 Ok(bytes_read) if (self.payload_pos + bytes_read) == payload_size => {
                     // We successfully pulled a payload off the wire.
                     // Reset bytes remaining for the next payload.
                     self.payload_size = None;
                     self.payload_pos = 0;
-                    return Ok(())
+                    return Ok(());
                 }
 
                 Ok(bytes_read) => {
@@ -161,9 +162,7 @@ impl BufferedPayload {
                     continue;
                 }
 
-                Err(e) => {
-                    return Err(e.into())
-                }
+                Err(e) => return Err(e.into()),
             }
         }
     }

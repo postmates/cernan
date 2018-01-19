@@ -24,7 +24,7 @@ s-th 6 606";
 
 fn benchmark(c: &mut Criterion) {
     c.bench_function("parse_graphite", |b| {
-        b.iter(|| experiment());
+        b.iter(experiment);
     });
 }
 
