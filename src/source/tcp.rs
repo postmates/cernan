@@ -3,6 +3,7 @@ use metric;
 use mio;
 use source::Source;
 use std;
+use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::net::ToSocketAddrs;
 use std::sync;
@@ -198,9 +199,14 @@ where
                     });
                     handlers.push(new_stream);
                 }
-
                 Err(e) => match e.kind() {
-                    std::io::ErrorKind::WouldBlock => {
+                    ErrorKind::ConnectionAborted | ErrorKind::Interrupted => {
+                        // Connection was closed before we could accept or
+                        // we were interrupted. Press on.
+                        continue;
+                    }
+                    ErrorKind::WouldBlock => {
+                        //Out of connections to accept. Wrap it up.
                         break;
                     }
                     _ => return Err(e),
