@@ -3,6 +3,7 @@ use metric;
 use mio;
 use source::Source;
 use std;
+use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::net::ToSocketAddrs;
 use std::sync;
@@ -76,7 +77,7 @@ where
                 for addr in ips {
                     let listener = mio::net::TcpListener::bind(&addr)
                         .expect("Unable to bind to TCP socket");
-                    info!("registered listener for {:?}", addr);
+                    info!("Registering listener for {:?}", addr);
                     listeners.insert(listener);
                 }
             }
@@ -106,14 +107,14 @@ where
         poller: mio::Poll,
     ) -> () {
         for (idx, listener) in self.listeners.iter() {
-            poller
-                .register(
-                    listener,
-                    mio::Token::from(idx),
-                    mio::Ready::readable(),
-                    mio::PollOpt::edge(),
-                )
-                .unwrap();
+            if let Err(e) = poller.register(
+                listener,
+                mio::Token::from(idx),
+                mio::Ready::readable(),
+                mio::PollOpt::edge(),
+            ) {
+                error!("Failed to register {:?} - {:?}!", listener, e);
+            }
         }
 
         self.accept_loop(chans, tags, &poller)
@@ -134,27 +135,30 @@ where
             let mut events = mio::Events::with_capacity(1024);
             match poll.poll(&mut events, None) {
                 Err(e) => panic!(format!("Failed during poll {:?}", e)),
-                Ok(_num_events) => {
-                    for event in events {
-                        match event.token() {
-                            constants::SYSTEM => {
-                                for handler in self.handlers {
-                                    handler.shutdown();
-                                }
-
-                                util::send(&mut chans, metric::Event::Shutdown);
-                                return;
+                Ok(_num_events) => for event in events {
+                    match event.token() {
+                        constants::SYSTEM => {
+                            for handler in self.handlers {
+                                handler.shutdown();
                             }
-                            listener_token => {
-                                self.spawn_stream_handlers(
-                                    chans.clone(), // TODO: do not clone, make an Arc
-                                    tags,
-                                    listener_token,
-                                );
+
+                            util::send(&mut chans, metric::Event::Shutdown);
+                            return;
+                        }
+                        listener_token => {
+                            if let Err(e) = self.spawn_stream_handlers(
+                                chans.clone(),
+                                tags,
+                                listener_token,
+                            ) {
+                                let listener = &self.listeners[listener_token];
+                                error!("Failed to spawn stream handlers! {:?}", e);
+                                error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
+                                let _ = poll.deregister(listener);
                             }
                         }
                     }
-                }
+                },
             }
         }
     }
@@ -164,14 +168,16 @@ where
         chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
         listener_token: mio::Token,
-    ) -> () {
-        let listener = &(self.listeners[listener_token]);
+    ) -> Result<(), std::io::Error> {
+        let listener = &self.listeners[listener_token];
         loop {
             match listener.accept() {
                 Ok((stream, _addr)) => {
                     let rchans = chans.clone();
                     let rtags = sync::Arc::clone(tags);
                     let new_stream = thread::spawn(move |poller| {
+                        // Note - Stream handlers are allowed to crash without
+                        // compromising Cernan's ability to gracefully shutdown.
                         poller
                             .register(
                                 &stream,
@@ -186,12 +192,17 @@ where
                     });
                     self.handlers.push(new_stream);
                 }
-
                 Err(e) => match e.kind() {
-                    std::io::ErrorKind::WouldBlock => {
-                        break;
+                    ErrorKind::ConnectionAborted | ErrorKind::Interrupted | ErrorKind::TimedOut => {
+                        // Connection was closed before we could accept or
+                        // we were interrupted. Press on.
+                        continue;
                     }
-                    _ => unimplemented!(),
+                    ErrorKind::WouldBlock => {
+                        //Out of connections to accept. Wrap it up.
+                        return Ok(());
+                    }
+                    _ => return Err(e),
                 },
             };
         }

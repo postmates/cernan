@@ -7,7 +7,7 @@ use seahash::SeaHasher;
 use slab;
 use std::collections;
 use std::hash;
-use std::ops::Index;
+use std::ops::{Index, IndexMut};
 
 /// Cernan hashmap
 ///
@@ -78,6 +78,12 @@ impl<E: mio::Evented> Index<mio::Token> for TokenSlab<E> {
     /// Returns Evented object corresponding to Token.
     fn index(&self, token: mio::Token) -> &E {
         &self.tokens[token_to_idx(&token)]
+    }
+}
+
+impl<E: mio::Evented> IndexMut<mio::Token> for TokenSlab<E> {
+    fn index_mut(&mut self, token: mio::Token) -> &mut E {
+        &mut self.tokens[token_to_idx(&token)]
     }
 }
 
