@@ -193,7 +193,7 @@ where
                     self.handlers.push(new_stream);
                 }
                 Err(e) => match e.kind() {
-                    ErrorKind::ConnectionAborted | ErrorKind::Interrupted | ErrorKind::Timedout => {
+                    ErrorKind::ConnectionAborted | ErrorKind::Interrupted | ErrorKind::TimedOut => {
                         // Connection was closed before we could accept or
                         // we were interrupted. Press on.
                         continue;
