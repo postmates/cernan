@@ -107,14 +107,12 @@ where
         poller: mio::Poll,
     ) -> () {
         for (idx, listener) in self.listeners.iter() {
-            if let Err(e) = poller
-                .register(
-                    listener,
-                    mio::Token::from(idx),
-                    mio::Ready::readable(),
-                    mio::PollOpt::edge(),
-                )
-            {
+            if let Err(e) = poller.register(
+                listener,
+                mio::Token::from(idx),
+                mio::Ready::readable(),
+                mio::PollOpt::edge(),
+            ) {
                 error!("Failed to register {:?} - {:?}!", listener, e);
             }
         }
@@ -148,20 +146,15 @@ where
                             return;
                         }
                         listener_token => {
-                            let listener = &(self.listeners[listener_token]);
-                            match self.spawn_stream_handlers(
+                            if let Err(e) = self.spawn_stream_handlers(
                                 chans.clone(),
                                 tags,
-                                listener,
+                                listener_token,
                             ) {
-                                Ok(new_handlers) => {
-                                    self.handlers.extend(new_handlers);
-                                }
-                                Err(e) => {
-                                    error!("Failed to spawn stream handlers! {:?}", e);
-                                    error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
-                                    let _ = poll.deregister(listener);
-                                }
+                                let listener = &self.listeners[listener_token];
+                                error!("Failed to spawn stream handlers! {:?}", e);
+                                error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
+                                let _ = poll.deregister(listener);
                             }
                         }
                     }
@@ -171,12 +164,12 @@ where
     }
 
     fn spawn_stream_handlers(
-        &self,
+        &mut self,
         chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
-        listener: &mio::net::TcpListener,
-    ) -> Result<Vec<thread::ThreadHandle>, std::io::Error> {
-        let mut handlers = Vec::new();
+        listener_token: mio::Token,
+    ) -> Result<(), std::io::Error> {
+        let listener = &self.listeners[listener_token];
         loop {
             match listener.accept() {
                 Ok((stream, _addr)) => {
@@ -197,7 +190,7 @@ where
                         let mut handler = H::new();
                         handler.handle_stream(rchans, &rtags, &poller, stream);
                     });
-                    handlers.push(new_stream);
+                    self.handlers.push(new_stream);
                 }
                 Err(e) => match e.kind() {
                     ErrorKind::ConnectionAborted | ErrorKind::Interrupted | ErrorKind::Timedout => {
@@ -207,12 +200,11 @@ where
                     }
                     ErrorKind::WouldBlock => {
                         //Out of connections to accept. Wrap it up.
-                        break;
+                        return Ok(());
                     }
                     _ => return Err(e),
                 },
             };
         }
-        Ok(handlers)
     }
 }
