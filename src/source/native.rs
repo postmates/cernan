@@ -7,7 +7,15 @@ use source::{BufferedPayload, PayloadErr, TCPConfig, TCPStreamHandler, TCP};
 use std::net;
 use std::str;
 use std::sync;
+use std::sync::atomic;
 use util;
+
+lazy_static! {
+    /// Total payloads processed.
+    pub static ref NATIVE_PAYLOAD_SUCCESS_SUM: sync::Arc<atomic::AtomicUsize> = sync::Arc::new(atomic::AtomicUsize::new(0));
+    /// Total fatal parse failures.
+    pub static ref NATIVE_PAYLOAD_PARSE_FAILURE_SUM: sync::Arc<atomic::AtomicUsize> = sync::Arc::new(atomic::AtomicUsize::new(0));
+}
 
 /// The native source
 ///
@@ -77,24 +85,39 @@ impl TCPStreamHandler for NativeStreamHandler {
                 Ok(_num_events) => {
                     for event in events {
                         match event.token() {
-                            constants::SYSTEM => return,
+                            constants::SYSTEM => {
+                                streaming = false;
+                                break;
+                            }
                             _stream_token => {
                                 while streaming {
                                     match reader.read() {
                                         Ok(mut raw) => {
-                                            let rchans = chans.clone();
-                                            self.handle_stream_payload(
-                                                rchans,
-                                                tags,
-                                                &mut raw,
+                                            let handle_res =
+                                                self.handle_stream_payload(
+                                                    chans.clone(),
+                                                    tags,
+                                                    &mut raw,
+                                                );
+                                            if handle_res.is_err() {
+                                                NATIVE_PAYLOAD_PARSE_FAILURE_SUM
+                                                    .fetch_add(
+                                                        1,
+                                                        atomic::Ordering::Relaxed,
+                                                    );
+                                                streaming = false;
+                                                break;
+                                            }
+                                            NATIVE_PAYLOAD_SUCCESS_SUM.fetch_add(
+                                                1,
+                                                atomic::Ordering::Relaxed,
                                             );
                                         }
                                         Err(PayloadErr::WouldBlock) => {
                                             // Not enough data yet.  Try again.
                                             break;
                                         }
-                                        Err(PayloadErr::EOF) =>
-                                        {
+                                        Err(PayloadErr::EOF) => {
                                             // Client went away.  Shut it down
                                             // (gracefully).
                                             trace!("TCP stream closed.");
@@ -128,7 +151,7 @@ impl NativeStreamHandler {
         mut chans: util::Channel,
         tags: &sync::Arc<metric::TagMap>,
         buf: &mut Vec<u8>,
-    ) {
+    ) -> Result<(), protobuf::ProtobufError> {
         match protobuf::parse_from_bytes::<Payload>(buf) {
             // TODO we have to handle bin_bounds. We'll use samples to get
             // the values of each bounds' counter.
@@ -187,10 +210,11 @@ impl NativeStreamHandler {
                     }
                     util::send(&mut chans, metric::Event::new_log(logline));
                 }
+                Ok(())
             }
             Err(err) => {
                 trace!("Unable to read payload: {:?}", err);
-                return;
+                return Err(err);
             }
         }
     }
