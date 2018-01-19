@@ -76,7 +76,7 @@ where
                 for addr in ips {
                     let listener = mio::net::TcpListener::bind(&addr)
                         .expect("Unable to bind to TCP socket");
-                    info!("Registered listener for {:?}", addr);
+                    info!("Registering listener for {:?}", addr);
                     listeners.insert(listener);
                 }
             }
@@ -106,14 +106,19 @@ where
         poller: mio::Poll,
     ) -> () {
         for (idx, listener) in self.listeners.iter() {
-            poller
+            match poller
                 .register(
                     listener,
                     mio::Token::from(idx),
                     mio::Ready::readable(),
                     mio::PollOpt::edge(),
                 )
-                .unwrap();
+            {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Failed to register {:?} - {:?}!", socket, e);
+                }
+            }
         }
 
         self.accept_loop(chans, tags, &poller)
@@ -180,6 +185,8 @@ where
                     let rchans = chans.clone();
                     let rtags = sync::Arc::clone(tags);
                     let new_stream = thread::spawn(move |poller| {
+                        // Note - Stream handlers are allowed to crash without
+                        // compromising Cernan's ability to gracefully shutdown.
                         poller
                             .register(
                                 &stream,

@@ -172,14 +172,19 @@ impl source::Source<StatsdConfig> for Statsd {
         poller: mio::Poll,
     ) -> () {
         for (idx, socket) in self.conns.iter() {
-            poller
+            match poller
                 .register(
                     socket,
                     mio::Token::from(idx),
                     mio::Ready::readable(),
                     mio::PollOpt::edge(),
                 )
-                .unwrap();
+            {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Failed to register {:?} - {:?}!", socket, e);
+                }
+            }
         }
 
         let mut buf = vec![0; 16_250];
