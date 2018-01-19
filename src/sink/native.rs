@@ -125,9 +125,7 @@ impl Sink<NativeConfig> for Native {
                         metric::AggregationMethod::Histogram => AggregationMethod::BIN,
                         metric::AggregationMethod::Sum => AggregationMethod::SUM,
                         metric::AggregationMethod::Set => AggregationMethod::SET,
-                        metric::AggregationMethod::Summarize => {
-                            AggregationMethod::SUMMARIZE
-                        }
+                        metric::AggregationMethod::Summarize => AggregationMethod::SUMMARIZE,
                     };
                     let persist = m.persist;
                     telem.set_persisted(persist);

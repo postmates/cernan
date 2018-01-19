@@ -156,6 +156,19 @@ impl source::Source<InternalConfig> for Internal {
                             tags,
                             chans
                         );
+                        // source::native
+                        atom_non_zero_telem!(
+                            "cernan.native.payload.success",
+                            source::native::NATIVE_PAYLOAD_SUCCESS_SUM,
+                            tags,
+                            chans
+                        );
+                        atom_non_zero_telem!(
+                            "cernan.native.payload.parse.failure",
+                            source::native::NATIVE_PAYLOAD_PARSE_FAILURE_SUM,
+                            tags,
+                            chans
+                        );
                         // source::avro
                         atom_non_zero_telem!(
                             "cernan.avro.payload.success",
