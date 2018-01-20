@@ -214,7 +214,7 @@ impl NativeStreamHandler {
             }
             Err(err) => {
                 trace!("Unable to read payload: {:?}", err);
-                return Err(err);
+                Err(err)
             }
         }
     }

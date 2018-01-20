@@ -28,7 +28,7 @@ svth:+7.77|g";
 
 fn benchmark(c: &mut Criterion) {
     c.bench_function("parse_statsd", |b| {
-        b.iter(|| experiment());
+        b.iter(experiment);
     });
 }
 

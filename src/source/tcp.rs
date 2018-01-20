@@ -147,7 +147,7 @@ where
                         }
                         listener_token => {
                             if let Err(e) = self.spawn_stream_handlers(
-                                chans.clone(),
+                                &chans,
                                 tags,
                                 listener_token,
                             ) {
@@ -165,7 +165,7 @@ where
 
     fn spawn_stream_handlers(
         &mut self,
-        chans: util::Channel,
+        chans: &util::Channel,
         tags: &sync::Arc<metric::TagMap>,
         listener_token: mio::Token,
     ) -> Result<(), std::io::Error> {
@@ -173,7 +173,7 @@ where
         loop {
             match listener.accept() {
                 Ok((stream, _addr)) => {
-                    let rchans = chans.clone();
+                    let rchans = chans.to_owned();
                     let rtags = sync::Arc::clone(tags);
                     let new_stream = thread::spawn(move |poller| {
                         // Note - Stream handlers are allowed to crash without
@@ -193,7 +193,9 @@ where
                     self.handlers.push(new_stream);
                 }
                 Err(e) => match e.kind() {
-                    ErrorKind::ConnectionAborted | ErrorKind::Interrupted | ErrorKind::TimedOut => {
+                    ErrorKind::ConnectionAborted
+                    | ErrorKind::Interrupted
+                    | ErrorKind::TimedOut => {
                         // Connection was closed before we could accept or
                         // we were interrupted. Press on.
                         continue;
