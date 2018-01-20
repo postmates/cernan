@@ -71,7 +71,7 @@ pub struct Kinesis {
     /// Number of bytes the current buffer represents.
     buffer_size: usize,
     /// Kinesis prepped event blobs.
-    buffer: Vec<PutRecordsRequestEntry>,
+    put_records_input: PutRecordsInput,
 }
 
 impl Sink<KinesisConfig> for Kinesis {
@@ -86,11 +86,14 @@ impl Sink<KinesisConfig> for Kinesis {
         Kinesis {
             client: connect(config.region.clone()),
             region: config.region,
-            stream_name: config.stream_name.unwrap(),
+            stream_name: config.stream_name.clone().unwrap(),
 
             /// Publication limits.  See - https://docs.aws.amazon.com/streams/latest/dev/service-sizes-and-limits.html
             flush_interval: flush_interval,
-            buffer: Vec::with_capacity(max_records),
+            put_records_input: PutRecordsInput {
+                stream_name: config.stream_name.unwrap(),
+                records: Vec::new(),
+            },
             buffer_size: 0,
             max_records_per_batch: max_records,
             max_bytes_per_batch: max_bytes, // 1 MB
@@ -131,7 +134,8 @@ impl Sink<KinesisConfig> for Kinesis {
 
         let buffer_too_big =
             (self.buffer_size + encoded_bytes_len) > self.max_bytes_per_batch;
-        let buffer_too_long = self.buffer.len() >= self.max_records_per_batch;
+        let buffer_too_long =
+            self.put_records_input.records.len() >= self.max_records_per_batch;
         if buffer_too_big || buffer_too_long {
             self.flush();
         }
@@ -142,7 +146,7 @@ impl Sink<KinesisConfig> for Kinesis {
             explicit_hash_key: None,
             partition_key: partition_key,
         };
-        self.buffer.push(entry);
+        self.put_records_input.records.push(entry);
         self.buffer_size += encoded_bytes_len;
     }
 
@@ -165,27 +169,18 @@ impl Kinesis {
     /// Records which fail to publish are reattempted indefinitely.
     pub fn publish_buffer(&mut self) {
         self.buffer_size = 0;
-        let mut buffer: Vec<PutRecordsRequestEntry> = self.buffer.drain(..).collect();
-
-        while !buffer.is_empty() {
-            let put_records_input = PutRecordsInput {
-                records: buffer.clone(),
-                stream_name: self.stream_name.clone(),
-            };
-
-            match self.client.put_records(&put_records_input) {
+        while !self.put_records_input.records.is_empty() {
+            match self.client.put_records(&self.put_records_input) {
                 Ok(put_records_output) => {
-                    self.filter_successful(&mut buffer, &put_records_output);
+                    self.filter_successful(&put_records_output);
                     break;
                 }
-
                 Err(PutRecordsError::ProvisionedThroughputExceeded(_)) => {
                     info!(
                         "Provisioned throughput exceeded on {:?}.  Retrying...",
                         self.stream_name
                     );
                 }
-
                 Err(err) => {
                     KINESIS_PUBLISH_FATAL_SUM.fetch_add(1, Ordering::Relaxed);
                     self.client = connect(self.region.clone());
@@ -201,22 +196,19 @@ impl Kinesis {
 
     /// Filters record request entries from the source buffer if they have been
     /// successfully published.
-    pub fn filter_successful(
-        &self,
-        buffer: &mut Vec<PutRecordsRequestEntry>,
-        put_records_output: &PutRecordsOutput,
-    ) {
+    pub fn filter_successful(&mut self, put_records_output: &PutRecordsOutput) {
         if put_records_output.failed_record_count.is_none()
             || put_records_output.failed_record_count == Some(0)
         {
-            buffer.clear();
+            self.put_records_input.records.clear();
+            info!("No errors!");
             return;
         }
 
         for (idx, record_result) in put_records_output.records.iter().enumerate().rev()
         {
             if record_result.sequence_number.is_some() {
-                buffer.remove(idx);
+                self.put_records_input.records.remove(idx);
                 KINESIS_PUBLISH_SUCCESS_SUM.fetch_add(1, Ordering::Relaxed);
             } else {
                 // Something went wrong
