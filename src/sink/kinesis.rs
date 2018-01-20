@@ -49,8 +49,15 @@ impl Default for KinesisConfig {
     }
 }
 
+fn connect(region: rusoto_core::Region) -> Box<KinesisClient<DefaultCredentialsProvider, hyper::client::Client>>{
+    let tls = default_tls_client().unwrap();
+    let provider = DefaultCredentialsProvider::new().unwrap();
+    return Box::new(KinesisClient::new(tls, provider, region))
+}
+
 /// Kinesis sink internal state.
 pub struct Kinesis {
+    region: rusoto_core::Region,
     client: Box<KinesisClient<DefaultCredentialsProvider, hyper::client::Client>>,
 
     flush_interval: u64,
@@ -71,14 +78,12 @@ impl Sink<KinesisConfig> for Kinesis {
             panic!("No Kinesis stream provided!");
         };
 
-        let tls = default_tls_client().unwrap();
-        let provider = DefaultCredentialsProvider::new().unwrap();
-        let region = config.region;
         let flush_interval = config.flush_interval;
         let max_records = 1000;
         let max_bytes = 1 << 20; // 1MB
         Kinesis {
-            client: Box::new(KinesisClient::new(tls, provider, region)),
+            client: connect(config.region.clone()),
+            region: config.region,
             stream_name: config.stream_name.unwrap(),
 
             /// Publication limits.  See - https://docs.aws.amazon.com/streams/latest/dev/service-sizes-and-limits.html
@@ -162,7 +167,7 @@ impl Kinesis {
 
         while !buffer.is_empty() {
             let put_records_input = PutRecordsInput {
-                records: self.buffer.clone(),
+                records: buffer.clone(),
                 stream_name: self.stream_name.clone(),
             };
 
@@ -181,7 +186,9 @@ impl Kinesis {
 
                 Err(err) => {
                     KINESIS_PUBLISH_FATAL_SUM.fetch_add(1, Ordering::Relaxed);
-                    panic!("Fatal exception during put_records: {:?}", err);
+                    self.client = connect(self.region.clone());
+                    error!("Reconnecting due to fatal exception during put_records: {:?}", err);
+                    continue;
                 }
             }
         }
@@ -194,7 +201,8 @@ impl Kinesis {
         buffer: &mut Vec<PutRecordsRequestEntry>,
         put_records_output: &PutRecordsOutput,
     ) {
-        if put_records_output.failed_record_count.is_none() {
+        if put_records_output.failed_record_count.is_none() || put_records_output.failed_record_count == Some(0)
+        {
             buffer.clear();
             return;
         }
