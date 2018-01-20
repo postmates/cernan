@@ -49,10 +49,12 @@ impl Default for KinesisConfig {
     }
 }
 
-fn connect(region: rusoto_core::Region) -> Box<KinesisClient<DefaultCredentialsProvider, hyper::client::Client>>{
+fn connect(
+    region: rusoto_core::Region,
+) -> Box<KinesisClient<DefaultCredentialsProvider, hyper::client::Client>> {
     let tls = default_tls_client().unwrap();
     let provider = DefaultCredentialsProvider::new().unwrap();
-    return Box::new(KinesisClient::new(tls, provider, region))
+    return Box::new(KinesisClient::new(tls, provider, region));
 }
 
 /// Kinesis sink internal state.
@@ -187,7 +189,10 @@ impl Kinesis {
                 Err(err) => {
                     KINESIS_PUBLISH_FATAL_SUM.fetch_add(1, Ordering::Relaxed);
                     self.client = connect(self.region.clone());
-                    error!("Reconnecting due to fatal exception during put_records: {:?}", err);
+                    error!(
+                        "Reconnecting due to fatal exception during put_records: {:?}",
+                        err
+                    );
                     continue;
                 }
             }
@@ -201,7 +206,8 @@ impl Kinesis {
         buffer: &mut Vec<PutRecordsRequestEntry>,
         put_records_output: &PutRecordsOutput,
     ) {
-        if put_records_output.failed_record_count.is_none() || put_records_output.failed_record_count == Some(0)
+        if put_records_output.failed_record_count.is_none()
+            || put_records_output.failed_record_count == Some(0)
         {
             buffer.clear();
             return;
