@@ -67,21 +67,19 @@ pub fn report_full_telemetry(
     Q.push(telem);
 }
 
-macro_rules! atom_non_zero_telem {
+macro_rules! atom_telem {
     ($name:expr, $atom:expr, $tags:expr, $chans:expr) => {
         let now = time::now();
-        let value = $atom.swap(0, Ordering::Relaxed);
-        if value != 0 {
-            let telem = Telemetry::new()
-                .name($name)
-                .value(value as f64)
-                .timestamp(now)
-                .kind(AggregationMethod::Set)
-                .harden()
-                .unwrap()
-                .overlay_tags_from_map(&$tags);
-            util::send(&mut $chans, metric::Event::new_telemetry(telem));
-        }
+        let value = $atom.load(Ordering::Relaxed);
+        let telem = Telemetry::new()
+            .name($name)
+            .value(value as f64)
+            .timestamp(now)
+            .kind(AggregationMethod::Sum)
+            .harden()
+            .unwrap()
+            .overlay_tags_from_map(&$tags);
+        util::send(&mut $chans, metric::Event::new_telemetry(telem));
     }
 }
 
@@ -119,340 +117,340 @@ impl source::Source<InternalConfig> for Internal {
                 Ok(_) => {
                     if !chans.is_empty() {
                         // source::graphite
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.graphite.new_peer",
                             source::graphite::GRAPHITE_NEW_PEER,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.graphite.packet",
                             source::graphite::GRAPHITE_GOOD_PACKET,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.graphite.telemetry.received",
                             source::graphite::GRAPHITE_TELEM,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.graphite.bad_packet",
                             source::graphite::GRAPHITE_BAD_PACKET,
                             tags,
                             chans
                         );
                         // source::statsd
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.statsd.packet",
                             source::statsd::STATSD_GOOD_PACKET,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.statsd.bad_packet",
                             source::statsd::STATSD_BAD_PACKET,
                             tags,
                             chans
                         );
                         // source::native
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.native.payload.success",
                             source::native::NATIVE_PAYLOAD_SUCCESS_SUM,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.native.payload.parse.failure",
                             source::native::NATIVE_PAYLOAD_PARSE_FAILURE_SUM,
                             tags,
                             chans
                         );
                         // source::avro
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.avro.payload.success",
                             source::avro::AVRO_PAYLOAD_SUCCESS_SUM,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.avro.payload.parse.failure",
                             source::avro::AVRO_PAYLOAD_PARSE_FAILURE_SUM,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.avro.payload.io.failure",
                             source::avro::AVRO_PAYLOAD_IO_FAILURE_SUM,
                             tags,
                             chans
                         );
                         // sink::elasticsearch
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.records.delivery",
                             sink::elasticsearch::ELASTIC_RECORDS_DELIVERY,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.internal.buffer_len",
                             sink::elasticsearch::ELASTIC_INTERNAL_BUFFER_LEN,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.records.total_delivered",
                             sink::elasticsearch::ELASTIC_RECORDS_TOTAL_DELIVERED,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.records.total_failed",
                             sink::elasticsearch::ELASTIC_RECORDS_TOTAL_FAILED,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.unknown",
                             sink::elasticsearch::ELASTIC_ERROR_UNKNOWN,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.bulk_action.index",
                             sink::elasticsearch::ELASTIC_BULK_ACTION_INDEX_ERR,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.bulk_action.create",
                             sink::elasticsearch::ELASTIC_BULK_ACTION_CREATE_ERR,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.bulk_action.update",
                             sink::elasticsearch::ELASTIC_BULK_ACTION_UPDATE_ERR,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.bulk_action.delete",
                             sink::elasticsearch::ELASTIC_BULK_ACTION_DELETE_ERR,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.api.index_not_found",
                             sink::elasticsearch::ELASTIC_ERROR_API_INDEX_NOT_FOUND,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.api.parsing",
                             sink::elasticsearch::ELASTIC_ERROR_API_PARSING,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.api.mapper_parsing",
                             sink::elasticsearch::ELASTIC_ERROR_API_MAPPER_PARSING,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                            "cernan.sinks.elasticsearch.error.api.action_request_validation",
                            sink::elasticsearch::ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION,
                            tags,
                            chans
                        );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.api.action_document_missing",
                             sink::elasticsearch::ELASTIC_ERROR_API_DOCUMENT_MISSING,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.api.index_already_exists",
                             sink::elasticsearch::ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.api.unknown",
                             sink::elasticsearch::ELASTIC_ERROR_API_UNKNOWN,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.elasticsearch.error.client",
                             sink::elasticsearch::ELASTIC_ERROR_CLIENT,
                             tags,
                             chans
                         );
                         // sink::wavefront
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.wavefront.aggregation.histogram",
                             sink::wavefront::WAVEFRONT_AGGR_HISTO,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.wavefront.aggregation.sum",
                             sink::wavefront::WAVEFRONT_AGGR_SUM,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.wavefront.aggregation.set",
                             sink::wavefront::WAVEFRONT_AGGR_SET,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.wavefront.aggregation.summarize",
                             sink::wavefront::WAVEFRONT_AGGR_SUMMARIZE,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.wavefront.aggregation.summarize.total_percentiles",
                             sink::wavefront::WAVEFRONT_AGGR_TOT_PERCENT,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.wavefront.delivery_attempts",
                             sink::wavefront::WAVEFRONT_DELIVERY_ATTEMPTS,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.wavefront.valve.closed",
                             sink::wavefront::WAVEFRONT_VALVE_CLOSED,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.wavefront.valve.open",
                             sink::wavefront::WAVEFRONT_VALVE_OPEN,
                             tags,
                             chans
                         );
                         // sink::prometheus
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.prometheus.aggregation.inside_baseball.windowed.total",
                             sink::prometheus::PROMETHEUS_AGGR_WINDOWED_LEN,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.prometheus.exposition.inside_baseball.delay.sum",
                             sink::prometheus::PROMETHEUS_RESPONSE_DELAY_SUM,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.prometheus.aggregation.inside_baseball.perpetual.total",
                             sink::prometheus::PROMETHEUS_AGGR_PERPETUAL_LEN,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.prometheus.aggregation.reportable",
                             sink::prometheus::PROMETHEUS_AGGR_REPORTABLE,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.prometheus.aggregation.remaining",
                             sink::prometheus::PROMETHEUS_AGGR_REMAINING,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.prometheus.report.success",
                             sink::prometheus::PROMETHEUS_REPORT_SUCCESS,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.prometheus.report.error",
                             sink::prometheus::PROMETHEUS_REPORT_ERROR,
                             tags,
                             chans
                         );
                         // sink::influxdb
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.influxdb.delivery_attempts",
                             sink::influxdb::INFLUX_DELIVERY_ATTEMPTS,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.influxdb.success",
                             sink::influxdb::INFLUX_SUCCESS,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.influxdb.failure.client_error",
                             sink::influxdb::INFLUX_FAILURE_CLIENT,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.influxdb.failure.server_error",
                             sink::influxdb::INFLUX_FAILURE_SERVER,
                             tags,
                             chans
                         );
                         // sink::kinesis
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.kinesis.publish.success",
                             sink::kinesis::KINESIS_PUBLISH_SUCCESS_SUM,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.kinesis.publish.discard",
                             sink::kinesis::KINESIS_PUBLISH_DISCARD_SUM,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.kinesis.publish.failure",
                             sink::kinesis::KINESIS_PUBLISH_FAILURE_SUM,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.sinks.kinesis.publish.fatal",
                             sink::kinesis::KINESIS_PUBLISH_FATAL_SUM,
                             tags,
                             chans
                         );
                         // filter::delay_filter
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.filters.delay.telemetry.accept",
                             filter::delay_filter::DELAY_TELEM_ACCEPT,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.filters.delay.telemetry.reject",
                             filter::delay_filter::DELAY_TELEM_REJECT,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.filters.delay.log.reject",
                             filter::delay_filter::DELAY_LOG_REJECT,
                             tags,
                             chans
                         );
-                        atom_non_zero_telem!(
+                        atom_telem!(
                             "cernan.filters.delay.log.accept",
                             filter::delay_filter::DELAY_LOG_ACCEPT,
                             tags,
