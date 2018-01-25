@@ -200,6 +200,7 @@ impl Kinesis {
         if put_records_output.failed_record_count.is_none()
             || put_records_output.failed_record_count == Some(0)
         {
+            KINESIS_PUBLISH_SUCCESS_SUM.fetch_add(self.put_records_input.records.len(), Ordering::Relaxed);
             self.put_records_input.records.clear();
             return;
         }
