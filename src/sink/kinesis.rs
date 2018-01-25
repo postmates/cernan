@@ -54,7 +54,7 @@ fn connect(
 ) -> Box<KinesisClient<DefaultCredentialsProvider, hyper::client::Client>> {
     let tls = default_tls_client().unwrap();
     let provider = DefaultCredentialsProvider::new().unwrap();
-    return Box::new(KinesisClient::new(tls, provider, region));
+    Box::new(KinesisClient::new(tls, provider, region))
 }
 
 /// Kinesis sink internal state.

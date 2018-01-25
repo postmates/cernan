@@ -524,7 +524,7 @@ impl Telemetry {
     /// # Examples
     ///
     /// ```
-    /// use cernan::metric::{Telemetry,AggregationMethod};
+    /// use cernan::metric::{AggregationMethod, Telemetry};
     ///
     /// let m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
@@ -622,7 +622,7 @@ impl Telemetry {
     /// # Examples
     ///
     /// ```
-    /// use cernan::metric::{Telemetry,TagMap};
+    /// use cernan::metric::{TagMap, Telemetry};
     ///
     /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
@@ -656,7 +656,7 @@ impl Telemetry {
     /// # Examples
     ///
     /// ```
-    /// use cernan::metric::{Telemetry,TagMap};
+    /// use cernan::metric::{TagMap, Telemetry};
     ///
     /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
     ///
@@ -901,8 +901,12 @@ impl Telemetry {
     /// ```
     /// use cernan::metric::Telemetry;
     ///
-    /// let m = Telemetry::new().name("foo").value(1.1).harden().unwrap().
-    /// timestamp(10101);
+    /// let m = Telemetry::new()
+    ///     .name("foo")
+    ///     .value(1.1)
+    ///     .harden()
+    ///     .unwrap()
+    ///     .timestamp(10101);
     ///
     /// assert_eq!(10101, m.timestamp);
     /// ```
