@@ -793,7 +793,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             }
                             _ => {
                                 warn!(
-                                    "ignoring {:?} in sinks.kafka.{:?}.librdkafka: unusable type {}",
+                                    "ignoring {:?} in {}.librdkafka: unusable type {}",
                                     key,
                                     res.config_path,
                                     value.type_str());

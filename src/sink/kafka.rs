@@ -26,7 +26,7 @@ lazy_static! {
 /// Config options for Kafka config.
 #[derive(Clone, Debug, Deserialize)]
 pub struct KafkaConfig {
-    /// Canonical name for the given Kinesis sink.
+    /// Canonical name for the given Kafka sink.
     pub config_path: Option<String>,
     /// Kafka topic to publish to.
     pub topic_name: Option<String>,
