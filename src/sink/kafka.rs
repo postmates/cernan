@@ -4,7 +4,7 @@ use metric;
 use metric::{LogLine, Telemetry};
 use rdkafka::client::EmptyContext;
 use rdkafka::config::ClientConfig;
-use rdkafka::error::{RDKafkaError, KafkaError};
+use rdkafka::error::{KafkaError, RDKafkaError};
 use rdkafka::message::{Message, OwnedMessage};
 use rdkafka::producer::FutureProducer;
 use rdkafka::producer::future_producer::DeliveryFuture;
@@ -13,7 +13,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util::Valve;
-
 
 lazy_static! {
     /// Total records published.
@@ -31,7 +30,8 @@ pub struct KafkaConfig {
     pub brokers: Option<String>,
     /// Underlying librdkafka configuration.
     pub rdkafka_config: Option<HashMap<String, String>>,
-    /// How often (seconds) the in-flight messages are checked for delivery. Default = 1 second
+    /// How often (seconds) the in-flight messages are checked for delivery.
+    /// Default = 1 second
     pub flush_interval: u64,
 }
 
@@ -97,8 +97,8 @@ impl Sink<KafkaConfig> for Kafka {
         // Discard line
     }
 
-    /// Fire off the given event to librdkafka. That library handles buffering and batching
-    /// internally.
+    /// Fire off the given event to librdkafka. That library handles buffering and
+    /// batching internally.
     fn deliver_raw(
         &mut self,
         order_by: u64,
@@ -111,8 +111,8 @@ impl Sink<KafkaConfig> for Kafka {
     }
 
     fn flush(&mut self) {
-        type RetryVec = Vec<Option<OwnedMessage>>;
-        let retry_payload_and_keys: RetryVec = self.messages.iter_mut()
+        let retry_payload_and_keys: Vec<Option<OwnedMessage>> = self.messages
+            .iter_mut()
             .map(|future| {
                 let result = future.wait();
                 match result {
@@ -121,31 +121,29 @@ impl Sink<KafkaConfig> for Kafka {
 
                         Err((err, message)) => match err {
                             KafkaError::MessageProduction(err) => match err {
-                                RDKafkaError::InvalidMessage |
-                                RDKafkaError::UnknownTopicOrPartition |
-                                RDKafkaError::LeaderNotAvailable |
-                                RDKafkaError::NotLeaderForPartition |
-                                RDKafkaError::RequestTimedOut |
-                                RDKafkaError::NetworkException |
-                                RDKafkaError::GroupLoadInProgress |
-                                RDKafkaError::GroupCoordinatorNotAvailable |
-                                RDKafkaError::NotCoordinatorForGroup |
-                                RDKafkaError::NotEnoughReplicas |
-                                RDKafkaError::NotEnoughReplicasAfterAppend |
-                                RDKafkaError::NotController => {
-                                    Some(message)
-                                }
+                                RDKafkaError::InvalidMessage
+                                | RDKafkaError::UnknownTopicOrPartition
+                                | RDKafkaError::LeaderNotAvailable
+                                | RDKafkaError::NotLeaderForPartition
+                                | RDKafkaError::RequestTimedOut
+                                | RDKafkaError::NetworkException
+                                | RDKafkaError::GroupLoadInProgress
+                                | RDKafkaError::GroupCoordinatorNotAvailable
+                                | RDKafkaError::NotCoordinatorForGroup
+                                | RDKafkaError::NotEnoughReplicas
+                                | RDKafkaError::NotEnoughReplicasAfterAppend
+                                | RDKafkaError::NotController => Some(message),
                                 _ => {
                                     error!("Kafka broker returned an unrecoverable error: {:?}", err);
                                     None
                                 }
-                            }
+                            },
 
                             _ => {
                                 error!("Failed in send to kafka broker: {:?}", err);
                                 None
                             }
-                        }
+                        },
                     },
 
                     _ => {
@@ -155,8 +153,9 @@ impl Sink<KafkaConfig> for Kafka {
                 }
             })
             .collect();
-        let new_messages = retry_payload_and_keys.iter().map(
-            |maybe_retry| match *maybe_retry {
+        let new_messages = retry_payload_and_keys
+            .iter()
+            .map(|maybe_retry| match *maybe_retry {
                 Some(ref message) => {
                     let payload = message.payload();
                     let key = message.key();
@@ -167,9 +166,11 @@ impl Sink<KafkaConfig> for Kafka {
                         None
                     }
                 }
-                None => None
-            }
-        ).filter(|x| x.is_some()).map(|x| x.unwrap()).collect();
+                None => None,
+            })
+            .filter(|x| x.is_some())
+            .map(|x| x.unwrap())
+            .collect();
         self.messages = new_messages;
     }
 
@@ -190,6 +191,7 @@ impl Kafka {
             Some(&payload[..]),
             Some(&key[..]),
             /* timestamp */ None,
-            /* block_ms */ 0)
+            /* block_ms */ 0,
+        )
     }
 }
