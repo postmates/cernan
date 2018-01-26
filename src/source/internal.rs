@@ -433,6 +433,25 @@ impl source::Source<InternalConfig> for Internal {
                             tags,
                             chans
                         );
+                        // sink::kafka
+                        atom_telem!(
+                            "cernan.sinks.kafka.publish.success",
+                            sink::kafka::KAFKA_PUBLISH_SUCCESS_SUM,
+                            tags,
+                            chans
+                        );
+                        atom_telem!(
+                            "cernan.sinks.kafka.publish.retry",
+                            sink::kafka::KAFKA_PUBLISH_RETRY_SUM,
+                            tags,
+                            chans
+                        );
+                        atom_telem!(
+                            "cernan.sinks.kafka.publish.failure",
+                            sink::kafka::KAFKA_PUBLISH_FAILURE_SUM,
+                            tags,
+                            chans
+                        );
                         // filter::delay_filter
                         atom_telem!(
                             "cernan.filters.delay.telemetry.accept",

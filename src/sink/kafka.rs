@@ -17,6 +17,10 @@ use util::Valve;
 lazy_static! {
     /// Total records published.
     pub static ref KAFKA_PUBLISH_SUCCESS_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total record publish retries.
+    pub static ref KAFKA_PUBLISH_RETRY_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total record publish failures.
+    pub static ref KAFKA_PUBLISH_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
 /// Config options for Kafka config.
@@ -117,7 +121,10 @@ impl Sink<KafkaConfig> for Kafka {
                 let result = future.wait();
                 match result {
                     Ok(inner) => match inner {
-                        Ok((_partition, _offset)) => None,
+                        Ok((_partition, _offset)) => {
+                            KAFKA_PUBLISH_SUCCESS_SUM.fetch_add(1, Ordering::Relaxed);
+                            None
+                        }
 
                         Err((err, message)) => match err {
                             KafkaError::MessageProduction(err) => match err {
@@ -132,15 +139,24 @@ impl Sink<KafkaConfig> for Kafka {
                                 | RDKafkaError::NotCoordinatorForGroup
                                 | RDKafkaError::NotEnoughReplicas
                                 | RDKafkaError::NotEnoughReplicasAfterAppend
-                                | RDKafkaError::NotController => Some(message),
+                                | RDKafkaError::NotController => {
+                                    KAFKA_PUBLISH_RETRY_SUM
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    Some(message)
+                                }
+
                                 _ => {
                                     error!("Kafka broker returned an unrecoverable error: {:?}", err);
+                                    KAFKA_PUBLISH_FAILURE_SUM
+                                        .fetch_add(1, Ordering::Relaxed);
                                     None
                                 }
                             },
 
                             _ => {
                                 error!("Failed in send to kafka broker: {:?}", err);
+                                KAFKA_PUBLISH_FAILURE_SUM
+                                    .fetch_add(1, Ordering::Relaxed);
                                 None
                             }
                         },
@@ -148,6 +164,7 @@ impl Sink<KafkaConfig> for Kafka {
 
                     _ => {
                         error!("Failed in send to kafka broker: {:?}", result);
+                        KAFKA_PUBLISH_FAILURE_SUM.fetch_add(1, Ordering::Relaxed);
                         None
                     }
                 }
