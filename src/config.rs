@@ -23,6 +23,7 @@ use sink::ConsoleConfig;
 use sink::ElasticsearchConfig;
 use sink::FirehoseConfig;
 use sink::InfluxDBConfig;
+use sink::KafkaConfig;
 use sink::KinesisConfig;
 use sink::NativeConfig;
 use sink::NullConfig;
@@ -101,6 +102,8 @@ pub struct Args {
     pub elasticsearch: Option<ElasticsearchConfig>,
     /// See `sinks::Firehose` for more.
     pub firehosen: Option<Vec<FirehoseConfig>>,
+    /// See `sinks::Kafka` for more.
+    pub kafkas: Option<Vec<KafkaConfig>>,
     /// See `sinks::Kinesis` for more.
     pub kinesises: Option<Vec<KinesisConfig>>,
     /// See `sources::FileServer` for more.
@@ -139,6 +142,7 @@ impl Default for Args {
             native_sink_config: None,
             elasticsearch: None,
             firehosen: None,
+            kafkas: None,
             kinesises: None,
             // sources
             statsds: None,
@@ -727,6 +731,91 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             firehosen
         });
 
+        args.kafkas = sinks.get("kafka").map(|snk| {
+            let mut kafkas = Vec::new();
+            for (name, tbl) in snk.as_table().unwrap().iter() {
+                let is_enabled = tbl.get("enabled")
+                    .unwrap_or(&toml::Value::Boolean(true))
+                    .as_bool()
+                    .expect("must be a bool");
+                if !is_enabled {
+                    continue;
+                }
+
+                let mut res = KafkaConfig::default();
+                res.config_path = Some(format!("sinks.kafka.{}", name));
+
+                let topic = tbl.get("topic")
+                    .map(|x| x.as_str().expect("topic must be a string").to_string());
+                if topic.is_none() {
+                    warn!(
+                        "kafka sink {:?} skipped as it does not provide a topic!",
+                        res.config_path
+                    );
+                    continue;
+                }
+                res.topic_name = topic;
+
+                let brokers = tbl.get("brokers").map(|x| {
+                    x.as_str()
+                        .expect("brokers must be a comma-separated list of host or host:port")
+                        .to_string()
+                });
+                if brokers.is_none() {
+                    warn!(
+                        "kafka sink {:?} skipped as it does not provide brokers",
+                        res.config_path
+                    );
+                    continue;
+                }
+                res.brokers = brokers;
+
+                // Allow configuration of librdkafka producer with a sub-table.
+                // Sooo many options:
+                // https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md
+                res.rdkafka_config = tbl.get("librdkafka").map(|x| {
+                    let tbl = x.as_table()
+                        .expect("librdkafka configuration should be a table");
+                    let mut map = HashMap::new();
+                    for (key, value) in tbl.iter() {
+                        match *value {
+                            toml::Value::Integer(i) => {
+                                map.insert(key.clone(), format!("{}", i))
+                            }
+                            toml::Value::String(ref s) => {
+                                map.insert(key.clone(), s.clone())
+                            }
+                            toml::Value::Float(f) => {
+                                map.insert(key.clone(), format!("{}", f))
+                            }
+                            toml::Value::Boolean(b) => {
+                                map.insert(key.clone(), format!("{}", b))
+                            }
+                            _ => {
+                                warn!(
+                                    "ignoring {:?} in sinks.kafka.{:?}.librdkafka: unusable type {}",
+                                    key,
+                                    res.config_path,
+                                    value.type_str());
+                                continue;
+                            }
+                        };
+                    }
+                    map
+                });
+
+                res.flush_interval = tbl.get("flush_interval")
+                    .map(|fi| {
+                        fi.as_integer()
+                            .expect("could not parse sinks.kafka.flush_interval")
+                            as u64
+                    })
+                    .unwrap_or(args.flush_interval);
+                kafkas.push(res)
+            }
+            kafkas
+        });
+
         args.kinesises = sinks.get("kinesis").map(|snk| {
             let mut kinesises = Vec::new();
             for (name, tbl) in snk.as_table().unwrap().iter() {
@@ -752,9 +841,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     res.stream_name = stream_name;
                     res.flush_interval = tbl.get("flush_interval")
                         .map(|fi| {
-                            fi.as_integer().expect(
-                                "could not parse sinks.firehose.flush_interval",
-                            ) as u64
+                            fi.as_integer()
+                                .expect("could not parse sinks.kinesis.flush_interval")
+                                as u64
                         })
                         .unwrap_or(args.flush_interval);
 
