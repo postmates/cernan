@@ -743,14 +743,15 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 }
 
                 let mut res = KafkaConfig::default();
-                res.config_path = Some(format!("sinks.kafka.{}", name));
+                let config_path = &format!("sinks.kafka.{}", name)[..];
+                res.config_path = Some(config_path.to_string());
 
                 let topic = tbl.get("topic")
                     .map(|x| x.as_str().expect("topic must be a string").to_string());
                 if topic.is_none() {
                     warn!(
-                        "kafka sink {:?} skipped as it does not provide a topic!",
-                        res.config_path
+                        "kafka sink {} skipped as it does not provide a topic!",
+                        config_path
                     );
                     continue;
                 }
@@ -763,8 +764,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 });
                 if brokers.is_none() {
                     warn!(
-                        "kafka sink {:?} skipped as it does not provide brokers",
-                        res.config_path
+                        "kafka sink {} skipped as it does not provide brokers",
+                        config_path
                     );
                     continue;
                 }
@@ -795,7 +796,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                                 warn!(
                                     "ignoring {:?} in {}.librdkafka: unusable type {}",
                                     key,
-                                    res.config_path,
+                                    config_path,
                                     value.type_str());
                                 continue;
                             }
