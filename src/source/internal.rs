@@ -452,6 +452,12 @@ impl source::Source<InternalConfig> for Internal {
                             tags,
                             chans
                         );
+                        atom_telem!(
+                            "cernan.sinks.kafka.publish.retry.failure",
+                            sink::kafka::KAFKA_PUBLISH_RETRY_FAILURE_SUM,
+                            tags,
+                            chans
+                        );
                         // filter::delay_filter
                         atom_telem!(
                             "cernan.filters.delay.telemetry.accept",

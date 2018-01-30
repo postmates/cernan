@@ -21,6 +21,8 @@ lazy_static! {
     pub static ref KAFKA_PUBLISH_RETRY_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total record publish failures.
     pub static ref KAFKA_PUBLISH_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total record publish retry failures. This occurs when the error signal does not include the original message.
+    pub static ref KAFKA_PUBLISH_RETRY_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
 /// Config options for Kafka config.
@@ -34,6 +36,9 @@ pub struct KafkaConfig {
     pub brokers: Option<String>,
     /// Underlying librdkafka configuration.
     pub rdkafka_config: Option<HashMap<String, String>>,
+    /// Maximum number of bytes that can be in-flight. Once we go over this, the
+    /// valve closes. Default = 10Mb.
+    pub max_message_bytes: usize,
     /// How often (seconds) the in-flight messages are checked for delivery.
     /// Default = 1 second
     pub flush_interval: u64,
@@ -46,6 +51,7 @@ impl Default for KafkaConfig {
             topic_name: None,
             brokers: None,
             rdkafka_config: None,
+            max_message_bytes: 10 * (1 << 20),
             flush_interval: 1,
         }
     }
@@ -59,6 +65,12 @@ pub struct Kafka {
     producer: FutureProducer<EmptyContext>,
     // In-flight messages.
     messages: Vec<DeliveryFuture>,
+    /// Total byte length of in-flight messages. This is used to open and close
+    /// the sink valve.
+    message_bytes: usize,
+    /// Maximum number of bytes that can be in-flight. Once we go over this,
+    /// the valve closes.
+    max_message_bytes: usize,
     /// How often (seconds) the in-flight messages are checked for delivery.
     flush_interval: u64,
 }
@@ -84,13 +96,18 @@ impl Sink<KafkaConfig> for Kafka {
             topic_name: config.topic_name.unwrap(),
             producer: producer_config.create::<FutureProducer<_>>().unwrap(),
             messages: Vec::new(),
+            message_bytes: 0,
+            max_message_bytes: config.max_message_bytes,
             flush_interval: config.flush_interval,
         }
     }
 
     fn valve_state(&self) -> Valve {
-        // We never close up shop.
-        Valve::Open
+        if self.message_bytes < self.max_message_bytes {
+            Valve::Open
+        } else {
+            Valve::Closed
+        }
     }
 
     fn deliver(&mut self, _: Arc<Option<Telemetry>>) -> () {
@@ -112,10 +129,61 @@ impl Sink<KafkaConfig> for Kafka {
         let key = format!("{:X}", order_by);
         let future = self.try_payload(bytes.as_slice(), key.as_bytes());
         self.messages.push(future);
+        self.message_bytes += bytes.len();
     }
 
     fn flush(&mut self) {
-        let retry_payload_and_keys: Vec<Option<OwnedMessage>> = self.messages
+        while !self.messages.is_empty() {
+            let retry_payload_and_keys = self.await_inflight_messages();
+            let new_messages = retry_payload_and_keys
+                .iter()
+                .map(|message| {
+                    let payload = message.payload();
+                    let key = message.key();
+                    if payload.is_some() && key.is_some() {
+                        Some(self.try_payload(payload.unwrap(), key.unwrap()))
+                    } else {
+                        error!("Unable to retry message. It was lost to the ether.");
+                        KAFKA_PUBLISH_RETRY_FAILURE_SUM
+                            .fetch_add(1, Ordering::Relaxed);
+                        None
+                    }
+                })
+                .filter(|x| x.is_some())
+                .map(|x| x.unwrap())
+                .collect();
+            self.messages = new_messages;
+        }
+        self.message_bytes = 0;
+    }
+
+    fn flush_interval(&self) -> Option<u64> {
+        Some(self.flush_interval)
+    }
+
+    fn shutdown(mut self) -> () {
+        self.flush();
+    }
+}
+
+impl Kafka {
+    /// Send a payload to Kafka and return a future that will resolve to its
+    /// delivery result.
+    fn try_payload(&self, payload: &[u8], key: &[u8]) -> DeliveryFuture {
+        self.producer.send_copy(
+            &self.topic_name[..],
+            /* partition */ None,
+            Some(&payload[..]),
+            Some(&key[..]),
+            /* timestamp */ None,
+            /* block_ms */ 0,
+        )
+    }
+
+    /// Wait on all in-flight messages, and return an `OwnedMessage` for each message
+    /// that needs to be retried.
+    fn await_inflight_messages(&mut self) -> Vec<OwnedMessage> {
+        self.messages
             .iter_mut()
             .map(|future| {
                 let result = future.wait();
@@ -169,46 +237,8 @@ impl Sink<KafkaConfig> for Kafka {
                     }
                 }
             })
-            .collect();
-        let new_messages = retry_payload_and_keys
-            .iter()
-            .map(|maybe_retry| match *maybe_retry {
-                Some(ref message) => {
-                    let payload = message.payload();
-                    let key = message.key();
-                    if payload.is_some() && key.is_some() {
-                        Some(self.try_payload(payload.unwrap(), key.unwrap()))
-                    } else {
-                        error!("Unable to retry message. It was lost to the ether.");
-                        None
-                    }
-                }
-                None => None,
-            })
             .filter(|x| x.is_some())
             .map(|x| x.unwrap())
-            .collect();
-        self.messages = new_messages;
-    }
-
-    fn flush_interval(&self) -> Option<u64> {
-        Some(self.flush_interval)
-    }
-
-    fn shutdown(mut self) -> () {
-        self.flush();
-    }
-}
-
-impl Kafka {
-    fn try_payload(&self, payload: &[u8], key: &[u8]) -> DeliveryFuture {
-        self.producer.send_copy(
-            &self.topic_name[..],
-            /* partition */ None,
-            Some(&payload[..]),
-            Some(&key[..]),
-            /* timestamp */ None,
-            /* block_ms */ 0,
-        )
+            .collect()
     }
 }

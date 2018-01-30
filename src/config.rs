@@ -797,7 +797,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                                     "ignoring {:?} in {}.librdkafka: unusable type {}",
                                     key,
                                     config_path,
-                                    value.type_str());
+                                    value.type_str()
+                                );
                                 continue;
                             }
                         };
@@ -812,6 +813,15 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             as u64
                     })
                     .unwrap_or(args.flush_interval);
+
+                res.max_message_bytes = tbl.get("max_message_bytes")
+                    .map(|fi| {
+                        fi.as_integer()
+                            .expect("could not parse sinks.kafka.max_message_bytes")
+                            as usize
+                    })
+                    .unwrap_or(res.max_message_bytes);
+
                 kafkas.push(res)
             }
             kafkas
