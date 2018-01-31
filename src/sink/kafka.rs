@@ -137,7 +137,7 @@ impl Sink<KafkaConfig> for Kafka {
             let retry_payload_and_keys = self.await_inflight_messages();
             let new_messages = retry_payload_and_keys
                 .iter()
-                .map(|message| {
+                .filter_map(|message| {
                     let payload = message.payload();
                     let key = message.key();
                     if payload.is_some() && key.is_some() {
@@ -149,8 +149,6 @@ impl Sink<KafkaConfig> for Kafka {
                         None
                     }
                 })
-                .filter(|x| x.is_some())
-                .map(|x| x.unwrap())
                 .collect();
             self.messages = new_messages;
         }
@@ -185,7 +183,7 @@ impl Kafka {
     fn await_inflight_messages(&mut self) -> Vec<OwnedMessage> {
         self.messages
             .iter_mut()
-            .map(|future| {
+            .filter_map(|future| {
                 let result = future.wait();
                 match result {
                     Ok(inner) => match inner {
@@ -208,6 +206,7 @@ impl Kafka {
                                 | RDKafkaError::NotEnoughReplicas
                                 | RDKafkaError::NotEnoughReplicasAfterAppend
                                 | RDKafkaError::NotController => {
+                                    warn!("Kafka broker returned a recoverable error, will retry: {:?}", err);
                                     KAFKA_PUBLISH_RETRY_SUM
                                         .fetch_add(1, Ordering::Relaxed);
                                     Some(message)
@@ -237,8 +236,6 @@ impl Kafka {
                     }
                 }
             })
-            .filter(|x| x.is_some())
-            .map(|x| x.unwrap())
             .collect()
     }
 }
