@@ -70,16 +70,18 @@ pub fn report_full_telemetry(
 macro_rules! atom_telem {
     ($name:expr, $atom:expr, $tags:expr, $chans:expr) => {
         let now = time::now();
-        let value = $atom.load(Ordering::Relaxed);
-        let telem = Telemetry::new()
-            .name($name)
-            .value(value as f64)
-            .timestamp(now)
-            .kind(AggregationMethod::Sum)
-            .harden()
-            .unwrap()
-            .overlay_tags_from_map(&$tags);
-        util::send(&mut $chans, metric::Event::new_telemetry(telem));
+        let value = $atom.swap(0, Ordering::Relaxed);
+        if value != 0 {
+            let telem = Telemetry::new()
+                .name($name)
+                .value(value as f64)
+                .timestamp(now)
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
+                .overlay_tags_from_map(&$tags);
+            util::send(&mut $chans, metric::Event::new_telemetry(telem));
+        }
     }
 }
 
