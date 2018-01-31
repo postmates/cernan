@@ -812,7 +812,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             .expect("could not parse sinks.kafka.flush_interval")
                             as u64
                     })
-                    .unwrap_or(args.flush_interval);
+                    .unwrap_or(res.flush_interval);
 
                 res.max_message_bytes = tbl.get("max_message_bytes")
                     .map(|fi| {
@@ -1308,6 +1308,107 @@ scripts-directory = "/foo/bar"
         assert_eq!(es.secure, true);
         assert_eq!(es.flush_interval, 2020);
         assert_eq!(es.delivery_attempt_limit, 33);
+    }
+
+    #[test]
+    fn config_kafka_sink() {
+        let config = r#"
+[sinks]
+  [sinks.kafka.one]
+  topic = "foobar"
+  flush_interval = 100
+  brokers = "127.0.0.1:9092"
+  max_message_bytes = 65
+    [sinks.kafka.one.librdkafka]
+    "setting.one" = 1
+    "setting.two" = 2
+    "setting.three" = "three"
+    "setting.four.five" = 4.5
+    "setting.six" = true
+    "setting.seven" = false
+"#;
+        let args = parse_config_file(config, 4);
+
+        assert!(args.kafkas.is_some());
+        let kafkas = args.kafkas.unwrap();
+        assert_eq!(kafkas.len(), 1);
+        let expected_librdkafka_config: HashMap<String, String> = vec![
+            (String::from("setting.one"), String::from("1")),
+            (String::from("setting.two"), String::from("2")),
+            (String::from("setting.three"), String::from("three")),
+            (String::from("setting.four.five"), String::from("4.5")),
+            (String::from("setting.six"), String::from("true")),
+            (String::from("setting.seven"), String::from("false")),
+        ].iter()
+            .cloned()
+            .collect();
+
+        let k = &kafkas[0];
+        assert_eq!(k.topic_name, Some(String::from("foobar")));
+        assert_eq!(k.brokers, Some(String::from("127.0.0.1:9092")));
+        assert_eq!(k.max_message_bytes, 65);
+        assert_eq!(k.flush_interval, 100);
+        assert_eq!(k.rdkafka_config, Some(expected_librdkafka_config));
+    }
+
+    #[test]
+    fn config_kafka_sink_skipped_if_no_topic() {
+        let config = r#"
+[sinks]
+  [sinks.kafka.one]
+  flush_interval = 100
+  brokers = "127.0.0.1:9092"
+  max_message_bytes = 65
+"#;
+        let args = parse_config_file(config, 4);
+        let kafkas = args.kafkas.unwrap();
+        assert_eq!(kafkas.len(), 0);
+    }
+
+    #[test]
+    fn config_kafka_sink_skipped_if_no_brokers() {
+        let config = r#"
+[sinks]
+  [sinks.kafka.one]
+  flush_interval = 100
+  topic = "foobar"
+  max_message_bytes = 65
+"#;
+        let args = parse_config_file(config, 4);
+        let kafkas = args.kafkas.unwrap();
+        assert_eq!(kafkas.len(), 0);
+    }
+
+    #[test]
+    fn config_kafka_sink_skipped_if_not_enabled() {
+        let config = r#"
+[sinks]
+  [sinks.kafka.one]
+  topic = "foobar"
+  brokers = "broker1,broker2"
+  enabled = false
+"#;
+        let args = parse_config_file(config, 4);
+        let kafkas = args.kafkas.unwrap();
+        assert_eq!(kafkas.len(), 0);
+    }
+
+    #[test]
+    fn config_kafka_sink_defaults() {
+        let config = r#"
+[sinks]
+  [sinks.kafka.one]
+  topic = "foobar"
+  brokers = "broker,broker"
+"#;
+        let args = parse_config_file(config, 4);
+        let kafkas = args.kafkas.unwrap();
+        assert_eq!(kafkas.len(), 1);
+        let k = &kafkas[0];
+        let defaults = KafkaConfig::default();
+
+        assert_eq!(k.flush_interval, defaults.flush_interval);
+        assert_eq!(k.max_message_bytes, defaults.max_message_bytes);
     }
 
     #[test]
