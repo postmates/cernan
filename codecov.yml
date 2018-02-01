@@ -13,7 +13,7 @@ coverage:
 
     project:
       default:
-        target: 95%
+        target: 91%
         threshold: 1%
 
 comment:

@@ -29,18 +29,23 @@ addons:
       - cmake
       - gcc
       - binutils-dev
+      - libiberty-dev
 
 after_success: |
-  wget https://github.com/SimonKagstrom/kcov/archive/v33.tar.gz &&
-  tar xzf v33.tar.gz &&
-  cd kcov-33 &&
+  wget https://github.com/SimonKagstrom/kcov/archive/v34.tar.gz &&
+  tar xzf v34.tar.gz &&
+  cd kcov-34 &&
   mkdir build &&
   cd build &&
   cmake .. &&
   make &&
   sudo make install &&
   cd ../.. &&
-  rm -rf kcov-master &&
-  for file in target/debug/cernan-*; do mkdir -p "target/cov/$(basename $file)"; kcov --exclude-pattern=/.cargo,/usr/lib --verify "target/cov/$(basename $file)" "$file"; done &&
+  rm -rf kcov-34 &&
+  find target/debug -maxdepth 1 -name 'cernan-*' -type f | while read file; do
+    [ -x $file ] || continue;
+    mkdir -p "target/cov/$(basename $file)";
+    kcov --exclude-pattern=/.cargo,/usr/lib  --include-path="$(pwd)" --verify "target/cov/$(basename $file)" "$file";
+  done &&
   bash <(curl -s https://codecov.io/bash) &&
   echo "Uploaded code coverage"
