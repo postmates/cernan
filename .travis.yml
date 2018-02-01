@@ -40,7 +40,11 @@ after_success: |
   make &&
   sudo make install &&
   cd ../.. &&
-  rm -rf kcov-master &&
-  for file in target/debug/cernan-*; do mkdir -p "target/cov/$(basename $file)"; kcov --exclude-pattern=/.cargo,/usr/lib --verify "target/cov/$(basename $file)" "$file"; done &&
+  rm -rf kcov-33 &&
+  find target/debug -name 'cernan-*' -maxdepth 1 -type f | while read file; do
+    [ -x $file ] || continue;
+    mkdir -p "target/cov/$(basename $file)";
+    kcov --exclude-pattern=/.cargo,/usr/lib --verify "target/cov/$(basename $file)" "$file";
+  done &&
   bash <(curl -s https://codecov.io/bash) &&
   echo "Uploaded code coverage"
