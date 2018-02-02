@@ -376,6 +376,7 @@ mod tests {
         call_count: Arc<RwLock<i32>>,
         send_entries: Arc<RwLock<Vec<TopicKeyPayloadEntry>>>,
         error_type: RDKafkaError,
+        fail_retry: bool,
     }
     impl KafkaMessageSender for RetryOnceMockKafkaSender {
         fn try_payload(
@@ -400,8 +401,16 @@ mod tests {
                 })
             } else {
                 let om = OwnedMessage::new(
-                    Some(key.to_vec()),
-                    Some(payload.to_vec()),
+                    if self.fail_retry {
+                        None
+                    } else {
+                        Some(key.to_vec())
+                    },
+                    if self.fail_retry {
+                        None
+                    } else {
+                        Some(payload.to_vec())
+                    },
                     topic.to_owned(),
                     Timestamp::NotAvailable,
                     -1,
@@ -438,6 +447,7 @@ mod tests {
                 call_count: Arc::new(RwLock::new(0)),
                 send_entries: Arc::new(RwLock::new(Vec::new())),
                 error_type,
+                fail_retry: false,
             };
             let mut k = Kafka {
                 topic_name: String::from("test-topic"),
@@ -472,6 +482,30 @@ mod tests {
                 }
             );
         }
+    }
+
+    #[test]
+    fn test_kafka_retry_with_message_loss() {
+        let producer = RetryOnceMockKafkaSender {
+            call_count: Arc::new(RwLock::new(0)),
+            send_entries: Arc::new(RwLock::new(Vec::new())),
+            error_type: RDKafkaError::InvalidMessage,
+            fail_retry: true,
+        };
+        let mut k = Kafka {
+            topic_name: String::from("test-topic"),
+            producer: Box::new(producer.clone()),
+            messages: Vec::new(),
+            message_bytes: 0,
+            max_message_bytes: 1000,
+            flush_interval: 1,
+        };
+
+        KAFKA_PUBLISH_RETRY_FAILURE_SUM.store(0, Ordering::Relaxed);
+        k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        k.flush();
+
+        assert_eq!(KAFKA_PUBLISH_RETRY_FAILURE_SUM.load(Ordering::Relaxed), 1);
     }
 
 }
