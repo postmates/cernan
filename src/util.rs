@@ -27,14 +27,27 @@ pub fn send(chans: &mut Channel, event: metric::Event) {
         return;
     }
 
-    let max: usize = chans.len().saturating_sub(1);
-    if max == 0 {
-        chans[0].send(event)
-    } else {
-        for chan in &mut chans[1..] {
-            chan.send(event.clone());
+    for chan in &mut chans[..] {
+        let mut snd_event = event.clone();
+        loop {
+            if let Err(res) = chan.send(snd_event) {
+                // The are a variety of errors that hopper will signal back up
+                // when we do a send. The only one we care about is
+                // `Error::Full`, meaning that all disk and memory buffer space
+                // is consumed. We drop the event on the floor in that case.
+                match res.1 {
+                    hopper::Error::Full => {
+                        break;
+                    }
+                    _ => {
+                        snd_event = res.0;
+                        continue;
+                    }
+                }
+            } else {
+                break;
+            }
         }
-        chans[0].send(event);
     }
 }
 

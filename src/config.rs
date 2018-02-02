@@ -61,6 +61,13 @@ fn default_version() -> String {
 /// on `parse_args` in this module for more details.
 #[derive(Debug)]
 pub struct Args {
+    /// The maximum size -- in bytes -- that a hopper queue may hold in memory
+    /// before flushing to disk.
+    pub max_hopper_in_memory_bytes: usize,
+    /// The maximum number of queue files that hopper may hold on disk. The
+    /// maximum discu consumption of a single hopper queue will be
+    /// `max_hopper_queue_files * max_hopper_queue_bytes`.
+    pub max_hopper_queue_files: usize,
     /// The maximum size -- in bytes -- that a hopper queue may grow to before
     /// being cycled.
     pub max_hopper_queue_bytes: usize,
@@ -127,7 +134,9 @@ pub struct Args {
 impl Default for Args {
     fn default() -> Self {
         Args {
+            max_hopper_in_memory_bytes: 1_048_576,
             max_hopper_queue_bytes: 1_048_576 * 100,
+            max_hopper_queue_files: 100,
             data_directory: default_data_directory(),
             scripts_directory: default_scripts_directory(),
             flush_interval: 60,
@@ -226,6 +235,14 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 .expect("could not parse max-hopper-queue-bytes") as usize
         })
         .unwrap_or(args.max_hopper_queue_bytes);
+
+    args.max_hopper_queue_files = value
+        .get("max-hopper-queue-files")
+        .map(|s| {
+            s.as_integer()
+                .expect("could not parse max-hopper-queue-files") as usize
+        })
+        .unwrap_or(args.max_hopper_queue_files);
 
     args.data_directory = value
         .get("data-directory")
