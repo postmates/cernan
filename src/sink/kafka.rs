@@ -109,6 +109,42 @@ impl KafkaMessageSender for FutureProducer<EmptyContext> {
     }
 }
 
+// Enables testability of the global statics when tests are run in parallel.
+trait StatsCollector {
+    fn increment_publish(&self, inc: usize);
+    fn increment_retry(&self, inc: usize);
+    fn increment_publish_failed(&self, inc: usize);
+    fn increment_retry_failed(&self, inc: usize);
+    fn get_publish(&self) -> usize {
+        0
+    }
+    fn get_publish_failed(&self) -> usize {
+        0
+    }
+    fn get_retry(&self) -> usize {
+        0
+    }
+    fn get_retry_failed(&self) -> usize {
+        0
+    }
+}
+
+struct DefaultStatsCollector;
+impl StatsCollector for DefaultStatsCollector {
+    fn increment_publish(&self, inc: usize) {
+        KAFKA_PUBLISH_SUCCESS_SUM.fetch_add(inc, Ordering::Relaxed);
+    }
+    fn increment_retry(&self, inc: usize) {
+        KAFKA_PUBLISH_RETRY_SUM.fetch_add(inc, Ordering::Relaxed);
+    }
+    fn increment_publish_failed(&self, inc: usize) {
+        KAFKA_PUBLISH_FAILURE_SUM.fetch_add(inc, Ordering::Relaxed);
+    }
+    fn increment_retry_failed(&self, inc: usize) {
+        KAFKA_PUBLISH_RETRY_FAILURE_SUM.fetch_add(inc, Ordering::Relaxed);
+    }
+}
+
 type BoxedKafkaMessageSender = Box<KafkaMessageSender + Sync + Send>;
 
 /// Kafka sink internal state.
@@ -127,6 +163,8 @@ pub struct Kafka {
     max_message_bytes: usize,
     /// How often (seconds) the in-flight messages are checked for delivery.
     flush_interval: u64,
+    /// An object responsible for incrementing publication statistics.
+    stats: Box<StatsCollector + Send + Sync>,
 }
 
 impl Sink<KafkaConfig> for Kafka {
@@ -153,6 +191,7 @@ impl Sink<KafkaConfig> for Kafka {
             message_bytes: 0,
             max_message_bytes: config.max_message_bytes,
             flush_interval: config.flush_interval,
+            stats: Box::new(DefaultStatsCollector),
         }
     }
 
@@ -206,8 +245,7 @@ impl Sink<KafkaConfig> for Kafka {
                         ))
                     } else {
                         error!("Unable to retry message. It was lost to the ether.");
-                        KAFKA_PUBLISH_RETRY_FAILURE_SUM
-                            .fetch_add(1, Ordering::Relaxed);
+                        self.stats.increment_retry_failed(1);
                         None
                     }
                 })
@@ -230,14 +268,17 @@ impl Kafka {
     /// Wait on all in-flight messages, and return an `OwnedMessage` for each message
     /// that needs to be retried.
     fn await_inflight_messages(&mut self) -> Vec<OwnedMessage> {
-        self.messages
+        let mut inc_pub = 0usize;
+        let mut inc_retry = 0usize;
+        let mut inc_fail = 0usize;
+        let result = self.messages
             .iter_mut()
             .filter_map(|future| {
                 let result = future.finalize();
                 match result {
                     Some(result) => match result {
                         Ok((_partition, _offset)) => {
-                            KAFKA_PUBLISH_SUCCESS_SUM.fetch_add(1, Ordering::Relaxed);
+                            inc_pub += 1;
                             None
                         }
 
@@ -256,23 +297,20 @@ impl Kafka {
                                 | RDKafkaError::NotEnoughReplicasAfterAppend
                                 | RDKafkaError::NotController => {
                                     warn!("Kafka broker returned a recoverable error, will retry: {:?}", err);
-                                    KAFKA_PUBLISH_RETRY_SUM
-                                        .fetch_add(1, Ordering::Relaxed);
+                                    inc_retry += 1;
                                     Some(message)
                                 }
 
                                 _ => {
                                     error!("Kafka broker returned an unrecoverable error: {:?}", err);
-                                    KAFKA_PUBLISH_FAILURE_SUM
-                                        .fetch_add(1, Ordering::Relaxed);
+                                    inc_fail += 1;
                                     None
                                 }
                             },
 
                             _ => {
                                 error!("Failed in send to kafka broker: {:?}", err);
-                                KAFKA_PUBLISH_FAILURE_SUM
-                                    .fetch_add(1, Ordering::Relaxed);
+                                inc_fail += 1;
                                 None
                             }
                         },
@@ -280,12 +318,16 @@ impl Kafka {
 
                     _ => {
                         error!("Failed in send to kafka broker, operation canceled");
-                        KAFKA_PUBLISH_FAILURE_SUM.fetch_add(1, Ordering::Relaxed);
+                        inc_fail += 1;
                         None
                     }
                 }
             })
-            .collect()
+            .collect();
+        self.stats.increment_publish(inc_pub);
+        self.stats.increment_publish_failed(inc_fail);
+        self.stats.increment_retry(inc_retry);
+        result
     }
 }
 
@@ -336,6 +378,50 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct RecordingStatsCollector {
+        publish: Arc<RwLock<usize>>,
+        retry: Arc<RwLock<usize>>,
+        publish_failed: Arc<RwLock<usize>>,
+        retry_failed: Arc<RwLock<usize>>,
+    }
+    impl StatsCollector for RecordingStatsCollector {
+        fn increment_publish(&self, inc: usize) {
+            *self.publish.write().unwrap() += inc;
+        }
+        fn increment_publish_failed(&self, inc: usize) {
+            *self.publish_failed.write().unwrap() += inc;
+        }
+        fn increment_retry(&self, inc: usize) {
+            *self.retry.write().unwrap() += inc;
+        }
+        fn increment_retry_failed(&self, inc: usize) {
+            *self.retry_failed.write().unwrap() += inc;
+        }
+        fn get_publish(&self) -> usize {
+            *self.publish.read().unwrap()
+        }
+        fn get_publish_failed(&self) -> usize {
+            *self.publish_failed.read().unwrap()
+        }
+        fn get_retry(&self) -> usize {
+            *self.retry.read().unwrap()
+        }
+        fn get_retry_failed(&self) -> usize {
+            *self.retry_failed.read().unwrap()
+        }
+    }
+    impl RecordingStatsCollector {
+        fn new() -> Self {
+            RecordingStatsCollector {
+                publish: Arc::new(RwLock::new(0)),
+                publish_failed: Arc::new(RwLock::new(0)),
+                retry: Arc::new(RwLock::new(0)),
+                retry_failed: Arc::new(RwLock::new(0)),
+            }
+        }
+    }
+
     #[test]
     fn test_valve_closes_at_max_bytes() {
         let mut k = Kafka {
@@ -345,6 +431,7 @@ mod tests {
             message_bytes: 0,
             max_message_bytes: 10,
             flush_interval: 1,
+            stats: Box::new(RecordingStatsCollector::new()),
         };
 
         assert_eq!(k.valve_state(), Valve::Open);
@@ -363,6 +450,8 @@ mod tests {
         assert_eq!(k.valve_state(), Valve::Open);
         assert_eq!(k.message_bytes, 0);
         assert_eq!(k.messages.len(), 0);
+
+        assert_eq!(k.stats.get_publish(), 2);
     }
 
     #[derive(Debug, PartialEq)]
@@ -375,7 +464,7 @@ mod tests {
     struct RetryOnceMockKafkaSender {
         call_count: Arc<RwLock<i32>>,
         send_entries: Arc<RwLock<Vec<TopicKeyPayloadEntry>>>,
-        error_type: RDKafkaError,
+        error_type: KafkaError,
         fail_retry: bool,
     }
     impl KafkaMessageSender for RetryOnceMockKafkaSender {
@@ -417,10 +506,7 @@ mod tests {
                     -1,
                 );
                 Box::new(MockKafkaPublishResult {
-                    return_value: Some(Err((
-                        KafkaError::MessageProduction(self.error_type),
-                        om,
-                    ))),
+                    return_value: Some(Err((self.error_type.clone(), om))),
                 })
             }
         }
@@ -446,7 +532,7 @@ mod tests {
             let producer = RetryOnceMockKafkaSender {
                 call_count: Arc::new(RwLock::new(0)),
                 send_entries: Arc::new(RwLock::new(Vec::new())),
-                error_type,
+                error_type: KafkaError::MessageProduction(error_type),
                 fail_retry: false,
             };
             let mut k = Kafka {
@@ -456,6 +542,7 @@ mod tests {
                 message_bytes: 0,
                 max_message_bytes: 1000,
                 flush_interval: 1,
+                stats: Box::new(RecordingStatsCollector::new()),
             };
 
             k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
@@ -481,6 +568,8 @@ mod tests {
                     payload: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
                 }
             );
+            assert_eq!(k.stats.get_publish(), 1);
+            assert_eq!(k.stats.get_retry(), 1);
         }
     }
 
@@ -489,7 +578,7 @@ mod tests {
         let producer = RetryOnceMockKafkaSender {
             call_count: Arc::new(RwLock::new(0)),
             send_entries: Arc::new(RwLock::new(Vec::new())),
-            error_type: RDKafkaError::InvalidMessage,
+            error_type: KafkaError::MessageProduction(RDKafkaError::InvalidMessage),
             fail_retry: true,
         };
         let mut k = Kafka {
@@ -499,15 +588,15 @@ mod tests {
             message_bytes: 0,
             max_message_bytes: 1000,
             flush_interval: 1,
+            stats: Box::new(RecordingStatsCollector::new()),
         };
 
-        KAFKA_PUBLISH_RETRY_FAILURE_SUM.store(0, Ordering::Relaxed);
         k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
         k.flush();
 
         let count = producer.call_count.read().unwrap();
         assert_eq!(*count, 1);
-        assert_eq!(KAFKA_PUBLISH_RETRY_FAILURE_SUM.load(Ordering::Relaxed), 1);
+        assert_eq!(k.stats.get_retry_failed(), 1);
     }
 
     #[test]
@@ -515,7 +604,9 @@ mod tests {
         let producer = RetryOnceMockKafkaSender {
             call_count: Arc::new(RwLock::new(0)),
             send_entries: Arc::new(RwLock::new(Vec::new())),
-            error_type: RDKafkaError::InvalidReplicaAssignment,
+            error_type: KafkaError::MessageProduction(
+                RDKafkaError::InvalidReplicaAssignment,
+            ),
             fail_retry: true,
         };
         let mut k = Kafka {
@@ -525,15 +616,69 @@ mod tests {
             message_bytes: 0,
             max_message_bytes: 1000,
             flush_interval: 1,
+            stats: Box::new(RecordingStatsCollector::new()),
         };
 
-        KAFKA_PUBLISH_FAILURE_SUM.store(0, Ordering::Relaxed);
         k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
         k.flush();
 
         let count = producer.call_count.read().unwrap();
         assert_eq!(*count, 1);
-        assert_eq!(KAFKA_PUBLISH_FAILURE_SUM.load(Ordering::Relaxed), 1);
+        assert_eq!(k.stats.get_publish_failed(), 1);
     }
 
+    #[test]
+    fn test_unreachable_kafka_error() {
+        let producer = RetryOnceMockKafkaSender {
+            call_count: Arc::new(RwLock::new(0)),
+            send_entries: Arc::new(RwLock::new(Vec::new())),
+            error_type: KafkaError::FutureCanceled,
+            fail_retry: true,
+        };
+        let mut k = Kafka {
+            topic_name: String::from("test-topic"),
+            producer: Box::new(producer.clone()),
+            messages: Vec::new(),
+            message_bytes: 0,
+            max_message_bytes: 1000,
+            flush_interval: 1,
+            stats: Box::new(RecordingStatsCollector::new()),
+        };
+
+        k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        k.flush();
+
+        let count = producer.call_count.read().unwrap();
+        assert_eq!(*count, 1);
+        assert_eq!(k.stats.get_publish_failed(), 1);
+    }
+
+    struct FutureFailedMockKafkaSender;
+    impl KafkaMessageSender for FutureFailedMockKafkaSender {
+        fn try_payload(
+            &self,
+            _topic: &str,
+            _payload: &[u8],
+            _key: &[u8],
+        ) -> BoxedKafkaPublishable {
+            Box::new(MockKafkaPublishResult { return_value: None })
+        }
+    }
+
+    #[test]
+    fn test_kafka_send_future_failed() {
+        let mut k = Kafka {
+            topic_name: String::from("test-topic"),
+            producer: Box::new(FutureFailedMockKafkaSender {}),
+            messages: Vec::new(),
+            message_bytes: 0,
+            max_message_bytes: 10,
+            flush_interval: 1,
+            stats: Box::new(RecordingStatsCollector::new()),
+        };
+
+        k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        k.flush();
+        assert_eq!(k.stats.get_publish_failed(), 1);
+    }
 }
