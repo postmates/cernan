@@ -681,4 +681,35 @@ mod tests {
         k.flush();
         assert_eq!(k.stats.get_publish_failed(), 1);
     }
+
+    #[test]
+    fn test_default_stats_collector() {
+        // Note this is the only test that should be touching the global statics.
+        // Things become flakey when tests are run in parallel otherwise.
+        let stats = DefaultStatsCollector {};
+
+        stats.increment_publish(1);
+        assert_eq!(KAFKA_PUBLISH_SUCCESS_SUM.load(Ordering::Relaxed), 1);
+        assert_eq!(KAFKA_PUBLISH_RETRY_SUM.load(Ordering::Relaxed), 0);
+        assert_eq!(KAFKA_PUBLISH_FAILURE_SUM.load(Ordering::Relaxed), 0);
+        assert_eq!(KAFKA_PUBLISH_RETRY_FAILURE_SUM.load(Ordering::Relaxed), 0);
+
+        stats.increment_retry(1);
+        assert_eq!(KAFKA_PUBLISH_SUCCESS_SUM.load(Ordering::Relaxed), 1);
+        assert_eq!(KAFKA_PUBLISH_RETRY_SUM.load(Ordering::Relaxed), 1);
+        assert_eq!(KAFKA_PUBLISH_FAILURE_SUM.load(Ordering::Relaxed), 0);
+        assert_eq!(KAFKA_PUBLISH_RETRY_FAILURE_SUM.load(Ordering::Relaxed), 0);
+
+        stats.increment_publish_failed(1);
+        assert_eq!(KAFKA_PUBLISH_SUCCESS_SUM.load(Ordering::Relaxed), 1);
+        assert_eq!(KAFKA_PUBLISH_RETRY_SUM.load(Ordering::Relaxed), 1);
+        assert_eq!(KAFKA_PUBLISH_FAILURE_SUM.load(Ordering::Relaxed), 1);
+        assert_eq!(KAFKA_PUBLISH_RETRY_FAILURE_SUM.load(Ordering::Relaxed), 0);
+
+        stats.increment_retry_failed(1);
+        assert_eq!(KAFKA_PUBLISH_SUCCESS_SUM.load(Ordering::Relaxed), 1);
+        assert_eq!(KAFKA_PUBLISH_RETRY_SUM.load(Ordering::Relaxed), 1);
+        assert_eq!(KAFKA_PUBLISH_FAILURE_SUM.load(Ordering::Relaxed), 1);
+        assert_eq!(KAFKA_PUBLISH_RETRY_FAILURE_SUM.load(Ordering::Relaxed), 1);
+    }
 }
