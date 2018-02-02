@@ -375,6 +375,7 @@ mod tests {
     struct RetryOnceMockKafkaSender {
         call_count: Arc<RwLock<i32>>,
         send_entries: Arc<RwLock<Vec<TopicKeyPayloadEntry>>>,
+        error_type: RDKafkaError,
     }
     impl KafkaMessageSender for RetryOnceMockKafkaSender {
         fn try_payload(
@@ -408,7 +409,7 @@ mod tests {
                 );
                 Box::new(MockKafkaPublishResult {
                     return_value: Some(Err((
-                        KafkaError::MessageProduction(RDKafkaError::InvalidMessage),
+                        KafkaError::MessageProduction(self.error_type),
                         om,
                     ))),
                 })
@@ -418,42 +419,59 @@ mod tests {
 
     #[test]
     fn test_kafka_retryable_error_goes_through() {
-        let producer = RetryOnceMockKafkaSender {
-            call_count: Arc::new(RwLock::new(0)),
-            send_entries: Arc::new(RwLock::new(Vec::new())),
-        };
-        let mut k = Kafka {
-            topic_name: String::from("test-topic"),
-            producer: Box::new(producer.clone()),
-            messages: Vec::new(),
-            message_bytes: 0,
-            max_message_bytes: 1000,
-            flush_interval: 1,
-        };
+        let retry_errors = vec![
+            RDKafkaError::InvalidMessage,
+            RDKafkaError::UnknownTopicOrPartition,
+            RDKafkaError::LeaderNotAvailable,
+            RDKafkaError::NotLeaderForPartition,
+            RDKafkaError::RequestTimedOut,
+            RDKafkaError::NetworkException,
+            RDKafkaError::GroupLoadInProgress,
+            RDKafkaError::GroupCoordinatorNotAvailable,
+            RDKafkaError::NotCoordinatorForGroup,
+            RDKafkaError::NotEnoughReplicas,
+            RDKafkaError::NotEnoughReplicasAfterAppend,
+            RDKafkaError::NotController,
+        ];
+        for error_type in retry_errors {
+            let producer = RetryOnceMockKafkaSender {
+                call_count: Arc::new(RwLock::new(0)),
+                send_entries: Arc::new(RwLock::new(Vec::new())),
+                error_type,
+            };
+            let mut k = Kafka {
+                topic_name: String::from("test-topic"),
+                producer: Box::new(producer.clone()),
+                messages: Vec::new(),
+                message_bytes: 0,
+                max_message_bytes: 1000,
+                flush_interval: 1,
+            };
 
-        k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-        k.flush();
+            k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+            k.flush();
 
-        let count = producer.call_count.read().unwrap();
-        assert_eq!(*count, 2);
+            let count = producer.call_count.read().unwrap();
+            assert_eq!(*count, 2);
 
-        let entries = producer.send_entries.read().unwrap();
-        assert_eq!(
-            entries[0],
-            TopicKeyPayloadEntry {
-                topic: String::from("test-topic"),
-                key: format!("{:X}", 1024).as_bytes().to_vec(),
-                payload: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            }
-        );
-        assert_eq!(
-            entries[1],
-            TopicKeyPayloadEntry {
-                topic: String::from("test-topic"),
-                key: format!("{:X}", 1024).as_bytes().to_vec(),
-                payload: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            }
-        );
+            let entries = producer.send_entries.read().unwrap();
+            assert_eq!(
+                entries[0],
+                TopicKeyPayloadEntry {
+                    topic: String::from("test-topic"),
+                    key: format!("{:X}", 1024).as_bytes().to_vec(),
+                    payload: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                }
+            );
+            assert_eq!(
+                entries[1],
+                TopicKeyPayloadEntry {
+                    topic: String::from("test-topic"),
+                    key: format!("{:X}", 1024).as_bytes().to_vec(),
+                    payload: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                }
+            );
+        }
     }
 
 }
