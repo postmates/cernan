@@ -505,7 +505,35 @@ mod tests {
         k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
         k.flush();
 
+        let count = producer.call_count.read().unwrap();
+        assert_eq!(*count, 1);
         assert_eq!(KAFKA_PUBLISH_RETRY_FAILURE_SUM.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn test_unrecoverable_kafka_error() {
+        let producer = RetryOnceMockKafkaSender {
+            call_count: Arc::new(RwLock::new(0)),
+            send_entries: Arc::new(RwLock::new(Vec::new())),
+            error_type: RDKafkaError::InvalidReplicaAssignment,
+            fail_retry: true,
+        };
+        let mut k = Kafka {
+            topic_name: String::from("test-topic"),
+            producer: Box::new(producer.clone()),
+            messages: Vec::new(),
+            message_bytes: 0,
+            max_message_bytes: 1000,
+            flush_interval: 1,
+        };
+
+        KAFKA_PUBLISH_FAILURE_SUM.store(0, Ordering::Relaxed);
+        k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        k.flush();
+
+        let count = producer.call_count.read().unwrap();
+        assert_eq!(*count, 1);
+        assert_eq!(KAFKA_PUBLISH_FAILURE_SUM.load(Ordering::Relaxed), 1);
     }
 
 }
