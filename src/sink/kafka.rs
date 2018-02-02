@@ -1,7 +1,6 @@
 //! Kafka sink for Raw events.
 use futures::future::Future;
-use metric;
-use metric::{LogLine, Telemetry};
+use metric::{self, LogLine, Telemetry};
 use rdkafka::client::EmptyContext;
 use rdkafka::config::ClientConfig;
 use rdkafka::error::{KafkaError, RDKafkaError};
@@ -57,14 +56,69 @@ impl Default for KafkaConfig {
     }
 }
 
+type PublishResult = Option<Result<(i32, i64), (KafkaError, OwnedMessage)>>;
+
+trait KafkaPublishable {
+    fn finalize(&mut self) -> PublishResult;
+}
+
+struct KafkaPublishResult {
+    inner: Option<DeliveryFuture>,
+}
+
+impl KafkaPublishable for KafkaPublishResult {
+    fn finalize(&mut self) -> PublishResult {
+        match self.inner {
+            Some(ref mut future) => match future.wait() {
+                Ok(r) => Some(r),
+                _ => None,
+            },
+            None => None,
+        }
+    }
+}
+
+type BoxedKafkaPublishable = Box<KafkaPublishable + Send + Sync>;
+
+trait KafkaMessageSender {
+    fn try_payload(
+        &self,
+        topic: &str,
+        payload: &[u8],
+        key: &[u8],
+    ) -> BoxedKafkaPublishable;
+}
+
+impl KafkaMessageSender for FutureProducer<EmptyContext> {
+    fn try_payload(
+        &self,
+        topic: &str,
+        payload: &[u8],
+        key: &[u8],
+    ) -> BoxedKafkaPublishable {
+        Box::new(KafkaPublishResult {
+            inner: Some(self.send_copy(
+                topic,
+                /* partition */ None,
+                Some(payload),
+                Some(key),
+                /* timestamp */ None,
+                /* block_ms */ 0,
+            )),
+        })
+    }
+}
+
+type BoxedKafkaMessageSender = Box<KafkaMessageSender + Sync + Send>;
+
 /// Kafka sink internal state.
 pub struct Kafka {
     /// Name of the stream we are publishing to.
     topic_name: String,
     /// A message producers.
-    producer: FutureProducer<EmptyContext>,
+    producer: BoxedKafkaMessageSender,
     // In-flight messages.
-    messages: Vec<DeliveryFuture>,
+    messages: Vec<BoxedKafkaPublishable>,
     /// Total byte length of in-flight messages. This is used to open and close
     /// the sink valve.
     message_bytes: usize,
@@ -94,7 +148,7 @@ impl Sink<KafkaConfig> for Kafka {
 
         Kafka {
             topic_name: config.topic_name.unwrap(),
-            producer: producer_config.create::<FutureProducer<_>>().unwrap(),
+            producer: Box::new(producer_config.create::<FutureProducer<_>>().unwrap()),
             messages: Vec::new(),
             message_bytes: 0,
             max_message_bytes: config.max_message_bytes,
@@ -127,7 +181,11 @@ impl Sink<KafkaConfig> for Kafka {
         bytes: Vec<u8>,
     ) {
         let key = format!("{:X}", order_by);
-        let future = self.try_payload(bytes.as_slice(), key.as_bytes());
+        let future = self.producer.try_payload(
+            &self.topic_name[..],
+            bytes.as_slice(),
+            key.as_bytes(),
+        );
         self.messages.push(future);
         self.message_bytes += bytes.len();
     }
@@ -141,7 +199,11 @@ impl Sink<KafkaConfig> for Kafka {
                     let payload = message.payload();
                     let key = message.key();
                     if payload.is_some() && key.is_some() {
-                        Some(self.try_payload(payload.unwrap(), key.unwrap()))
+                        Some(self.producer.try_payload(
+                            &self.topic_name[..],
+                            payload.unwrap(),
+                            key.unwrap(),
+                        ))
                     } else {
                         error!("Unable to retry message. It was lost to the ether.");
                         KAFKA_PUBLISH_RETRY_FAILURE_SUM
@@ -165,28 +227,15 @@ impl Sink<KafkaConfig> for Kafka {
 }
 
 impl Kafka {
-    /// Send a payload to Kafka and return a future that will resolve to its
-    /// delivery result.
-    fn try_payload(&self, payload: &[u8], key: &[u8]) -> DeliveryFuture {
-        self.producer.send_copy(
-            &self.topic_name[..],
-            /* partition */ None,
-            Some(&payload[..]),
-            Some(&key[..]),
-            /* timestamp */ None,
-            /* block_ms */ 0,
-        )
-    }
-
     /// Wait on all in-flight messages, and return an `OwnedMessage` for each message
     /// that needs to be retried.
     fn await_inflight_messages(&mut self) -> Vec<OwnedMessage> {
         self.messages
             .iter_mut()
             .filter_map(|future| {
-                let result = future.wait();
+                let result = future.finalize();
                 match result {
-                    Ok(inner) => match inner {
+                    Some(result) => match result {
                         Ok((_partition, _offset)) => {
                             KAFKA_PUBLISH_SUCCESS_SUM.fetch_add(1, Ordering::Relaxed);
                             None
@@ -230,7 +279,7 @@ impl Kafka {
                     },
 
                     _ => {
-                        error!("Failed in send to kafka broker: {:?}", result);
+                        error!("Failed in send to kafka broker, operation canceled");
                         KAFKA_PUBLISH_FAILURE_SUM.fetch_add(1, Ordering::Relaxed);
                         None
                     }
@@ -238,4 +287,173 @@ impl Kafka {
             })
             .collect()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::metric::Encoding;
+    use rdkafka::message::Timestamp;
+    use std::sync::{Arc, RwLock};
+
+    struct MockKafkaPublishResult {
+        return_value: PublishResult,
+    }
+
+    impl KafkaPublishable for MockKafkaPublishResult {
+        fn finalize(&mut self) -> PublishResult {
+            match self.return_value {
+                Some(ref mut i) => match *i {
+                    Ok(r) => Some(Ok(r)),
+                    Err((ref e, ref m)) => {
+                        let om = OwnedMessage::new(
+                            m.key().map(|k| k.to_vec()),
+                            m.payload().map(|p| p.to_vec()),
+                            m.topic().to_owned(),
+                            m.timestamp(),
+                            m.partition(),
+                            m.offset(),
+                        );
+                        Some(Err((e.clone(), om)))
+                    }
+                },
+                _ => None,
+            }
+        }
+    }
+
+    struct MockKafkaSender;
+    impl KafkaMessageSender for MockKafkaSender {
+        fn try_payload(
+            &self,
+            _topic: &str,
+            _payload: &[u8],
+            _key: &[u8],
+        ) -> BoxedKafkaPublishable {
+            Box::new(MockKafkaPublishResult {
+                return_value: Some(Ok((0, 1))),
+            })
+        }
+    }
+
+    #[test]
+    fn test_valve_closes_at_max_bytes() {
+        let mut k = Kafka {
+            topic_name: String::from("test-topic"),
+            producer: Box::new(MockKafkaSender {}),
+            messages: Vec::new(),
+            message_bytes: 0,
+            max_message_bytes: 10,
+            flush_interval: 1,
+        };
+
+        assert_eq!(k.valve_state(), Valve::Open);
+
+        k.deliver_raw(0, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(k.valve_state(), Valve::Open);
+        assert_eq!(k.message_bytes, 9);
+        assert_eq!(k.messages.len(), 1);
+
+        k.deliver_raw(0, Encoding::Raw, vec![10]);
+        assert_eq!(k.valve_state(), Valve::Closed);
+        assert_eq!(k.message_bytes, 10);
+        assert_eq!(k.messages.len(), 2);
+
+        k.flush();
+        assert_eq!(k.valve_state(), Valve::Open);
+        assert_eq!(k.message_bytes, 0);
+        assert_eq!(k.messages.len(), 0);
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct TopicKeyPayloadEntry {
+        topic: String,
+        payload: Vec<u8>,
+        key: Vec<u8>,
+    }
+    #[derive(Clone)]
+    struct RetryOnceMockKafkaSender {
+        call_count: Arc<RwLock<i32>>,
+        send_entries: Arc<RwLock<Vec<TopicKeyPayloadEntry>>>,
+    }
+    impl KafkaMessageSender for RetryOnceMockKafkaSender {
+        fn try_payload(
+            &self,
+            topic: &str,
+            payload: &[u8],
+            key: &[u8],
+        ) -> BoxedKafkaPublishable {
+            let mut entries = self.send_entries.write().unwrap();
+            let entry = TopicKeyPayloadEntry {
+                topic: topic.to_owned(),
+                payload: payload.to_vec(),
+                key: key.to_vec(),
+            };
+            entries.push(entry);
+
+            let mut count = self.call_count.write().unwrap();
+            *count += 1;
+            if *count > 1 {
+                Box::new(MockKafkaPublishResult {
+                    return_value: Some(Ok((0, 1))),
+                })
+            } else {
+                let om = OwnedMessage::new(
+                    Some(key.to_vec()),
+                    Some(payload.to_vec()),
+                    topic.to_owned(),
+                    Timestamp::NotAvailable,
+                    -1,
+                    -1,
+                );
+                Box::new(MockKafkaPublishResult {
+                    return_value: Some(Err((
+                        KafkaError::MessageProduction(RDKafkaError::InvalidMessage),
+                        om,
+                    ))),
+                })
+            }
+        }
+    }
+
+    #[test]
+    fn test_kafka_retryable_error_goes_through() {
+        let producer = RetryOnceMockKafkaSender {
+            call_count: Arc::new(RwLock::new(0)),
+            send_entries: Arc::new(RwLock::new(Vec::new())),
+        };
+        let mut k = Kafka {
+            topic_name: String::from("test-topic"),
+            producer: Box::new(producer.clone()),
+            messages: Vec::new(),
+            message_bytes: 0,
+            max_message_bytes: 1000,
+            flush_interval: 1,
+        };
+
+        k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        k.flush();
+
+        let count = producer.call_count.read().unwrap();
+        assert_eq!(*count, 2);
+
+        let entries = producer.send_entries.read().unwrap();
+        assert_eq!(
+            entries[0],
+            TopicKeyPayloadEntry {
+                topic: String::from("test-topic"),
+                key: format!("{:X}", 1024).as_bytes().to_vec(),
+                payload: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            }
+        );
+        assert_eq!(
+            entries[1],
+            TopicKeyPayloadEntry {
+                topic: String::from("test-topic"),
+                key: format!("{:X}", 1024).as_bytes().to_vec(),
+                payload: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            }
+        );
+    }
+
 }

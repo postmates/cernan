@@ -46,6 +46,7 @@ pub fn send(chans: &mut Channel, event: metric::Event) {
 /// of information delivered to a filter / sink by declaring that said filter /
 /// sink's input 'valve' is closed. Exactly how and why a filter / sink declares
 /// its valve state is left to the implementation.
+#[derive(Debug, PartialEq)]
 pub enum Valve {
     /// In the `Open` state a filter / sink will accept new inputs
     Open,
