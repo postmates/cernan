@@ -17,6 +17,7 @@ use toml;
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 use filter::DelayFilterConfig;
+use filter::JSONEncodeFilterConfig;
 use filter::FlushBoundaryFilterConfig;
 use filter::ProgrammableFilterConfig;
 use sink::ConsoleConfig;
@@ -83,6 +84,9 @@ pub struct Args {
     /// The delay filters to use in this cernan run. See `filters::DelayFilter`
     /// for more.
     pub delay_filters: Option<HashMap<String, DelayFilterConfig>>,
+    /// The json_encode filters to use in this cernan run. See `filters::JSONEncodeFilter`
+    /// for more.
+    pub json_encode_filters: Option<HashMap<String, JSONEncodeFilterConfig>>,
     /// The flush boundaryfilters to use in this cernan run. See
     /// `filters::FlushBoundaryFilter` for more.
     pub flush_boundary_filters: Option<HashMap<String, FlushBoundaryFilterConfig>>,
@@ -132,6 +136,7 @@ impl Default for Args {
             // filters
             programmable_filters: None,
             delay_filters: None,
+            json_encode_filters: None,
             flush_boundary_filters: None,
             // sinks
             console: None,
@@ -314,6 +319,34 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     None => continue,
                 }
             }
+            filters
+        });
+
+        args.json_encode_filters = filters.get("json_encode").map(|fltr| {
+            let mut filters: HashMap<String, JSONEncodeFilterConfig> = HashMap::new();
+            for (name, tbl) in fltr.as_table().unwrap().iter() {
+                let parse_line = if let Some(parse_line) = tbl.get("parse_line") {
+                    parse_line.as_bool().expect("could not parse parse_line as boolean")
+                } else {
+                    false
+                };
+                let fwds = match tbl.get("forwards") {
+                    Some(fwds) => fwds.as_array()
+                        .expect("forwards must be an array")
+                        .to_vec()
+                        .iter()
+                        .map(|s| s.as_str().unwrap().to_string())
+                        .collect(),
+                    None => Vec::new(),
+                };
+                let config_path = format!("filters.json_encode.{}", name);
+                let config = JSONEncodeFilterConfig {
+                    parse_line: parse_line,
+                    forwards: fwds,
+                    config_path: Some(config_path.clone()),
+                };
+                filters.insert(config_path, config);
+            };
             filters
         });
 

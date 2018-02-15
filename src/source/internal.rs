@@ -483,6 +483,19 @@ impl source::Source<InternalConfig> for Internal {
                             tags,
                             chans
                         );
+                        // filter::json_encode_filter
+                        atom_telem!(
+                            "cernan.filters.json_encode.log.processed",
+                            filter::json_encode_filter::JSON_ENCODE_LOG_PROCESSED,
+                            tags,
+                            chans
+                        );
+                        atom_telem!(
+                            "cernan.filters.json_encode.log.parsed",
+                            filter::json_encode_filter::JSON_ENCODE_LOG_PARSED,
+                            tags,
+                            chans
+                        );
                         while let Some(mut telem) = Q.pop() {
                             if !chans.is_empty() {
                                 telem = telem.overlay_tags_from_map(tags);
