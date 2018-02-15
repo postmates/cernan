@@ -1,6 +1,4 @@
-FROM alpine:edge
-
-RUN echo '@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing' >> /etc/apk/repositories
+FROM alpine:3.6
 
 RUN apk update \
   && apk upgrade --no-cache
