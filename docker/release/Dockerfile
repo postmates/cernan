@@ -1,13 +1,11 @@
-FROM alpine:edge
-
-RUN echo '@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing' >> /etc/apk/repositories
+FROM alpine:3.6
 
 RUN apk update \
   && apk upgrade --no-cache
 
 RUN apk add --no-cache --update \
   ca-certificates \
-  llvm-libunwind@testing \
+  llvm-libunwind \
   openssl && \
   update-ca-certificates && \
   rm -rf /var/cache/apk/* && \
