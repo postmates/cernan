@@ -1812,6 +1812,25 @@ scripts-directory = "/foo/bar"
     }
 
     #[test]
+    fn config_filters_json_encode() {
+        let config = r#"
+    [filters]
+        [filters.json_encode.test]
+        parse_line = true
+        forwards = ["sinks.console"]
+    "#;
+
+        let args = parse_config_file(config, 4);
+        assert!(args.json_encode_filters.is_some());
+        let filters = args.json_encode_filters.unwrap();
+
+        let config0: &JSONEncodeFilterConfig =
+            filters.get("filters.json_encode.test").unwrap();
+        assert_eq!(config0.parse_line, true);
+        assert_eq!(config0.forwards, vec!["sinks.console"]);
+    }
+
+    #[test]
     fn config_file_wavefront_sinks_style() {
         let config = r#"
     [sinks]

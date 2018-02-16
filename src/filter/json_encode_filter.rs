@@ -135,3 +135,141 @@ fn merge_objects(objs: &[Map<String, Value>]) -> Map<String, Value> {
     };
     result
 }
+
+// Tests
+//
+#[cfg(test)]
+mod test {
+    use super::*;
+    use filter::Filter;
+    use metric;
+    use serde_json::Value;
+    use serde_json::map::Map;
+
+    fn process_event(parse_line: bool, event: metric::Event) -> Value {
+        let mut filter = JSONEncodeFilter{parse_line: parse_line};
+        let mut results = Vec::new();
+        filter.process(event, &mut results).unwrap();
+        // fail if results empty, else return processed event's payload
+        if let metric::Event::Raw{ref bytes, ..} = results[0] {
+            return serde_json::from_slice(bytes).unwrap();
+        }
+        panic!("Processed event was not Raw")
+    }
+
+    #[test]
+    fn parsable_line_parsing_off() {
+        // Test we don't parse a line if parsing is off
+        assert_eq!(
+            process_event(false, metric::Event::new_log(metric::LogLine {
+                path: "testpath".to_string(),
+                value: "{\"bad\": \"do not parse\"}".to_string(),
+                time: 946684800,
+                tags: Default::default(),
+                fields: Default::default(),
+            })),
+            json!({
+                "path": "testpath",
+                "message": "{\"bad\": \"do not parse\"}",
+                "time": "2000-01-01T00:00:00+00:00",
+                "tags": {},
+            })
+        );
+    }
+
+    #[test]
+    fn parsable_line_parsing_on() {
+        // Test we do parse a line if parsing is on
+        assert_eq!(
+            process_event(true, metric::Event::new_log(metric::LogLine {
+                path: "testpath".to_string(),
+                value: "{\"good\": \"do parse\"}".to_string(),
+                time: 946684800,
+                tags: Default::default(),
+                fields: Default::default(),
+            })),
+            json!({
+                "path": "testpath",
+                "good": "do parse",
+                "time": "2000-01-01T00:00:00+00:00",
+                "tags": {},
+            })
+        );
+    }
+
+    #[test]
+    fn unparsable_line() {
+        // Test we don't parse a line if it's not JSON
+        assert_eq!(
+            process_event(true, metric::Event::new_log(metric::LogLine {
+                path: "testpath".to_string(),
+                value: "this is not json".to_string(),
+                time: 946684800,
+                tags: Default::default(),
+                fields: Default::default(),
+            })),
+            json!({
+                "path": "testpath",
+                "message": "this is not json",
+                "time": "2000-01-01T00:00:00+00:00",
+                "tags": {},
+            })
+        );
+    }
+
+    #[test]
+    fn non_object_line() {
+        // Test we don't parse a line if it's not a JSON object but is valid JSON
+        assert_eq!(
+            process_event(true, metric::Event::new_log(metric::LogLine {
+                path: "testpath".to_string(),
+                value: "[123, \"not an object\"]".to_string(),
+                time: 946684800,
+                tags: Default::default(),
+                fields: Default::default(),
+            })),
+            json!({
+                "path": "testpath",
+                "message": "[123, \"not an object\"]",
+                "time": "2000-01-01T00:00:00+00:00",
+                "tags": {},
+            })
+        );
+    }
+
+    // quickcheck and serde_json::map::Map aren't compatible, so we ask quickcheck for
+    // many Vec<(String, String)>s that we turn into maps.
+    fn vecs_to_objs(vecs: &Vec<Vec<(String, String)>>) -> Vec<Map<String, Value>> {
+        vecs.iter().map(|vec|
+            Map::from_iter(vec.iter().map(|&(ref k, ref v)| (k.clone(), v.clone().into())))
+        ).collect()
+    }
+
+    quickcheck! {
+        fn merged_objects_contain_all_keys(vecs: Vec<Vec<(String, String)>>) -> bool {
+            let result = merge_objects(vecs_to_objs(&vecs).as_slice());
+            for obj in vecs {
+                for (k, _v) in obj {
+                    if !result.contains_key(&k) {
+                        return false
+                    }
+                }
+            }
+            true
+        }
+
+        fn merged_objects_takes_first_value(vecs: Vec<Vec<(String, String)>>) -> bool {
+            let objs = vecs_to_objs(&vecs);
+            let result = merge_objects(objs.as_slice());
+            for (key, result_value) in result {
+                match objs.iter().find(|obj| obj.contains_key(&key)) {
+                    Some(obj) => if obj[&key] != result_value {
+                        return false // result value did not match first obj containing key
+                    },
+                    None => return false // key in result was not in any input objs
+                }
+            }
+            true
+        }
+    }
+}
