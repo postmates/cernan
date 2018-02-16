@@ -5,7 +5,7 @@ RUN apk update \
 
 RUN apk add --no-cache --update \
   ca-certificates \
-  llvm-libunwind@testing \
+  llvm-libunwind \
   openssl && \
   update-ca-certificates && \
   rm -rf /var/cache/apk/* && \
