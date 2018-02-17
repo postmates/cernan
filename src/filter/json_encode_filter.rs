@@ -94,7 +94,7 @@ impl filter::Filter for JSONEncodeFilter {
                 // Data that is more likely to be correct (more specific to the source) overrides
                 // other data. So the parsed value is authoritative, followed by any fields we could
                 // parse by filters, then finally the metadata we were able to work out on our own.
-                let value = merge_objects(&[value, log.fields.clone().into(), metadata]);
+                let value = merge_objects(vec![value, log.fields.clone().into(), metadata]);
                 res.push(metric::Event::Raw {
                     order_by: random(),
                     encoding: metric::Encoding::JSON,
@@ -124,12 +124,12 @@ fn json_to_object(v: Value) -> Map<String, Value>  {
 /// Merge JSON objects, with values from earlier objects in the list overriding later ones.
 /// Note this is not a recursive merge - if the same key is in many objects, we simply take
 /// the value from the earliest one.
-fn merge_objects(objs: &[Map<String, Value>]) -> Map<String, Value> {
+fn merge_objects(objs: Vec<Map<String, Value>>) -> Map<String, Value> {
     let mut result = Map::new();
-    for obj in objs {
-        for key in obj.keys() {
-            if !result.contains_key(key) {
-                result.insert(key.clone(), obj[key].clone());
+    for obj in objs.into_iter() {
+        for (key, value) in obj.into_iter() {
+            if !result.contains_key(&key) {
+                result.insert(key, value);
             }
         }
     };
@@ -249,7 +249,7 @@ mod test {
     #[test]
     fn merged_objects_contain_all_keys() {
         fn inner(vecs: Vec<Vec<(String, String)>>) -> bool {
-            let result = merge_objects(vecs_to_objs(&vecs).as_slice());
+            let result = merge_objects(vecs_to_objs(&vecs));
             for obj in vecs {
                 for (k, _v) in obj {
                     if !result.contains_key(&k) {
@@ -266,7 +266,7 @@ mod test {
     fn merged_objects_takes_first_value() {
         fn inner(vecs: Vec<Vec<(String, String)>>) -> bool {
             let objs = vecs_to_objs(&vecs);
-            let result = merge_objects(objs.as_slice());
+            let result = merge_objects(objs.clone());
             for (key, result_value) in result {
                 match objs.iter().find(|obj| obj.contains_key(&key)) {
                     Some(obj) => if obj[&key] != result_value {
