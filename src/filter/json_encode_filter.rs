@@ -143,6 +143,7 @@ mod test {
     use super::*;
     use filter::Filter;
     use metric;
+    use quickcheck::QuickCheck;
     use serde_json::Value;
     use serde_json::map::Map;
 
@@ -245,8 +246,9 @@ mod test {
         ).collect()
     }
 
-    quickcheck! {
-        fn merged_objects_contain_all_keys(vecs: Vec<Vec<(String, String)>>) -> bool {
+    #[test]
+    fn merged_objects_contain_all_keys() {
+        fn inner(vecs: Vec<Vec<(String, String)>>) -> bool {
             let result = merge_objects(vecs_to_objs(&vecs).as_slice());
             for obj in vecs {
                 for (k, _v) in obj {
@@ -257,8 +259,12 @@ mod test {
             }
             true
         }
+        QuickCheck::new().quickcheck(inner as fn(Vec<Vec<(String, String)>>) -> bool);
+    }
 
-        fn merged_objects_takes_first_value(vecs: Vec<Vec<(String, String)>>) -> bool {
+    #[test]
+    fn merged_objects_takes_first_value() {
+        fn inner(vecs: Vec<Vec<(String, String)>>) -> bool {
             let objs = vecs_to_objs(&vecs);
             let result = merge_objects(objs.as_slice());
             for (key, result_value) in result {
@@ -271,5 +277,6 @@ mod test {
             }
             true
         }
+        QuickCheck::new().quickcheck(inner as fn(Vec<Vec<(String, String)>>) -> bool);
     }
 }

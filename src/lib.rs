@@ -58,7 +58,6 @@ extern crate lazy_static;
 extern crate serde_derive;
 
 #[cfg(test)]
-#[macro_use]
 extern crate quickcheck;
 
 pub mod sink;
