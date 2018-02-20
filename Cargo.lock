@@ -168,7 +168,7 @@ dependencies = [
  "flate2 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "glob 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "hopper 0.4.0-pre (git+https://github.com/postmates/hopper.git?branch=ingress_shedding)",
+ "hopper 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper 0.10.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.36 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -695,8 +695,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "hopper"
-version = "0.4.0-pre"
-source = "git+https://github.com/postmates/hopper.git?branch=ingress_shedding#5a1980625fcb65cef2ada2c20c06b1e183ea49db"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "bincode 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2124,7 +2124,7 @@ dependencies = [
 "checksum geojson 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b3484ce9e9560be7e5dffe685dfe2cf2dbf785fc3dac2f193fb42c56a797c3d1"
 "checksum glob 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)" = "8be18de09a56b60ed0edf84bc9df007e30040691af7acd1c41874faac5895bfb"
 "checksum hex 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d6a22814455d41612f41161581c2883c0c6a1c41852729b17d5ed88f01e153aa"
-"checksum hopper 0.4.0-pre (git+https://github.com/postmates/hopper.git?branch=ingress_shedding)" = "<none>"
+"checksum hopper 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "704305bc2ef2ddac557e9d090f3d8e7965b8e44dc9e5ff6f70eab1bacf662349"
 "checksum httparse 1.2.4 (registry+https://github.com/rust-lang/crates.io-index)" = "c2f407128745b78abc95c0ffbe4e5d37427fdc0d45470710cfef8c44522a2e37"
 "checksum hyper 0.10.13 (registry+https://github.com/rust-lang/crates.io-index)" = "368cb56b2740ebf4230520e2b90ebb0461e69034d85d1945febd9b3971426db2"
 "checksum hyper 0.11.14 (registry+https://github.com/rust-lang/crates.io-index)" = "f57f74deb81fb91b776012ed7605e96b1ffb88c4fd5c031ce5c90534b604a6e0"

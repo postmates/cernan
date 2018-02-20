@@ -244,6 +244,15 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
         })
         .unwrap_or(args.max_hopper_queue_files);
 
+    args.max_hopper_in_memory_bytes = value
+        .get("max-hopper-in-memory-bytes")
+        .map(|s| {
+            s.as_integer()
+                .expect("could not parse max-hopper-in-memory-bytes")
+                as usize
+        })
+        .unwrap_or(args.max_hopper_in_memory_bytes);
+
     args.data_directory = value
         .get("data-directory")
         .map(|s| {
@@ -1253,9 +1262,13 @@ data-directory = "/foo/bar"
     fn config_max_hopper_queue_bytes() {
         let config = r#"
 max-hopper-queue-bytes = 10
+max-hopper-queue-files = 1024
+max-hopper-in-memory-bytes = 4048
 "#;
         let args = parse_config_file(config, 4);
         assert_eq!(args.max_hopper_queue_bytes, 10);
+        assert_eq!(args.max_hopper_queue_files, 1024);
+        assert_eq!(args.max_hopper_in_memory_bytes, 4048);
     }
 
     #[test]

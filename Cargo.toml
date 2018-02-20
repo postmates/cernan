@@ -27,7 +27,7 @@ fern = "0.5"
 flate2 = "1.0"
 futures = "0.1.17"
 glob = "0.2.11"
-hopper = { git = "https://github.com/postmates/hopper.git", branch = "ingress_shedding" }
+hopper = "0.4"
 hyper = "0.10" # 0.10 specifically required by rusoto_kinesis' KinesisClient
 lazy_static = "1.0"
 libc = "0.2"
