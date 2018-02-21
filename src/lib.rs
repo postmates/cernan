@@ -33,6 +33,7 @@ extern crate mio;
 extern crate mond;
 extern crate protobuf;
 extern crate quantiles;
+extern crate rand;
 extern crate rdkafka;
 extern crate regex;
 extern crate rusoto_core;

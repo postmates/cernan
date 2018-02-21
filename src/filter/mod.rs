@@ -13,9 +13,11 @@ use util;
 mod programmable_filter;
 pub mod delay_filter;
 mod flush_boundary_filter;
+pub mod json_encode_filter;
 
 pub use self::delay_filter::{DelayFilter, DelayFilterConfig};
 pub use self::flush_boundary_filter::{FlushBoundaryFilter, FlushBoundaryFilterConfig};
+pub use self::json_encode_filter::{JSONEncodeFilter, JSONEncodeFilterConfig};
 pub use self::programmable_filter::{ProgrammableFilter, ProgrammableFilterConfig};
 
 /// Errors that can strike a Filter

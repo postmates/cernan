@@ -8,6 +8,8 @@ pub enum Encoding {
     Raw,
     /// Avro
     Avro,
+    /// JSON
+    JSON,
 }
 
 /// Event: the central cernan datastructure
