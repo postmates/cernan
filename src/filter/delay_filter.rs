@@ -75,14 +75,8 @@ impl filter::Filter for DelayFilter {
                     DELAY_LOG_REJECT.fetch_add(1, Ordering::Relaxed);
                 }
             }
-            timer @ metric::Event::TimerFlush { .. } => {
-                res.push(timer);
-            }
-            raw @ metric::Event::Raw { .. } => {
-                res.push(raw);
-            }
-            metric::Event::Shutdown => {
-                res.push(metric::Event::Shutdown);
+            ev => {
+                res.push(ev);
             }
         }
         Ok(())

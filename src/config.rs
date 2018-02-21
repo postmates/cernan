@@ -17,8 +17,8 @@ use toml;
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 use filter::DelayFilterConfig;
-use filter::JSONEncodeFilterConfig;
 use filter::FlushBoundaryFilterConfig;
+use filter::JSONEncodeFilterConfig;
 use filter::ProgrammableFilterConfig;
 use sink::ConsoleConfig;
 use sink::ElasticsearchConfig;
@@ -65,7 +65,7 @@ pub struct Args {
     /// before flushing to disk.
     pub max_hopper_in_memory_bytes: usize,
     /// The maximum number of queue files that hopper may hold on disk. The
-    /// maximum discu consumption of a single hopper queue will be
+    /// maximum disk consumption of a single hopper queue will be
     /// `max_hopper_queue_files * max_hopper_queue_bytes`.
     pub max_hopper_queue_files: usize,
     /// The maximum size -- in bytes -- that a hopper queue may grow to before
@@ -91,8 +91,8 @@ pub struct Args {
     /// The delay filters to use in this cernan run. See `filters::DelayFilter`
     /// for more.
     pub delay_filters: Option<HashMap<String, DelayFilterConfig>>,
-    /// The json_encode filters to use in this cernan run. See `filters::JSONEncodeFilter`
-    /// for more.
+    /// The json_encode filters to use in this cernan run. See
+    /// `filters::JSONEncodeFilter` for more.
     pub json_encode_filters: Option<HashMap<String, JSONEncodeFilterConfig>>,
     /// The flush boundaryfilters to use in this cernan run. See
     /// `filters::FlushBoundaryFilter` for more.
@@ -352,7 +352,9 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
             let mut filters: HashMap<String, JSONEncodeFilterConfig> = HashMap::new();
             for (name, tbl) in fltr.as_table().unwrap().iter() {
                 let parse_line = if let Some(parse_line) = tbl.get("parse_line") {
-                    parse_line.as_bool().expect("could not parse parse_line as boolean")
+                    parse_line
+                        .as_bool()
+                        .expect("could not parse parse_line as boolean")
                 } else {
                     false
                 };
@@ -372,7 +374,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     config_path: Some(config_path.clone()),
                 };
                 filters.insert(config_path, config);
-            };
+            }
             filters
         });
 
