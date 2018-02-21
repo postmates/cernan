@@ -920,7 +920,6 @@ mod tests {
     use metric::{AggregationMethod, Event, Telemetry};
     use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use std::cmp;
-    use std::sync::Arc;
 
     #[test]
     fn set_bounds_no_crash() {
@@ -1046,7 +1045,7 @@ mod tests {
             let i: usize = g.gen();
             match i % 3 {
                 0 => Event::TimerFlush(g.gen()),
-                _ => Event::Telemetry(Arc::new(Some(Arbitrary::arbitrary(g)))),
+                _ => Event::Telemetry(Arbitrary::arbitrary(g)),
             }
         }
     }

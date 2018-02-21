@@ -17,7 +17,7 @@ use http;
 use metric;
 use metric::{AggregationMethod, TagMap};
 use quantiles::histogram::Bound;
-use sink::{Sink, Valve};
+use sink::Sink;
 use std::f64;
 use std::io;
 use std::io::Write;
@@ -163,6 +163,7 @@ impl Accumulator {
                         }
                     }
                 }
+                assert!(samples.len() <= cap);
             }
         }
     }

@@ -8,7 +8,6 @@ mod integration {
         use self::cernan::metric;
         use self::cernan::metric::AggregationMethod;
         use std::path::PathBuf;
-        use std::sync::Arc;
 
         #[test]
         fn test_id_filter() {
@@ -420,8 +419,7 @@ mod integration {
             println!("EVENTS: {:?}", events);
             assert_eq!(events[2], metric::Event::TimerFlush(1));
             match events[1] {
-                metric::Event::Telemetry(ref mut m) => {
-                    let p = ::std::sync::Arc::make_mut(m).take().unwrap();
+                metric::Event::Telemetry(ref mut p) => {
                     assert_eq!(p.name, "count_per_tick");
                     assert_eq!(p.set(), Some(5.0));
                 }
@@ -450,8 +448,7 @@ mod integration {
             println!("EVENTS: {:?}", events);
             assert_eq!(events[2], metric::Event::TimerFlush(2));
             match events[1] {
-                metric::Event::Telemetry(ref mut m) => {
-                    let p = ::std::sync::Arc::make_mut(m).take().unwrap();
+                metric::Event::Telemetry(ref mut p) => {
                     assert_eq!(p.name, "count_per_tick");
                     assert_eq!(p.set(), Some(2.0));
                 }
@@ -505,8 +502,7 @@ mod integration {
 
             for event in events {
                 match event {
-                    metric::Event::Telemetry(mut m) => {
-                        let met = Arc::make_mut(&mut m).take().unwrap();
+                    metric::Event::Telemetry(mut met) => {
                         assert_eq!(met.name, expected);
                     }
                     _ => {
@@ -551,8 +547,7 @@ mod integration {
 
             for event in events {
                 match event {
-                    metric::Event::Telemetry(mut m) => {
-                        let met = Arc::make_mut(&mut m).take().unwrap();
+                    metric::Event::Telemetry(mut met) => {
                         assert_eq!(met.name, expected);
                     }
                     _ => {

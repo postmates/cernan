@@ -652,7 +652,6 @@ mod test {
     use metric::{AggregationMethod, TagMap, Telemetry};
     use quickcheck::{QuickCheck, TestResult};
     use sink::Sink;
-    use std::sync::Arc;
 
     #[test]
     fn test_pad_across_flush() {
@@ -1031,7 +1030,7 @@ mod test {
         let dt_2 = Utc.ymd(1990, 6, 12)
             .and_hms_milli(9, 10, 13, 00)
             .timestamp();
-        wavefront.deliver(Arc::new(Some(
+        wavefront.deliver(
             Telemetry::new()
                 .name("test.counter")
                 .value(-1.0)
@@ -1040,8 +1039,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        wavefront.deliver(Arc::new(Some(
+        );
+        wavefront.deliver(
             Telemetry::new()
                 .name("test.counter")
                 .value(2.0)
@@ -1050,8 +1049,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        wavefront.deliver(Arc::new(Some(
+        );
+        wavefront.deliver(
             Telemetry::new()
                 .name("test.counter")
                 .value(3.0)
@@ -1060,8 +1059,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        wavefront.deliver(Arc::new(Some(
+        );
+        wavefront.deliver(
             Telemetry::new()
                 .name("test.gauge")
                 .value(3.211)
@@ -1070,8 +1069,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        wavefront.deliver(Arc::new(Some(
+        );
+        wavefront.deliver(
             Telemetry::new()
                 .name("test.gauge")
                 .value(4.322)
@@ -1080,8 +1079,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        wavefront.deliver(Arc::new(Some(
+        );
+        wavefront.deliver(
             Telemetry::new()
                 .name("test.gauge")
                 .value(5.433)
@@ -1090,8 +1089,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        wavefront.deliver(Arc::new(Some(
+        );
+        wavefront.deliver(
             Telemetry::new()
                 .name("test.timer")
                 .value(12.101)
@@ -1100,8 +1099,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        wavefront.deliver(Arc::new(Some(
+        );
+        wavefront.deliver(
             Telemetry::new()
                 .name("test.timer")
                 .value(1.101)
@@ -1110,8 +1109,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        wavefront.deliver(Arc::new(Some(
+        );
+        wavefront.deliver(
             Telemetry::new()
                 .name("test.timer")
                 .value(3.101)
@@ -1120,8 +1119,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        wavefront.deliver(Arc::new(Some(
+        );
+        wavefront.deliver(
             Telemetry::new()
                 .name("test.raw")
                 .value(1.0)
@@ -1130,8 +1129,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        wavefront.deliver(Arc::new(Some(
+        );
+        wavefront.deliver(
             Telemetry::new()
                 .name("test.raw")
                 .value(2.0)
@@ -1140,7 +1139,7 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
+        );
         wavefront.format_stats();
         let lines: Vec<&str> = wavefront.stats.lines().collect();
 
