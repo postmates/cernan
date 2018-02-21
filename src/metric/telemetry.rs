@@ -10,7 +10,6 @@ use std::hash::{Hash, Hasher};
 use std::mem;
 use std::ops::Add;
 use std::ops::AddAssign;
-use std::sync;
 use time;
 
 /// The available aggregations for `Telemetry`.
@@ -56,7 +55,7 @@ pub struct SoftTelemetry {
     error: Option<f64>,       // only needed for Summarize
     bounds: Option<Vec<f64>>, // only needed for Histogram
     timestamp: Option<i64>,
-    tags: Option<sync::Arc<TagMap>>,
+    tags: Option<TagMap>,
     persist: Option<bool>,
     override_count: Option<u64>,
     override_sample_sum: Option<f64>,
@@ -73,7 +72,7 @@ pub struct Telemetry {
     /// Determine whether the Telemetry will persist across time bins.
     pub persist: bool,
     /// The Telemetry specific metadata tags.
-    pub tags: sync::Arc<TagMap>,
+    pub tags: TagMap,
     /// The time of Telemetry, measured in seconds.
     pub timestamp: i64,
     override_count: Option<u64>,
@@ -250,7 +249,7 @@ impl Default for Telemetry {
             name: String::from(""),
             value: Some(Value::Set(0.0)),
             persist: false,
-            tags: sync::Arc::new(TagMap::default()),
+            tags: TagMap::default(),
             timestamp: time::now(),
             override_sample_sum: None,
             override_count: None,
@@ -348,7 +347,7 @@ impl SoftTelemetry {
     ///
     /// These are the tags associated with the Telemetry and help us determine
     /// origin of report etc, depending on what the user has configured.
-    pub fn tags(mut self, tags: sync::Arc<TagMap>) -> SoftTelemetry {
+    pub fn tags(mut self, tags: TagMap) -> SoftTelemetry {
         self.tags = Some(tags);
         self
     }
@@ -388,7 +387,7 @@ impl SoftTelemetry {
         let tags = if let Some(tags) = self.tags {
             tags
         } else {
-            sync::Arc::new(TagMap::default())
+            TagMap::default()
         };
         let persist = if let Some(persist) = self.persist {
             persist
@@ -609,7 +608,7 @@ impl Telemetry {
     where
         S: Into<String>,
     {
-        sync::Arc::make_mut(&mut self.tags).insert(key.into(), val.into());
+        self.tags.insert(key.into(), val.into());
         self
     }
 
@@ -641,7 +640,7 @@ impl Telemetry {
     /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Telemetry {
         for &(ref k, ref v) in map.iter() {
-            sync::Arc::make_mut(&mut self.tags).insert(k.clone(), v.clone());
+            self.tags.insert(k.clone(), v.clone());
         }
         self
     }
@@ -674,7 +673,7 @@ impl Telemetry {
     /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
     /// ```
     pub fn merge_tags_from_map(mut self, map: &TagMap) -> Telemetry {
-        sync::Arc::make_mut(&mut self.tags).merge(map);
+        self.tags.merge(map);
         self
     }
 

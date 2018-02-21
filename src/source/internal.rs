@@ -118,6 +118,18 @@ impl source::Source<InternalConfig> for Internal {
                 }
                 Ok(_) => {
                     if !chans.is_empty() {
+                        atom_telem!(
+                            "cernan.util.hopper.error.full",
+                            util::UTIL_SEND_HOPPER_ERROR_FULL,
+                            tags,
+                            chans
+                        );
+                        atom_telem!(
+                            "cernan.util.hopper.success",
+                            util::UTIL_SEND_HOPPER_SUCCESS,
+                            tags,
+                            chans
+                        );
                         // source::graphite
                         atom_telem!(
                             "cernan.graphite.new_peer",

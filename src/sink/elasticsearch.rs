@@ -7,11 +7,10 @@ use elastic::client::responses::bulk;
 use elastic::error;
 use elastic::error::Result;
 use elastic::prelude::*;
-use metric::{LogLine, Telemetry};
+use metric::LogLine;
 use sink::{Sink, Valve};
 use std::cmp;
 use std::error::Error;
-use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid;
@@ -339,12 +338,7 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
         self.flush();
     }
 
-    fn deliver(&mut self, _: sync::Arc<Option<Telemetry>>) -> () {
-        // nothing, intentionally
-    }
-
-    fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
-        let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
+    fn deliver_line(&mut self, line: LogLine) -> () {
         let uuid = uuid::Uuid::new_v4();
         self.buffer.push(Line {
             uuid: uuid,

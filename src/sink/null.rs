@@ -2,7 +2,6 @@
 
 use metric::{LogLine, Telemetry};
 use sink::{Sink, Valve};
-use std::sync;
 
 /// Null sink
 ///
@@ -35,11 +34,11 @@ impl Sink<NullConfig> for Null {
         Valve::Open
     }
 
-    fn deliver(&mut self, _: sync::Arc<Option<Telemetry>>) -> () {
+    fn deliver(&mut self, _: Telemetry) -> () {
         // discard point
     }
 
-    fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
+    fn deliver_line(&mut self, _: LogLine) -> () {
         // discard point
     }
 

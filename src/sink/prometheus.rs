@@ -515,7 +515,7 @@ where
                             enc.write_all(b"+Inf")?;
                         }
                     }
-                    for (k, v) in &(*value.tags) {
+                    for (k, v) in &value.tags {
                         enc.write_all(b"\", ")?;
                         enc.write_all(k.as_bytes())?;
                         enc.write_all(b"=\"")?;
@@ -553,7 +553,7 @@ where
                     enc.write_all(sanitized_name.as_bytes())?;
                     enc.write_all(b"{quantile=\"")?;
                     enc.write_all(q.to_string().as_bytes())?;
-                    for (k, v) in &(*value.tags) {
+                    for (k, v) in &value.tags {
                         enc.write_all(b"\", ")?;
                         enc.write_all(k.as_bytes())?;
                         enc.write_all(b"=\"")?;
@@ -639,8 +639,7 @@ impl Sink<PrometheusConfig> for Prometheus {
         }
     }
 
-    fn deliver(&mut self, mut point: sync::Arc<Option<metric::Telemetry>>) -> () {
-        let telem: metric::Telemetry = sync::Arc::make_mut(&mut point).take().unwrap();
+    fn deliver(&mut self, telem: metric::Telemetry) -> () {
         if let Some(age_threshold) = self.age_threshold {
             if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
                 self.aggrs.insert(telem);
@@ -650,17 +649,9 @@ impl Sink<PrometheusConfig> for Prometheus {
         }
     }
 
-    fn deliver_line(&mut self, _: sync::Arc<Option<metric::LogLine>>) -> () {
-        // nothing, intentionally
-    }
-
     fn shutdown(mut self) -> () {
         self.flush();
         self.http_srv.shutdown();
-    }
-
-    fn valve_state(&self) -> Valve {
-        Valve::Open
     }
 }
 

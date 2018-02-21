@@ -2,12 +2,11 @@
 
 use hyper::Client;
 use hyper::header;
-use metric::{LogLine, TagMap, Telemetry};
+use metric::{TagMap, Telemetry};
 use quantiles::histogram::Bound;
 use sink::{Sink, Valve};
 use std::cmp;
 use std::string;
-use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use time;
@@ -267,13 +266,8 @@ impl Sink<InfluxDBConfig> for InfluxDB {
         self.flush();
     }
 
-    fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        self.aggrs
-            .push(sync::Arc::make_mut(&mut point).take().unwrap());
-    }
-
-    fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
-        // nothing, intentionally
+    fn deliver(&mut self, point: Telemetry) -> () {
+        self.aggrs.push(point);
     }
 
     fn valve_state(&self) -> Valve {

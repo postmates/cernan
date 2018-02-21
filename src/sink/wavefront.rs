@@ -1,7 +1,7 @@
 //! Wavefront is a proprietary aggregation and alerting product
 
 use buckets;
-use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
+use metric::{AggregationMethod, TagMap, Telemetry};
 use sink::{Sink, Valve};
 use std::cmp;
 use std::collections::{HashMap, HashSet};
@@ -10,7 +10,6 @@ use std::mem;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::string;
-use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use time;
@@ -624,8 +623,7 @@ impl Sink<WavefrontConfig> for Wavefront {
         self.flush();
     }
 
-    fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        let telem: Telemetry = sync::Arc::make_mut(&mut point).take().unwrap();
+    fn deliver(&mut self, telem: Telemetry) -> () {
         if let Some(age_threshold) = self.age_threshold {
             if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
                 self.aggrs.add(telem);
@@ -633,10 +631,6 @@ impl Sink<WavefrontConfig> for Wavefront {
         } else {
             self.aggrs.add(telem);
         }
-    }
-
-    fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
-        // nothing, intentionally
     }
 
     fn valve_state(&self) -> Valve {

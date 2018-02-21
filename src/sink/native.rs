@@ -6,12 +6,11 @@ use protobuf::Message;
 use protobuf::repeated::RepeatedField;
 use protobuf::stream::CodedOutputStream;
 use protocols::native::{AggregationMethod, LogLine, Payload, Telemetry};
-use sink::{Sink, Valve};
+use sink::Sink;
 use std::collections::HashMap;
 use std::io::BufWriter;
 use std::mem::replace;
 use std::net::{TcpStream, ToSocketAddrs};
-use std::sync;
 use time;
 
 /// The native sink
@@ -95,15 +94,11 @@ impl Sink<NativeConfig> for Native {
         }
     }
 
-    fn valve_state(&self) -> Valve {
-        Valve::Open
-    }
-
-    fn deliver(&mut self, telemetry: sync::Arc<Option<metric::Telemetry>>) -> () {
+    fn deliver(&mut self, telemetry: metric::Telemetry) -> () {
         self.buffer.push(metric::Event::Telemetry(telemetry));
     }
 
-    fn deliver_line(&mut self, line: sync::Arc<Option<metric::LogLine>>) -> () {
+    fn deliver_line(&mut self, line: metric::LogLine) -> () {
         self.buffer.push(metric::Event::Log(line));
     }
 
@@ -118,7 +113,6 @@ impl Sink<NativeConfig> for Native {
         for ev in self.buffer.drain(..) {
             match ev {
                 metric::Event::Telemetry(mut m) => {
-                    let mut m = sync::Arc::make_mut(&mut m).take().unwrap();
                     let mut telem = Telemetry::new();
                     telem.set_name(replace(&mut m.name, Default::default()));
                     let method = match m.kind() {
@@ -137,7 +131,7 @@ impl Sink<NativeConfig> for Native {
                     //
                     // Learn how to consume bits of the metric without having to
                     // clone like crazy
-                    for (k, v) in &(*m.tags) {
+                    for (k, v) in &m.tags {
                         meta.insert(k.clone(), v.clone());
                     }
                     telem.set_metadata(meta);
@@ -149,7 +143,6 @@ impl Sink<NativeConfig> for Native {
                     points.push(telem);
                 }
                 metric::Event::Log(mut l) => {
-                    let l = sync::Arc::make_mut(&mut l).take().unwrap();
                     let mut ll = LogLine::new();
                     ll.set_path(l.path);
                     ll.set_value(l.value);

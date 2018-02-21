@@ -1,6 +1,6 @@
 //! Kafka sink for Raw events.
 use futures::future::Future;
-use metric::{self, LogLine, Telemetry};
+use metric;
 use rdkafka::client::EmptyContext;
 use rdkafka::config::ClientConfig;
 use rdkafka::error::{KafkaError, RDKafkaError};
@@ -201,14 +201,6 @@ impl Sink<KafkaConfig> for Kafka {
         } else {
             Valve::Closed
         }
-    }
-
-    fn deliver(&mut self, _: Arc<Option<Telemetry>>) -> () {
-        // Discard point
-    }
-
-    fn deliver_line(&mut self, _: Arc<Option<LogLine>>) -> () {
-        // Discard line
     }
 
     /// Fire off the given event to librdkafka. That library handles buffering and

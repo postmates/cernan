@@ -59,26 +59,24 @@ impl filter::Filter for DelayFilter {
         res: &mut Vec<metric::Event>,
     ) -> Result<(), filter::FilterError> {
         match event {
-            metric::Event::Telemetry(m) => if let Some(ref telem) = *m {
-                let telem = telem.clone();
+            metric::Event::Telemetry(telem) => {
                 if (telem.timestamp - time::now()).abs() < self.tolerance {
                     DELAY_TELEM_ACCEPT.fetch_add(1, Ordering::Relaxed);
-                    res.push(metric::Event::new_telemetry(telem));
+                    res.push(metric::Event::Telemetry(telem));
                 } else {
                     DELAY_TELEM_REJECT.fetch_add(1, Ordering::Relaxed);
                 }
-            },
-            metric::Event::Log(l) => if let Some(ref log) = *l {
-                let log = log.clone();
+            }
+            metric::Event::Log(log) => {
                 if (log.time - time::now()).abs() < self.tolerance {
                     DELAY_LOG_ACCEPT.fetch_add(1, Ordering::Relaxed);
-                    res.push(metric::Event::new_log(log));
+                    res.push(metric::Event::Log(log));
                 } else {
                     DELAY_LOG_REJECT.fetch_add(1, Ordering::Relaxed);
                 }
-            },
-            metric::Event::TimerFlush(f) => {
-                res.push(metric::Event::TimerFlush(f));
+            }
+            timer @ metric::Event::TimerFlush { .. } => {
+                res.push(timer);
             }
             raw @ metric::Event::Raw { .. } => {
                 res.push(raw);
