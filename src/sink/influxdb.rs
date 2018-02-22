@@ -78,7 +78,7 @@ impl Default for InfluxDBConfig {
 
 #[inline]
 fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
-    for &(ref k, ref v) in tags.iter() {
+    for (ref k, ref v) in tags.iter() {
         s.push_str(",");
         s.push_str(k);
         s.push_str("=");

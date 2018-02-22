@@ -140,10 +140,10 @@ impl Elasticsearch {
                 "timestamp": format_time(line.time),
             });
             let obj = payload.as_object_mut().unwrap();
-            for &(ref k, ref v) in line.tags.iter() {
+            for (k, v) in line.tags.iter() {
                 obj.insert(k.clone(), Value::String(v.clone()));
             }
-            for &(ref k, ref v) in line.fields.iter() {
+            for (k, v) in line.fields.iter() {
                 obj.insert(k.clone(), Value::String(v.clone()));
             }
             buffer.push_str(&to_string(&obj).unwrap());

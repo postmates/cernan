@@ -1,5 +1,4 @@
-use metric::TagMap;
-use metric::tagmap::cmp;
+use metric::{cmp_tagmap, TagMap};
 use quantiles::ckms::CKMS;
 use quantiles::histogram::{Histogram, Iter};
 #[cfg(test)]
@@ -234,7 +233,7 @@ impl PartialOrd for Telemetry {
         match self.name.partial_cmp(&other.name) {
             Some(cmp::Ordering::Equal) => {
                 match self.timestamp.partial_cmp(&other.timestamp) {
-                    Some(cmp::Ordering::Equal) => cmp(&self.tags, &other.tags),
+                    Some(cmp::Ordering::Equal) => cmp_tagmap(&self.tags, &other.tags),
                     other => other,
                 }
             }
@@ -639,7 +638,7 @@ impl Telemetry {
     /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
     /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Telemetry {
-        for &(ref k, ref v) in map.iter() {
+        for (k, v) in map.iter() {
             self.tags.insert(k.clone(), v.clone());
         }
         self
@@ -673,7 +672,11 @@ impl Telemetry {
     /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
     /// ```
     pub fn merge_tags_from_map(mut self, map: &TagMap) -> Telemetry {
-        self.tags.merge(map);
+        for (k, v) in map.iter() {
+            self.tags
+                .entry(k.to_string())
+                .or_insert_with(|| v.to_string());
+        }
         self
     }
 
@@ -817,7 +820,7 @@ impl Telemetry {
     /// another.
     pub fn within(&self, span: i64, other: &Telemetry) -> cmp::Ordering {
         match self.name.partial_cmp(&other.name) {
-            Some(cmp::Ordering::Equal) => match cmp(&self.tags, &other.tags) {
+            Some(cmp::Ordering::Equal) => match cmp_tagmap(&self.tags, &other.tags) {
                 Some(cmp::Ordering::Equal) => {
                     let lhs_bin = self.timestamp / span;
                     let rhs_bin = other.timestamp / span;
@@ -846,7 +849,10 @@ impl Telemetry {
     pub fn hash(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.name.hash(&mut hasher);
-        self.tags.hash(&mut hasher);
+        for (ref k, ref v) in self.tags.iter() {
+            k.hash(&mut hasher);
+            v.hash(&mut hasher);
+        }
         self.kind().hash(&mut hasher);
         hasher.finish()
     }
@@ -860,7 +866,10 @@ impl Telemetry {
     pub fn name_tag_hash(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.name.hash(&mut hasher);
-        self.tags.hash(&mut hasher);
+        for (ref k, ref v) in self.tags.iter() {
+            k.hash(&mut hasher);
+            v.hash(&mut hasher);
+        }
         hasher.finish()
     }
 

@@ -366,12 +366,6 @@ impl source::Source<InternalConfig> for Internal {
                             chans
                         );
                         atom_telem!(
-                            "cernan.sinks.prometheus.aggregation.inside_baseball.perpetual.total",
-                            sink::prometheus::PROMETHEUS_AGGR_PERPETUAL_LEN,
-                            tags,
-                            chans
-                        );
-                        atom_telem!(
                             "cernan.sinks.prometheus.aggregation.reportable",
                             sink::prometheus::PROMETHEUS_AGGR_REPORTABLE,
                             tags,

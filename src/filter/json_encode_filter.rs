@@ -12,7 +12,6 @@ use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
 use filter;
 use metric;
-use metric::TagMap;
 use rand::random;
 use serde_json;
 use serde_json::Value;
@@ -26,16 +25,6 @@ lazy_static! {
     pub static ref JSON_ENCODE_LOG_PROCESSED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total number of logline with JSON value successfully parsed
     pub static ref JSON_ENCODE_LOG_PARSED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
-
-impl From<TagMap> for Map<String, Value> {
-    fn from(tagmap: TagMap) -> Self {
-        Map::from_iter(
-            tagmap
-                .into_iter()
-                .map(|(k, v)| (k.clone(), v.clone().into())),
-        )
-    }
 }
 
 /// Convert LogLine events into Raw events encoded as JSON.
@@ -84,7 +73,7 @@ impl filter::Filter for JSONEncodeFilter {
                 let metadata = json_to_object(json!({
                     "time": utc_time.to_rfc3339(),
                     "path": log.path.clone(),
-                    "tags": Map::from(log.tags.clone()),
+                    "tags": Map::from_iter(log.tags.clone().into_iter().map(|(k,v)| (k,v.into()))),
                 }));
                 // If parse_line is true, and line is parsable as a JSON object, parse
                 // it. Otherwise get an object containing the original
@@ -111,8 +100,11 @@ impl filter::Filter for JSONEncodeFilter {
                 // is authoritative, followed by any fields we could
                 // parse by filters, then finally the metadata we were able to work
                 // out on our own.
-                let value =
-                    merge_objects(vec![value, log.fields.clone().into(), metadata]);
+                let value = merge_objects(vec![
+                    value,
+                    Map::from_iter(log.fields.into_iter().map(|(k, v)| (k, v.into()))),
+                    metadata,
+                ]);
                 res.push(metric::Event::Raw {
                     order_by: random(),
                     encoding: metric::Encoding::JSON,

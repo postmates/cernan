@@ -136,11 +136,11 @@ impl Default for WavefrontConfig {
 #[inline]
 fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
     let mut iter = tags.iter();
-    if let Some(&(ref fk, ref fv)) = iter.next() {
+    if let Some((ref fk, ref fv)) = iter.next() {
         s.push_str(fk);
         s.push_str("=");
         s.push_str(fv);
-        for &(ref k, ref v) in iter {
+        for (ref k, ref v) in iter {
             s.push_str(" ");
             s.push_str(k);
             s.push_str("=");
