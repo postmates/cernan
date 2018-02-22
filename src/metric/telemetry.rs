@@ -687,22 +687,6 @@ impl Telemetry {
     /// This insert a key / value pair into the metric's tag map. If the key was
     /// already present in the tag map the value will be replaced, else it will
     /// be inserted.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::Telemetry;
-    ///
-    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
-    ///
-    /// assert!(m.tags.is_empty());
-    ///
-    /// m = m.overlay_tag("foo", "bar");
-    /// assert_eq!(Some(&"bar".into()), m.tags.get(&String::from("foo")));
-    ///
-    /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    /// ```
     pub fn overlay_tag<S>(mut self, key: S, val: S) -> Telemetry
     where
         S: Into<String>,
@@ -716,69 +700,10 @@ impl Telemetry {
     /// This inserts a map of key / value pairs over the top of metric's
     /// existing tag map. Any new keys will be inserted while existing keys will
     /// be overwritten.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::{TagMap, Telemetry};
-    ///
-    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
-    ///
-    /// assert!(m.tags.is_empty());
-    ///
-    /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    ///
-    /// let mut tag_map = TagMap::default();
-    /// tag_map.insert("foo".into(), "bar".into());
-    /// tag_map.insert("oof".into(), "rab".into());
-    ///
-    /// m = m.overlay_tags_from_map(&tag_map);
-    /// assert_eq!(Some(&"bar".into()), m.tags.get(&String::from("foo")));
-    /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
-    /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Telemetry {
         if let Some(ref mut tags) = self.tags {
             for (k, v) in map.iter() {
                 tags.insert(k.clone(), v.clone());
-            }
-        } else {
-            self.tags = Some(map.clone());
-        }
-        self
-    }
-
-    /// Merge a TagMap into self's tags
-    ///
-    /// This inserts a map of key / values pairs into metric's existing map,
-    /// inserting keys if and only if the key does not already exist
-    /// in-map. This is the information-preserving partner to
-    /// overlay_tags_from_map.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::{TagMap, Telemetry};
-    ///
-    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
-    ///
-    /// assert!(m.tags.is_empty());
-    ///
-    /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    ///
-    /// let mut tag_map = TagMap::default();
-    /// tag_map.insert("foo".into(), "bar".into());
-    /// tag_map.insert("oof".into(), "rab".into());
-    ///
-    /// m = m.merge_tags_from_map(&tag_map);
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
-    /// ```
-    pub fn merge_tags_from_map(mut self, map: &TagMap) -> Telemetry {
-        if let Some(ref mut tags) = self.tags {
-            for (k, v) in map.iter() {
-                tags.entry(k.to_string()).or_insert_with(|| v.to_string());
             }
         } else {
             self.tags = Some(map.clone());

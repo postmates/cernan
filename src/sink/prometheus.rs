@@ -107,7 +107,6 @@ enum Accumulator {
 }
 
 impl Accumulator {
-    #[cfg(test)]
     pub fn kind(&self) -> AggregationMethod {
         match *self {
             Accumulator::Perpetual(ref t) => t.kind(),
@@ -286,7 +285,12 @@ impl PrometheusAggr {
         let entry: Entry<String, Accumulator> = self.data.entry(telem.name.clone());
         match entry {
             Entry::Occupied(mut oe) => {
-                oe.get_mut().insert(telem);
+                let prev = oe.get_mut();
+                if prev.kind() == telem.kind() {
+                    prev.insert(telem);
+                } else {
+                    return false;
+                }
             }
             Entry::Vacant(ve) => {
                 ve.insert(match telem.kind() {
