@@ -31,7 +31,9 @@ lazy_static! {
 impl From<TagMap> for Map<String, Value> {
     fn from(tagmap: TagMap) -> Self {
         Map::from_iter(
-            tagmap.into_iter().map(|(k, v)| (k.clone(), v.clone().into()))
+            tagmap
+                .into_iter()
+                .map(|(k, v)| (k.clone(), v.clone().into())),
         )
     }
 }
@@ -55,7 +57,8 @@ pub struct JSONEncodeFilterConfig {
     pub config_path: Option<String>,
     /// The forwards along which the filter will emit its `metric::Event`s.
     pub forwards: Vec<String>,
-    /// Whether the filter should attempt to parse LogLine values that are valid JSON objects.
+    /// Whether the filter should attempt to parse LogLine values that are
+    /// valid JSON objects.
     pub parse_line: bool,
 }
 
@@ -75,7 +78,7 @@ impl filter::Filter for JSONEncodeFilter {
         res: &mut Vec<metric::Event>,
     ) -> Result<(), filter::FilterError> {
         match event {
-            metric::Event::Log(l) => if let Some(ref log) = *l {
+            metric::Event::Log(log) => {
                 let naive_time = NaiveDateTime::from_timestamp(log.time, 0);
                 let utc_time: DateTime<Utc> = DateTime::from_utc(naive_time, Utc);
                 let metadata = json_to_object(json!({
@@ -83,25 +86,40 @@ impl filter::Filter for JSONEncodeFilter {
                     "path": log.path.clone(),
                     "tags": Map::from(log.tags.clone()),
                 }));
-                // If parse_line is true, and line is parsable as a JSON object, parse it.
-                // Otherwise get an object containing the original line.
+                // If parse_line is true, and line is parsable as a JSON object, parse
+                // it. Otherwise get an object containing the original
+                // line.
                 let value = (if self.parse_line { Some(()) } else { None })
                     .and_then(|_| serde_json::from_str::<Value>(&log.value).ok())
-                    .and_then(|v| if let Value::Object(obj) = v { Some(obj) } else { None })
-                    .map(|v| { JSON_ENCODE_LOG_PARSED.fetch_add(1, Ordering::Relaxed); v })
-                    .unwrap_or_else(|| json_to_object(json!({"message": log.value.clone()})));
+                    .and_then(|v| {
+                        if let Value::Object(obj) = v {
+                            Some(obj)
+                        } else {
+                            None
+                        }
+                    })
+                    .map(|v| {
+                        JSON_ENCODE_LOG_PARSED.fetch_add(1, Ordering::Relaxed);
+                        v
+                    })
+                    .unwrap_or_else(|| {
+                        json_to_object(json!({"message": log.value.clone()}))
+                    });
                 // Combine our various sources of data.
-                // Data that is more likely to be correct (more specific to the source) overrides
-                // other data. So the parsed value is authoritative, followed by any fields we could
-                // parse by filters, then finally the metadata we were able to work out on our own.
-                let value = merge_objects(vec![value, log.fields.clone().into(), metadata]);
+                // Data that is more likely to be correct (more specific to the
+                // source) overrides other data. So the parsed value
+                // is authoritative, followed by any fields we could
+                // parse by filters, then finally the metadata we were able to work
+                // out on our own.
+                let value =
+                    merge_objects(vec![value, log.fields.clone().into(), metadata]);
                 res.push(metric::Event::Raw {
                     order_by: random(),
                     encoding: metric::Encoding::JSON,
-                    bytes: serde_json::to_string(&value).unwrap().into(), // serde_json::Value will never fail to encode
+                    bytes: serde_json::to_string(&value).unwrap().into(), /* serde_json::Value will never fail to encode */
                 });
                 JSON_ENCODE_LOG_PROCESSED.fetch_add(1, Ordering::Relaxed);
-            },
+            }
             // All other event types are passed through.
             event => {
                 res.push(event);
@@ -111,9 +129,9 @@ impl filter::Filter for JSONEncodeFilter {
     }
 }
 
-/// Convenience helper to take a json!() macro you know is an object and get back a Map<String, Value>,
-/// instead of a generic Value.
-fn json_to_object(v: Value) -> Map<String, Value>  {
+/// Convenience helper to take a json!() macro you know is an object and get back a
+/// Map<String, Value>, instead of a generic Value.
+fn json_to_object(v: Value) -> Map<String, Value> {
     if let Value::Object(obj) = v {
         obj
     } else {
@@ -121,9 +139,9 @@ fn json_to_object(v: Value) -> Map<String, Value>  {
     }
 }
 
-/// Merge JSON objects, with values from earlier objects in the list overriding later ones.
-/// Note this is not a recursive merge - if the same key is in many objects, we simply take
-/// the value from the earliest one.
+/// Merge JSON objects, with values from earlier objects in the list overriding later
+/// ones. Note this is not a recursive merge - if the same key is in many objects, we
+/// simply take the value from the earliest one.
 fn merge_objects(objs: Vec<Map<String, Value>>) -> Map<String, Value> {
     let mut result = Map::new();
     for obj in objs.into_iter() {
@@ -132,7 +150,7 @@ fn merge_objects(objs: Vec<Map<String, Value>>) -> Map<String, Value> {
                 result.insert(key, value);
             }
         }
-    };
+    }
     result
 }
 
@@ -148,11 +166,13 @@ mod test {
     use serde_json::map::Map;
 
     fn process_event(parse_line: bool, event: metric::Event) -> Value {
-        let mut filter = JSONEncodeFilter{parse_line: parse_line};
+        let mut filter = JSONEncodeFilter {
+            parse_line: parse_line,
+        };
         let mut results = Vec::new();
         filter.process(event, &mut results).unwrap();
         // fail if results empty, else return processed event's payload
-        if let metric::Event::Raw{ref bytes, ..} = results[0] {
+        if let metric::Event::Raw { ref bytes, .. } = results[0] {
             return serde_json::from_slice(bytes).unwrap();
         }
         panic!("Processed event was not Raw")
@@ -162,13 +182,16 @@ mod test {
     fn parsable_line_parsing_off() {
         // Test we don't parse a line if parsing is off
         assert_eq!(
-            process_event(false, metric::Event::new_log(metric::LogLine {
-                path: "testpath".to_string(),
-                value: "{\"bad\": \"do not parse\"}".to_string(),
-                time: 946684800,
-                tags: Default::default(),
-                fields: Default::default(),
-            })),
+            process_event(
+                false,
+                metric::Event::new_log(metric::LogLine {
+                    path: "testpath".to_string(),
+                    value: "{\"bad\": \"do not parse\"}".to_string(),
+                    time: 946684800,
+                    tags: Default::default(),
+                    fields: Default::default(),
+                })
+            ),
             json!({
                 "path": "testpath",
                 "message": "{\"bad\": \"do not parse\"}",
@@ -182,13 +205,16 @@ mod test {
     fn parsable_line_parsing_on() {
         // Test we do parse a line if parsing is on
         assert_eq!(
-            process_event(true, metric::Event::new_log(metric::LogLine {
-                path: "testpath".to_string(),
-                value: "{\"good\": \"do parse\"}".to_string(),
-                time: 946684800,
-                tags: Default::default(),
-                fields: Default::default(),
-            })),
+            process_event(
+                true,
+                metric::Event::new_log(metric::LogLine {
+                    path: "testpath".to_string(),
+                    value: "{\"good\": \"do parse\"}".to_string(),
+                    time: 946684800,
+                    tags: Default::default(),
+                    fields: Default::default(),
+                })
+            ),
             json!({
                 "path": "testpath",
                 "good": "do parse",
@@ -202,13 +228,16 @@ mod test {
     fn unparsable_line() {
         // Test we don't parse a line if it's not JSON
         assert_eq!(
-            process_event(true, metric::Event::new_log(metric::LogLine {
-                path: "testpath".to_string(),
-                value: "this is not json".to_string(),
-                time: 946684800,
-                tags: Default::default(),
-                fields: Default::default(),
-            })),
+            process_event(
+                true,
+                metric::Event::new_log(metric::LogLine {
+                    path: "testpath".to_string(),
+                    value: "this is not json".to_string(),
+                    time: 946684800,
+                    tags: Default::default(),
+                    fields: Default::default(),
+                })
+            ),
             json!({
                 "path": "testpath",
                 "message": "this is not json",
@@ -222,13 +251,16 @@ mod test {
     fn non_object_line() {
         // Test we don't parse a line if it's not a JSON object but is valid JSON
         assert_eq!(
-            process_event(true, metric::Event::new_log(metric::LogLine {
-                path: "testpath".to_string(),
-                value: "[123, \"not an object\"]".to_string(),
-                time: 946684800,
-                tags: Default::default(),
-                fields: Default::default(),
-            })),
+            process_event(
+                true,
+                metric::Event::new_log(metric::LogLine {
+                    path: "testpath".to_string(),
+                    value: "[123, \"not an object\"]".to_string(),
+                    time: 946684800,
+                    tags: Default::default(),
+                    fields: Default::default(),
+                })
+            ),
             json!({
                 "path": "testpath",
                 "message": "[123, \"not an object\"]",
@@ -238,12 +270,17 @@ mod test {
         );
     }
 
-    // quickcheck and serde_json::map::Map aren't compatible, so we ask quickcheck for
-    // many Vec<(String, String)>s that we turn into maps.
+    // quickcheck and serde_json::map::Map aren't compatible, so we ask quickcheck
+    // for many Vec<(String, String)>s that we turn into maps.
     fn vecs_to_objs(vecs: &Vec<Vec<(String, String)>>) -> Vec<Map<String, Value>> {
-        vecs.iter().map(|vec|
-            Map::from_iter(vec.iter().map(|&(ref k, ref v)| (k.clone(), v.clone().into())))
-        ).collect()
+        vecs.iter()
+            .map(|vec| {
+                Map::from_iter(
+                    vec.iter()
+                        .map(|&(ref k, ref v)| (k.clone(), v.clone().into())),
+                )
+            })
+            .collect()
     }
 
     #[test]
@@ -253,7 +290,7 @@ mod test {
             for obj in vecs {
                 for (k, _v) in obj {
                     if !result.contains_key(&k) {
-                        return false
+                        return false;
                     }
                 }
             }
@@ -270,9 +307,9 @@ mod test {
             for (key, result_value) in result {
                 match objs.iter().find(|obj| obj.contains_key(&key)) {
                     Some(obj) => if obj[&key] != result_value {
-                        return false // result value did not match first obj containing key
+                        return false; // result value did not match first obj containing key
                     },
-                    None => return false // key in result was not in any input objs
+                    None => return false, // key in result was not in any input objs
                 }
             }
             true

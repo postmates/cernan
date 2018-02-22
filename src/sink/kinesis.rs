@@ -2,7 +2,6 @@
 use base64;
 use hyper;
 use metric;
-use metric::{LogLine, Telemetry};
 use rusoto_core;
 use rusoto_core::DefaultCredentialsProvider;
 use rusoto_core::default_tls_client;
@@ -103,14 +102,6 @@ impl Sink<KinesisConfig> for Kinesis {
     fn valve_state(&self) -> Valve {
         // We never close up shop.
         Valve::Open
-    }
-
-    fn deliver(&mut self, _: Arc<Option<Telemetry>>) -> () {
-        // Discard point
-    }
-
-    fn deliver_line(&mut self, _: Arc<Option<LogLine>>) -> () {
-        // Discard line
     }
 
     /// Encodes and records the given event into the internal buffer.

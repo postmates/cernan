@@ -83,34 +83,29 @@ impl TCPStreamHandler for GraphiteStreamHandler {
                 Ok(_num_events) => for event in events {
                     match event.token() {
                         constants::SYSTEM => return,
-                        _stream_token => {
-                            while let Ok(len) = line_reader.read_line(&mut line) {
-                                if len > 0 {
-                                    if parse_graphite(&line, &mut res, &basic_metric) {
-                                        assert!(!res.is_empty());
-                                        GRAPHITE_GOOD_PACKET
-                                            .fetch_add(1, Ordering::Relaxed);
-                                        GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
-                                        for m in res.drain(..) {
-                                            send(
-                                                &mut chans,
-                                                metric::Event::Telemetry(
-                                                    sync::Arc::new(Some(m)),
-                                                ),
-                                            );
-                                        }
-                                        line.clear();
-                                    } else {
-                                        GRAPHITE_BAD_PACKET
-                                            .fetch_add(1, Ordering::Relaxed);
-                                        error!("bad packet: {:?}", line);
-                                        line.clear();
+                        _stream_token => while let Ok(len) =
+                            line_reader.read_line(&mut line)
+                        {
+                            if len > 0 {
+                                if parse_graphite(&line, &mut res, &basic_metric) {
+                                    assert!(!res.is_empty());
+                                    GRAPHITE_GOOD_PACKET
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
+                                    for m in res.drain(..) {
+                                        send(&mut chans, metric::Event::Telemetry(m));
                                     }
+                                    line.clear();
                                 } else {
-                                    break;
+                                    GRAPHITE_BAD_PACKET
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    error!("bad packet: {:?}", line);
+                                    line.clear();
                                 }
+                            } else {
+                                break;
                             }
-                        }
+                        },
                     }
                 },
             }

@@ -2,12 +2,11 @@
 
 use hyper::Client;
 use hyper::header;
-use metric::{LogLine, TagMap, Telemetry};
+use metric::{TagMap, Telemetry};
 use quantiles::histogram::Bound;
 use sink::{Sink, Valve};
 use std::cmp;
 use std::string;
-use std::sync;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use time;
@@ -267,13 +266,8 @@ impl Sink<InfluxDBConfig> for InfluxDB {
         self.flush();
     }
 
-    fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        self.aggrs
-            .push(sync::Arc::make_mut(&mut point).take().unwrap());
-    }
-
-    fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
-        // nothing, intentionally
+    fn deliver(&mut self, point: Telemetry) -> () {
+        self.aggrs.push(point);
     }
 
     fn valve_state(&self) -> Valve {
@@ -292,7 +286,6 @@ mod test {
     use metric::{TagMap, Telemetry};
     use metric::AggregationMethod;
     use sink::Sink;
-    use std::sync::Arc;
 
     #[test]
     fn test_format_influxdb() {
@@ -311,7 +304,7 @@ mod test {
         let dt_0 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00);
         let dt_1 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 12, 00);
         let dt_2 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00);
-        influxdb.deliver(Arc::new(Some(
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.counter.no.tags")
                 .value(-1.0)
@@ -320,8 +313,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&TagMap::default()),
-        )));
-        influxdb.deliver(Arc::new(Some(
+        );
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.counter")
                 .value(-1.0)
@@ -330,8 +323,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        influxdb.deliver(Arc::new(Some(
+        );
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.counter")
                 .value(2.0)
@@ -340,8 +333,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        influxdb.deliver(Arc::new(Some(
+        );
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.counter")
                 .value(3.0)
@@ -350,8 +343,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        influxdb.deliver(Arc::new(Some(
+        );
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.gauge")
                 .value(3.211)
@@ -360,8 +353,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        influxdb.deliver(Arc::new(Some(
+        );
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.gauge")
                 .value(4.322)
@@ -370,8 +363,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        influxdb.deliver(Arc::new(Some(
+        );
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.gauge")
                 .value(5.433)
@@ -380,8 +373,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        influxdb.deliver(Arc::new(Some(
+        );
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.timer")
                 .value(12.101)
@@ -390,8 +383,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        influxdb.deliver(Arc::new(Some(
+        );
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.timer")
                 .value(1.101)
@@ -400,8 +393,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        influxdb.deliver(Arc::new(Some(
+        );
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.timer")
                 .value(3.101)
@@ -410,8 +403,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        influxdb.deliver(Arc::new(Some(
+        );
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.raw")
                 .value(1.0)
@@ -420,8 +413,8 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
-        influxdb.deliver(Arc::new(Some(
+        );
+        influxdb.deliver(
             Telemetry::new()
                 .name("test.raw")
                 .value(2.0)
@@ -430,7 +423,7 @@ mod test {
                 .harden()
                 .unwrap()
                 .overlay_tags_from_map(&tags),
-        )));
+        );
         let mut buffer = String::new();
         influxdb.format_stats(&mut buffer, influxdb.aggr_slice());
         let lines: Vec<&str> = buffer.lines().collect();

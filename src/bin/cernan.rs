@@ -140,10 +140,12 @@ fn main() {
     //
     // SINKS
     if let Some(ref config) = args.null {
-        let (send, recv) = hopper::channel_with_max_bytes(
+        let (send, recv) = hopper::channel_with_explicit_capacity(
             &config.config_path,
             &args.data_directory,
+            args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
+            args.max_hopper_queue_files,
         ).unwrap();
         senders.insert(config.config_path.clone(), send);
         receivers.insert(config.config_path.clone(), recv);
@@ -151,10 +153,12 @@ fn main() {
     }
     if let Some(ref config) = args.console {
         let config_path = cfg_conf!(config);
-        let (send, recv) = hopper::channel_with_max_bytes(
+        let (send, recv) = hopper::channel_with_explicit_capacity(
             &config_path,
             &args.data_directory,
+            args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
+            args.max_hopper_queue_files,
         ).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
@@ -162,10 +166,12 @@ fn main() {
     }
     if let Some(ref config) = args.wavefront {
         let config_path = cfg_conf!(config);
-        let (send, recv) = hopper::channel_with_max_bytes(
+        let (send, recv) = hopper::channel_with_explicit_capacity(
             &config_path,
             &args.data_directory,
+            args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
+            args.max_hopper_queue_files,
         ).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
@@ -173,10 +179,12 @@ fn main() {
     }
     if let Some(ref config) = args.prometheus {
         let config_path = cfg_conf!(config);
-        let (send, recv) = hopper::channel_with_max_bytes(
+        let (send, recv) = hopper::channel_with_explicit_capacity(
             &config_path,
             &args.data_directory,
+            args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
+            args.max_hopper_queue_files,
         ).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
@@ -184,10 +192,12 @@ fn main() {
     }
     if let Some(ref config) = args.influxdb {
         let config_path = cfg_conf!(config);
-        let (send, recv) = hopper::channel_with_max_bytes(
+        let (send, recv) = hopper::channel_with_explicit_capacity(
             &config_path,
             &args.data_directory,
+            args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
+            args.max_hopper_queue_files,
         ).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
@@ -195,10 +205,12 @@ fn main() {
     }
     if let Some(ref config) = args.native_sink_config {
         let config_path = cfg_conf!(config);
-        let (send, recv) = hopper::channel_with_max_bytes(
+        let (send, recv) = hopper::channel_with_explicit_capacity(
             &config_path,
             &args.data_directory,
+            args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
+            args.max_hopper_queue_files,
         ).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
@@ -206,10 +218,12 @@ fn main() {
     }
     if let Some(ref config) = args.elasticsearch {
         let config_path = cfg_conf!(config);
-        let (send, recv) = hopper::channel_with_max_bytes(
+        let (send, recv) = hopper::channel_with_explicit_capacity(
             &config_path,
             &args.data_directory,
+            args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
+            args.max_hopper_queue_files,
         ).unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
@@ -218,10 +232,12 @@ fn main() {
     if let Some(ref configs) = args.firehosen {
         for config in configs {
             let config_path = cfg_conf!(config);
-            let (send, recv) = hopper::channel_with_max_bytes(
+            let (send, recv) = hopper::channel_with_explicit_capacity(
                 &config_path,
                 &args.data_directory,
+                args.max_hopper_in_memory_bytes,
                 args.max_hopper_queue_bytes,
+                args.max_hopper_queue_files,
             ).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
@@ -231,10 +247,12 @@ fn main() {
     if let Some(ref configs) = args.kafkas {
         for config in configs {
             let config_path = cfg_conf!(config);
-            let (send, recv) = hopper::channel_with_max_bytes(
+            let (send, recv) = hopper::channel_with_explicit_capacity(
                 &config_path,
                 &args.data_directory,
+                args.max_hopper_in_memory_bytes,
                 args.max_hopper_queue_bytes,
+                args.max_hopper_queue_files,
             ).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
@@ -244,10 +262,12 @@ fn main() {
     if let Some(ref configs) = args.kinesises {
         for config in configs {
             let config_path = cfg_conf!(config);
-            let (send, recv) = hopper::channel_with_max_bytes(
+            let (send, recv) = hopper::channel_with_explicit_capacity(
                 &config_path,
                 &args.data_directory,
+                args.max_hopper_in_memory_bytes,
                 args.max_hopper_queue_bytes,
+                args.max_hopper_queue_files,
             ).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
@@ -257,10 +277,12 @@ fn main() {
     // FILTERS
     if let Some(ref configs) = args.programmable_filters {
         for (config_path, config) in configs {
-            let (send, recv) = hopper::channel_with_max_bytes(
+            let (send, recv) = hopper::channel_with_explicit_capacity(
                 config_path,
                 &args.data_directory,
+                args.max_hopper_in_memory_bytes,
                 args.max_hopper_queue_bytes,
+                args.max_hopper_queue_files,
             ).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
@@ -274,10 +296,12 @@ fn main() {
     }
     if let Some(ref configs) = args.delay_filters {
         for (config_path, config) in configs {
-            let (send, recv) = hopper::channel_with_max_bytes(
+            let (send, recv) = hopper::channel_with_explicit_capacity(
                 config_path,
                 &args.data_directory,
+                args.max_hopper_in_memory_bytes,
                 args.max_hopper_queue_bytes,
+                args.max_hopper_queue_files,
             ).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
@@ -291,10 +315,12 @@ fn main() {
     }
     if let Some(ref configs) = args.flush_boundary_filters {
         for (config_path, config) in configs {
-            let (send, recv) = hopper::channel_with_max_bytes(
+            let (send, recv) = hopper::channel_with_explicit_capacity(
                 config_path,
                 &args.data_directory,
+                args.max_hopper_in_memory_bytes,
                 args.max_hopper_queue_bytes,
+                args.max_hopper_queue_files,
             ).unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);

@@ -1,5 +1,4 @@
 use metric::{LogLine, Telemetry};
-use std::sync;
 
 /// Supported event encodings.
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -21,10 +20,10 @@ pub enum Encoding {
 pub enum Event {
     /// A wrapper for `metric::Telemetry`. See its documentation for more
     /// detail.
-    Telemetry(sync::Arc<Option<Telemetry>>),
+    Telemetry(Telemetry),
     /// A wrapper for `metric::LogLine`. See its documentation for more
     /// detail.
-    Log(sync::Arc<Option<LogLine>>),
+    Log(LogLine),
     /// A flush pulse signal. The `TimerFlush` keeps a counter of the total
     /// flushes made in this cernan's run. See `source::Flush` for the origin of
     /// these pulses in cernan operation.
@@ -58,20 +57,8 @@ impl Event {
     /// time -- and these `Event`s will always return None.
     pub fn timestamp(&self) -> Option<i64> {
         match *self {
-            Event::Telemetry(ref t) => {
-                let t = sync::Arc::clone(t);
-                match *t {
-                    Some(ref telem) => Some(telem.timestamp),
-                    None => None,
-                }
-            }
-            Event::Log(ref l) => {
-                let l = sync::Arc::clone(l);
-                match *l {
-                    Some(ref log) => Some(log.time),
-                    None => None,
-                }
-            }
+            Event::Telemetry(ref telem) => Some(telem.timestamp),
+            Event::Log(ref log) => Some(log.time),
             Event::TimerFlush(_) | Event::Shutdown | Event::Raw { .. } => None,
         }
     }
@@ -81,12 +68,12 @@ impl Event {
     /// Create a new `Event::Telemetry` from an existing `metric::Telemetry`.
     #[inline]
     pub fn new_telemetry(metric: Telemetry) -> Event {
-        Event::Telemetry(sync::Arc::new(Some(metric)))
+        Event::Telemetry(metric)
     }
 
     /// Create a new `Event::Log` from an existing `metric::LogLine`.
     #[inline]
     pub fn new_log(log: LogLine) -> Event {
-        Event::Log(sync::Arc::new(Some(log)))
+        Event::Log(log)
     }
 }

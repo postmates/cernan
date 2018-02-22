@@ -7,7 +7,6 @@
 use hopper;
 use metric::{Encoding, Event, LogLine, Telemetry};
 use std::marker::PhantomData;
-use std::sync;
 use thread;
 use time;
 use util::Valve;
@@ -81,8 +80,7 @@ where
         })
     }
 
-    fn consume(mut self) -> () //recv: hopper::Receiver<Event>, sources: Vec<String>, mut state: S) -> ()
-    {
+    fn consume(mut self) -> () {
         let mut attempts = 0;
         let mut recv = self.recv.into_iter();
         let mut last_flush_idx = 0;
@@ -220,13 +218,20 @@ where
     fn flush(&mut self) -> ();
     /// Lookup the `Sink` valve state. See `Valve` documentation for more
     /// information.
-    fn valve_state(&self) -> Valve;
+    fn valve_state(&self) -> Valve {
+        // never close up shop
+        Valve::Open
+    }
     /// Deliver a `Telemetry` to the `Sink`. Exact behaviour varies by
     /// implementation.
-    fn deliver(&mut self, point: sync::Arc<Option<Telemetry>>) -> ();
+    fn deliver(&mut self, _telem: Telemetry) -> () {
+        // nothing, intentionally
+    }
     /// Deliver a `LogLine` to the `Sink`. Exact behaviour varies by
     /// implementation.
-    fn deliver_line(&mut self, line: sync::Arc<Option<LogLine>>) -> ();
+    fn deliver_line(&mut self, _line: LogLine) -> () {
+        // nothing, intentionally
+    }
     /// Deliver a 'Raw' series of encoded bytes to the sink.
     fn deliver_raw(
         &mut self,
@@ -235,7 +240,6 @@ where
         _bytes: Vec<u8>,
     ) -> () {
         // Not all sinks accept raw events.  By default, we do nothing.
-        return;
     }
     /// Provide a hook to shutdown a sink. This is necessary for sinks which
     /// have their own long-running threads.

@@ -5,7 +5,6 @@ use mond;
 use mond::{Function, State, ThreadStatus};
 use mond::ffi::lua_State;
 use std::path::PathBuf;
-use std::sync;
 
 struct Payload<'a> {
     metrics: Vec<Box<metric::Telemetry>>,
@@ -229,9 +228,7 @@ impl<'a> Payload<'a> {
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => match state.to_str(4).map(|v| v.to_owned()) {
-                Some(val) => match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags)
-                    .insert(key, val)
-                {
+                Some(val) => match (*pyld).metrics[idx].tags.insert(key, val) {
                     Some(old_v) => {
                         state.push_string(&old_v);
                     }
@@ -314,9 +311,7 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).metrics.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => match sync::Arc::make_mut(&mut (*pyld).metrics[idx].tags)
-                .remove(&key)
-            {
+            Some(key) => match (*pyld).metrics[idx].tags.remove(&key) {
                 Some(old_v) => {
                     state.push_string(&old_v);
                 }
@@ -511,7 +506,7 @@ impl filter::Filter for ProgrammableFilter {
         res: &mut Vec<metric::Event>,
     ) -> Result<(), filter::FilterError> {
         match event {
-            metric::Event::Telemetry(mut m) => {
+            metric::Event::Telemetry(m) => {
                 self.state.get_global("process_metric");
                 if !self.state.is_fn(-1) {
                     let filter_telem = metric::Telemetry::new()
@@ -524,19 +519,15 @@ impl filter::Filter for ProgrammableFilter {
                         .kind(metric::AggregationMethod::Sum)
                         .harden()
                         .unwrap();
-                    let fail =
-                        metric::Event::Telemetry(sync::Arc::new(Some(filter_telem)));
+                    let fail = metric::Event::Telemetry(filter_telem);
                     return Err(filter::FilterError::NoSuchFunction(
                         "process_metric",
                         fail,
                     ));
                 }
 
-                let mut pyld = Payload::from_metric(
-                    sync::Arc::make_mut(&mut m).take().unwrap(),
-                    &self.global_tags,
-                    self.path.as_str(),
-                );
+                let mut pyld =
+                    Payload::from_metric(m, &self.global_tags, self.path.as_str());
                 unsafe {
                     self.state.push_light_userdata::<Payload>(&mut pyld);
                 }
@@ -595,7 +586,7 @@ impl filter::Filter for ProgrammableFilter {
                 self.last_flush_idx = flush_idx;
                 Ok(())
             }
-            metric::Event::Log(mut l) => {
+            metric::Event::Log(l) => {
                 self.state.get_global("process_log");
                 if !self.state.is_fn(-1) {
                     let fail = metric::Event::new_telemetry(
@@ -617,11 +608,8 @@ impl filter::Filter for ProgrammableFilter {
                     ));
                 }
 
-                let mut pyld = Payload::from_log(
-                    sync::Arc::make_mut(&mut l).take().unwrap(),
-                    &self.global_tags,
-                    self.path.as_str(),
-                );
+                let mut pyld =
+                    Payload::from_log(l, &self.global_tags, self.path.as_str());
                 unsafe {
                     self.state.push_light_userdata::<Payload>(&mut pyld);
                 }

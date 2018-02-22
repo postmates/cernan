@@ -1,8 +1,5 @@
 //! Sink equivalent of /dev/null.
-
-use metric::{LogLine, Telemetry};
 use sink::{Sink, Valve};
-use std::sync;
 
 /// Null sink
 ///
@@ -33,14 +30,6 @@ impl Sink<NullConfig> for Null {
 
     fn valve_state(&self) -> Valve {
         Valve::Open
-    }
-
-    fn deliver(&mut self, _: sync::Arc<Option<Telemetry>>) -> () {
-        // discard point
-    }
-
-    fn deliver_line(&mut self, _: sync::Arc<Option<LogLine>>) -> () {
-        // discard point
     }
 
     fn flush_interval(&self) -> Option<u64> {

@@ -6,7 +6,6 @@ use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
 use metric::{AggregationMethod, LogLine, Telemetry};
 use sink::{Sink, Valve};
-use std::sync;
 
 /// The 'console' sink exists for development convenience. The sink will
 /// aggregate according to [buckets](../buckets/struct.Buckets.html) method and
@@ -74,13 +73,11 @@ impl Sink<ConsoleConfig> for Console {
         Valve::Open
     }
 
-    fn deliver(&mut self, mut point: sync::Arc<Option<Telemetry>>) -> () {
-        self.aggrs
-            .add(sync::Arc::make_mut(&mut point).take().unwrap());
+    fn deliver(&mut self, point: Telemetry) -> () {
+        self.aggrs.add(point);
     }
 
-    fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
-        let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
+    fn deliver_line(&mut self, line: LogLine) -> () {
         self.buffer.append(&mut vec![line]);
     }
 

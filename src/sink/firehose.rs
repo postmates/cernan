@@ -3,7 +3,7 @@
 use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
-use metric::{LogLine, Telemetry};
+use metric::LogLine;
 use rusoto_core::{DefaultCredentialsProvider, Region};
 use rusoto_core::default_tls_client;
 use rusoto_firehose::{KinesisFirehose, KinesisFirehoseClient, PutRecordBatchInput,
@@ -14,7 +14,6 @@ use serde_json::Map;
 use serde_json::value::Value;
 use sink::{Sink, Valve};
 use source::report_full_telemetry;
-use std::sync;
 use uuid::Uuid;
 
 /// Configuration struct for the Firehose sink
@@ -296,12 +295,7 @@ impl Sink<FirehoseConfig> for Firehose {
         self.flush();
     }
 
-    fn deliver(&mut self, _: sync::Arc<Option<Telemetry>>) -> () {
-        // nothing, intentionally
-    }
-
-    fn deliver_line(&mut self, mut lines: sync::Arc<Option<LogLine>>) -> () {
-        let line: LogLine = sync::Arc::make_mut(&mut lines).take().unwrap();
+    fn deliver_line(&mut self, line: LogLine) -> () {
         self.buffer.append(&mut vec![line]);
     }
 
