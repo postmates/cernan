@@ -343,33 +343,46 @@ impl<'a> Iterator for Iter<'a> {
     type Item = metric::Telemetry;
 
     fn next(&mut self) -> Option<metric::Telemetry> {
-        match self.samples.next() {
-            Some(&Accumulator::Perpetual(ref t)) => Some(t.clone()),
-            Some(&Accumulator::Windowed {
-                ref samples,
-                count,
-                sum,
-                ..
-            }) => match samples.len() {
-                0 => unreachable!(),
-                1 => Some(
-                    samples[0]
-                        .clone()
-                        .thaw()
-                        .sample_sum(sum)
-                        .count(count)
-                        .harden()
-                        .unwrap(),
-                ),
-                _ => {
-                    let mut start = samples[0].clone();
-                    for t in &samples[1..] {
-                        start += t.clone();
+        loop {
+            match self.samples.next() {
+                Some(&Accumulator::Perpetual(ref t)) => return Some(t.clone()),
+                Some(&Accumulator::Windowed {
+                    ref samples,
+                    count,
+                    sum,
+                    ..
+                }) => match samples.len() {
+                    0 => continue,
+                    1 => {
+                        return Some(
+                            samples[0]
+                                .clone()
+                                .thaw()
+                                .sample_sum(sum)
+                                .count(count)
+                                .harden()
+                                .unwrap(),
+                        );
                     }
-                    Some(start.thaw().sample_sum(sum).count(count).harden().unwrap())
+                    _ => {
+                        let mut start = samples[0].clone();
+                        for t in &samples[1..] {
+                            start += t.clone();
+                        }
+                        return Some(
+                            start
+                                .thaw()
+                                .sample_sum(sum)
+                                .count(count)
+                                .harden()
+                                .unwrap(),
+                        );
+                    }
+                },
+                None => {
+                    return None;
                 }
-            },
-            None => None,
+            }
         }
     }
 }
