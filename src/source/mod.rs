@@ -3,10 +3,8 @@
 //! In cernan a `Source` is a place where all `metric::Event` come from, feeding
 //! down into the source's forwards for further processing. Statsd is a source
 //! that creates `Telemetry`, `FileServer` is a source that creates `LogLine`s.
-use metric;
 use mio;
 use std::marker::PhantomData;
-use std::sync;
 use thread;
 use util;
 
@@ -41,7 +39,6 @@ where
     SConfig: 'static + Send + Clone,
 {
     chans: util::Channel,
-    tags: sync::Arc<metric::TagMap>,
     source: S,
 
     // Yes, compiler, we know that we aren't storing
@@ -55,14 +52,9 @@ where
     SConfig: 'static + Send + Clone,
 {
     /// Constructs a new RunnableSource.
-    pub fn new(
-        chans: util::Channel,
-        tags: sync::Arc<metric::TagMap>,
-        config: SConfig,
-    ) -> Self {
+    pub fn new(chans: util::Channel, config: SConfig) -> Self {
         RunnableSource {
             chans: chans,
-            tags: tags,
             config: PhantomData,
             source: S::init(config),
         }
@@ -71,7 +63,7 @@ where
     /// Spawns a thread corresponding to the given RunnableSource, consuming
     /// the given RunnableSource in the process.
     pub fn run(self) -> thread::ThreadHandle {
-        thread::spawn(move |poller| self.source.run(self.chans, &self.tags, poller))
+        thread::spawn(move |poller| self.source.run(self.chans, poller))
     }
 }
 
@@ -87,12 +79,8 @@ where
 {
     /// Constructs a so-called runnable source for the given Source and
     /// config.`  See RunnableSource.
-    fn new(
-        chans: util::Channel,
-        tags: sync::Arc<metric::TagMap>,
-        config: SConfig,
-    ) -> RunnableSource<Self, SConfig> {
-        RunnableSource::<Self, SConfig>::new(chans, tags, config)
+    fn new(chans: util::Channel, config: SConfig) -> RunnableSource<Self, SConfig> {
+        RunnableSource::<Self, SConfig>::new(chans, config)
     }
 
     /// Initializes state for the given Source.
@@ -100,10 +88,5 @@ where
 
     /// Run method invoked by RunnableSource.
     /// It is from this method that Sources produce metric::Events.
-    fn run(
-        self,
-        chans: util::Channel,
-        tags: &sync::Arc<metric::TagMap>,
-        poller: mio::Poll,
-    ) -> ();
+    fn run(self, chans: util::Channel, poller: mio::Poll) -> ();
 }

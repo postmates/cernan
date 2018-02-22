@@ -1,7 +1,6 @@
 use metric;
 use mio;
 use source;
-use std::sync;
 use std::thread::sleep;
 use std::time::Duration;
 use util;
@@ -21,12 +20,7 @@ impl source::Source<FlushTimerConfig> for FlushTimer {
         FlushTimer {}
     }
 
-    fn run(
-        self,
-        mut chans: util::Channel,
-        _tags: &sync::Arc<metric::TagMap>,
-        _poller: mio::Poll,
-    ) -> () {
+    fn run(self, mut chans: util::Channel, _poller: mio::Poll) -> () {
         let one_second = Duration::new(1, 0);
         // idx will _always_ increase. If it's kept at u64 or greater it will
         // overflow long past the collapse of our industrial civilization only

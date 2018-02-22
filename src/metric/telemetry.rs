@@ -3,12 +3,10 @@ use quantiles::ckms::CKMS;
 use quantiles::histogram::{Histogram, Iter};
 #[cfg(test)]
 use quantiles::histogram::Bound;
-use std::cmp;
-use std::collections::hash_map::DefaultHasher;
+use std::{cmp, mem};
+use std::collections::{hash_map, HashSet};
 use std::hash::{Hash, Hasher};
-use std::mem;
-use std::ops::Add;
-use std::ops::AddAssign;
+use std::ops::{Add, AddAssign};
 use time;
 
 /// The available aggregations for `Telemetry`.
@@ -71,7 +69,11 @@ pub struct Telemetry {
     /// Determine whether the Telemetry will persist across time bins.
     pub persist: bool,
     /// The Telemetry specific metadata tags.
-    pub tags: TagMap,
+    tags: Option<TagMap>, // TODO idea is to provide a non-owning iter over tags
+    // that will chain with whatever TagMap gets passed in. Should choose from our
+    // TagMap first, then the passed TagMap. In this way the caller can have a set
+    // of tags -- the global set -- and we can enjoy our lack of constant insane
+    // cloning
     /// The time of Telemetry, measured in seconds.
     pub timestamp: i64,
     override_count: Option<u64>,
@@ -248,7 +250,7 @@ impl Default for Telemetry {
             name: String::from(""),
             value: Some(Value::Set(0.0)),
             persist: false,
-            tags: TagMap::default(),
+            tags: None,
             timestamp: time::now(),
             override_sample_sum: None,
             override_count: None,
@@ -383,11 +385,6 @@ impl SoftTelemetry {
         } else {
             time::now()
         };
-        let tags = if let Some(tags) = self.tags {
-            tags
-        } else {
-            TagMap::default()
-        };
         let persist = if let Some(persist) = self.persist {
             persist
         } else {
@@ -419,7 +416,7 @@ impl SoftTelemetry {
                     name: name,
                     value: Some(value),
                     persist: persist,
-                    tags: tags,
+                    tags: self.tags,
                     timestamp: timestamp,
                     override_count: self.override_count,
                     override_sample_sum: self.override_sample_sum,
@@ -447,7 +444,7 @@ impl SoftTelemetry {
                     name: name,
                     value: Some(value),
                     persist: persist,
-                    tags: tags,
+                    tags: self.tags,
                     timestamp: timestamp,
                     override_sample_sum: None,
                     override_count: None,
@@ -469,7 +466,7 @@ impl SoftTelemetry {
                     name: name,
                     value: Some(value),
                     persist: persist,
-                    tags: tags,
+                    tags: self.tags,
                     timestamp: timestamp,
                     override_sample_sum: None,
                     override_count: None,
@@ -491,7 +488,7 @@ impl SoftTelemetry {
                     name: name,
                     value: Some(value),
                     persist: persist,
-                    tags: tags,
+                    tags: self.tags,
                     timestamp: timestamp,
                     override_sample_sum: None,
                     override_count: None,
@@ -510,6 +507,55 @@ pub enum Error {
     NoName,
     NoValue,
     SummarizeErrorTooLarge,
+}
+
+#[allow(missing_docs)]
+pub enum TagIter<'a> {
+    Single {
+        defaults: hash_map::Iter<'a, String, String>,
+    },
+    Double {
+        seen_keys: HashSet<String>,
+        iters: hash_map::Iter<'a, String, String>,
+        defaults: hash_map::Iter<'a, String, String>,
+        iters_exhausted: bool,
+    },
+}
+
+impl<'a> Iterator for TagIter<'a> {
+    type Item = (&'a String, &'a String);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            &mut TagIter::Single { ref mut defaults } => defaults.next(),
+            &mut TagIter::Double {
+                ref mut seen_keys,
+                ref mut iters,
+                ref mut defaults,
+                ref mut iters_exhausted,
+            } => loop {
+                if *iters_exhausted {
+                    loop {
+                        if let Some((k, v)) = defaults.next() {
+                            if !seen_keys.insert(k.to_string()) {
+                                return Some((k, v));
+                            }
+                        } else {
+                            return None;
+                        }
+                    }
+                } else {
+                    if let Some((k, v)) = iters.next() {
+                        seen_keys.insert(k.to_string());
+                        return Some((k, v));
+                    } else {
+                        *iters_exhausted = true;
+                        continue;
+                    }
+                }
+            },
+        }
+    }
 }
 
 impl Telemetry {
@@ -562,7 +608,7 @@ impl Telemetry {
             error: None,
             bounds: None,
             timestamp: Some(self.timestamp),
-            tags: Some(self.tags),
+            tags: self.tags,
             persist: Some(self.persist),
             override_count: None,
             override_sample_sum: None,
@@ -579,6 +625,62 @@ impl Telemetry {
             v.kind()
         } else {
             unreachable!()
+        }
+    }
+
+    /// TODO
+    pub fn tags<'a>(&'a self, defaults: &'a TagMap) -> TagIter<'a> {
+        if let Some(ref tags) = self.tags {
+            TagIter::Double {
+                iters_exhausted: false,
+                seen_keys: HashSet::new(),
+                defaults: defaults.iter(),
+                iters: tags.iter(),
+            }
+        } else {
+            TagIter::Single {
+                defaults: defaults.iter(),
+            }
+        }
+    }
+
+    /// TODO
+    pub fn get_from_tags<'a>(
+        &'a mut self,
+        key: &'a String,
+        defaults: &'a TagMap,
+    ) -> Option<&'a String> {
+        if let Some(ref mut tags) = self.tags {
+            match tags.get(key) {
+                Some(v) => Some(v),
+                None => defaults.get(key),
+            }
+        } else {
+            defaults.get(key)
+        }
+    }
+
+    /// TODO
+    pub fn insert_tag<S>(&mut self, key: S, val: S) -> Option<String>
+    where
+        S: Into<String>,
+    {
+        if let Some(ref mut tags) = self.tags {
+            tags.insert(key.into(), val.into())
+        } else {
+            let mut tags = TagMap::default();
+            let res = tags.insert(key.into(), val.into());
+            self.tags = Some(tags);
+            res
+        }
+    }
+
+    /// TODO
+    pub fn remove_tag(&mut self, key: &String) -> Option<String> {
+        if let Some(ref mut tags) = self.tags {
+            tags.remove(key)
+        } else {
+            None
         }
     }
 
@@ -607,7 +709,7 @@ impl Telemetry {
     where
         S: Into<String>,
     {
-        self.tags.insert(key.into(), val.into());
+        let _ = self.insert_tag(key, val);
         self
     }
 
@@ -638,8 +740,12 @@ impl Telemetry {
     /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
     /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Telemetry {
-        for (k, v) in map.iter() {
-            self.tags.insert(k.clone(), v.clone());
+        if let Some(ref mut tags) = self.tags {
+            for (k, v) in map.iter() {
+                tags.insert(k.clone(), v.clone());
+            }
+        } else {
+            self.tags = Some(map.clone());
         }
         self
     }
@@ -672,10 +778,12 @@ impl Telemetry {
     /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
     /// ```
     pub fn merge_tags_from_map(mut self, map: &TagMap) -> Telemetry {
-        for (k, v) in map.iter() {
-            self.tags
-                .entry(k.to_string())
-                .or_insert_with(|| v.to_string());
+        if let Some(ref mut tags) = self.tags {
+            for (k, v) in map.iter() {
+                tags.entry(k.to_string()).or_insert_with(|| v.to_string());
+            }
+        } else {
+            self.tags = Some(map.clone());
         }
         self
     }
@@ -847,11 +955,13 @@ impl Telemetry {
     /// The hash of a telemetry is based on its 'alike' fields. That is, its
     /// name, tags and aggregation kind.
     pub fn hash(&self) -> u64 {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = hash_map::DefaultHasher::new();
         self.name.hash(&mut hasher);
-        for (ref k, ref v) in self.tags.iter() {
-            k.hash(&mut hasher);
-            v.hash(&mut hasher);
+        if let Some(ref tags) = self.tags {
+            for (ref k, ref v) in tags.iter() {
+                k.hash(&mut hasher);
+                v.hash(&mut hasher);
+            }
         }
         self.kind().hash(&mut hasher);
         hasher.finish()
@@ -864,11 +974,13 @@ impl Telemetry {
     /// kinds of lookup maps, say `flush_boundary_filter` where only storage
     /// takes place, not aggregation.
     pub fn name_tag_hash(&self) -> u64 {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = hash_map::DefaultHasher::new();
         self.name.hash(&mut hasher);
-        for (ref k, ref v) in self.tags.iter() {
-            k.hash(&mut hasher);
-            v.hash(&mut hasher);
+        if let Some(ref tags) = self.tags {
+            for (ref k, ref v) in tags.iter() {
+                k.hash(&mut hasher);
+                v.hash(&mut hasher);
+            }
         }
         hasher.finish()
     }

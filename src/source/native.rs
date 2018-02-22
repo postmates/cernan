@@ -32,9 +32,6 @@ pub struct NativeServerConfig {
     pub ip: String,
     /// The port the source will listen on.
     pub port: u16,
-    /// The tags the Native source will associate with every Telemetry it
-    /// creates.
-    pub tags: metric::TagMap,
     /// The forwards for the native source to send its Telemetry along.
     pub forwards: Vec<String>,
     /// The unique name for the source in the routing topology.
@@ -46,7 +43,6 @@ impl Default for NativeServerConfig {
         NativeServerConfig {
             ip: "0.0.0.0".to_string(),
             port: 1972,
-            tags: metric::TagMap::default(),
             forwards: Vec::default(),
             config_path: None,
         }
@@ -58,7 +54,6 @@ impl From<NativeServerConfig> for TCPConfig {
         TCPConfig {
             host: item.ip,
             port: item.port,
-            tags: item.tags,
             forwards: item.forwards,
             config_path: item.config_path,
         }
@@ -72,7 +67,6 @@ impl TCPStreamHandler for NativeStreamHandler {
     fn handle_stream(
         &mut self,
         chans: util::Channel,
-        tags: &sync::Arc<metric::TagMap>,
         poller: &mio::Poll,
         stream: mio::net::TcpStream,
     ) -> () {
@@ -96,7 +90,6 @@ impl TCPStreamHandler for NativeStreamHandler {
                                             let handle_res =
                                                 self.handle_stream_payload(
                                                     chans.clone(),
-                                                    tags,
                                                     &mut raw,
                                                 );
                                             if handle_res.is_err() {
@@ -149,7 +142,6 @@ impl NativeStreamHandler {
     fn handle_stream_payload(
         &mut self,
         mut chans: util::Channel,
-        tags: &sync::Arc<metric::TagMap>,
         buf: &mut Vec<u8>,
     ) -> Result<(), protobuf::ProtobufError> {
         match protobuf::parse_from_bytes::<Payload>(buf) {
@@ -186,7 +178,6 @@ impl NativeStreamHandler {
                     metric = metric.persist(point.get_persisted());
                     metric = metric.timestamp(ts);
                     let mut metric = metric.harden().unwrap(); // todo don't unwrap
-                    metric = metric.overlay_tags_from_map(tags);
                     for (key, value) in meta.drain() {
                         metric = metric.overlay_tag(key, value);
                     }
@@ -204,7 +195,6 @@ impl NativeStreamHandler {
 
                     let mut logline = metric::LogLine::new(path, value);
                     logline = logline.time(ts);
-                    logline = logline.overlay_tags_from_map(tags);
                     for (key, value) in meta.drain() {
                         logline = logline.overlay_tag(key, value);
                     }

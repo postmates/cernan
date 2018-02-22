@@ -1,7 +1,7 @@
 //! Wavefront is a proprietary aggregation and alerting product
 
 use buckets;
-use metric::{AggregationMethod, TagMap, Telemetry};
+use metric::{AggregationMethod, TagIter, TagMap, Telemetry};
 use sink::{Sink, Valve};
 use std::cmp;
 use std::collections::{HashMap, HashSet};
@@ -67,6 +67,7 @@ pub struct Wavefront {
     stream: Option<TcpStream>,
     last_seen: HashMap<u64, i64>,
     pad_control: PadControl,
+    tags: TagMap,
 }
 
 /// Configuration for `wavefront`. The challenge of Wavefront is controlling
@@ -134,8 +135,7 @@ impl Default for WavefrontConfig {
 }
 
 #[inline]
-fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
-    let mut iter = tags.iter();
+fn fmt_tags(mut iter: TagIter, s: &mut String) -> () {
     if let Some((ref fk, ref fv)) = iter.next() {
         s.push_str(fk);
         s.push_str("=");
@@ -462,7 +462,7 @@ impl Wavefront {
         match value.kind() {
             AggregationMethod::Histogram => if let Some(bins) = value.bins() {
                 use quantiles::histogram::Bound;
-                fmt_tags(&value.tags, &mut tag_buf);
+                fmt_tags(value.tags(&self.tags), &mut tag_buf);
                 for &(bound, count) in bins {
                     self.stats.push_str(&value.name);
                     self.stats.push_str("_");
@@ -494,7 +494,7 @@ impl Wavefront {
                 self.stats
                     .push_str(get_from_cache(&mut time_cache, value.timestamp));
                 self.stats.push_str(" ");
-                fmt_tags(&value.tags, &mut tag_buf);
+                fmt_tags(value.tags(&self.tags), &mut tag_buf);
                 self.stats.push_str(&tag_buf);
                 self.stats.push_str("\n");
 
@@ -508,14 +508,14 @@ impl Wavefront {
                 self.stats
                     .push_str(get_from_cache(&mut time_cache, value.timestamp));
                 self.stats.push_str(" ");
-                fmt_tags(&value.tags, &mut tag_buf);
+                fmt_tags(value.tags(&self.tags), &mut tag_buf);
                 self.stats.push_str(&tag_buf);
                 self.stats.push_str("\n");
 
                 tag_buf.clear();
             },
             AggregationMethod::Summarize => {
-                fmt_tags(&value.tags, &mut tag_buf);
+                fmt_tags(value.tags(&self.tags), &mut tag_buf);
                 for tup in &self.percentiles {
                     let stat: &String = &tup.0;
                     let quant: f64 = tup.1;
@@ -583,6 +583,7 @@ impl Sink<WavefrontConfig> for Wavefront {
             age_threshold: config.age_threshold,
             last_seen: HashMap::default(),
             pad_control: config.pad_control,
+            tags: config.tags,
         }
     }
 

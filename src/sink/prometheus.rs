@@ -15,7 +15,7 @@ extern crate log;
 use flate2::write::GzEncoder;
 use http;
 use metric;
-use metric::{AggregationMethod, TagMap};
+use metric::{AggregationMethod, TagIter, TagMap};
 use quantiles::histogram::Bound;
 use sink::Sink;
 use std::collections::hash_map;
@@ -35,8 +35,6 @@ use util;
 lazy_static! {
     /// Total reportable metrics
     pub static ref PROMETHEUS_AGGR_REPORTABLE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total inside baseball windowed metrics
-    pub static ref PROMETHEUS_AGGR_WINDOWED_LEN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total remaining metrics in aggr
     pub static ref PROMETHEUS_AGGR_REMAINING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total report successes
@@ -45,6 +43,8 @@ lazy_static! {
     pub static ref PROMETHEUS_REPORT_ERROR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Sum of delays in reporting (microseconds)
     pub static ref PROMETHEUS_RESPONSE_DELAY_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total stale perpetual elements purged
+    pub static ref PROMETHEUS_AGGR_WINDOWED_PURGED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
 /// The prometheus sink
@@ -55,10 +55,10 @@ lazy_static! {
 /// pull-based.
 #[allow(dead_code)]
 pub struct Prometheus {
-    thrd_aggr: sync::Arc<sync::Mutex<Option<PrometheusAggr>>>,
-    aggrs: PrometheusAggr,
+    aggrs: sync::Arc<sync::Mutex<PrometheusAggr>>,
     age_threshold: Option<u64>,
     http_srv: http::Server,
+    tags: TagMap,
 }
 
 /// The configuration for Prometheus sink
@@ -76,6 +76,10 @@ pub struct PrometheusConfig {
     /// Determine the age at which a Telemetry point will be ejected. If the
     /// value is None no points will ever be rejected. Units are seconds.
     pub age_threshold: Option<u64>,
+    /// The tags to be applied to all `metric::Event`s streaming through this
+    /// sink. These tags will overwrite any tags carried by the `metric::Event`
+    /// itself.
+    pub tags: TagMap,
 }
 
 impl Default for PrometheusConfig {
@@ -86,6 +90,7 @@ impl Default for PrometheusConfig {
             config_path: None,
             capacity_in_seconds: 600, // ten minutes
             age_threshold: None,
+            tags: TagMap::default(),
         }
     }
 }
@@ -123,6 +128,30 @@ impl Accumulator {
         }
     }
 
+    pub fn purge(&mut self) -> usize {
+        match *self {
+            Accumulator::Perpetual(_) => 0,
+            Accumulator::Windowed {
+                cap,
+                ref mut samples,
+                sum: _,
+                count: _,
+            } => {
+                let mut purged = 0;
+                let mut i = 0;
+                while i != samples.len() {
+                    if (samples[i].timestamp - time::now()).abs() > (cap as i64) {
+                        samples.remove(i);
+                        purged += 1;
+                    } else {
+                        i += 1;
+                    }
+                }
+                purged
+            }
+        }
+    }
+
     pub fn insert(&mut self, telem: metric::Telemetry) {
         match *self {
             Accumulator::Perpetual(ref mut t) => *t += telem,
@@ -132,12 +161,6 @@ impl Accumulator {
                 ref mut count,
                 ref mut samples,
             } => {
-                println!(
-                    "NAME: {} | TOTAL SAMPLES: {} | CAP: {}",
-                    telem.name,
-                    samples.len(),
-                    cap
-                );
                 use std::u64;
                 assert_eq!(telem.kind(), AggregationMethod::Summarize);
                 // u64::wrapping_add makes a new u64. We need this to be
@@ -289,6 +312,14 @@ impl PrometheusAggr {
         true
     }
 
+    fn purge(&mut self) -> usize {
+        let mut total_purged = 0;
+        for aggr in self.data.values_mut() {
+            total_purged += aggr.purge();
+        }
+        total_purged
+    }
+
     /// Return the total points stored by this aggregation
     fn count(&self) -> usize {
         self.data.len()
@@ -350,89 +381,80 @@ impl<'a> Iterator for Iter<'a> {
 }
 
 struct PrometheusHandler {
-    aggr: sync::Arc<Mutex<Option<PrometheusAggr>>>,
+    tags: TagMap,
+    aggr: sync::Arc<Mutex<PrometheusAggr>>,
 }
 
 impl http::Handler for PrometheusHandler {
     fn handle(&self, request: http::Request) -> () {
-        match *self.aggr.lock().unwrap() {
-            None => {}
-            Some(ref aggr) => {
-                PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
-                PROMETHEUS_AGGR_REMAINING.store(aggr.count(), Ordering::Relaxed);
-                let reportable = aggr.reportable();
-                let now = Instant::now();
-                let buffer = write_text(reportable, Vec::with_capacity(2048)).unwrap();
-                let elapsed = now.elapsed();
-                let us = ((elapsed.as_secs() as f64) * 10_000.0)
-                    + (f64::from(elapsed.subsec_nanos()) / 100_000.0);
-                PROMETHEUS_RESPONSE_DELAY_SUM
-                    .fetch_add(us as usize, Ordering::Relaxed);
-                let content_encoding = "gzip";
-                let content_type = "text/plain; version=0.0.4";
-                let headers = [
-                    http::Header::from_bytes(&b"Content-Type"[..], content_type)
-                        .unwrap(),
-                    http::Header::from_bytes(
-                        &b"Content-Encoding"[..],
-                        content_encoding,
-                    ).unwrap(),
-                ];
+        let mut buffer = Vec::with_capacity(2048);
+        if let Ok(ref aggr) = self.aggr.try_lock() {
+            PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
+            let reportable = aggr.reportable();
+            let now = Instant::now();
+            buffer =
+                write_text(reportable, &self.tags, Vec::with_capacity(2048)).unwrap();
+            let elapsed = now.elapsed();
+            let us = ((elapsed.as_secs() as f64) * 10_000.0)
+                + (f64::from(elapsed.subsec_nanos()) / 100_000.0);
+            PROMETHEUS_RESPONSE_DELAY_SUM.fetch_add(us as usize, Ordering::Relaxed);
+        }
+        if !buffer.is_empty() {
+            let content_encoding = "gzip";
+            let content_type = "text/plain; version=0.0.4";
+            let headers = [
+                http::Header::from_bytes(&b"Content-Type"[..], content_type).unwrap(),
+                http::Header::from_bytes(&b"Content-Encoding"[..], content_encoding)
+                    .unwrap(),
+            ];
 
-                let response = http::Response::new(
-                    http::StatusCode::from(200),
-                    headers.to_vec(),
-                    &buffer[..],
-                    Some(buffer.len()),
-                    None,
-                );
+            let response = http::Response::new(
+                http::StatusCode::from(200),
+                headers.to_vec(),
+                &buffer[..],
+                Some(buffer.len()),
+                None,
+            );
 
-                match request.respond(response) {
-                    Ok(_) => {
-                        PROMETHEUS_REPORT_SUCCESS.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Err(e) => {
-                        PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
-                        warn!("Failed to send prometheus response! {:?}", e);
-                    }
-                };
-            }
+            match request.respond(response) {
+                Ok(_) => {
+                    PROMETHEUS_REPORT_SUCCESS.fetch_add(1, Ordering::Relaxed);
+                }
+                Err(e) => {
+                    PROMETHEUS_REPORT_ERROR.fetch_add(1, Ordering::Relaxed);
+                    warn!("Failed to send prometheus response! {:?}", e);
+                }
+            };
         }
     }
 }
 
 #[allow(cyclomatic_complexity)]
 #[inline]
-fn fmt_tags<W>(tags: &TagMap, s: &mut GzEncoder<W>) -> ()
+fn fmt_tags<W>(mut iter: TagIter, s: &mut GzEncoder<W>) -> ()
 where
     W: Write,
 {
-    if tags.is_empty() {
-        let _ = s.write(b"");
-    } else {
-        let mut iter = tags.iter();
-        if let Some((ref fk, ref fv)) = iter.next() {
-            let _ = s.write(fk.as_bytes());
+    // TODO this is wrong for a single tag
+    //  afgIPQC{source="cernan""} 1422522
+    if let Some((ref fk, ref fv)) = iter.next() {
+        let _ = s.write(fk.as_bytes());
+        let _ = s.write(b"=\"");
+        let _ = s.write(fv.as_bytes());
+        let _ = s.write(b"\"");
+        for (ref k, ref v) in iter {
+            let _ = s.write(b", ");
+            let _ = s.write(k.as_bytes());
             let _ = s.write(b"=\"");
-            let _ = s.write(fv.as_bytes());
+            let _ = s.write(v.as_bytes());
             let _ = s.write(b"\"");
-            let mut empty = true;
-            for (ref k, ref v) in iter {
-                empty = false;
-                let _ = s.write(b", ");
-                let _ = s.write(k.as_bytes());
-                let _ = s.write(b"=\"");
-                let _ = s.write(v.as_bytes());
-                let _ = s.write(b"\"");
-            }
-            if empty {
-                let _ = s.write(b"\"");
-            }
         }
+    } else {
+        let _ = s.write(b"");
     }
 }
 
-fn write_text<W>(aggrs: Iter, buffer: W) -> io::Result<W>
+fn write_text<W>(aggrs: Iter, default: &TagMap, buffer: W) -> io::Result<W>
 where
     W: Write,
 {
@@ -445,27 +467,27 @@ where
         let sanitized_name: String = sanitize(&value.name);
         match value.kind() {
             AggregationMethod::Sum => if let Some(v) = value.sum() {
-                if seen.insert(value.name) {
+                if seen.insert(value.name.clone()) {
                     enc.write_all(b"# TYPE ")?;
                     enc.write_all(sanitized_name.as_bytes())?;
                     enc.write_all(b" counter\n")?;
                 }
                 enc.write_all(sanitized_name.as_bytes())?;
                 enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
+                fmt_tags(value.tags(default), &mut enc);
                 enc.write_all(b"} ")?;
                 enc.write_all(v.to_string().as_bytes())?;
                 enc.write_all(b"\n")?;
             },
             AggregationMethod::Set => if let Some(v) = value.set() {
-                if seen.insert(value.name) {
+                if seen.insert(value.name.clone()) {
                     enc.write_all(b"# TYPE ")?;
                     enc.write_all(sanitized_name.as_bytes())?;
                     enc.write_all(b" gauge\n")?;
                 }
                 enc.write_all(sanitized_name.as_bytes())?;
                 enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
+                fmt_tags(value.tags(default), &mut enc);
                 enc.write_all(b"} ")?;
                 enc.write_all(v.to_string().as_bytes())?;
                 enc.write_all(b"\n")?;
@@ -488,7 +510,7 @@ where
                             enc.write_all(b"+Inf")?;
                         }
                     }
-                    for (k, v) in &value.tags {
+                    for (k, v) in value.tags(default) {
                         enc.write_all(b"\", ")?;
                         enc.write_all(k.as_bytes())?;
                         enc.write_all(b"=\"")?;
@@ -502,7 +524,7 @@ where
                 enc.write_all(sanitized_name.as_bytes())?;
                 enc.write_all(b"_sum ")?;
                 enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
+                fmt_tags(value.tags(default), &mut enc);
                 enc.write_all(b"} ")?;
                 enc.write_all(
                     value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
@@ -511,7 +533,7 @@ where
                 enc.write_all(sanitized_name.as_bytes())?;
                 enc.write_all(b"_count ")?;
                 enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
+                fmt_tags(value.tags(default), &mut enc);
                 enc.write_all(b"} ")?;
                 enc.write_all(value.count().to_string().as_bytes())?;
                 enc.write_all(b"\n")?;
@@ -526,7 +548,7 @@ where
                     enc.write_all(sanitized_name.as_bytes())?;
                     enc.write_all(b"{quantile=\"")?;
                     enc.write_all(q.to_string().as_bytes())?;
-                    for (k, v) in &value.tags {
+                    for (k, v) in value.tags(default) {
                         enc.write_all(b"\", ")?;
                         enc.write_all(k.as_bytes())?;
                         enc.write_all(b"=\"")?;
@@ -540,7 +562,7 @@ where
                 enc.write_all(sanitized_name.as_bytes())?;
                 enc.write_all(b"_sum ")?;
                 enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
+                fmt_tags(value.tags(default), &mut enc);
                 enc.write_all(b"} ")?;
                 enc.write_all(
                     value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
@@ -549,7 +571,7 @@ where
                 enc.write_all(sanitized_name.as_bytes())?;
                 enc.write_all(b"_count ")?;
                 enc.write_all(b"{")?;
-                fmt_tags(&value.tags, &mut enc);
+                fmt_tags(value.tags(default), &mut enc);
                 enc.write_all(b"} ")?;
                 enc.write_all((value.count()).to_string().as_bytes())?;
                 enc.write_all(b"\n")?;
@@ -585,40 +607,40 @@ fn sanitize(name: &str) -> String {
 impl Sink<PrometheusConfig> for Prometheus {
     fn init(config: PrometheusConfig) -> Self {
         let aggrs = PrometheusAggr::new(config.capacity_in_seconds);
-        let thrd_aggrs = sync::Arc::new(sync::Mutex::new(None));
-        let srv_aggrs = sync::Arc::clone(&thrd_aggrs);
+        let aggrs = sync::Arc::new(sync::Mutex::new(aggrs));
 
         let host_port =
             format!("{}:{}", config.host.as_str(), config.port.to_string());
         Prometheus {
-            aggrs: aggrs,
-            thrd_aggr: thrd_aggrs,
+            aggrs: sync::Arc::clone(&aggrs),
             age_threshold: config.age_threshold,
             http_srv: http::Server::new(
                 host_port,
-                PrometheusHandler { aggr: srv_aggrs },
+                PrometheusHandler {
+                    tags: config.tags.clone(),
+                    aggr: aggrs,
+                },
             ),
+            tags: config.tags,
         }
     }
 
     fn flush_interval(&self) -> Option<u64> {
-        Some(1)
+        Some(10)
     }
 
     fn flush(&mut self) {
-        let mut lock = self.thrd_aggr.try_lock();
-        if let Ok(ref mut aggr) = lock {
-            **aggr = Some(self.aggrs.clone());
-        }
+        let total_purged = self.aggrs.lock().unwrap().purge();
+        PROMETHEUS_AGGR_WINDOWED_PURGED.store(total_purged, Ordering::Relaxed);
     }
 
     fn deliver(&mut self, telem: metric::Telemetry) -> () {
         if let Some(age_threshold) = self.age_threshold {
             if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
-                self.aggrs.insert(telem);
+                self.aggrs.lock().unwrap().insert(telem);
             }
         } else {
-            self.aggrs.insert(telem);
+            self.aggrs.lock().unwrap().insert(telem);
         }
     }
 

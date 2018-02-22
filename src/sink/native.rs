@@ -27,6 +27,7 @@ pub struct Native {
     flush_interval: u64,
     delivery_attempts: u32,
     stream: Option<TcpStream>,
+    tags: metric::TagMap,
 }
 
 /// Configuration for the native sink
@@ -41,6 +42,10 @@ pub struct NativeConfig {
     pub config_path: Option<String>,
     /// The sink's specific flush interval.
     pub flush_interval: u64,
+    /// The tags to be applied to all `metric::Event`s streaming through this
+    /// sink. These tags will overwrite any tags carried by the `metric::Event`
+    /// itself.
+    pub tags: metric::TagMap,
 }
 
 impl Default for NativeConfig {
@@ -50,6 +55,7 @@ impl Default for NativeConfig {
             host: "localhost".to_string(),
             config_path: None,
             flush_interval: 60,
+            tags: metric::TagMap::default(),
         }
     }
 }
@@ -91,6 +97,7 @@ impl Sink<NativeConfig> for Native {
             flush_interval: config.flush_interval,
             delivery_attempts: 0,
             stream: stream,
+            tags: config.tags,
         }
     }
 
@@ -131,8 +138,8 @@ impl Sink<NativeConfig> for Native {
                     //
                     // Learn how to consume bits of the metric without having to
                     // clone like crazy
-                    for (k, v) in &m.tags {
-                        meta.insert(k.clone(), v.clone());
+                    for (k, v) in m.tags(&self.tags) {
+                        meta.insert(k.to_string(), v.to_string());
                     }
                     telem.set_metadata(meta);
                     telem.set_timestamp_ms(m.timestamp * 1000); // FIXME #166

@@ -26,8 +26,6 @@ pub struct GraphiteConfig {
     pub host: String,
     /// The port that the source will listen on.
     pub port: u16,
-    /// The tags that the source will apply to all Telemetry it creates.
-    pub tags: metric::TagMap,
     /// The forwards that the source will send all its Telemetry.
     pub forwards: Vec<String>,
     /// The unique name of the source in the routing topology.
@@ -39,7 +37,6 @@ impl Default for GraphiteConfig {
         GraphiteConfig {
             host: "localhost".to_string(),
             port: 2003,
-            tags: metric::TagMap::default(),
             forwards: Vec::new(),
             config_path: Some("sources.graphite".to_string()),
         }
@@ -51,7 +48,6 @@ impl From<GraphiteConfig> for TCPConfig {
         TCPConfig {
             host: item.host,
             port: item.port,
-            tags: item.tags,
             forwards: item.forwards,
             config_path: item.config_path,
         }
@@ -65,16 +61,13 @@ impl TCPStreamHandler for GraphiteStreamHandler {
     fn handle_stream(
         &mut self,
         mut chans: util::Channel,
-        tags: &sync::Arc<metric::TagMap>,
         poller: &mio::Poll,
         stream: mio::net::TcpStream,
     ) {
         let mut line = String::new();
         let mut res = Vec::new();
         let mut line_reader = BufReader::new(stream);
-        let basic_metric = sync::Arc::new(Some(
-            metric::Telemetry::default().overlay_tags_from_map(tags),
-        ));
+        let basic_metric = sync::Arc::new(Some(metric::Telemetry::default()));
 
         loop {
             let mut events = mio::Events::with_capacity(1024);

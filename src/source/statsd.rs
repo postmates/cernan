@@ -65,8 +65,6 @@ pub struct StatsdConfig {
     pub host: String,
     /// The port for the statsd source to listen on.
     pub port: u16,
-    /// The tagmap that statsd will apply to all of its created Telemetry.
-    pub tags: metric::TagMap,
     /// The forwards that statsd will send its telemetry on to.
     pub forwards: Vec<String>,
     /// The unique name for the source in the routing topology.
@@ -80,7 +78,6 @@ impl Default for StatsdConfig {
         StatsdConfig {
             host: "localhost".to_string(),
             port: 8125,
-            tags: metric::TagMap::default(),
             forwards: Vec::new(),
             config_path: None,
             parse_config: StatsdParseConfig::default(),
@@ -96,14 +93,11 @@ impl Statsd {
     fn handle_datagrams(
         &self,
         mut chans: &mut util::Channel,
-        tags: &sync::Arc<metric::TagMap>,
         socket: &mio::net::UdpSocket,
         mut buf: &mut Vec<u8>,
     ) -> Result<(), StatsdHandlerErr> {
         let mut metrics = Vec::new();
-        let basic_metric = sync::Arc::new(Some(
-            metric::Telemetry::default().overlay_tags_from_map(tags),
-        ));
+        let basic_metric = sync::Arc::new(Some(metric::Telemetry::default()));
         loop {
             match socket.recv_from(&mut buf) {
                 Ok((len, _)) => match str::from_utf8(&buf[..len]) {
@@ -165,12 +159,7 @@ impl source::Source<StatsdConfig> for Statsd {
         }
     }
 
-    fn run(
-        self,
-        mut chans: util::Channel,
-        tags: &sync::Arc<metric::TagMap>,
-        poller: mio::Poll,
-    ) -> () {
+    fn run(self, mut chans: util::Channel, poller: mio::Poll) -> () {
         for (idx, socket) in self.conns.iter() {
             if let Err(e) = poller.register(
                 socket,
@@ -196,12 +185,9 @@ impl source::Source<StatsdConfig> for Statsd {
 
                             token => {
                                 let mut socket = &self.conns[token];
-                                if let Err(_e) = self.handle_datagrams(
-                                    &mut chans,
-                                    tags,
-                                    socket,
-                                    &mut buf,
-                                ) {
+                                if let Err(_e) =
+                                    self.handle_datagrams(&mut chans, socket, &mut buf)
+                                {
                                     error!("Deregistering {:?} due to unrecoverable error!", *socket);
                                 }
                             }

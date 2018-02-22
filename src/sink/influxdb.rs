@@ -2,7 +2,7 @@
 
 use hyper::Client;
 use hyper::header;
-use metric::{TagMap, Telemetry};
+use metric::{TagIter, TagMap, Telemetry};
 use quantiles::histogram::Bound;
 use sink::{Sink, Valve};
 use std::cmp;
@@ -37,6 +37,7 @@ pub struct InfluxDB {
     flush_interval: u64,
     client: Client,
     uri: Url,
+    tags: TagMap,
 }
 
 /// `InfluxDB` configuration
@@ -77,8 +78,8 @@ impl Default for InfluxDBConfig {
 }
 
 #[inline]
-fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
-    for (ref k, ref v) in tags.iter() {
+fn fmt_tags(tags: TagIter, s: &mut String) -> () {
+    for (ref k, ref v) in tags {
         s.push_str(",");
         s.push_str(k);
         s.push_str("=");
@@ -113,7 +114,7 @@ impl InfluxDB {
             match telem.kind() {
                 AggregationMethod::Sum => if let Some(val) = telem.sum() {
                     buffer.push_str(&telem.name);
-                    fmt_tags(&telem.tags, &mut tag_buf);
+                    fmt_tags(telem.tags(&self.tags), &mut tag_buf);
                     buffer.push_str(&tag_buf);
                     buffer.push_str(" ");
                     buffer.push_str("value=");
@@ -128,7 +129,7 @@ impl InfluxDB {
                 },
                 AggregationMethod::Set => if let Some(val) = telem.set() {
                     buffer.push_str(&telem.name);
-                    fmt_tags(&telem.tags, &mut tag_buf);
+                    fmt_tags(telem.tags(&self.tags), &mut tag_buf);
                     buffer.push_str(&tag_buf);
                     buffer.push_str(" ");
                     buffer.push_str("value=");
@@ -148,7 +149,7 @@ impl InfluxDB {
                             Bound::PosInf => "le_inf".to_string(),
                         };
                         buffer.push_str(&format!("{}.{}", &telem.name, bound_name));
-                        fmt_tags(&telem.tags, &mut tag_buf);
+                        fmt_tags(telem.tags(&self.tags), &mut tag_buf);
                         buffer.push_str(&tag_buf);
                         buffer.push_str(" ");
                         buffer.push_str("value=");
@@ -168,7 +169,7 @@ impl InfluxDB {
                 {
                     if let Some(val) = telem.query(*percentile) {
                         buffer.push_str(&format!("{}.{}", &telem.name, percentile));
-                        fmt_tags(&telem.tags, &mut tag_buf);
+                        fmt_tags(telem.tags(&self.tags), &mut tag_buf);
                         buffer.push_str(&tag_buf);
                         buffer.push_str(" ");
                         buffer.push_str("value=");
@@ -206,6 +207,7 @@ impl Sink<InfluxDBConfig> for InfluxDB {
             flush_interval: config.flush_interval,
             client: Client::new(),
             uri: uri,
+            tags: config.tags,
         }
     }
 

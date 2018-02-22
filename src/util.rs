@@ -14,8 +14,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 lazy_static! {
     /// Number of dropped events due to channel being totally full
     pub static ref UTIL_SEND_HOPPER_ERROR_FULL: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
-    /// Number of successfully sent events through the channels
-    pub static ref UTIL_SEND_HOPPER_SUCCESS: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
 }
 
 /// Cernan hashmap
@@ -58,7 +56,6 @@ pub fn send(chans: &mut Channel, mut event: metric::Event) {
                         }
                     }
                 } else {
-                    UTIL_SEND_HOPPER_SUCCESS.fetch_add(1, Ordering::Relaxed);
                     break;
                 }
             }
@@ -77,7 +74,6 @@ pub fn send(chans: &mut Channel, mut event: metric::Event) {
                 }
             }
         } else {
-            UTIL_SEND_HOPPER_SUCCESS.fetch_add(1, Ordering::Relaxed);
             break;
         }
     }
