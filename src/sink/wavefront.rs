@@ -1,7 +1,7 @@
 //! Wavefront is a proprietary aggregation and alerting product
 
 use buckets;
-use metric::{AggregationMethod, TagMap, Telemetry};
+use metric::{AggregationMethod, TagIter, TagMap, Telemetry};
 use sink::{Sink, Valve};
 use std::cmp;
 use std::collections::{HashMap, HashSet};
@@ -67,6 +67,7 @@ pub struct Wavefront {
     stream: Option<TcpStream>,
     last_seen: HashMap<u64, i64>,
     pad_control: PadControl,
+    tags: TagMap,
 }
 
 /// Configuration for `wavefront`. The challenge of Wavefront is controlling
@@ -134,13 +135,12 @@ impl Default for WavefrontConfig {
 }
 
 #[inline]
-fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
-    let mut iter = tags.iter();
-    if let Some(&(ref fk, ref fv)) = iter.next() {
+fn fmt_tags(mut iter: TagIter, s: &mut String) -> () {
+    if let Some((fk, fv)) = iter.next() {
         s.push_str(fk);
         s.push_str("=");
         s.push_str(fv);
-        for &(ref k, ref v) in iter {
+        for (k, v) in iter {
             s.push_str(" ");
             s.push_str(k);
             s.push_str("=");
@@ -462,7 +462,7 @@ impl Wavefront {
         match value.kind() {
             AggregationMethod::Histogram => if let Some(bins) = value.bins() {
                 use quantiles::histogram::Bound;
-                fmt_tags(&value.tags, &mut tag_buf);
+                fmt_tags(value.tags(&self.tags), &mut tag_buf);
                 for &(bound, count) in bins {
                     self.stats.push_str(&value.name);
                     self.stats.push_str("_");
@@ -494,7 +494,7 @@ impl Wavefront {
                 self.stats
                     .push_str(get_from_cache(&mut time_cache, value.timestamp));
                 self.stats.push_str(" ");
-                fmt_tags(&value.tags, &mut tag_buf);
+                fmt_tags(value.tags(&self.tags), &mut tag_buf);
                 self.stats.push_str(&tag_buf);
                 self.stats.push_str("\n");
 
@@ -508,14 +508,14 @@ impl Wavefront {
                 self.stats
                     .push_str(get_from_cache(&mut time_cache, value.timestamp));
                 self.stats.push_str(" ");
-                fmt_tags(&value.tags, &mut tag_buf);
+                fmt_tags(value.tags(&self.tags), &mut tag_buf);
                 self.stats.push_str(&tag_buf);
                 self.stats.push_str("\n");
 
                 tag_buf.clear();
             },
             AggregationMethod::Summarize => {
-                fmt_tags(&value.tags, &mut tag_buf);
+                fmt_tags(value.tags(&self.tags), &mut tag_buf);
                 for tup in &self.percentiles {
                     let stat: &String = &tup.0;
                     let quant: f64 = tup.1;
@@ -577,12 +577,13 @@ impl Sink<WavefrontConfig> for Wavefront {
             aggrs: buckets::Buckets::new(config.bin_width),
             delivery_attempts: 0,
             percentiles: config.percentiles,
-            stats: String::with_capacity(8_192),
+            stats: String::with_capacity(0x2000),
             stream: stream,
             flush_interval: config.flush_interval,
             age_threshold: config.age_threshold,
             last_seen: HashMap::default(),
             pad_control: config.pad_control,
+            tags: config.tags,
         }
     }
 
@@ -988,6 +989,8 @@ mod test {
     fn test_format_wavefront() {
         let mut tags = TagMap::default();
         tags.insert("source".into(), "test-src".into());
+        let mut custom_tags = TagMap::default();
+        custom_tags.insert("filter".into(), "test-filter-mod".into());
         let percentiles = vec![
             ("min".to_string(), 0.0),
             ("max".to_string(), 1.0),
@@ -1014,7 +1017,7 @@ mod test {
             host: "127.0.0.1".to_string(),
             port: 1987,
             config_path: Some("sinks.wavefront".to_string()),
-            tags: tags.clone(),
+            tags: tags,
             percentiles: percentiles,
             flush_interval: 60,
             pad_control: pad_control,
@@ -1038,7 +1041,7 @@ mod test {
                 .kind(AggregationMethod::Sum)
                 .harden()
                 .unwrap()
-                .overlay_tags_from_map(&tags),
+                .overlay_tags_from_map(&custom_tags),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1047,8 +1050,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Sum)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1057,8 +1059,7 @@ mod test {
                 .timestamp(dt_1)
                 .kind(AggregationMethod::Sum)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1067,8 +1068,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1077,8 +1077,7 @@ mod test {
                 .timestamp(dt_1)
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1087,8 +1086,7 @@ mod test {
                 .timestamp(dt_2)
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1097,8 +1095,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Summarize)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1107,8 +1104,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Summarize)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1117,8 +1113,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Summarize)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1127,8 +1122,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1137,14 +1131,16 @@ mod test {
                 .timestamp(dt_1)
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.format_stats();
         let lines: Vec<&str> = wavefront.stats.lines().collect();
 
         println!("{:?}", lines);
-        assert!(lines.contains(&"test.counter 1 645181811 source=test-src"));
+        assert!(lines.contains(
+            &"test.counter -1 645181811 filter=test-filter-mod source=test-src"
+        ));
+        assert!(lines.contains(&"test.counter 2 645181811 source=test-src"));
         assert!(lines.contains(&"test.counter 3 645181812 source=test-src"));
         assert!(lines.contains(&"test.gauge 3.211 645181811 source=test-src"));
         assert!(lines.contains(&"test.gauge 4.322 645181812 source=test-src"));

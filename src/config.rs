@@ -134,8 +134,8 @@ pub struct Args {
 impl Default for Args {
     fn default() -> Self {
         Args {
-            max_hopper_in_memory_bytes: 1_048_576,
-            max_hopper_queue_bytes: 1_048_576 * 100,
+            max_hopper_in_memory_bytes: 0x10_0000,
+            max_hopper_queue_bytes: 0x10_0000 * 100,
             max_hopper_queue_files: 100,
             data_directory: default_data_directory(),
             scripts_directory: default_scripts_directory(),
@@ -636,6 +636,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 })
                 .unwrap_or(res.capacity_in_seconds);
 
+            res.tags = global_tags.clone();
+
             res
         });
 
@@ -728,6 +730,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         as u64
                 })
                 .unwrap_or(args.flush_interval);
+
+            res.tags = global_tags.clone();
 
             res
         });
@@ -947,8 +951,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         fl.path = Some(Path::new(pth.as_str().unwrap()).to_path_buf());
                         fl.config_path = Some(format!("sources.files.{}", pth));
 
-                        fl.tags = global_tags.clone();
-
                         fl.forwards = tbl.get("forwards")
                             .map(|fwd| {
                                 fwd.as_array()
@@ -1062,8 +1064,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
 
                     res.parse_config.summarize_error_bound = error_bound;
 
-                    res.tags = global_tags.clone();
-
                     assert!(res.config_path.is_some());
                     assert!(!res.forwards.is_empty());
 
@@ -1109,8 +1109,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                                 .collect()
                         })
                         .unwrap_or(res.forwards);
-
-                    res.tags = global_tags.clone();
 
                     assert!(res.config_path.is_some());
                     assert!(!res.forwards.is_empty());
@@ -1158,8 +1156,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         })
                         .unwrap_or(res.forwards);
 
-                    res.tags = global_tags.clone();
-
                     assert!(res.config_path.is_some());
                     assert!(!res.forwards.is_empty());
 
@@ -1203,8 +1199,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         })
                         .unwrap_or(res.forwards);
 
-                    res.tags = global_tags.clone();
-
                     assert!(res.config_path.is_some());
 
                     native_server_config
@@ -1230,8 +1224,6 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                             .collect()
                     })
                     .unwrap_or(res.forwards);
-
-                res.tags = global_tags.clone();
 
                 res
             })

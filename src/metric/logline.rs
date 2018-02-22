@@ -88,7 +88,7 @@ impl LogLine {
     /// This function overlays a TagMap onto the LogLine's existing tags. If a
     /// key is present in both TagMaps the one from 'map' will be preferred.
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> LogLine {
-        for &(ref k, ref v) in map.iter() {
+        for (k, v) in map.iter() {
             self.tags.insert(k.clone(), v.clone());
         }
         self

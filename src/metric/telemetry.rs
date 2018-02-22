@@ -1,15 +1,12 @@
-use metric::TagMap;
-use metric::tagmap::cmp;
+use metric::{cmp_tagmap, TagMap};
 use quantiles::ckms::CKMS;
 use quantiles::histogram::{Histogram, Iter};
 #[cfg(test)]
 use quantiles::histogram::Bound;
-use std::cmp;
-use std::collections::hash_map::DefaultHasher;
+use std::{cmp, mem};
+use std::collections::{hash_map, HashSet};
 use std::hash::{Hash, Hasher};
-use std::mem;
-use std::ops::Add;
-use std::ops::AddAssign;
+use std::ops::{Add, AddAssign};
 use time;
 
 /// The available aggregations for `Telemetry`.
@@ -72,7 +69,7 @@ pub struct Telemetry {
     /// Determine whether the Telemetry will persist across time bins.
     pub persist: bool,
     /// The Telemetry specific metadata tags.
-    pub tags: TagMap,
+    tags: Option<TagMap>,
     /// The time of Telemetry, measured in seconds.
     pub timestamp: i64,
     override_count: Option<u64>,
@@ -234,7 +231,7 @@ impl PartialOrd for Telemetry {
         match self.name.partial_cmp(&other.name) {
             Some(cmp::Ordering::Equal) => {
                 match self.timestamp.partial_cmp(&other.timestamp) {
-                    Some(cmp::Ordering::Equal) => cmp(&self.tags, &other.tags),
+                    Some(cmp::Ordering::Equal) => cmp_tagmap(&self.tags, &other.tags),
                     other => other,
                 }
             }
@@ -249,7 +246,7 @@ impl Default for Telemetry {
             name: String::from(""),
             value: Some(Value::Set(0.0)),
             persist: false,
-            tags: TagMap::default(),
+            tags: None,
             timestamp: time::now(),
             override_sample_sum: None,
             override_count: None,
@@ -384,11 +381,6 @@ impl SoftTelemetry {
         } else {
             time::now()
         };
-        let tags = if let Some(tags) = self.tags {
-            tags
-        } else {
-            TagMap::default()
-        };
         let persist = if let Some(persist) = self.persist {
             persist
         } else {
@@ -420,7 +412,7 @@ impl SoftTelemetry {
                     name: name,
                     value: Some(value),
                     persist: persist,
-                    tags: tags,
+                    tags: self.tags,
                     timestamp: timestamp,
                     override_count: self.override_count,
                     override_sample_sum: self.override_sample_sum,
@@ -448,7 +440,7 @@ impl SoftTelemetry {
                     name: name,
                     value: Some(value),
                     persist: persist,
-                    tags: tags,
+                    tags: self.tags,
                     timestamp: timestamp,
                     override_sample_sum: None,
                     override_count: None,
@@ -470,7 +462,7 @@ impl SoftTelemetry {
                     name: name,
                     value: Some(value),
                     persist: persist,
-                    tags: tags,
+                    tags: self.tags,
                     timestamp: timestamp,
                     override_sample_sum: None,
                     override_count: None,
@@ -492,7 +484,7 @@ impl SoftTelemetry {
                     name: name,
                     value: Some(value),
                     persist: persist,
-                    tags: tags,
+                    tags: self.tags,
                     timestamp: timestamp,
                     override_sample_sum: None,
                     override_count: None,
@@ -511,6 +503,51 @@ pub enum Error {
     NoName,
     NoValue,
     SummarizeErrorTooLarge,
+}
+
+#[allow(missing_docs)]
+pub enum TagIter<'a> {
+    Single {
+        defaults: hash_map::Iter<'a, String, String>,
+    },
+    Double {
+        seen_keys: HashSet<String>,
+        iters: hash_map::Iter<'a, String, String>,
+        defaults: hash_map::Iter<'a, String, String>,
+        iters_exhausted: bool,
+    },
+}
+
+impl<'a> Iterator for TagIter<'a> {
+    type Item = (&'a String, &'a String);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match *self {
+            TagIter::Single { ref mut defaults } => defaults.next(),
+            TagIter::Double {
+                ref mut seen_keys,
+                ref mut iters,
+                ref mut defaults,
+                ref mut iters_exhausted,
+            } => loop {
+                if *iters_exhausted {
+                    if let Some((k, v)) = defaults.next() {
+                        if seen_keys.insert(k.to_string()) {
+                            return Some((k, v));
+                        }
+                    } else {
+                        return None;
+                    }
+                } else if let Some((k, v)) = iters.next() {
+                    seen_keys.insert(k.to_string());
+                    return Some((k, v));
+                } else {
+                    *iters_exhausted = true;
+                    continue;
+                }
+            },
+        }
+    }
 }
 
 impl Telemetry {
@@ -563,7 +600,7 @@ impl Telemetry {
             error: None,
             bounds: None,
             timestamp: Some(self.timestamp),
-            tags: Some(self.tags),
+            tags: self.tags,
             persist: Some(self.persist),
             override_count: None,
             override_sample_sum: None,
@@ -583,32 +620,72 @@ impl Telemetry {
         }
     }
 
+    /// TODO
+    pub fn tags<'a>(&'a self, defaults: &'a TagMap) -> TagIter<'a> {
+        if let Some(ref tags) = self.tags {
+            TagIter::Double {
+                iters_exhausted: false,
+                seen_keys: HashSet::new(),
+                defaults: defaults.iter(),
+                iters: tags.iter(),
+            }
+        } else {
+            TagIter::Single {
+                defaults: defaults.iter(),
+            }
+        }
+    }
+
+    /// TODO
+    pub fn get_from_tags<'a>(
+        &'a mut self,
+        key: &'a str,
+        defaults: &'a TagMap,
+    ) -> Option<&'a String> {
+        if let Some(ref mut tags) = self.tags {
+            match tags.get(key) {
+                Some(v) => Some(v),
+                None => defaults.get(key),
+            }
+        } else {
+            defaults.get(key)
+        }
+    }
+
+    /// TODO
+    pub fn insert_tag<S>(&mut self, key: S, val: S) -> Option<String>
+    where
+        S: Into<String>,
+    {
+        if let Some(ref mut tags) = self.tags {
+            tags.insert(key.into(), val.into())
+        } else {
+            let mut tags = TagMap::default();
+            let res = tags.insert(key.into(), val.into());
+            self.tags = Some(tags);
+            res
+        }
+    }
+
+    /// TODO
+    pub fn remove_tag(&mut self, key: &str) -> Option<String> {
+        if let Some(ref mut tags) = self.tags {
+            tags.remove(key)
+        } else {
+            None
+        }
+    }
+
     /// Overlay a specific key / value pair in self's tags
     ///
     /// This insert a key / value pair into the metric's tag map. If the key was
     /// already present in the tag map the value will be replaced, else it will
     /// be inserted.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::Telemetry;
-    ///
-    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
-    ///
-    /// assert!(m.tags.is_empty());
-    ///
-    /// m = m.overlay_tag("foo", "bar");
-    /// assert_eq!(Some(&"bar".into()), m.tags.get(&String::from("foo")));
-    ///
-    /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    /// ```
     pub fn overlay_tag<S>(mut self, key: S, val: S) -> Telemetry
     where
         S: Into<String>,
     {
-        self.tags.insert(key.into(), val.into());
+        let _ = self.insert_tag(key, val);
         self
     }
 
@@ -617,63 +694,14 @@ impl Telemetry {
     /// This inserts a map of key / value pairs over the top of metric's
     /// existing tag map. Any new keys will be inserted while existing keys will
     /// be overwritten.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::{TagMap, Telemetry};
-    ///
-    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
-    ///
-    /// assert!(m.tags.is_empty());
-    ///
-    /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    ///
-    /// let mut tag_map = TagMap::default();
-    /// tag_map.insert("foo".into(), "bar".into());
-    /// tag_map.insert("oof".into(), "rab".into());
-    ///
-    /// m = m.overlay_tags_from_map(&tag_map);
-    /// assert_eq!(Some(&"bar".into()), m.tags.get(&String::from("foo")));
-    /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
-    /// ```
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> Telemetry {
-        for &(ref k, ref v) in map.iter() {
-            self.tags.insert(k.clone(), v.clone());
+        if let Some(ref mut tags) = self.tags {
+            for (k, v) in map.iter() {
+                tags.insert(k.clone(), v.clone());
+            }
+        } else {
+            self.tags = Some(map.clone());
         }
-        self
-    }
-
-    /// Merge a TagMap into self's tags
-    ///
-    /// This inserts a map of key / values pairs into metric's existing map,
-    /// inserting keys if and only if the key does not already exist
-    /// in-map. This is the information-preserving partner to
-    /// overlay_tags_from_map.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::metric::{TagMap, Telemetry};
-    ///
-    /// let mut m = Telemetry::new().name("foo").value(1.1).harden().unwrap();
-    ///
-    /// assert!(m.tags.is_empty());
-    ///
-    /// m = m.overlay_tag("foo", "22");
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    ///
-    /// let mut tag_map = TagMap::default();
-    /// tag_map.insert("foo".into(), "bar".into());
-    /// tag_map.insert("oof".into(), "rab".into());
-    ///
-    /// m = m.merge_tags_from_map(&tag_map);
-    /// assert_eq!(Some(&"22".into()), m.tags.get(&String::from("foo")));
-    /// assert_eq!(Some(&"rab".into()), m.tags.get(&String::from("oof")));
-    /// ```
-    pub fn merge_tags_from_map(mut self, map: &TagMap) -> Telemetry {
-        self.tags.merge(map);
         self
     }
 
@@ -817,7 +845,7 @@ impl Telemetry {
     /// another.
     pub fn within(&self, span: i64, other: &Telemetry) -> cmp::Ordering {
         match self.name.partial_cmp(&other.name) {
-            Some(cmp::Ordering::Equal) => match cmp(&self.tags, &other.tags) {
+            Some(cmp::Ordering::Equal) => match cmp_tagmap(&self.tags, &other.tags) {
                 Some(cmp::Ordering::Equal) => {
                     let lhs_bin = self.timestamp / span;
                     let rhs_bin = other.timestamp / span;
@@ -844,9 +872,14 @@ impl Telemetry {
     /// The hash of a telemetry is based on its 'alike' fields. That is, its
     /// name, tags and aggregation kind.
     pub fn hash(&self) -> u64 {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = hash_map::DefaultHasher::new();
         self.name.hash(&mut hasher);
-        self.tags.hash(&mut hasher);
+        if let Some(ref tags) = self.tags {
+            for (k, v) in tags.iter() {
+                k.hash(&mut hasher);
+                v.hash(&mut hasher);
+            }
+        }
         self.kind().hash(&mut hasher);
         hasher.finish()
     }
@@ -858,9 +891,14 @@ impl Telemetry {
     /// kinds of lookup maps, say `flush_boundary_filter` where only storage
     /// takes place, not aggregation.
     pub fn name_tag_hash(&self) -> u64 {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = hash_map::DefaultHasher::new();
         self.name.hash(&mut hasher);
-        self.tags.hash(&mut hasher);
+        if let Some(ref tags) = self.tags {
+            for (k, v) in tags.iter() {
+                k.hash(&mut hasher);
+                v.hash(&mut hasher);
+            }
+        }
         hasher.finish()
     }
 
@@ -917,9 +955,63 @@ impl Telemetry {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use metric::{AggregationMethod, Event, Telemetry};
     use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use std::cmp;
+
+    #[test]
+    fn tag_iter_single() {
+        let mut default_tags = TagMap::default();
+        default_tags.insert("source".into(), "test-src".into());
+
+        let res = Telemetry::new()
+            .name("l6")
+            .value(0.7913855)
+            .error(0.01)
+            .kind(AggregationMethod::Histogram)
+            .clear_error()
+            .bounds(vec![0.01, 1.0, 2.0, 4.0])
+            .harden()
+            .unwrap();
+
+        let mut iter = res.tags(&default_tags);
+        assert_eq!(
+            Some(("source", "test-src")),
+            iter.next().map(|(k, v)| (k.as_str(), v.as_str()))
+        );
+        assert_eq!(None, iter.next());
+    }
+
+    #[test]
+    fn tag_iter_double() {
+        let mut default_tags = TagMap::default();
+        default_tags.insert("source".into(), "test-src".into());
+        let mut custom_tags = TagMap::default();
+        custom_tags.insert("filter".into(), "test-filter-mod".into());
+
+        let res = Telemetry::new()
+            .name("l6")
+            .value(0.7913855)
+            .error(0.01)
+            .kind(AggregationMethod::Histogram)
+            .clear_error()
+            .bounds(vec![0.01, 1.0, 2.0, 4.0])
+            .harden()
+            .unwrap()
+            .overlay_tags_from_map(&custom_tags);
+
+        let mut iter = res.tags(&default_tags);
+        assert_eq!(
+            Some(("filter", "test-filter-mod")),
+            iter.next().map(|(k, v)| (k.as_str(), v.as_str()))
+        );
+        assert_eq!(
+            Some(("source", "test-src")),
+            iter.next().map(|(k, v)| (k.as_str(), v.as_str()))
+        );
+        assert_eq!(None, iter.next());
+    }
 
     #[test]
     fn set_bounds_no_crash() {

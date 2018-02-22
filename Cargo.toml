@@ -65,8 +65,6 @@ codegen-units = 4
 
 [profile.release]
 lto = true
-codegen-units = 1
-panic = "abort"
 
 [[bench]]
 name = "buckets"

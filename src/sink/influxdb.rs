@@ -2,7 +2,7 @@
 
 use hyper::Client;
 use hyper::header;
-use metric::{TagMap, Telemetry};
+use metric::{TagIter, TagMap, Telemetry};
 use quantiles::histogram::Bound;
 use sink::{Sink, Valve};
 use std::cmp;
@@ -37,6 +37,7 @@ pub struct InfluxDB {
     flush_interval: u64,
     client: Client,
     uri: Url,
+    tags: TagMap,
 }
 
 /// `InfluxDB` configuration
@@ -77,8 +78,8 @@ impl Default for InfluxDBConfig {
 }
 
 #[inline]
-fn fmt_tags(tags: &TagMap, s: &mut String) -> () {
-    for &(ref k, ref v) in tags.iter() {
+fn fmt_tags(tags: TagIter, s: &mut String) -> () {
+    for (k, v) in tags {
         s.push_str(",");
         s.push_str(k);
         s.push_str("=");
@@ -113,7 +114,7 @@ impl InfluxDB {
             match telem.kind() {
                 AggregationMethod::Sum => if let Some(val) = telem.sum() {
                     buffer.push_str(&telem.name);
-                    fmt_tags(&telem.tags, &mut tag_buf);
+                    fmt_tags(telem.tags(&self.tags), &mut tag_buf);
                     buffer.push_str(&tag_buf);
                     buffer.push_str(" ");
                     buffer.push_str("value=");
@@ -128,7 +129,7 @@ impl InfluxDB {
                 },
                 AggregationMethod::Set => if let Some(val) = telem.set() {
                     buffer.push_str(&telem.name);
-                    fmt_tags(&telem.tags, &mut tag_buf);
+                    fmt_tags(telem.tags(&self.tags), &mut tag_buf);
                     buffer.push_str(&tag_buf);
                     buffer.push_str(" ");
                     buffer.push_str("value=");
@@ -148,7 +149,7 @@ impl InfluxDB {
                             Bound::PosInf => "le_inf".to_string(),
                         };
                         buffer.push_str(&format!("{}.{}", &telem.name, bound_name));
-                        fmt_tags(&telem.tags, &mut tag_buf);
+                        fmt_tags(telem.tags(&self.tags), &mut tag_buf);
                         buffer.push_str(&tag_buf);
                         buffer.push_str(" ");
                         buffer.push_str("value=");
@@ -168,7 +169,7 @@ impl InfluxDB {
                 {
                     if let Some(val) = telem.query(*percentile) {
                         buffer.push_str(&format!("{}.{}", &telem.name, percentile));
-                        fmt_tags(&telem.tags, &mut tag_buf);
+                        fmt_tags(telem.tags(&self.tags), &mut tag_buf);
                         buffer.push_str(&tag_buf);
                         buffer.push_str(" ");
                         buffer.push_str("value=");
@@ -206,6 +207,7 @@ impl Sink<InfluxDBConfig> for InfluxDB {
             flush_interval: config.flush_interval,
             client: Client::new(),
             uri: uri,
+            tags: config.tags,
         }
     }
 
@@ -291,13 +293,15 @@ mod test {
     fn test_format_influxdb() {
         let mut tags = TagMap::default();
         tags.insert("source".into(), "test-src".into());
+        let mut custom_tags = TagMap::default();
+        custom_tags.insert("filter".into(), "test-filter-mod".into());
         let config = InfluxDBConfig {
             db: "cernan".to_string(),
             host: "127.0.0.1".to_string(),
             secure: false,
             port: 1987,
             config_path: Some("sinks.influxdb".to_string()),
-            tags: tags.clone(),
+            tags: tags,
             flush_interval: 60,
         };
         let mut influxdb = InfluxDB::init(config);
@@ -306,23 +310,13 @@ mod test {
         let dt_2 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 13, 00);
         influxdb.deliver(
             Telemetry::new()
-                .name("test.counter.no.tags")
-                .value(-1.0)
-                .timestamp(dt_0.timestamp())
-                .kind(AggregationMethod::Sum)
-                .harden()
-                .unwrap()
-                .overlay_tags_from_map(&TagMap::default()),
-        );
-        influxdb.deliver(
-            Telemetry::new()
                 .name("test.counter")
                 .value(-1.0)
                 .timestamp(dt_0.timestamp())
                 .kind(AggregationMethod::Sum)
                 .harden()
                 .unwrap()
-                .overlay_tags_from_map(&tags),
+                .overlay_tags_from_map(&custom_tags),
         );
         influxdb.deliver(
             Telemetry::new()
@@ -331,8 +325,7 @@ mod test {
                 .timestamp(dt_0.timestamp())
                 .kind(AggregationMethod::Sum)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         influxdb.deliver(
             Telemetry::new()
@@ -341,8 +334,7 @@ mod test {
                 .timestamp(dt_1.timestamp())
                 .kind(AggregationMethod::Sum)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         influxdb.deliver(
             Telemetry::new()
@@ -351,8 +343,7 @@ mod test {
                 .timestamp(dt_0.timestamp())
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         influxdb.deliver(
             Telemetry::new()
@@ -361,8 +352,7 @@ mod test {
                 .timestamp(dt_1.timestamp())
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         influxdb.deliver(
             Telemetry::new()
@@ -371,8 +361,7 @@ mod test {
                 .timestamp(dt_2.timestamp())
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         influxdb.deliver(
             Telemetry::new()
@@ -381,8 +370,7 @@ mod test {
                 .timestamp(dt_0.timestamp())
                 .kind(AggregationMethod::Summarize)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         influxdb.deliver(
             Telemetry::new()
@@ -391,8 +379,7 @@ mod test {
                 .timestamp(dt_0.timestamp())
                 .kind(AggregationMethod::Summarize)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         influxdb.deliver(
             Telemetry::new()
@@ -401,8 +388,7 @@ mod test {
                 .timestamp(dt_0.timestamp())
                 .kind(AggregationMethod::Summarize)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         influxdb.deliver(
             Telemetry::new()
@@ -411,8 +397,7 @@ mod test {
                 .timestamp(dt_0.timestamp())
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         influxdb.deliver(
             Telemetry::new()
@@ -421,8 +406,7 @@ mod test {
                 .timestamp(dt_1.timestamp())
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         let mut buffer = String::new();
         influxdb.format_stats(&mut buffer, influxdb.aggr_slice());
@@ -430,8 +414,7 @@ mod test {
 
         println!("{:?}", lines);
         let expected = [
-            "test.counter.no.tags value=-1 645181811000000000",
-            "test.counter,source=test-src value=-1 645181811000000000",
+            "test.counter,filter=test-filter-mod,source=test-src value=-1 645181811000000000",
             "test.counter,source=test-src value=2 645181811000000000",
             "test.counter,source=test-src value=3 645181812000000000",
             "test.gauge,source=test-src value=3.211 645181811000000000",
@@ -460,6 +443,7 @@ mod test {
         ];
         assert_eq!(expected.len(), lines.len());
         for line in &expected {
+            println!("LINE: {:?}", line);
             assert!(lines.contains(line))
         }
     }

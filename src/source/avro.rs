@@ -5,7 +5,7 @@ use mio;
 use serde_avro;
 use source::{TCPStreamHandler, TCP};
 use source::nonblocking::{write_all, BufferedPayload, PayloadErr};
-use std::{net, sync};
+use std::net;
 use std::io::{Cursor, Read};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -114,7 +114,6 @@ impl TCPStreamHandler for AvroStreamHandler {
     fn handle_stream(
         &mut self,
         chans: util::Channel,
-        tags: &sync::Arc<metric::TagMap>,
         poller: &mio::Poll,
         stream: mio::net::TcpStream,
     ) -> () {
@@ -136,7 +135,6 @@ impl TCPStreamHandler for AvroStreamHandler {
                                     Ok(payload) => {
                                         let handle_res = self.handle_avro_payload(
                                             chans.clone(),
-                                            tags,
                                             payload,
                                         );
                                         if handle_res.is_err() {
@@ -221,7 +219,6 @@ impl AvroStreamHandler {
     fn handle_avro_payload(
         &mut self,
         mut chans: util::Channel,
-        _tags: &sync::Arc<metric::TagMap>,
         payload: Vec<u8>,
     ) -> Result<Option<u64>, PayloadErr> {
         match payload.into() {

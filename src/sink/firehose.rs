@@ -110,10 +110,10 @@ impl Sink<FirehoseConfig> for Firehose {
                             String::from("Uuid"),
                             Value::String(Uuid::new_v4().hyphenated().to_string()),
                         );
-                        for &(ref k, ref v) in m.tags.iter() {
+                        for (k, v) in &m.tags {
                             pyld.insert(k.clone(), Value::String(v.clone()));
                         }
-                        for &(ref k, ref v) in m.fields.iter() {
+                        for (k, v) in &m.fields {
                             pyld.insert(k.clone(), Value::String(v.clone()));
                         }
                         Record {

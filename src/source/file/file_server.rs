@@ -7,7 +7,6 @@ use source::internal::report_full_telemetry;
 use std::mem;
 use std::path::PathBuf;
 use std::str;
-use std::sync;
 use std::time;
 use util;
 use util::send;
@@ -35,9 +34,6 @@ pub struct FileServerConfig {
     /// The maximum number of lines to read from a file before switching to a
     /// new file.
     pub max_lines_read: usize,
-    /// The tags the Native source will associate with every Telemetry it
-    /// creates.
-    pub tags: metric::TagMap,
     /// The forwards which `FileServer` will obey.
     pub forwards: Vec<String>,
     /// The configured name of FileServer.
@@ -49,7 +45,6 @@ impl Default for FileServerConfig {
         FileServerConfig {
             path: None,
             max_lines_read: 10_000,
-            tags: metric::TagMap::default(),
             forwards: Vec::default(),
             config_path: None,
         }
@@ -80,12 +75,7 @@ impl source::Source<FileServerConfig> for FileServer {
         }
     }
 
-    fn run(
-        self,
-        mut chans: util::Channel,
-        tags: &sync::Arc<metric::TagMap>,
-        poller: mio::Poll,
-    ) -> () {
+    fn run(self, mut chans: util::Channel, poller: mio::Poll) -> () {
         let mut buffer = String::new();
 
         let mut fp_map: util::HashMap<PathBuf, FileWatcher> = Default::default();
@@ -119,12 +109,10 @@ impl source::Source<FileServerConfig> for FileServer {
                 while let Ok(sz) = watcher.read_line(&mut buffer) {
                     if sz > 0 {
                         lines_read += 1;
-                        lines.push(
-                            metric::LogLine::new(
-                                path.to_str().expect("not a valid path"),
-                                &buffer,
-                            ).overlay_tags_from_map(tags),
-                        );
+                        lines.push(metric::LogLine::new(
+                            path.to_str().expect("not a valid path"),
+                            &buffer,
+                        ));
                         buffer.clear();
                     } else {
                         break;
