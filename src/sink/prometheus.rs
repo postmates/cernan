@@ -9,9 +9,6 @@
 //!   - HISTOGRAM -> histogram
 //!
 //! All points are retained indefinitely in their aggregation.
-
-extern crate log;
-
 use flate2::write::GzEncoder;
 use http;
 use metric;
@@ -133,8 +130,7 @@ impl Accumulator {
             Accumulator::Windowed {
                 cap,
                 ref mut samples,
-                sum: _,
-                count: _,
+                ..
             } => {
                 let mut purged = 0;
                 let mut i = 0;
@@ -348,9 +344,7 @@ impl<'a> Iterator for Iter<'a> {
 
     fn next(&mut self) -> Option<metric::Telemetry> {
         match self.samples.next() {
-            Some(&Accumulator::Perpetual(ref t)) => {
-                return Some(t.clone());
-            }
+            Some(&Accumulator::Perpetual(ref t)) => Some(t.clone()),
             Some(&Accumulator::Windowed {
                 ref samples,
                 count,
@@ -358,25 +352,21 @@ impl<'a> Iterator for Iter<'a> {
                 ..
             }) => match samples.len() {
                 0 => unreachable!(),
-                1 => {
-                    return Some(
-                        samples[0]
-                            .clone()
-                            .thaw()
-                            .sample_sum(sum)
-                            .count(count)
-                            .harden()
-                            .unwrap(),
-                    );
-                }
+                1 => Some(
+                    samples[0]
+                        .clone()
+                        .thaw()
+                        .sample_sum(sum)
+                        .count(count)
+                        .harden()
+                        .unwrap(),
+                ),
                 _ => {
                     let mut start = samples[0].clone();
                     for t in &samples[1..] {
                         start += t.clone();
                     }
-                    return Some(
-                        start.thaw().sample_sum(sum).count(count).harden().unwrap(),
-                    );
+                    Some(start.thaw().sample_sum(sum).count(count).harden().unwrap())
                 }
             },
             None => None,
@@ -441,12 +431,12 @@ where
 {
     // TODO this is wrong for a single tag
     //  afgIPQC{source="cernan""} 1422522
-    if let Some((ref fk, ref fv)) = iter.next() {
+    if let Some((fk, fv)) = iter.next() {
         let _ = s.write(fk.as_bytes());
         let _ = s.write(b"=\"");
         let _ = s.write(fv.as_bytes());
         let _ = s.write(b"\"");
-        for (ref k, ref v) in iter {
+        for (k, v) in iter {
             let _ = s.write(b", ");
             let _ = s.write(k.as_bytes());
             let _ = s.write(b"=\"");

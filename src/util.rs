@@ -38,43 +38,34 @@ pub fn send(chans: &mut Channel, mut event: metric::Event) {
     if max != 0 {
         for chan in &mut chans[1..] {
             let mut snd_event = event.clone();
-            loop {
-                if let Err(res) = chan.send(snd_event) {
-                    // The are a variety of errors that hopper will signal back up
-                    // when we do a send. The only one we care about is
-                    // `Error::Full`, meaning that all disk and memory buffer space
-                    // is consumed. We drop the event on the floor in that case.
-                    match res.1 {
-                        hopper::Error::Full => {
-                            UTIL_SEND_HOPPER_ERROR_FULL
-                                .fetch_add(1, Ordering::Relaxed);
-                            break;
-                        }
-                        _ => {
-                            snd_event = res.0;
-                            continue;
-                        }
+            while let Err(res) = chan.send(snd_event) {
+                // The are a variety of errors that hopper will signal back up
+                // when we do a send. The only one we care about is
+                // `Error::Full`, meaning that all disk and memory buffer space
+                // is consumed. We drop the event on the floor in that case.
+                match res.1 {
+                    hopper::Error::Full => {
+                        UTIL_SEND_HOPPER_ERROR_FULL.fetch_add(1, Ordering::Relaxed);
+                        break;
                     }
-                } else {
-                    break;
+                    _ => {
+                        snd_event = res.0;
+                        continue;
+                    }
                 }
             }
         }
     }
-    loop {
-        if let Err(res) = chans[0].send(event) {
-            match res.1 {
-                hopper::Error::Full => {
-                    UTIL_SEND_HOPPER_ERROR_FULL.fetch_add(1, Ordering::Relaxed);
-                    break;
-                }
-                _ => {
-                    event = res.0;
-                    continue;
-                }
+    while let Err(res) = chans[0].send(event) {
+        match res.1 {
+            hopper::Error::Full => {
+                UTIL_SEND_HOPPER_ERROR_FULL.fetch_add(1, Ordering::Relaxed);
+                break;
             }
-        } else {
-            break;
+            _ => {
+                event = res.0;
+                continue;
+            }
         }
     }
 }

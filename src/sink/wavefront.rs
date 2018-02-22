@@ -136,11 +136,11 @@ impl Default for WavefrontConfig {
 
 #[inline]
 fn fmt_tags(mut iter: TagIter, s: &mut String) -> () {
-    if let Some((ref fk, ref fv)) = iter.next() {
+    if let Some((fk, fv)) = iter.next() {
         s.push_str(fk);
         s.push_str("=");
         s.push_str(fv);
-        for (ref k, ref v) in iter {
+        for (k, v) in iter {
             s.push_str(" ");
             s.push_str(k);
             s.push_str("=");
@@ -577,7 +577,7 @@ impl Sink<WavefrontConfig> for Wavefront {
             aggrs: buckets::Buckets::new(config.bin_width),
             delivery_attempts: 0,
             percentiles: config.percentiles,
-            stats: String::with_capacity(8_192),
+            stats: String::with_capacity(0x2000),
             stream: stream,
             flush_interval: config.flush_interval,
             age_threshold: config.age_threshold,

@@ -1,4 +1,5 @@
 use constants;
+use hopper;
 use metric;
 use mio;
 use source::Source;
@@ -143,7 +144,7 @@ where
 
     fn spawn_stream_handlers(
         &mut self,
-        chans: &util::Channel,
+        chans: &[hopper::Sender<metric::Event>],
         listener_token: mio::Token,
     ) -> Result<(), std::io::Error> {
         let listener = &self.listeners[listener_token];

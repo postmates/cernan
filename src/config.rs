@@ -134,8 +134,8 @@ pub struct Args {
 impl Default for Args {
     fn default() -> Self {
         Args {
-            max_hopper_in_memory_bytes: 1_048_576,
-            max_hopper_queue_bytes: 1_048_576 * 100,
+            max_hopper_in_memory_bytes: 0x10_0000,
+            max_hopper_queue_bytes: 0x10_0000 * 100,
             max_hopper_queue_files: 100,
             data_directory: default_data_directory(),
             scripts_directory: default_scripts_directory(),

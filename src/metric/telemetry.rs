@@ -69,11 +69,7 @@ pub struct Telemetry {
     /// Determine whether the Telemetry will persist across time bins.
     pub persist: bool,
     /// The Telemetry specific metadata tags.
-    tags: Option<TagMap>, // TODO idea is to provide a non-owning iter over tags
-    // that will chain with whatever TagMap gets passed in. Should choose from our
-    // TagMap first, then the passed TagMap. In this way the caller can have a set
-    // of tags -- the global set -- and we can enjoy our lack of constant insane
-    // cloning
+    tags: Option<TagMap>,
     /// The time of Telemetry, measured in seconds.
     pub timestamp: i64,
     override_count: Option<u64>,
@@ -526,9 +522,9 @@ impl<'a> Iterator for TagIter<'a> {
     type Item = (&'a String, &'a String);
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            &mut TagIter::Single { ref mut defaults } => defaults.next(),
-            &mut TagIter::Double {
+        match *self {
+            TagIter::Single { ref mut defaults } => defaults.next(),
+            TagIter::Double {
                 ref mut seen_keys,
                 ref mut iters,
                 ref mut defaults,
@@ -542,14 +538,12 @@ impl<'a> Iterator for TagIter<'a> {
                     } else {
                         return None;
                     }
+                } else if let Some((k, v)) = iters.next() {
+                    seen_keys.insert(k.to_string());
+                    return Some((k, v));
                 } else {
-                    if let Some((k, v)) = iters.next() {
-                        seen_keys.insert(k.to_string());
-                        return Some((k, v));
-                    } else {
-                        *iters_exhausted = true;
-                        continue;
-                    }
+                    *iters_exhausted = true;
+                    continue;
                 }
             },
         }
@@ -645,7 +639,7 @@ impl Telemetry {
     /// TODO
     pub fn get_from_tags<'a>(
         &'a mut self,
-        key: &'a String,
+        key: &'a str,
         defaults: &'a TagMap,
     ) -> Option<&'a String> {
         if let Some(ref mut tags) = self.tags {
@@ -674,7 +668,7 @@ impl Telemetry {
     }
 
     /// TODO
-    pub fn remove_tag(&mut self, key: &String) -> Option<String> {
+    pub fn remove_tag(&mut self, key: &str) -> Option<String> {
         if let Some(ref mut tags) = self.tags {
             tags.remove(key)
         } else {
@@ -881,7 +875,7 @@ impl Telemetry {
         let mut hasher = hash_map::DefaultHasher::new();
         self.name.hash(&mut hasher);
         if let Some(ref tags) = self.tags {
-            for (ref k, ref v) in tags.iter() {
+            for (k, v) in tags.iter() {
                 k.hash(&mut hasher);
                 v.hash(&mut hasher);
             }
@@ -900,7 +894,7 @@ impl Telemetry {
         let mut hasher = hash_map::DefaultHasher::new();
         self.name.hash(&mut hasher);
         if let Some(ref tags) = self.tags {
-            for (ref k, ref v) in tags.iter() {
+            for (k, v) in tags.iter() {
                 k.hash(&mut hasher);
                 v.hash(&mut hasher);
             }

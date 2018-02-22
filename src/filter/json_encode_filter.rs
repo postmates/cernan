@@ -1,11 +1,11 @@
-//! Convert LogLine events into Raw events encoded as JSON.
+//! Convert `LogLine` events into Raw events encoded as JSON.
 //!
-//! This filter takes LogLines and encodes them into JSON, emitting the encoded
-//! event as a Raw event. This allows further filters or sinks to operate on the
-//! JSON without needing to understand a LogLine event in particular.
-//! If the LogLine value is a valid JSON object and parse_line config option is true,
-//! then the JSON will be merged with LogLine metadata. Otherwise, the original line
-//! will be included simply as a string.
+//! This filter takes `LogLines` and encodes them into JSON, emitting the
+//! encoded event as a Raw event. This allows further filters or sinks to
+//! operate on the JSON without needing to understand a `LogLine` event in
+//! particular.  If the ``LogLine`` value is a valid JSON object and `parse_line`
+//! config option is true, then the JSON will be merged with `LogLine`
+//! metadata. Otherwise, the original line will be included simply as a string.
 
 use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
@@ -27,14 +27,14 @@ lazy_static! {
     pub static ref JSON_ENCODE_LOG_PARSED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 }
 
-/// Convert LogLine events into Raw events encoded as JSON.
+/// Convert `LogLine` events into Raw events encoded as JSON.
 ///
-/// This filter takes LogLines and encodes them into JSON, emitting the encoded
-/// event as a Raw event. This allows further filters or sinks to operate on the
-/// JSON without needing to understand a LogLine event in particular.
-/// If the LogLine value is a valid JSON object and parse_line config option is true,
-/// then the JSON will be merged with LogLine metadata. Otherwise, the original line
-/// will be included simply as a string.
+/// This filter takes `LogLines` and encodes them into JSON, emitting the
+/// encoded event as a Raw event. This allows further filters or sinks to
+/// operate on the JSON without needing to understand a `LogLine` event in
+/// particular.  If the `LogLine` value is a valid JSON object and `parse_line`
+/// config option is true, then the JSON will be merged with `LogLine`
+/// metadata. Otherwise, the original line will be included simply as a string.
 pub struct JSONEncodeFilter {
     parse_line: bool,
 }
@@ -46,7 +46,7 @@ pub struct JSONEncodeFilterConfig {
     pub config_path: Option<String>,
     /// The forwards along which the filter will emit its `metric::Event`s.
     pub forwards: Vec<String>,
-    /// Whether the filter should attempt to parse LogLine values that are
+    /// Whether the filter should attempt to parse `LogLine` values that are
     /// valid JSON objects.
     pub parse_line: bool,
 }
@@ -136,8 +136,8 @@ fn json_to_object(v: Value) -> Map<String, Value> {
 /// simply take the value from the earliest one.
 fn merge_objects(objs: Vec<Map<String, Value>>) -> Map<String, Value> {
     let mut result = Map::new();
-    for obj in objs.into_iter() {
-        for (key, value) in obj.into_iter() {
+    for obj in objs {
+        for (key, value) in obj {
             if !result.contains_key(&key) {
                 result.insert(key, value);
             }
