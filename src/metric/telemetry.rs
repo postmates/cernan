@@ -535,14 +535,12 @@ impl<'a> Iterator for TagIter<'a> {
                 ref mut iters_exhausted,
             } => loop {
                 if *iters_exhausted {
-                    loop {
-                        if let Some((k, v)) = defaults.next() {
-                            if !seen_keys.insert(k.to_string()) {
-                                return Some((k, v));
-                            }
-                        } else {
-                            return None;
+                    if let Some((k, v)) = defaults.next() {
+                        if seen_keys.insert(k.to_string()) {
+                            return Some((k, v));
                         }
+                    } else {
+                        return None;
                     }
                 } else {
                     if let Some((k, v)) = iters.next() {
@@ -1038,9 +1036,63 @@ impl Telemetry {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use metric::{AggregationMethod, Event, Telemetry};
     use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use std::cmp;
+
+    #[test]
+    fn tag_iter_single() {
+        let mut default_tags = TagMap::default();
+        default_tags.insert("source".into(), "test-src".into());
+
+        let res = Telemetry::new()
+            .name("l6")
+            .value(0.7913855)
+            .error(0.01)
+            .kind(AggregationMethod::Histogram)
+            .clear_error()
+            .bounds(vec![0.01, 1.0, 2.0, 4.0])
+            .harden()
+            .unwrap();
+
+        let mut iter = res.tags(&default_tags);
+        assert_eq!(
+            Some(("source", "test-src")),
+            iter.next().map(|(k, v)| (k.as_str(), v.as_str()))
+        );
+        assert_eq!(None, iter.next());
+    }
+
+    #[test]
+    fn tag_iter_double() {
+        let mut default_tags = TagMap::default();
+        default_tags.insert("source".into(), "test-src".into());
+        let mut custom_tags = TagMap::default();
+        custom_tags.insert("filter".into(), "test-filter-mod".into());
+
+        let res = Telemetry::new()
+            .name("l6")
+            .value(0.7913855)
+            .error(0.01)
+            .kind(AggregationMethod::Histogram)
+            .clear_error()
+            .bounds(vec![0.01, 1.0, 2.0, 4.0])
+            .harden()
+            .unwrap()
+            .overlay_tags_from_map(&custom_tags);
+
+        let mut iter = res.tags(&default_tags);
+        assert_eq!(
+            Some(("filter", "test-filter-mod")),
+            iter.next().map(|(k, v)| (k.as_str(), v.as_str()))
+        );
+        assert_eq!(
+            Some(("source", "test-src")),
+            iter.next().map(|(k, v)| (k.as_str(), v.as_str()))
+        );
+        assert_eq!(None, iter.next());
+    }
 
     #[test]
     fn set_bounds_no_crash() {

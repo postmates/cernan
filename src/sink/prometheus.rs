@@ -752,41 +752,40 @@ mod test {
         QuickCheck::new().quickcheck(inner as fn(PrometheusAggr) -> TestResult);
     }
 
-    // TODO
-    // // insertion must obey two properties, based on existence or not
-    // //
-    // //  IF EXISTS
-    // //    - insertion should NOT increase total count
-    // //    - insertion WILL modify existing telemetry in aggregation
-    // //      - insertion WILL NOT change telemetry aggregation kind
-    // //
-    // //  IF NOT EXISTS
-    // //    - insertion WILL increase count by 1
-    // //    - insertion WILL make telemetry exist after the insertion
-    // #[test]
-    // fn test_insertion_exists_property() {
-    // fn inner(telem: metric::Telemetry, mut aggr: PrometheusAggr) ->
-    // TestResult {         let cur_cnt = aggr.count();
-    //         match aggr.find_match(&telem) {
-    //             Some(other) => if aggr.insert(telem.clone()) {
-    //                 assert_eq!(other.kind(), telem.kind());
-    //                 assert_eq!(cur_cnt, aggr.count());
-    //                 let new_t =
-    //                     aggr.find_match(&telem).expect("could not find in test");
-    //                 assert_eq!(other.name, new_t.name);
-    //                 assert_eq!(new_t.kind(), telem.kind());
-    //             } else {
-    //                 assert!(other.kind() != telem.kind());
-    //                 assert_eq!(cur_cnt, aggr.count());
-    //                 return TestResult::discard();
-    //             },
-    //             None => return TestResult::discard(),
-    //         }
-    //         TestResult::passed()
-    //     }
-    //     QuickCheck::new()
-    // .quickcheck(inner as fn(metric::Telemetry, PrometheusAggr) ->
-    // TestResult); }
+    // insertion must obey two properties, based on existence or not
+    //
+    //  IF EXISTS
+    //    - insertion should NOT increase total count
+    //    - insertion WILL modify existing telemetry in aggregation
+    //      - insertion WILL NOT change telemetry aggregation kind
+    //
+    //  IF NOT EXISTS
+    //    - insertion WILL increase count by 1
+    //    - insertion WILL make telemetry exist after the insertion
+    #[test]
+    fn test_insertion_exists_property() {
+        fn inner(telem: metric::Telemetry, mut aggr: PrometheusAggr) -> TestResult {
+            let cur_cnt = aggr.count();
+            match aggr.find_match(&telem) {
+                Some(other) => if aggr.insert(telem.clone()) {
+                    assert_eq!(other.kind(), telem.kind());
+                    assert_eq!(cur_cnt, aggr.count());
+                    let new_t =
+                        aggr.find_match(&telem).expect("could not find in test");
+                    assert_eq!(other.name, new_t.name);
+                    assert_eq!(new_t.kind(), telem.kind());
+                } else {
+                    assert!(other.kind() != telem.kind());
+                    assert_eq!(cur_cnt, aggr.count());
+                    return TestResult::discard();
+                },
+                None => return TestResult::discard(),
+            }
+            TestResult::passed()
+        }
+        QuickCheck::new()
+            .quickcheck(inner as fn(metric::Telemetry, PrometheusAggr) -> TestResult);
+    }
 
     #[test]
     fn test_insertion_not_exists_property() {

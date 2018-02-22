@@ -989,6 +989,8 @@ mod test {
     fn test_format_wavefront() {
         let mut tags = TagMap::default();
         tags.insert("source".into(), "test-src".into());
+        let mut custom_tags = TagMap::default();
+        custom_tags.insert("filter".into(), "test-filter-mod".into());
         let percentiles = vec![
             ("min".to_string(), 0.0),
             ("max".to_string(), 1.0),
@@ -1015,7 +1017,7 @@ mod test {
             host: "127.0.0.1".to_string(),
             port: 1987,
             config_path: Some("sinks.wavefront".to_string()),
-            tags: tags.clone(),
+            tags: tags,
             percentiles: percentiles,
             flush_interval: 60,
             pad_control: pad_control,
@@ -1039,7 +1041,7 @@ mod test {
                 .kind(AggregationMethod::Sum)
                 .harden()
                 .unwrap()
-                .overlay_tags_from_map(&tags),
+                .overlay_tags_from_map(&custom_tags),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1048,8 +1050,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Sum)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1058,8 +1059,7 @@ mod test {
                 .timestamp(dt_1)
                 .kind(AggregationMethod::Sum)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1068,8 +1068,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1078,8 +1077,7 @@ mod test {
                 .timestamp(dt_1)
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1088,8 +1086,7 @@ mod test {
                 .timestamp(dt_2)
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1098,8 +1095,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Summarize)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1108,8 +1104,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Summarize)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1118,8 +1113,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Summarize)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1128,8 +1122,7 @@ mod test {
                 .timestamp(dt_0)
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.deliver(
             Telemetry::new()
@@ -1138,14 +1131,16 @@ mod test {
                 .timestamp(dt_1)
                 .kind(AggregationMethod::Set)
                 .harden()
-                .unwrap()
-                .overlay_tags_from_map(&tags),
+                .unwrap(),
         );
         wavefront.format_stats();
         let lines: Vec<&str> = wavefront.stats.lines().collect();
 
         println!("{:?}", lines);
-        assert!(lines.contains(&"test.counter 1 645181811 source=test-src"));
+        assert!(lines.contains(
+            &"test.counter -1 645181811 filter=test-filter-mod source=test-src"
+        ));
+        assert!(lines.contains(&"test.counter 2 645181811 source=test-src"));
         assert!(lines.contains(&"test.counter 3 645181812 source=test-src"));
         assert!(lines.contains(&"test.gauge 3.211 645181811 source=test-src"));
         assert!(lines.contains(&"test.gauge 4.322 645181812 source=test-src"));
