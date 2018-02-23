@@ -76,6 +76,15 @@ impl<'a> Payload<'a> {
     }
 
     #[allow(non_snake_case)]
+    unsafe extern "C" fn lua_log_path(L: *mut lua_State) -> c_int {
+        let mut state = State::from_ptr(L);
+        let pyld = state.to_userdata(1) as *mut Payload;
+        let idx = idx(state.to_integer(2), (*pyld).logs.len());
+        state.push_string(&(*pyld).logs[idx].path);
+        1
+    }
+
+    #[allow(non_snake_case)]
     unsafe extern "C" fn lua_set_metric_name(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
@@ -308,6 +317,23 @@ impl<'a> Payload<'a> {
     }
 
     #[allow(non_snake_case)]
+    unsafe extern "C" fn lua_log_set_value(L: *mut lua_State) -> c_int {
+        let mut state = State::from_ptr(L);
+        let pyld = state.to_userdata(1) as *mut Payload;
+        let idx = idx(state.to_integer(2), (*pyld).logs.len());
+        match state.to_str(3).map(|k| k.to_owned()) {
+            Some(key) => {
+                (*pyld).logs[idx].value = key;
+            },
+            None => {
+                error!("[log_set_value] no val provided");
+            }
+        }
+        state.push_nil();
+        1
+    }
+
+    #[allow(non_snake_case)]
     unsafe extern "C" fn lua_metric_remove_tag(L: *mut lua_State) -> c_int {
         let mut state = State::from_ptr(L);
         let pyld = state.to_userdata(1) as *mut Payload;
@@ -369,7 +395,7 @@ impl<'a> Payload<'a> {
     }
 }
 
-const PAYLOAD_LIB: [(&str, Function); 16] = [
+const PAYLOAD_LIB: [(&str, Function); 18] = [
     ("set_metric_name", Some(Payload::lua_set_metric_name)),
     ("clear_logs", Some(Payload::lua_clear_logs)),
     ("clear_metrics", Some(Payload::lua_clear_metrics)),
@@ -377,8 +403,10 @@ const PAYLOAD_LIB: [(&str, Function); 16] = [
     ("log_set_tag", Some(Payload::lua_log_set_tag)),
     ("log_tag_value", Some(Payload::lua_log_tag_value)),
     ("log_set_field", Some(Payload::lua_log_set_field)),
+    ("log_set_value", Some(Payload::lua_log_set_value)),
     ("log_field_value", Some(Payload::lua_log_field_value)),
     ("log_value", Some(Payload::lua_log_value)),
+    ("log_path", Some(Payload::lua_log_path)),
     ("metric_query", Some(Payload::lua_metric_query)),
     ("metric_remove_tag", Some(Payload::lua_metric_remove_tag)),
     ("metric_set_tag", Some(Payload::lua_metric_set_tag)),

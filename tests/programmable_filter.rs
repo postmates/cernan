@@ -142,6 +142,77 @@ mod integration {
         }
 
         #[test]
+        fn test_get_log_path() {
+            let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("field_from_path.lua");
+
+            let config = ProgrammableFilterConfig {
+                scripts_directory: Some(script_dir),
+                script: Some(script),
+                forwards: Vec::new(),
+                config_path: Some("filters.field_from_path".to_string()),
+                tags: Default::default(),
+            };
+            let mut cs = ProgrammableFilter::new(config);
+
+            let orig_log = metric::LogLine::new(
+                "identity",
+                "i am the very model of the modern major general",
+            );
+            let expected_log = metric::LogLine::new(
+                "identity",
+                "i am the very model of the modern major \
+                 general",
+            ).insert_field("foo", "identity");
+            let orig_event = metric::Event::new_log(orig_log);
+            let expected_event = metric::Event::new_log(expected_log);
+
+            let mut events = Vec::new();
+            let res = cs.process(orig_event.clone(), &mut events);
+            assert!(res.is_ok());
+            assert!(!events.is_empty());
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0], expected_event);
+        }
+
+        #[test]
+        fn test_set_log_value() {
+            let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("set_value.lua");
+
+            let config = ProgrammableFilterConfig {
+                scripts_directory: Some(script_dir),
+                script: Some(script),
+                forwards: Vec::new(),
+                config_path: Some("filters.set_value".to_string()),
+                tags: Default::default(),
+            };
+            let mut cs = ProgrammableFilter::new(config);
+
+            let orig_log = metric::LogLine::new(
+                "identity",
+                "i am the very model of the modern major general",
+            );
+            let expected_log = metric::LogLine::new(
+                "identity",
+                "foo"
+            );
+            let orig_event = metric::Event::new_log(orig_log);
+            let expected_event = metric::Event::new_log(expected_log);
+
+            let mut events = Vec::new();
+            let res = cs.process(orig_event.clone(), &mut events);
+            assert!(res.is_ok());
+            assert!(!events.is_empty());
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0], expected_event);
+        }
+
+        #[test]
         fn test_remove_metric_tag_kv() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             script.push("resources/tests/scripts");
