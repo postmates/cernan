@@ -1,6 +1,5 @@
 //! Library level constants
-
-extern crate mio;
+use mio;
 
 /// MIO token used to distinguish system events
 /// from other event sources.
