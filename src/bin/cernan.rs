@@ -12,7 +12,7 @@ extern crate log;
 extern crate openssl_probe;
 
 use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
-                     ProgrammableFilterConfig};
+                     ProgrammableFilterConfig, JSONEncodeFilterConfig};
 use cernan::matrix;
 use cernan::metric;
 use cernan::sink::Sink;
@@ -587,6 +587,43 @@ fn main() {
                 config.config_path.clone().unwrap(),
                 cernan::thread::spawn(move |_poll| {
                     cernan::filter::DelayFilter::new(&c).run(
+                        recv,
+                        sources,
+                        downstream_sends,
+                    );
+                }),
+            );
+        }
+    });
+
+    mem::replace(&mut args.json_encode_filters, None).map(|cfg_map| {
+        for config in cfg_map.values() {
+            let c: JSONEncodeFilterConfig = (*config).clone();
+            let recv = receivers
+                .remove(&config.config_path.clone().unwrap())
+                .unwrap();
+
+            let config_path = config
+                .config_path
+                .clone()
+                .expect("[INTERNAL ERROR] no config_path");
+            populate_forwards(
+                None,
+                &config.forwards,
+                &config_path,
+                &senders,
+                &mut adjacency_matrix,
+            );
+
+            let sources = adjacency_matrix.filter_nodes(
+                &config.config_path.clone().unwrap(),
+                |&(_k, option_v)| option_v.is_none(),
+            );
+            let downstream_sends = adjacency_matrix.pop_metadata(&config_path);
+            filters.insert(
+                config.config_path.clone().unwrap(),
+                cernan::thread::spawn(move |_poll| {
+                    cernan::filter::JSONEncodeFilter::new(&c).run(
                         recv,
                         sources,
                         downstream_sends,
