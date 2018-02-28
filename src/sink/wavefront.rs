@@ -15,6 +15,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use time;
 
 lazy_static! {
+    /// Total number of connection attempts made to wavefront proxy
+    pub static ref WAVEFRONT_CONNECT_ATTEMPTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total number of stored aggregations
+    pub static ref WAVEFRONT_AGGR_STORED_VALUES: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total histograms emitted
     pub static ref WAVEFRONT_AGGR_HISTO: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total sums emitted
@@ -25,8 +29,10 @@ lazy_static! {
     pub static ref WAVEFRONT_AGGR_SUMMARIZE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total percentiles for summarize emitted
     pub static ref WAVEFRONT_AGGR_TOT_PERCENT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total delivery attempts made
-    pub static ref WAVEFRONT_DELIVERY_ATTEMPTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total delivery successes
+    pub static ref WAVEFRONT_DELIVERY_SUCCESS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total delivery failures
+    pub static ref WAVEFRONT_DELIVERY_FAILURE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total valve closed
     pub static ref WAVEFRONT_VALVE_CLOSED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     /// Total valve open
@@ -604,14 +610,16 @@ impl Sink<WavefrontConfig> for Wavefront {
                     self.aggrs.reset();
                     self.stats.clear();
                     self.delivery_attempts = 0;
+                    WAVEFRONT_DELIVERY_SUCCESS.fetch_add(1, Ordering::Relaxed);
                     return;
                 } else {
-                    WAVEFRONT_DELIVERY_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
+                    WAVEFRONT_DELIVERY_FAILURE.fetch_add(1, Ordering::Relaxed);
                     self.delivery_attempts = self.delivery_attempts.saturating_add(1);
                     delivery_failure = true;
                 }
             } else {
                 time::delay(self.delivery_attempts);
+                WAVEFRONT_CONNECT_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
                 self.stream = connect(&self.host, self.port);
             }
             if delivery_failure {
@@ -635,7 +643,9 @@ impl Sink<WavefrontConfig> for Wavefront {
     }
 
     fn valve_state(&self) -> Valve {
-        if self.aggrs.len() > 10_000 {
+        let total_values = self.aggrs.count();
+        WAVEFRONT_AGGR_STORED_VALUES.store(total_values, Ordering::Relaxed);
+        if total_values > 10_000 {
             WAVEFRONT_VALVE_CLOSED.fetch_add(1, Ordering::Relaxed);
             Valve::Closed
         } else {

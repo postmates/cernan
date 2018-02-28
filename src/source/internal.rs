@@ -79,6 +79,23 @@ macro_rules! atom_telem {
     }
 }
 
+macro_rules! atom_set_telem {
+    ($name:expr, $atom:expr, $chans:expr) => {
+        let now = time::now();
+        let value = $atom.swap(0, Ordering::Relaxed);
+        if value != 0 {
+            let telem = Telemetry::new()
+                .name($name)
+                .value(value as f64)
+                .timestamp(now)
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap();
+            util::send(&mut $chans, metric::Event::new_telemetry(telem));
+        }
+    }
+}
+
 /// Internal as Source
 ///
 /// The 'run' of Internal will pull Telemetry off the internal queue, apply
@@ -262,6 +279,16 @@ impl source::Source<InternalConfig> for Internal {
                         );
                         // sink::wavefront
                         atom_telem!(
+                            "cernan.sinks.wavefront.proxy.connection_attempts",
+                            sink::wavefront::WAVEFRONT_CONNECT_ATTEMPTS,
+                            chans
+                        );
+                        atom_set_telem!(
+                            "cernan.sinks.wavefront.aggregations.total_stored",
+                            sink::wavefront::WAVEFRONT_AGGR_STORED_VALUES,
+                            chans
+                        );
+                        atom_telem!(
                             "cernan.sinks.wavefront.aggregation.histogram",
                             sink::wavefront::WAVEFRONT_AGGR_HISTO,
                             chans
@@ -288,8 +315,13 @@ impl source::Source<InternalConfig> for Internal {
                             chans
                         );
                         atom_telem!(
-                            "cernan.sinks.wavefront.delivery_attempts",
-                            sink::wavefront::WAVEFRONT_DELIVERY_ATTEMPTS,
+                            "cernan.sinks.wavefront.delivery.success",
+                            sink::wavefront::WAVEFRONT_DELIVERY_SUCCESS,
+                            chans
+                        );
+                        atom_telem!(
+                            "cernan.sinks.wavefront.delivery.failure",
+                            sink::wavefront::WAVEFRONT_DELIVERY_FAILURE,
                             chans
                         );
                         atom_telem!(
