@@ -228,13 +228,13 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
                                 ELASTIC_RECORDS_TOTAL_FAILED
                                     .fetch_add(1, Ordering::Relaxed);
                                 if let Some(cause) = item.cause() {
-                                    error!(
+                                    debug!(
                                         "Failed to write item with error {}, cause {}",
                                         item.description(),
                                         cause
                                     );
                                 } else {
-                                    error!(
+                                    debug!(
                                         "Failed to write item with error {}",
                                         item.description()
                                     );
@@ -268,7 +268,7 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
                             ApiError::IndexNotFound { ref index } => {
                                 ELASTIC_ERROR_API_INDEX_NOT_FOUND
                                     .fetch_add(1, Ordering::Relaxed);
-                                error!(
+                                debug!(
                                     "Unable to write, API Error (Index Not Found): {}",
                                     index
                                 );
@@ -276,7 +276,7 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
                             ApiError::Parsing { ref reason, .. } => {
                                 ELASTIC_ERROR_API_PARSING
                                     .fetch_add(1, Ordering::Relaxed);
-                                error!(
+                                debug!(
                                     "Unable to write, API Error (Parsing): {}",
                                     reason
                                 );
@@ -284,7 +284,7 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
                             ApiError::MapperParsing { ref reason, .. } => {
                                 ELASTIC_ERROR_API_MAPPER_PARSING
                                     .fetch_add(1, Ordering::Relaxed);
-                                error!(
+                                debug!(
                                     "Unable to write, API Error (Mapper Parsing): {}",
                                     reason
                                 );
@@ -294,7 +294,7 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
                             } => {
                                 ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION
                                     .fetch_add(1, Ordering::Relaxed);
-                                error!(
+                                debug!(
                                     "Unable to write, API Error (Action Request Validation): {}",
                                     reason
                                 );
@@ -302,7 +302,7 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
                             ApiError::DocumentMissing { ref index, .. } => {
                                 ELASTIC_ERROR_API_DOCUMENT_MISSING
                                     .fetch_add(1, Ordering::Relaxed);
-                                error!(
+                                debug!(
                                 "Unable to write, API Error (Document Missing): {}",
                                 index
                             );
@@ -310,7 +310,7 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
                             ApiError::IndexAlreadyExists { ref index, .. } => {
                                 ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS
                                     .fetch_add(1, Ordering::Relaxed);
-                                error!(
+                                debug!(
                                     "Unable to write, API Error (Index Already Exists): {}",
                                     index
                                 );
@@ -318,13 +318,13 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
                             _ => {
                                 ELASTIC_ERROR_API_UNKNOWN
                                     .fetch_add(1, Ordering::Relaxed);
-                                error!("Unable to write, API Error (Unknown)");
+                                debug!("Unable to write, API Error (Unknown)");
                             }
                         }
                     }
                     error::Error::Client(ref client_error) => {
                         ELASTIC_ERROR_CLIENT.fetch_add(1, Ordering::Relaxed);
-                        error!(
+                        debug!(
                             "Unable to write, client error: {}",
                             client_error.description()
                         );
