@@ -49,14 +49,6 @@ impl Default for ConsoleConfig {
 impl ConsoleConfig {
     /// Convenience method to create a ConsoleConfig with `bin_width` equal to
     /// 1.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cernan::sink::ConsoleConfig;
-    /// let config = ConsoleConfig::new("sinks.console".to_string(), 60);
-    /// assert_eq!(1, config.bin_width);
-    /// ```
     pub fn new(
         config_path: String,
         flush_interval: u64,
