@@ -284,6 +284,7 @@ impl Kafka {
                                 | RDKafkaError::NetworkException
                                 | RDKafkaError::GroupLoadInProgress
                                 | RDKafkaError::GroupCoordinatorNotAvailable
+                                | RDKafkaError::MessageTimedOut
                                 | RDKafkaError::NotCoordinatorForGroup
                                 | RDKafkaError::NotEnoughReplicas
                                 | RDKafkaError::NotEnoughReplicasAfterAppend
@@ -515,6 +516,7 @@ mod tests {
             RDKafkaError::NetworkException,
             RDKafkaError::GroupLoadInProgress,
             RDKafkaError::GroupCoordinatorNotAvailable,
+            RDKafkaError::MessageTimedOut,
             RDKafkaError::NotCoordinatorForGroup,
             RDKafkaError::NotEnoughReplicas,
             RDKafkaError::NotEnoughReplicasAfterAppend,
