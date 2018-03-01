@@ -1,4 +1,4 @@
-use metric::{cmp_tagmap, TagMap};
+use metric::{cmp_tagmap, TagIter, TagMap};
 use quantiles::ckms::CKMS;
 use quantiles::histogram::{Histogram, Iter};
 #[cfg(test)]
@@ -505,51 +505,6 @@ pub enum Error {
     SummarizeErrorTooLarge,
 }
 
-#[allow(missing_docs)]
-pub enum TagIter<'a> {
-    Single {
-        defaults: hash_map::Iter<'a, String, String>,
-    },
-    Double {
-        seen_keys: HashSet<String>,
-        iters: hash_map::Iter<'a, String, String>,
-        defaults: hash_map::Iter<'a, String, String>,
-        iters_exhausted: bool,
-    },
-}
-
-impl<'a> Iterator for TagIter<'a> {
-    type Item = (&'a String, &'a String);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match *self {
-            TagIter::Single { ref mut defaults } => defaults.next(),
-            TagIter::Double {
-                ref mut seen_keys,
-                ref mut iters,
-                ref mut defaults,
-                ref mut iters_exhausted,
-            } => loop {
-                if *iters_exhausted {
-                    if let Some((k, v)) = defaults.next() {
-                        if seen_keys.insert(k.to_string()) {
-                            return Some((k, v));
-                        }
-                    } else {
-                        return None;
-                    }
-                } else if let Some((k, v)) = iters.next() {
-                    seen_keys.insert(k.to_string());
-                    return Some((k, v));
-                } else {
-                    *iters_exhausted = true;
-                    continue;
-                }
-            },
-        }
-    }
-}
-
 impl Telemetry {
     /// Make a builder for metrics
     ///
@@ -620,7 +575,11 @@ impl Telemetry {
         }
     }
 
-    /// TODO
+    /// Iterate tags, layering in defaults when needed
+    ///
+    /// The defaults serves to fill 'holes' in the Telemetry's view of the
+    /// tags. We avoid shipping tags through the whole system at the expense of
+    /// slightly more complicated call-sites in sinks.
     pub fn tags<'a>(&'a self, defaults: &'a TagMap) -> TagIter<'a> {
         if let Some(ref tags) = self.tags {
             TagIter::Double {
@@ -636,7 +595,7 @@ impl Telemetry {
         }
     }
 
-    /// TODO
+    /// Get a value from tags, either interior or default
     pub fn get_from_tags<'a>(
         &'a mut self,
         key: &'a str,
@@ -652,7 +611,10 @@ impl Telemetry {
         }
     }
 
-    /// TODO
+    /// Insert a tag into the Telemetry
+    ///
+    /// This inserts a key/value pair into the Telemetry, returning the previous
+    /// value if the key already existed.
     pub fn insert_tag<S>(&mut self, key: S, val: S) -> Option<String>
     where
         S: Into<String>,
@@ -667,7 +629,10 @@ impl Telemetry {
         }
     }
 
-    /// TODO
+    /// Remove a tag from the Telemetry
+    ///
+    /// This removes a key/value pair from the Telemetry, returning the previous
+    /// value if the key existed.
     pub fn remove_tag(&mut self, key: &str) -> Option<String> {
         if let Some(ref mut tags) = self.tags {
             tags.remove(key)
@@ -699,7 +664,7 @@ impl Telemetry {
             for (k, v) in map.iter() {
                 tags.insert(k.clone(), v.clone());
             }
-        } else {
+        } else if !map.is_empty() {
             self.tags = Some(map.clone());
         }
         self

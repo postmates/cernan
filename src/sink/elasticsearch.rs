@@ -7,7 +7,7 @@ use elastic::client::responses::bulk;
 use elastic::error;
 use elastic::error::Result;
 use elastic::prelude::*;
-use metric::LogLine;
+use metric::{LogLine, TagMap};
 use sink::{Sink, Valve};
 use std::cmp;
 use std::error::Error;
@@ -80,6 +80,10 @@ pub struct ElasticsearchConfig {
     pub port: usize,
     /// The sink's specific flush interval.
     pub flush_interval: u64,
+    /// The tags to be applied to all `metric::Event`s streaming through this
+    /// sink. These tags will overwrite any tags carried by the `metric::Event`
+    /// itself.
+    pub tags: TagMap,
 }
 
 impl Default for ElasticsearchConfig {
@@ -93,6 +97,7 @@ impl Default for ElasticsearchConfig {
             delivery_attempt_limit: 10,
             port: 9200,
             flush_interval: 1,
+            tags: TagMap::default(),
         }
     }
 }
@@ -115,6 +120,7 @@ pub struct Elasticsearch {
     index_prefix: Option<String>,
     index_type: String,
     flush_interval: u64,
+    tags: TagMap,
 }
 
 impl Elasticsearch {
@@ -140,7 +146,7 @@ impl Elasticsearch {
                 "timestamp": format_time(line.time),
             });
             let obj = payload.as_object_mut().unwrap();
-            for (k, v) in &line.tags {
+            for (k, v) in line.tags(&self.tags) {
                 obj.insert(k.clone(), Value::String(v.clone()));
             }
             for (k, v) in &line.fields {
@@ -163,6 +169,7 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
             index_type: config.index_type,
             delivery_attempt_limit: config.delivery_attempt_limit,
             flush_interval: config.flush_interval,
+            tags: config.tags,
         }
     }
 

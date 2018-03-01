@@ -151,16 +151,16 @@ impl Sink<NativeConfig> for Native {
                 }
                 metric::Event::Log(mut l) => {
                     let mut ll = LogLine::new();
-                    ll.set_path(l.path);
-                    ll.set_value(l.value);
                     let mut meta = HashMap::new();
                     // TODO
                     //
                     // Learn how to consume bits of the metric without having to
                     // clone like crazy
-                    for (k, v) in &l.tags {
+                    for (k, v) in l.tags(&self.tags) {
                         meta.insert(k.clone(), v.clone());
                     }
+                    ll.set_path(l.path);
+                    ll.set_value(l.value);
                     ll.set_metadata(meta);
                     ll.set_timestamp_ms(l.time * 1000); // FIXME #166
 

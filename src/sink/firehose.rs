@@ -4,6 +4,7 @@ use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
 use metric::LogLine;
+use metric::TagMap;
 use rusoto_core::{DefaultCredentialsProvider, Region};
 use rusoto_core::default_tls_client;
 use rusoto_firehose::{KinesisFirehose, KinesisFirehoseClient, PutRecordBatchInput,
@@ -32,6 +33,10 @@ pub struct FirehoseConfig {
     pub config_path: Option<String>,
     /// The sink specific `flush_interval`.
     pub flush_interval: u64,
+    /// The tags to be applied to all `metric::Event`s streaming through this
+    /// sink. These tags will overwrite any tags carried by the `metric::Event`
+    /// itself.
+    pub tags: TagMap,
 }
 
 impl Default for FirehoseConfig {
@@ -42,6 +47,7 @@ impl Default for FirehoseConfig {
             region: None,
             config_path: None,
             flush_interval: 60,
+            tags: TagMap::default(),
         }
     }
 }
@@ -57,6 +63,7 @@ pub struct Firehose {
     region: Region,
     batch_size: usize,
     flush_interval: u64,
+    tags: TagMap,
 }
 
 impl Sink<FirehoseConfig> for Firehose {
@@ -69,6 +76,7 @@ impl Sink<FirehoseConfig> for Firehose {
             region: config.region.expect("region cannot be None"),
             batch_size: config.batch_size,
             flush_interval: config.flush_interval,
+            tags: config.tags,
         }
     }
 
@@ -110,7 +118,7 @@ impl Sink<FirehoseConfig> for Firehose {
                             String::from("Uuid"),
                             Value::String(Uuid::new_v4().hyphenated().to_string()),
                         );
-                        for (k, v) in &m.tags {
+                        for (k, v) in m.tags(&self.tags) {
                             pyld.insert(k.clone(), Value::String(v.clone()));
                         }
                         for (k, v) in &m.fields {

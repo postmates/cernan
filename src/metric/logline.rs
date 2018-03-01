@@ -1,4 +1,5 @@
-use metric::TagMap;
+use metric::{TagIter, TagMap};
+use std::collections::HashSet;
 use time;
 
 /// An unstructured piece of text, plus associated metadata
@@ -14,7 +15,7 @@ pub struct LogLine {
     /// Fields that may have been parsed out of the value, a key/value structure
     pub fields: TagMap,
     /// Cernan tags for this LogLine
-    pub tags: TagMap,
+    pub tags: Option<TagMap>,
 }
 
 /// `LogLine` - a structure that represents a bit of text
@@ -71,6 +72,36 @@ impl LogLine {
         self
     }
 
+    /// Insert a tag into the LogLine
+    ///
+    /// This inserts a key/value pair into the LogLine, returning the previous
+    /// value if the key already existed.
+    pub fn insert_tag<S>(&mut self, key: S, val: S) -> Option<String>
+    where
+        S: Into<String>,
+    {
+        if let Some(ref mut tags) = self.tags {
+            tags.insert(key.into(), val.into())
+        } else {
+            let mut tags = TagMap::default();
+            let res = tags.insert(key.into(), val.into());
+            self.tags = Some(tags);
+            res
+        }
+    }
+
+    /// Remove a tag from the Telemetry
+    ///
+    /// This removes a key/value pair from the Telemetry, returning the previous
+    /// value if the key existed.
+    pub fn remove_tag(&mut self, key: &str) -> Option<String> {
+        if let Some(ref mut tags) = self.tags {
+            tags.remove(key)
+        } else {
+            None
+        }
+    }
+
     /// Overlay a tag into the LogLine
     ///
     /// This function inserts a new key and value into the LogLine's tags. If
@@ -79,7 +110,7 @@ impl LogLine {
     where
         S: Into<String>,
     {
-        self.tags.insert(key.into(), val.into());
+        let _ = self.insert_tag(key, val);
         self
     }
 
@@ -88,9 +119,49 @@ impl LogLine {
     /// This function overlays a TagMap onto the LogLine's existing tags. If a
     /// key is present in both TagMaps the one from 'map' will be preferred.
     pub fn overlay_tags_from_map(mut self, map: &TagMap) -> LogLine {
-        for (k, v) in map.iter() {
-            self.tags.insert(k.clone(), v.clone());
+        if let Some(ref mut tags) = self.tags {
+            for (k, v) in map.iter() {
+                tags.insert(k.clone(), v.clone());
+            }
+        } else if !map.is_empty() {
+            self.tags = Some(map.clone());
         }
         self
+    }
+
+    /// Get a value from tags, either interior or default
+    pub fn get_from_tags<'a>(
+        &'a mut self,
+        key: &'a str,
+        defaults: &'a TagMap,
+    ) -> Option<&'a String> {
+        if let Some(ref mut tags) = self.tags {
+            match tags.get(key) {
+                Some(v) => Some(v),
+                None => defaults.get(key),
+            }
+        } else {
+            defaults.get(key)
+        }
+    }
+
+    /// Iterate tags, layering in defaults when needed
+    ///
+    /// The defaults serves to fill 'holes' in the Telemetry's view of the
+    /// tags. We avoid shipping tags through the whole system at the expense of
+    /// slightly more complicated call-sites in sinks.
+    pub fn tags<'a>(&'a self, defaults: &'a TagMap) -> TagIter<'a> {
+        if let Some(ref tags) = self.tags {
+            TagIter::Double {
+                iters_exhausted: false,
+                seen_keys: HashSet::new(),
+                defaults: defaults.iter(),
+                iters: tags.iter(),
+            }
+        } else {
+            TagIter::Single {
+                defaults: defaults.iter(),
+            }
+        }
     }
 }

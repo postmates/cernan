@@ -37,6 +37,7 @@ lazy_static! {
 /// metadata. Otherwise, the original line will be included simply as a string.
 pub struct JSONEncodeFilter {
     parse_line: bool,
+    tags: metric::TagMap,
 }
 
 /// Configuration for `JSONEncodeFilter`
@@ -49,13 +50,18 @@ pub struct JSONEncodeFilterConfig {
     /// Whether the filter should attempt to parse `LogLine` values that are
     /// valid JSON objects.
     pub parse_line: bool,
+    /// The tags to be applied to all `metric::Event`s streaming through this
+    /// filter. These tags will overwrite any tags carried by the
+    /// `metric::Event` itself.
+    pub tags: metric::TagMap,
 }
 
 impl JSONEncodeFilter {
     /// Create a new JSONEncodeFilter
-    pub fn new(config: &JSONEncodeFilterConfig) -> JSONEncodeFilter {
+    pub fn new(config: JSONEncodeFilterConfig) -> JSONEncodeFilter {
         JSONEncodeFilter {
             parse_line: config.parse_line,
+            tags: config.tags,
         }
     }
 }
@@ -73,7 +79,7 @@ impl filter::Filter for JSONEncodeFilter {
                 let metadata = json_to_object(json!({
                     "time": utc_time.to_rfc3339(),
                     "path": log.path.clone(),
-                    "tags": Map::from_iter(log.tags.clone().into_iter().map(|(k,v)| (k,v.into()))),
+                    "tags": Map::from_iter(log.tags(&self.tags).map(|(k, v): (&String, &String)| (k.to_string(), v.to_string().into()))),
                 }));
                 // If parse_line is true, and line is parsable as a JSON object, parse
                 // it. Otherwise get an object containing the original
@@ -160,6 +166,7 @@ mod test {
     fn process_event(parse_line: bool, event: metric::Event) -> Value {
         let mut filter = JSONEncodeFilter {
             parse_line: parse_line,
+            tags: metric::TagMap::default(),
         };
         let mut results = Vec::new();
         filter.process(event, &mut results).unwrap();

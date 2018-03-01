@@ -12,7 +12,7 @@ extern crate log;
 extern crate openssl_probe;
 
 use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
-                     ProgrammableFilterConfig, JSONEncodeFilterConfig};
+                     JSONEncodeFilterConfig, ProgrammableFilterConfig};
 use cernan::matrix;
 use cernan::metric;
 use cernan::sink::Sink;
@@ -642,7 +642,7 @@ fn main() {
             filters.insert(
                 config.config_path.clone().unwrap(),
                 cernan::thread::spawn(move |_poll| {
-                    cernan::filter::JSONEncodeFilter::new(&c).run(
+                    cernan::filter::JSONEncodeFilter::new(c).run(
                         recv,
                         sources,
                         downstream_sends,
