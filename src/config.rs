@@ -471,6 +471,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 })
                 .unwrap_or(args.flush_interval);
 
+            res.tags = global_tags.clone();
+
             res
         });
 
@@ -703,6 +705,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                 })
                 .unwrap_or(args.flush_interval);
 
+            res.tags = global_tags.clone();
+
             res
         });
 
@@ -790,6 +794,8 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                         Some("us-west-2") => Some(Region::UsWest2),
                         Some(_) | None => res.region,
                     };
+
+                    res.tags = global_tags.clone();
 
                     firehosen.push(res);
                 }

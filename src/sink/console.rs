@@ -4,7 +4,7 @@ use buckets::Buckets;
 use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
-use metric::{AggregationMethod, LogLine, Telemetry};
+use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
 
 /// The 'console' sink exists for development convenience. The sink will
@@ -14,6 +14,7 @@ pub struct Console {
     aggrs: Buckets,
     buffer: Vec<LogLine>,
     flush_interval: u64,
+    tags: TagMap,
 }
 
 /// The configuration struct for Console. There's not a whole lot to configure
@@ -26,6 +27,10 @@ pub struct ConsoleConfig {
     /// Sets the bin width for Console's underlying
     /// [bucket](../buckets/struct.Bucket.html).
     pub bin_width: i64,
+    /// The tags to be applied to all `metric::Event`s streaming through this
+    /// sink. These tags will overwrite any tags carried by the `metric::Event`
+    /// itself.
+    pub tags: TagMap,
     /// The sink specific `flush_interval`.
     pub flush_interval: u64,
 }
@@ -36,6 +41,7 @@ impl Default for ConsoleConfig {
             bin_width: 1,
             flush_interval: 60,
             config_path: None,
+            tags: TagMap::default(),
         }
     }
 }
@@ -51,11 +57,16 @@ impl ConsoleConfig {
     /// let config = ConsoleConfig::new("sinks.console".to_string(), 60);
     /// assert_eq!(1, config.bin_width);
     /// ```
-    pub fn new(config_path: String, flush_interval: u64) -> ConsoleConfig {
+    pub fn new(
+        config_path: String,
+        flush_interval: u64,
+        tags: TagMap,
+    ) -> ConsoleConfig {
         ConsoleConfig {
             config_path: Some(config_path),
             bin_width: 1,
             flush_interval: flush_interval,
+            tags: tags,
         }
     }
 }
@@ -66,6 +77,7 @@ impl Sink<ConsoleConfig> for Console {
             aggrs: Buckets::new(config.bin_width),
             buffer: Vec::new(),
             flush_interval: config.flush_interval,
+            tags: config.tags,
         }
     }
 
@@ -88,7 +100,11 @@ impl Sink<ConsoleConfig> for Console {
     fn flush(&mut self) {
         println!("Flushing lines: {}", Utc::now().to_rfc3339());
         for line in &self.buffer {
-            println!("{} {}: {}", format_time(line.time), line.path, line.value);
+            print!("{} {}: {}", format_time(line.time), line.path, line.value);
+            for (k, v) in line.tags(&self.tags) {
+                print!(" {}={}", k, v);
+            }
+            println!("");
         }
         self.buffer.clear();
 
