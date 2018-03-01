@@ -170,14 +170,16 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => match (*pyld).logs[idx].tags.get(&key) {
-                Some(v) => {
-                    state.push_string(v);
+            Some(key) => {
+                match (*pyld).logs[idx].get_from_tags(&key, (*pyld).global_tags) {
+                    Some(v) => {
+                        state.push_string(v);
+                    }
+                    None => {
+                        state.push_nil();
+                    }
                 }
-                None => {
-                    state.push_nil();
-                }
-            },
+            }
             None => {
                 error!("[log_tag_value] no key provided");
                 state.push_nil();
@@ -267,7 +269,7 @@ impl<'a> Payload<'a> {
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => match state.to_str(4).map(|v| v.to_owned()) {
-                Some(val) => match (*pyld).logs[idx].tags.insert(key, val) {
+                Some(val) => match (*pyld).logs[idx].insert_tag(key, val) {
                     Some(old_v) => {
                         state.push_string(&old_v);
                     }
@@ -324,7 +326,7 @@ impl<'a> Payload<'a> {
         match state.to_str(3).map(|k| k.to_owned()) {
             Some(key) => {
                 (*pyld).logs[idx].value = key;
-            },
+            }
             None => {
                 error!("[log_set_value] no val provided");
             }
@@ -361,7 +363,7 @@ impl<'a> Payload<'a> {
         let pyld = state.to_userdata(1) as *mut Payload;
         let idx = idx(state.to_integer(2), (*pyld).logs.len());
         match state.to_str(3).map(|k| k.to_owned()) {
-            Some(key) => match (*pyld).logs[idx].tags.remove(&key) {
+            Some(key) => match (*pyld).logs[idx].remove_tag(&key) {
                 Some(old_v) => {
                     state.push_string(&old_v);
                 }

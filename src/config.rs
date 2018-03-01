@@ -372,6 +372,7 @@ pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
                     parse_line: parse_line,
                     forwards: fwds,
                     config_path: Some(config_path.clone()),
+                    tags: global_tags.clone(),
                 };
                 filters.insert(config_path, config);
             }

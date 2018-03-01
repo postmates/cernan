@@ -7,10 +7,11 @@ mod telemetry;
 
 pub use self::event::{Encoding, Event};
 pub use self::logline::LogLine;
-pub use self::telemetry::{AggregationMethod, TagIter, Telemetry};
+pub use self::telemetry::{AggregationMethod, Telemetry};
 #[cfg(test)]
 pub use self::telemetry::Value;
 use std::cmp;
+use std::collections::{hash_map, HashSet};
 use util;
 
 /// A common type in cernan, a map from string to string
@@ -33,5 +34,50 @@ pub fn cmp_tagmap(
             }
         }
         _ => Some(cmp::Ordering::Equal),
+    }
+}
+
+#[allow(missing_docs)]
+pub enum TagIter<'a> {
+    Single {
+        defaults: hash_map::Iter<'a, String, String>,
+    },
+    Double {
+        seen_keys: HashSet<String>,
+        iters: hash_map::Iter<'a, String, String>,
+        defaults: hash_map::Iter<'a, String, String>,
+        iters_exhausted: bool,
+    },
+}
+
+impl<'a> Iterator for TagIter<'a> {
+    type Item = (&'a String, &'a String);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match *self {
+            TagIter::Single { ref mut defaults } => defaults.next(),
+            TagIter::Double {
+                ref mut seen_keys,
+                ref mut iters,
+                ref mut defaults,
+                ref mut iters_exhausted,
+            } => loop {
+                if *iters_exhausted {
+                    if let Some((k, v)) = defaults.next() {
+                        if seen_keys.insert(k.to_string()) {
+                            return Some((k, v));
+                        }
+                    } else {
+                        return None;
+                    }
+                } else if let Some((k, v)) = iters.next() {
+                    seen_keys.insert(k.to_string());
+                    return Some((k, v));
+                } else {
+                    *iters_exhausted = true;
+                    continue;
+                }
+            },
+        }
     }
 }
