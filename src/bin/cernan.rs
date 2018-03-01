@@ -313,6 +313,25 @@ fn main() {
             );
         }
     }
+    if let Some(ref configs) = args.json_encode_filters {
+        for (config_path, config) in configs {
+            let (send, recv) = hopper::channel_with_explicit_capacity(
+                config_path,
+                &args.data_directory,
+                args.max_hopper_in_memory_bytes,
+                args.max_hopper_queue_bytes,
+                args.max_hopper_queue_files,
+            ).unwrap();
+            senders.insert(config_path.clone(), send);
+            receivers.insert(config_path.clone(), recv);
+            config_topology.insert(config_path.clone(), config.forwards.clone());
+            adjacency_matrix.add_edges(
+                &config_path.clone(),
+                config.forwards.clone(),
+                None,
+            );
+        }
+    }
     if let Some(ref configs) = args.flush_boundary_filters {
         for (config_path, config) in configs {
             let (send, recv) = hopper::channel_with_explicit_capacity(
