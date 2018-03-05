@@ -7,21 +7,18 @@ use quantiles::histogram::Bound;
 use sink::{Sink, Valve};
 use std::cmp;
 use std::string;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use time;
 use url::Url;
 
-lazy_static! {
-    /// total delivery attempts made by this sink
-    pub static ref INFLUX_DELIVERY_ATTEMPTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// total successful delivery attempts made by this sink
-    pub static ref INFLUX_SUCCESS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// total failed delivery attempts because of client error
-    pub static ref INFLUX_FAILURE_CLIENT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// total failed delivery attempts because of server error
-    pub static ref INFLUX_FAILURE_SERVER: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
+/// total delivery attempts made by this sink
+pub static INFLUX_DELIVERY_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
+/// total successful delivery attempts made by this sink
+pub static INFLUX_SUCCESS: AtomicUsize = AtomicUsize::new(0);
+/// total failed delivery attempts because of client error
+pub static INFLUX_FAILURE_CLIENT: AtomicUsize = AtomicUsize::new(0);
+/// total failed delivery attempts because of server error
+pub static INFLUX_FAILURE_SERVER: AtomicUsize = AtomicUsize::new(0);
 
 /// The `InfluxDB` structure
 ///

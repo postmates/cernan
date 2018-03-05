@@ -21,7 +21,6 @@ use std::io;
 use std::io::Write;
 use std::str;
 use std::sync;
-use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
@@ -29,20 +28,18 @@ use thread::Stoppable;
 use time;
 use util;
 
-lazy_static! {
-    /// Total reportable metrics
-    pub static ref PROMETHEUS_AGGR_REPORTABLE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total remaining metrics in aggr
-    pub static ref PROMETHEUS_AGGR_REMAINING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total report successes
-    pub static ref PROMETHEUS_REPORT_SUCCESS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total report errors
-    pub static ref PROMETHEUS_REPORT_ERROR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Sum of delays in reporting (microseconds)
-    pub static ref PROMETHEUS_RESPONSE_DELAY_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total stale perpetual elements purged
-    pub static ref PROMETHEUS_AGGR_WINDOWED_PURGED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
+/// Total reportable metrics
+pub static PROMETHEUS_AGGR_REPORTABLE: AtomicUsize = AtomicUsize::new(0);
+/// Total remaining metrics in aggr
+pub static PROMETHEUS_AGGR_REMAINING: AtomicUsize = AtomicUsize::new(0);
+/// Total report successes
+pub static PROMETHEUS_REPORT_SUCCESS: AtomicUsize = AtomicUsize::new(0);
+/// Total report errors
+pub static PROMETHEUS_REPORT_ERROR: AtomicUsize = AtomicUsize::new(0);
+/// Sum of delays in reporting (microseconds)
+pub static PROMETHEUS_RESPONSE_DELAY_SUM: AtomicUsize = AtomicUsize::new(0);
+/// Total stale perpetual elements purged
+pub static PROMETHEUS_AGGR_WINDOWED_PURGED: AtomicUsize = AtomicUsize::new(0);
 
 /// The prometheus sink
 ///

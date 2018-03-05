@@ -9,20 +9,18 @@ use rdkafka::producer::FutureProducer;
 use rdkafka::producer::future_producer::DeliveryFuture;
 use sink::Sink;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util::Valve;
 
-lazy_static! {
-    /// Total records published.
-    pub static ref KAFKA_PUBLISH_SUCCESS_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total record publish retries.
-    pub static ref KAFKA_PUBLISH_RETRY_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total record publish failures.
-    pub static ref KAFKA_PUBLISH_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total record publish retry failures. This occurs when the error signal does not include the original message.
-    pub static ref KAFKA_PUBLISH_RETRY_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
+/// Total records published.
+pub static KAFKA_PUBLISH_SUCCESS_SUM: AtomicUsize = AtomicUsize::new(0);
+/// Total record publish retries.
+pub static KAFKA_PUBLISH_RETRY_SUM: AtomicUsize = AtomicUsize::new(0);
+/// Total record publish failures.
+pub static KAFKA_PUBLISH_FAILURE_SUM: AtomicUsize = AtomicUsize::new(0);
+/// Total record publish retry failures. This occurs when the error signal does
+/// not include the original message.
+pub static KAFKA_PUBLISH_RETRY_FAILURE_SUM: AtomicUsize = AtomicUsize::new(0);
 
 /// Config options for Kafka config.
 #[derive(Clone, Debug, Deserialize)]

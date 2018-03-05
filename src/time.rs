@@ -6,11 +6,10 @@
 
 use chrono::offset::Utc;
 use std::{thread, time};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 lazy_static! {
-    static ref NOW: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(Utc::now().timestamp() as usize));
+    static ref NOW: AtomicUsize = AtomicUsize::new(Utc::now().timestamp() as usize);
 }
 
 /// Return the current time in epoch seconds

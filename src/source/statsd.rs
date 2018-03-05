@@ -8,15 +8,12 @@ use std::io::ErrorKind;
 use std::net::ToSocketAddrs;
 use std::str;
 use std::sync;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
 use util::send;
 
-lazy_static! {
-    pub static ref STATSD_GOOD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    pub static ref STATSD_BAD_PACKET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
+pub static STATSD_GOOD_PACKET: AtomicUsize = AtomicUsize::new(0);
+pub static STATSD_BAD_PACKET: AtomicUsize = AtomicUsize::new(0);
 
 /// The statsd source
 ///

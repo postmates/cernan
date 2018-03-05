@@ -6,16 +6,13 @@ use protocols::native::{AggregationMethod, Payload};
 use source::{BufferedPayload, PayloadErr, TCPConfig, TCPStreamHandler, TCP};
 use std::net;
 use std::str;
-use std::sync;
-use std::sync::atomic;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
 
-lazy_static! {
-    /// Total payloads processed.
-    pub static ref NATIVE_PAYLOAD_SUCCESS_SUM: sync::Arc<atomic::AtomicUsize> = sync::Arc::new(atomic::AtomicUsize::new(0));
-    /// Total fatal parse failures.
-    pub static ref NATIVE_PAYLOAD_PARSE_FAILURE_SUM: sync::Arc<atomic::AtomicUsize> = sync::Arc::new(atomic::AtomicUsize::new(0));
-}
+/// Total payloads processed.
+pub static NATIVE_PAYLOAD_SUCCESS_SUM: AtomicUsize = AtomicUsize::new(0);
+/// Total fatal parse failures.
+pub static NATIVE_PAYLOAD_PARSE_FAILURE_SUM: AtomicUsize = AtomicUsize::new(0);
 
 /// The native source
 ///
@@ -94,17 +91,12 @@ impl TCPStreamHandler for NativeStreamHandler {
                                                 );
                                             if handle_res.is_err() {
                                                 NATIVE_PAYLOAD_PARSE_FAILURE_SUM
-                                                    .fetch_add(
-                                                        1,
-                                                        atomic::Ordering::Relaxed,
-                                                    );
+                                                    .fetch_add(1, Ordering::Relaxed);
                                                 streaming = false;
                                                 break;
                                             }
-                                            NATIVE_PAYLOAD_SUCCESS_SUM.fetch_add(
-                                                1,
-                                                atomic::Ordering::Relaxed,
-                                            );
+                                            NATIVE_PAYLOAD_SUCCESS_SUM
+                                                .fetch_add(1, Ordering::Relaxed);
                                         }
                                         Err(PayloadErr::WouldBlock) => {
                                             // Not enough data yet.  Try again.
