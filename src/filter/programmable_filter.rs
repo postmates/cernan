@@ -539,42 +539,9 @@ impl filter::Filter for ProgrammableFilter {
     ) -> Result<(), filter::FilterError> {
         match event {
             metric::Event::Telemetry(m) => {
-                self.state.get_global("process_metric");
-                if !self.state.is_fn(-1) {
-                    let filter_telem = metric::Telemetry::new()
-                        .name(format!(
-                            "cernan.filter.{}.\
-                             process_metric.failure",
-                            self.path
-                        ))
-                        .value(1.0)
-                        .kind(metric::AggregationMethod::Sum)
-                        .harden()
-                        .unwrap();
-                    let fail = metric::Event::Telemetry(filter_telem);
-                    return Err(filter::FilterError::NoSuchFunction(
-                        "process_metric",
-                        fail,
-                    ));
-                }
-
                 let mut pyld =
                     Payload::from_metric(m, &self.global_tags, self.path.as_str());
-                unsafe {
-                    self.state.push_light_userdata::<Payload>(&mut pyld);
-                }
-                self.state.get_metatable_from_registry("payload");
-                self.state.set_metatable(-2);
-
-                self.state.call(1, 0);
-
-                for lg in pyld.logs {
-                    res.push(metric::Event::new_log(*lg));
-                }
-                for mt in pyld.metrics {
-                    res.push(metric::Event::new_telemetry(*mt));
-                }
-                Ok(())
+                run_lua_func(&mut self.state, "process_metric", res, pyld)
             }
             metric::Event::TimerFlush(flush_idx)
                 if self.last_flush_idx >= flush_idx =>
@@ -582,81 +549,17 @@ impl filter::Filter for ProgrammableFilter {
                 Ok(())
             }
             metric::Event::TimerFlush(flush_idx) => {
-                self.state.get_global("tick");
-                if !self.state.is_fn(-1) {
-                    let fail = metric::Event::new_telemetry(
-                        metric::Telemetry::new()
-                            .name(format!(
-                                "cernan.filter.\
-                                 {}.tick.failure",
-                                self.path
-                            ))
-                            .value(1.0)
-                            .kind(metric::AggregationMethod::Sum)
-                            .harden()
-                            .unwrap(),
-                    );
-                    return Err(filter::FilterError::NoSuchFunction("tick", fail));
-                }
-
                 let mut pyld = Payload::blank(&self.global_tags, self.path.as_str());
-                unsafe {
-                    self.state.push_light_userdata::<Payload>(&mut pyld);
+                let result = run_lua_func(&mut self.state, "tick", res, pyld);
+                if result.is_ok() {
+                    self.last_flush_idx = flush_idx;
                 }
-                self.state.get_metatable_from_registry("payload");
-                self.state.set_metatable(-2);
-
-                self.state.call(1, 0);
-
-                for lg in pyld.logs {
-                    res.push(metric::Event::new_log(*lg));
-                }
-                for mt in pyld.metrics {
-                    res.push(metric::Event::new_telemetry(*mt));
-                }
-                res.push(event);
-                self.last_flush_idx = flush_idx;
-                Ok(())
+                result
             }
             metric::Event::Log(l) => {
-                self.state.get_global("process_log");
-                if !self.state.is_fn(-1) {
-                    let fail = metric::Event::new_telemetry(
-                        metric::Telemetry::new()
-                            .name(format!(
-                                "cernan.filter.\
-                                 {}.process_log.\
-                                 failure",
-                                self.path
-                            ))
-                            .value(1.0)
-                            .kind(metric::AggregationMethod::Sum)
-                            .harden()
-                            .unwrap(),
-                    );
-                    return Err(filter::FilterError::NoSuchFunction(
-                        "process_log",
-                        fail,
-                    ));
-                }
-
                 let mut pyld =
                     Payload::from_log(l, &self.global_tags, self.path.as_str());
-                unsafe {
-                    self.state.push_light_userdata::<Payload>(&mut pyld);
-                }
-                self.state.get_metatable_from_registry("payload");
-                self.state.set_metatable(-2);
-
-                self.state.call(1, 0);
-
-                for lg in pyld.logs {
-                    res.push(metric::Event::new_log(*lg));
-                }
-                for mt in pyld.metrics {
-                    res.push(metric::Event::new_telemetry(*mt));
-                }
-                Ok(())
+                run_lua_func(&mut self.state, "process_log", res, pyld)
             }
             raw @ metric::Event::Raw { .. } => {
                 res.push(raw);
@@ -669,3 +572,56 @@ impl filter::Filter for ProgrammableFilter {
         }
     }
 }
+
+fn run_lua_func(
+    state: &mut mond::State,
+    func_name: &'static str,
+    res: &mut Vec<metric::Event>,
+    mut pyld: Payload,
+) -> Result<(), filter::FilterError> {
+    let filter_telem = metric::Telemetry::new()
+        .name(format!(
+            "cernan.filter.{}.{}.failure",
+            pyld.path,
+            func_name
+        ))
+        .value(1.0)
+        .kind(metric::AggregationMethod::Sum)
+        .harden()
+        .unwrap();
+    let fail = metric::Event::Telemetry(filter_telem);
+
+    state.get_global(func_name);
+    if !state.is_fn(-1) {
+        return Err(filter::FilterError::NoSuchFunction(
+            func_name,
+            fail,
+        ));
+    }
+
+    unsafe {
+        state.push_light_userdata::<Payload>(&mut pyld);
+    }
+    state.get_metatable_from_registry("payload");
+    state.set_metatable(-2);
+
+    let status = state.pcall(1, 0, 0); // 1 arg, 0 return values, no error handler func
+    if let ThreadStatus::Ok = status {
+        for lg in pyld.logs {
+            res.push(metric::Event::new_log(*lg));
+        }
+        for mt in pyld.metrics {
+            res.push(metric::Event::new_telemetry(*mt));
+        }
+        Ok(())
+    } else {
+        let error =
+            if let Some(error) = state.to_str(-1) {
+                error
+            } else {
+                "While handling a lua error, lua error message was not a string"
+            };
+        Err(filter::FilterError::LuaError(error.to_owned(), fail))
+    }
+}
+
