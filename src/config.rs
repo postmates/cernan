@@ -80,9 +80,6 @@ pub struct Args {
     /// The global flush interval. This value is inherited by all sinks which do
     /// not specify their own.
     pub flush_interval: u64,
-    /// The verbosity setting of cernan. The higher the value the more chatty
-    /// cernan gets.
-    pub verbose: u64,
     /// Cernan version string. This is set automatically.
     pub version: String,
     /// The programmable filters to use in this cernan run. See
@@ -141,7 +138,6 @@ impl Default for Args {
             scripts_directory: default_scripts_directory(),
             flush_interval: 60,
             version: default_version(),
-            verbose: 0,
             // filters
             programmable_filters: None,
             delay_filters: None,
@@ -171,10 +167,9 @@ impl Default for Args {
 
 /// Parse the cernan configuration arguments
 ///
-/// This function will read the environment arguments and construct an
-/// `Args`. Most cernan configuration will be stored in an on-disk file. See
-/// `cernan --help` for more information.
-pub fn parse_args() -> Args {
+/// This function will read the environment arguments and return a minimal
+/// amount of information. This will be paired with a call to `parse_config`.
+pub fn parse_args() -> (u64, String) {
     let args = App::new("cernan")
         .version(VERSION.unwrap_or("unknown"))
         .author("Brian L. Troutwine <blt@postmates.com>")
@@ -201,19 +196,7 @@ pub fn parse_args() -> Args {
     } else {
         0
     };
-
-    if let Some(filename) = args.value_of("config-file") {
-        let mut fp = match File::open(filename) {
-            Err(e) => panic!("Could not open file {} with error {}", filename, e),
-            Ok(fp) => fp,
-        };
-
-        let mut buffer = String::new();
-        fp.read_to_string(&mut buffer).unwrap();
-        parse_config_file(&buffer, verb)
-    } else {
-        unreachable!();
-    }
+    (verb, args.value_of("config-file").unwrap().to_string())
 }
 
 /// Parse the cernan configuration file.
@@ -221,12 +204,21 @@ pub fn parse_args() -> Args {
 /// Please see the cernan wiki for details on the configuration file
 /// format. Examples are also available in this repository under
 /// `examples/configs`.
-pub fn parse_config_file(buffer: &str, verbosity: u64) -> Args {
+pub fn parse_config(filename: &str) -> Args {
+    let mut fp = match File::open(filename) {
+        Err(e) => panic!("Could not open file {} with error {}", filename, e),
+        Ok(fp) => fp,
+    };
+
+    let mut buffer = String::new();
+    fp.read_to_string(&mut buffer).unwrap();
+    parse_config_file(&buffer)
+}
+
+fn parse_config_file(buffer: &str) -> Args {
     let mut args = Args::default();
     let value: toml::Value =
         toml::from_str(buffer).expect("could not parse config file");
-
-    args.verbose = verbosity;
 
     args.max_hopper_queue_bytes = value
         .get("max-hopper-queue-bytes")
@@ -1253,7 +1245,7 @@ mod test {
         let config = r#"
 data-directory = "/foo/bar"
 "#;
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
         let dir = Path::new("/foo/bar").to_path_buf();
 
         assert_eq!(args.data_directory, dir);
@@ -1266,7 +1258,7 @@ max-hopper-queue-bytes = 10
 max-hopper-queue-files = 1024
 max-hopper-in-memory-bytes = 4048
 "#;
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
         assert_eq!(args.max_hopper_queue_bytes, 10);
         assert_eq!(args.max_hopper_queue_files, 1024);
         assert_eq!(args.max_hopper_in_memory_bytes, 4048);
@@ -1275,7 +1267,7 @@ max-hopper-in-memory-bytes = 4048
     #[test]
     fn config_file_data_directory_default() {
         let config = r#""#;
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
         let dir = Path::new("/tmp/cernan-data").to_path_buf();
 
         assert_eq!(args.data_directory, dir);
@@ -1286,7 +1278,7 @@ max-hopper-in-memory-bytes = 4048
         let config = r#"
 scripts-directory = "/foo/bar"
 "#;
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
         let dir = Path::new("/foo/bar").to_path_buf();
 
         assert_eq!(args.scripts_directory, dir);
@@ -1295,7 +1287,7 @@ scripts-directory = "/foo/bar"
     #[test]
     fn config_file_scripts_directory_default() {
         let config = r#""#;
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
         let dir = Path::new("/tmp/cernan-scripts").to_path_buf();
 
         assert_eq!(args.scripts_directory, dir);
@@ -1315,7 +1307,7 @@ scripts-directory = "/foo/bar"
   port = 1973
 "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.native_server_config.is_some());
         let nsc = args.native_server_config.unwrap();
@@ -1336,7 +1328,7 @@ scripts-directory = "/foo/bar"
   forwards = ["sinks.console", "sinks.null"]
 "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert_eq!(
             args.internal.config_path,
@@ -1361,7 +1353,7 @@ scripts-directory = "/foo/bar"
   delivery_attempt_limit = 33
 "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.elasticsearch.is_some());
         let es = args.elasticsearch.unwrap();
@@ -1391,7 +1383,7 @@ scripts-directory = "/foo/bar"
     "setting.six" = true
     "setting.seven" = false
 "#;
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.kafkas.is_some());
         let kafkas = args.kafkas.unwrap();
@@ -1424,7 +1416,7 @@ scripts-directory = "/foo/bar"
   brokers = "127.0.0.1:9092"
   max_message_bytes = 65
 "#;
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
         let kafkas = args.kafkas.unwrap();
         assert_eq!(kafkas.len(), 0);
     }
@@ -1438,7 +1430,7 @@ scripts-directory = "/foo/bar"
   topic = "foobar"
   max_message_bytes = 65
 "#;
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
         let kafkas = args.kafkas.unwrap();
         assert_eq!(kafkas.len(), 0);
     }
@@ -1452,7 +1444,7 @@ scripts-directory = "/foo/bar"
   brokers = "broker1,broker2"
   enabled = false
 "#;
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
         let kafkas = args.kafkas.unwrap();
         assert_eq!(kafkas.len(), 0);
     }
@@ -1465,7 +1457,7 @@ scripts-directory = "/foo/bar"
   topic = "foobar"
   brokers = "broker,broker"
 "#;
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
         let kafkas = args.kafkas.unwrap();
         assert_eq!(kafkas.len(), 1);
         let k = &kafkas[0];
@@ -1485,7 +1477,7 @@ scripts-directory = "/foo/bar"
   flush_interval = 100
 "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.kinesises.is_some());
         for ks in args.kinesises.unwrap() {
@@ -1505,7 +1497,7 @@ scripts-directory = "/foo/bar"
   flush_interval = 100
 "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
         assert!(args.kinesises.is_none());
     }
 
@@ -1519,7 +1511,7 @@ scripts-directory = "/foo/bar"
       flush_interval = 120
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.native_sink_config.is_some());
         let native_sink_config = args.native_sink_config.unwrap();
@@ -1539,7 +1531,7 @@ scripts-directory = "/foo/bar"
   forwards = ["sinks.console", "sinks.null"]
 "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.statsds.is_some());
         let statsds = args.statsds.unwrap();
@@ -1573,7 +1565,7 @@ scripts-directory = "/foo/bar"
   bounds = [0.0, 2.0, 20.0]
  "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.statsds.is_some());
         let statsds = args.statsds.unwrap();
@@ -1605,7 +1597,7 @@ scripts-directory = "/foo/bar"
   forwards = ["sinks.null"]
  "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.statsds.is_some());
         let statsds = args.statsds.unwrap();
@@ -1629,7 +1621,7 @@ scripts-directory = "/foo/bar"
   forwards = ["sinks.wavefront"]
 "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.statsds.is_some());
         let statsds = args.statsds.unwrap();
@@ -1657,7 +1649,7 @@ scripts-directory = "/foo/bar"
   forwards = ["filters.collectd_scrub"]
 "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.graphites.is_some());
         let graphites = args.graphites.unwrap();
@@ -1684,7 +1676,7 @@ scripts-directory = "/foo/bar"
   forwards = ["sinks.wavefront"]
 "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.graphites.is_some());
 
@@ -1712,7 +1704,7 @@ scripts-directory = "/foo/bar"
   forwards = ["filters.collectd_scrub"]
 "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.avros.is_some());
         let avros = args.avros.unwrap();
@@ -1739,7 +1731,7 @@ scripts-directory = "/foo/bar"
   forwards = ["sinks.kinesis"]
 "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.avros.is_some());
 
@@ -1765,7 +1757,7 @@ scripts-directory = "/foo/bar"
       forwards = ["sinks.console"]
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.flush_boundary_filters.is_some());
         let filters = args.flush_boundary_filters.unwrap();
@@ -1785,7 +1777,7 @@ scripts-directory = "/foo/bar"
       forwards = ["sinks.console"]
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.programmable_filters.is_some());
         let filters = args.programmable_filters.unwrap();
@@ -1810,7 +1802,7 @@ scripts-directory = "/foo/bar"
       forwards = ["sinks.console"]
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.programmable_filters.is_some());
         let filters = args.programmable_filters.unwrap();
@@ -1831,7 +1823,7 @@ scripts-directory = "/foo/bar"
       forwards = ["sinks.console"]
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.delay_filters.is_some());
         let filters = args.delay_filters.unwrap();
@@ -1851,7 +1843,7 @@ scripts-directory = "/foo/bar"
         forwards = ["sinks.console"]
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
         assert!(args.json_encode_filters.is_some());
         let filters = args.json_encode_filters.unwrap();
 
@@ -1873,7 +1865,7 @@ scripts-directory = "/foo/bar"
       age_threshold = 43
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.wavefront.is_some());
         let wavefront = args.wavefront.unwrap();
@@ -1899,7 +1891,7 @@ scripts-directory = "/foo/bar"
       median = 0.5
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.wavefront.is_some());
         let wavefront = args.wavefront.unwrap();
@@ -1930,7 +1922,7 @@ scripts-directory = "/foo/bar"
       histogram = true
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.wavefront.is_some());
         let wavefront = args.wavefront.unwrap();
@@ -1956,7 +1948,7 @@ scripts-directory = "/foo/bar"
       secure = true
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.influxdb.is_some());
         let influxdb = args.influxdb.unwrap();
@@ -1976,7 +1968,7 @@ scripts-directory = "/foo/bar"
       host = "example.com"
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.prometheus.is_some());
         let prometheus = args.prometheus.unwrap();
@@ -1995,7 +1987,7 @@ scripts-directory = "/foo/bar"
       capacity_in_seconds = 50
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.prometheus.is_some());
         let prometheus = args.prometheus.unwrap();
@@ -2012,7 +2004,7 @@ scripts-directory = "/foo/bar"
       bin_width = 9
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.console.is_some());
         let console = args.console.unwrap();
@@ -2027,7 +2019,7 @@ scripts-directory = "/foo/bar"
       [sinks.null]
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.null.is_some());
     }
@@ -2048,7 +2040,7 @@ scripts-directory = "/foo/bar"
       region = "us-east-1"
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.firehosen.is_some());
         let firehosen = args.firehosen.unwrap();
@@ -2081,7 +2073,7 @@ scripts-directory = "/foo/bar"
       region = "us-east-1"
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.firehosen.is_some());
         let firehosen = args.firehosen.unwrap();
@@ -2103,7 +2095,7 @@ scripts-directory = "/foo/bar"
       forwards = ["sink.blech"]
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.files.is_some());
         let files = args.files.unwrap();
@@ -2128,7 +2120,7 @@ scripts-directory = "/foo/bar"
       forwards = ["sink.bar.blech"]
     "#;
 
-        let args = parse_config_file(config, 4);
+        let args = parse_config_file(config);
 
         assert!(args.files.is_some());
         let files = args.files.unwrap();
