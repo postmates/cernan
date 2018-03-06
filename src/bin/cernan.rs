@@ -72,18 +72,15 @@ macro_rules! cfg_conf {
 fn main() {
     openssl_probe::init_ssl_cert_env_vars();
 
-    let mut args = cernan::config::parse_args();
+    let (verbose, config_path) = cernan::config::parse_args();
 
-    let level = match args.verbose {
+    let level = match verbose {
         0 => log::LevelFilter::Error,
         1 => log::LevelFilter::Warn,
         2 => log::LevelFilter::Info,
         3 => log::LevelFilter::Debug,
         _ => log::LevelFilter::Trace,
     };
-
-    let signal =
-        chan_signal::notify(&[chan_signal::Signal::INT, chan_signal::Signal::TERM]);
 
     fern::Dispatch::new()
         .format(|out, message, record| {
@@ -100,6 +97,11 @@ fn main() {
         .chain(std::io::stdout())
         .apply()
         .expect("could not set up logging");
+
+    let mut args = cernan::config::parse_config(&config_path);
+
+    let signal =
+        chan_signal::notify(&[chan_signal::Signal::INT, chan_signal::Signal::TERM]);
 
     info!("cernan - {}", args.version);
 
