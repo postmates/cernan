@@ -316,6 +316,39 @@ mod integration {
         }
 
         #[test]
+        fn test_lua_error() {
+            let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            script.push("resources/tests/scripts");
+            let script_dir = script.clone();
+            script.push("lua_error.lua");
+
+            let config = ProgrammableFilterConfig {
+                scripts_directory: Some(script_dir),
+                script: Some(script),
+                forwards: Vec::new(),
+                config_path: Some("filters.lua_error".to_string()),
+                tags: Default::default(),
+            };
+            let mut cs = ProgrammableFilter::new(config);
+
+            let orig_metric = metric::Telemetry::new()
+                .name("identity")
+                .value(12.0)
+                .kind(metric::AggregationMethod::Set)
+                .harden()
+                .unwrap()
+                .overlay_tag("foo", "bar")
+                .overlay_tag("bizz", "bazz");
+
+            let orig_event = metric::Event::new_telemetry(orig_metric);
+
+            let mut events = Vec::new();
+            let res = cs.process(orig_event, &mut events);
+            assert!(res.is_err());
+            assert!(events.is_empty());
+        }
+
+        #[test]
         fn test_demo_require() {
             let mut script = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             script.push("resources/tests/scripts");

@@ -554,6 +554,7 @@ impl filter::Filter for ProgrammableFilter {
                 if result.is_ok() {
                     self.last_flush_idx = flush_idx;
                 }
+                res.push(event);
                 result
             }
             metric::Event::Log(l) => {
