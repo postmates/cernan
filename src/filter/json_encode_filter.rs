@@ -3,9 +3,10 @@
 //! This filter takes `LogLines` and encodes them into JSON, emitting the
 //! encoded event as a Raw event. This allows further filters or sinks to
 //! operate on the JSON without needing to understand a `LogLine` event in
-//! particular.  If the ``LogLine`` value is a valid JSON object and `parse_line`
-//! config option is true, then the JSON will be merged with `LogLine`
-//! metadata. Otherwise, the original line will be included simply as a string.
+//! particular.  If the `LogLine` value is a valid JSON object and
+//! `parse_line` config option is true, then the JSON will be merged with
+//! `LogLine` metadata. Otherwise, the original line will be included simply as
+//! a string.
 
 use chrono::DateTime;
 use chrono::naive::NaiveDateTime;

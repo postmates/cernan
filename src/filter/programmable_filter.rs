@@ -581,11 +581,7 @@ fn run_lua_func(
     mut pyld: Payload,
 ) -> Result<(), filter::FilterError> {
     let filter_telem = metric::Telemetry::new()
-        .name(format!(
-            "cernan.filter.{}.{}.failure",
-            pyld.path,
-            func_name
-        ))
+        .name(format!("cernan.filter.{}.{}.failure", pyld.path, func_name))
         .value(1.0)
         .kind(metric::AggregationMethod::Sum)
         .harden()
@@ -594,10 +590,7 @@ fn run_lua_func(
 
     state.get_global(func_name);
     if !state.is_fn(-1) {
-        return Err(filter::FilterError::NoSuchFunction(
-            func_name,
-            fail,
-        ));
+        return Err(filter::FilterError::NoSuchFunction(func_name, fail));
     }
 
     unsafe {
@@ -616,13 +609,11 @@ fn run_lua_func(
         }
         Ok(())
     } else {
-        let error =
-            if let Some(error) = state.to_str(-1) {
-                error
-            } else {
-                "While handling a lua error, lua error message was not a string"
-            };
+        let error = if let Some(error) = state.to_str(-1) {
+            error
+        } else {
+            "While handling a lua error, lua error message was not a string"
+        };
         Err(filter::FilterError::LuaError(error.to_owned(), fail))
     }
 }
-
