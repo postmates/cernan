@@ -26,17 +26,20 @@ pub enum FilterError {
     /// Specific to a ProgrammableFilter, means no function is available as
     /// called in the script
     NoSuchFunction(&'static str, metric::Event),
+    /// Specific to a ProgrammableFilter, means the lua code errored
+    LuaError(String, metric::Event),
 }
 
-fn name_in_fe(fe: &FilterError) -> &'static str {
-    match *fe {
-        FilterError::NoSuchFunction(n, _) => n,
+fn msg_in_fe(fe: &FilterError) -> &str {
+    match fe {
+        &FilterError::NoSuchFunction(n, _) => n,
+        &FilterError::LuaError(ref n, _) => n,
     }
 }
 
 fn event_in_fe(fe: FilterError) -> metric::Event {
     match fe {
-        FilterError::NoSuchFunction(_, m) => m,
+        FilterError::NoSuchFunction(_, m) | FilterError::LuaError(_, m) => m,
     }
 }
 
@@ -95,7 +98,7 @@ pub trait Filter {
                         Err(fe) => {
                             error!(
                                 "Failed to run filter with error: {:?}",
-                                name_in_fe(&fe)
+                                msg_in_fe(&fe)
                             );
                             let event = event_in_fe(fe);
                             util::send(&mut chans, event);
