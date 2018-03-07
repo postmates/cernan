@@ -1,26 +1,73 @@
 //! Kafka sink for Raw events.
 use futures::future::Future;
 use metric;
-use rdkafka::client::EmptyContext;
-use rdkafka::config::ClientConfig;
+use rdkafka::client::Context;
+use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::error::{KafkaError, RDKafkaError};
 use rdkafka::message::{Message, OwnedMessage};
 use rdkafka::producer::FutureProducer;
 use rdkafka::producer::future_producer::DeliveryFuture;
 use sink::Sink;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util::Valve;
 
-/// Total records published.
-pub static KAFKA_PUBLISH_SUCCESS_SUM: AtomicUsize = AtomicUsize::new(0);
-/// Total record publish retries.
-pub static KAFKA_PUBLISH_RETRY_SUM: AtomicUsize = AtomicUsize::new(0);
-/// Total record publish failures.
-pub static KAFKA_PUBLISH_FAILURE_SUM: AtomicUsize = AtomicUsize::new(0);
-/// Total record publish retry failures. This occurs when the error signal does
-/// not include the original message.
-pub static KAFKA_PUBLISH_RETRY_FAILURE_SUM: AtomicUsize = AtomicUsize::new(0);
+lazy_static! {
+    /// Total records published.
+    pub static ref KAFKA_PUBLISH_SUCCESS_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total record publish retries.
+    pub static ref KAFKA_PUBLISH_RETRY_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total record publish failures.
+    pub static ref KAFKA_PUBLISH_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    /// Total record publish retry failures. This occurs when the error signal does not include the original message.
+    pub static ref KAFKA_PUBLISH_RETRY_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+}
+
+struct STFUContext;
+
+impl STFUContext {
+    fn should_emit_message(&self, message: &str) -> bool {
+        // Don't emit noisy errors about idle connection disconnects.
+        let matches: Vec<_> =
+            message.matches("Receive failed: Disconnected").collect();
+        matches.len() == 0
+    }
+}
+
+impl Context for STFUContext {
+    /// Receives log lines from librdkafka.
+    fn log(&self, level: RDKafkaLogLevel, fac: &str, log_message: &str) {
+        if !self.should_emit_message(log_message) {
+            return;
+        }
+        match level {
+            RDKafkaLogLevel::Emerg
+            | RDKafkaLogLevel::Alert
+            | RDKafkaLogLevel::Critical
+            | RDKafkaLogLevel::Error => {
+                error!(target: "librdkafka", "librdkafka: {} {}", fac, log_message)
+            }
+            RDKafkaLogLevel::Warning => {
+                warn!(target: "librdkafka", "librdkafka: {} {}", fac, log_message)
+            }
+            RDKafkaLogLevel::Notice | RDKafkaLogLevel::Info => {
+                info!(target: "librdkafka", "librdkafka: {} {}", fac, log_message)
+            }
+            RDKafkaLogLevel::Debug => {
+                debug!(target: "librdkafka", "librdkafka: {} {}", fac, log_message)
+            }
+        }
+    }
+
+    /// Receives global errors from the librdkafka client.
+    fn error(&self, error: KafkaError, reason: &str) {
+        if !self.should_emit_message(reason) {
+            return;
+        }
+        error!("librdkafka: {}: {}", error, reason);
+    }
+}
 
 /// Config options for Kafka config.
 #[derive(Clone, Debug, Deserialize)]
@@ -87,7 +134,7 @@ trait KafkaMessageSender {
     ) -> BoxedKafkaPublishable;
 }
 
-impl KafkaMessageSender for FutureProducer<EmptyContext> {
+impl KafkaMessageSender for FutureProducer<STFUContext> {
     fn try_payload(
         &self,
         topic: &str,
@@ -184,7 +231,11 @@ impl Sink<KafkaConfig> for Kafka {
 
         Kafka {
             topic_name: config.topic_name.unwrap(),
-            producer: Box::new(producer_config.create::<FutureProducer<_>>().unwrap()),
+            producer: Box::new(
+                producer_config
+                    .create_with_context::<STFUContext, FutureProducer<_>>(STFUContext)
+                    .unwrap(),
+            ),
             messages: Vec::new(),
             message_bytes: 0,
             max_message_bytes: config.max_message_bytes,
@@ -703,5 +754,15 @@ mod tests {
         assert_eq!(KAFKA_PUBLISH_RETRY_SUM.load(Ordering::Relaxed), 1);
         assert_eq!(KAFKA_PUBLISH_FAILURE_SUM.load(Ordering::Relaxed), 1);
         assert_eq!(KAFKA_PUBLISH_RETRY_FAILURE_SUM.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn test_should_emit_message_in_stfucontext() {
+        let no_emit_message =
+            "BrokerTransportFailure (Local: Broker transport failure): some.disconnected.broker:9092/1: Receive failed: Disconnected";
+        let yes_emit_message = "Some other error message";
+        let ctx = STFUContext;
+        assert_eq!(ctx.should_emit_message(no_emit_message), false);
+        assert_eq!(ctx.should_emit_message(yes_emit_message), true);
     }
 }
