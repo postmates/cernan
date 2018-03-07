@@ -10,34 +10,31 @@ use std::mem;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::string;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use time;
 
-lazy_static! {
-    /// Total number of connection attempts made to wavefront proxy
-    pub static ref WAVEFRONT_CONNECT_ATTEMPTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of stored aggregations
-    pub static ref WAVEFRONT_AGGR_STORED_VALUES: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total histograms emitted
-    pub static ref WAVEFRONT_AGGR_HISTO: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total sums emitted
-    pub static ref WAVEFRONT_AGGR_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total sets emitted
-    pub static ref WAVEFRONT_AGGR_SET: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total summarize emitted
-    pub static ref WAVEFRONT_AGGR_SUMMARIZE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total percentiles for summarize emitted
-    pub static ref WAVEFRONT_AGGR_TOT_PERCENT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total delivery successes
-    pub static ref WAVEFRONT_DELIVERY_SUCCESS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total delivery failures
-    pub static ref WAVEFRONT_DELIVERY_FAILURE: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total valve closed
-    pub static ref WAVEFRONT_VALVE_CLOSED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total valve open
-    pub static ref WAVEFRONT_VALVE_OPEN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
+/// Total number of connection attempts made to wavefront proxy
+pub static WAVEFRONT_CONNECT_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
+/// Total number of stored aggregations
+pub static WAVEFRONT_AGGR_STORED_VALUES: AtomicUsize = AtomicUsize::new(0);
+/// Total histograms emitted
+pub static WAVEFRONT_AGGR_HISTO: AtomicUsize = AtomicUsize::new(0);
+/// Total sums emitted
+pub static WAVEFRONT_AGGR_SUM: AtomicUsize = AtomicUsize::new(0);
+/// Total sets emitted
+pub static WAVEFRONT_AGGR_SET: AtomicUsize = AtomicUsize::new(0);
+/// Total summarize emitted
+pub static WAVEFRONT_AGGR_SUMMARIZE: AtomicUsize = AtomicUsize::new(0);
+/// Total percentiles for summarize emitted
+pub static WAVEFRONT_AGGR_TOT_PERCENT: AtomicUsize = AtomicUsize::new(0);
+/// Total delivery successes
+pub static WAVEFRONT_DELIVERY_SUCCESS: AtomicUsize = AtomicUsize::new(0);
+/// Total delivery failures
+pub static WAVEFRONT_DELIVERY_FAILURE: AtomicUsize = AtomicUsize::new(0);
+/// Total valve closed
+pub static WAVEFRONT_VALVE_CLOSED: AtomicUsize = AtomicUsize::new(0);
+/// Total valve open
+pub static WAVEFRONT_VALVE_OPEN: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
 /// Controls which aggregrations will be padded

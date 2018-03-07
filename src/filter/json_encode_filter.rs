@@ -17,15 +17,12 @@ use serde_json;
 use serde_json::Value;
 use serde_json::map::Map;
 use std::iter::FromIterator;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-lazy_static! {
-    /// Total number of logline processed
-    pub static ref JSON_ENCODE_LOG_PROCESSED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of logline with JSON value successfully parsed
-    pub static ref JSON_ENCODE_LOG_PARSED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
+/// Total number of logline processed
+pub static JSON_ENCODE_LOG_PROCESSED: AtomicUsize = AtomicUsize::new(0);
+/// Total number of logline with JSON value successfully parsed
+pub static JSON_ENCODE_LOG_PARSED: AtomicUsize = AtomicUsize::new(0);
 
 /// Convert `LogLine` events into Raw events encoded as JSON.
 ///

@@ -11,12 +11,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
 use util::send;
 
-lazy_static! {
-    pub static ref GRAPHITE_NEW_PEER: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
-    pub static ref GRAPHITE_GOOD_PACKET: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
-    pub static ref GRAPHITE_TELEM: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
-    pub static ref GRAPHITE_BAD_PACKET: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
-}
+pub static GRAPHITE_NEW_PEER: AtomicUsize = AtomicUsize::new(0);
+pub static GRAPHITE_GOOD_PACKET: AtomicUsize = AtomicUsize::new(0);
+pub static GRAPHITE_TELEM: AtomicUsize = AtomicUsize::new(0);
+pub static GRAPHITE_BAD_PACKET: AtomicUsize = AtomicUsize::new(0);
 
 /// Configured for the `metric::Telemetry` source.
 #[derive(Debug, Deserialize, Clone)]

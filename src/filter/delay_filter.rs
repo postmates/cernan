@@ -7,20 +7,17 @@
 
 use filter;
 use metric;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use time;
 
-lazy_static! {
-    /// Total number of telemetry rejected for age
-    pub static ref DELAY_TELEM_REJECT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of telemetry accepted for age
-    pub static ref DELAY_TELEM_ACCEPT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of logline rejected for age
-    pub static ref DELAY_LOG_REJECT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of logline accepted for age
-    pub static ref DELAY_LOG_ACCEPT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
+/// Total number of telemetry rejected for age
+pub static DELAY_TELEM_REJECT: AtomicUsize = AtomicUsize::new(0);
+/// Total number of telemetry accepted for age
+pub static DELAY_TELEM_ACCEPT: AtomicUsize = AtomicUsize::new(0);
+/// Total number of logline rejected for age
+pub static DELAY_LOG_REJECT: AtomicUsize = AtomicUsize::new(0);
+/// Total number of logline accepted for age
+pub static DELAY_LOG_ACCEPT: AtomicUsize = AtomicUsize::new(0);
 
 /// Filter streams to within a bounded interval of current time.
 ///

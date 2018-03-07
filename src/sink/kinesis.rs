@@ -9,20 +9,17 @@ use rusoto_kinesis::{KinesisClient, PutRecordsError, PutRecordsInput,
                      PutRecordsOutput, PutRecordsRequestEntry};
 use rusoto_kinesis::Kinesis as RusotoKinesis;
 use sink::Sink;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util::Valve;
 
-lazy_static! {
-    /// Total records published.
-    pub static ref KINESIS_PUBLISH_SUCCESS_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total records discarded due to constraint violations.
-    pub static ref KINESIS_PUBLISH_DISCARD_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total retryable publication errors.
-    pub static ref KINESIS_PUBLISH_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total fatal publication errors.
-    pub static ref KINESIS_PUBLISH_FATAL_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
+/// Total records published.
+pub static KINESIS_PUBLISH_SUCCESS_SUM: AtomicUsize = AtomicUsize::new(0);
+/// Total records discarded due to constraint violations.
+pub static KINESIS_PUBLISH_DISCARD_SUM: AtomicUsize = AtomicUsize::new(0);
+/// Total retryable publication errors.
+pub static KINESIS_PUBLISH_FAILURE_SUM: AtomicUsize = AtomicUsize::new(0);
+/// Total fatal publication errors.
+pub static KINESIS_PUBLISH_FATAL_SUM: AtomicUsize = AtomicUsize::new(0);
 
 /// Config options for Kinesis config.
 #[derive(Clone, Debug, Deserialize)]

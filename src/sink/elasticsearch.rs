@@ -11,47 +11,45 @@ use metric::{LogLine, TagMap};
 use sink::{Sink, Valve};
 use std::cmp;
 use std::error::Error;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid;
 
-lazy_static! {
-    /// Total deliveries made
-    pub static ref ELASTIC_RECORDS_DELIVERY: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total internal buffer entries
-    pub static ref ELASTIC_INTERNAL_BUFFER_LEN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total records delivered in the last delivery
-    pub static ref ELASTIC_RECORDS_TOTAL_DELIVERED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total records that failed to be delivered due to error
-    pub static ref ELASTIC_RECORDS_TOTAL_FAILED: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Unknown error occurred during attempted flush
-    pub static ref ELASTIC_ERROR_UNKNOWN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of index bulk action errors
-    pub static ref ELASTIC_BULK_ACTION_INDEX_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of create bulk action errors
-    pub static ref ELASTIC_BULK_ACTION_CREATE_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of update bulk action errors
-    pub static ref ELASTIC_BULK_ACTION_UPDATE_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of delete bulk action errors
-    pub static ref ELASTIC_BULK_ACTION_DELETE_ERR: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+/// Total deliveries made
+pub static ELASTIC_RECORDS_DELIVERY: AtomicUsize = AtomicUsize::new(0);
+/// Total internal buffer entries
+pub static ELASTIC_INTERNAL_BUFFER_LEN: AtomicUsize = AtomicUsize::new(0);
+/// Total records delivered in the last delivery
+pub static ELASTIC_RECORDS_TOTAL_DELIVERED: AtomicUsize = AtomicUsize::new(0);
+/// Total records that failed to be delivered due to error
+pub static ELASTIC_RECORDS_TOTAL_FAILED: AtomicUsize = AtomicUsize::new(0);
+/// Unknown error occurred during attempted flush
+pub static ELASTIC_ERROR_UNKNOWN: AtomicUsize = AtomicUsize::new(0);
+/// Total number of index bulk action errors
+pub static ELASTIC_BULK_ACTION_INDEX_ERR: AtomicUsize = AtomicUsize::new(0);
+/// Total number of create bulk action errors
+pub static ELASTIC_BULK_ACTION_CREATE_ERR: AtomicUsize = AtomicUsize::new(0);
+/// Total number of update bulk action errors
+pub static ELASTIC_BULK_ACTION_UPDATE_ERR: AtomicUsize = AtomicUsize::new(0);
+/// Total number of delete bulk action errors
+pub static ELASTIC_BULK_ACTION_DELETE_ERR: AtomicUsize = AtomicUsize::new(0);
 
-    /// Total number of api errors due to index not found
-    pub static ref ELASTIC_ERROR_API_INDEX_NOT_FOUND: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of api errors due to parsing
-    pub static ref ELASTIC_ERROR_API_PARSING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of api errors due to mapper parsing
-    pub static ref ELASTIC_ERROR_API_MAPPER_PARSING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of api errors due to action request validation
-    pub static ref ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of api errors due to missing document
-    pub static ref ELASTIC_ERROR_API_DOCUMENT_MISSING: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of api errors due to index already existing
-    pub static ref ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of api errors due to unknown reasons
-    pub static ref ELASTIC_ERROR_API_UNKNOWN: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total number of client errors, no specific reasons
-    pub static ref ELASTIC_ERROR_CLIENT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
+/// Total number of api errors due to index not found
+pub static ELASTIC_ERROR_API_INDEX_NOT_FOUND: AtomicUsize = AtomicUsize::new(0);
+/// Total number of api errors due to parsing
+pub static ELASTIC_ERROR_API_PARSING: AtomicUsize = AtomicUsize::new(0);
+/// Total number of api errors due to mapper parsing
+pub static ELASTIC_ERROR_API_MAPPER_PARSING: AtomicUsize = AtomicUsize::new(0);
+/// Total number of api errors due to action request validation
+pub static ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION: AtomicUsize =
+    AtomicUsize::new(0);
+/// Total number of api errors due to missing document
+pub static ELASTIC_ERROR_API_DOCUMENT_MISSING: AtomicUsize = AtomicUsize::new(0);
+/// Total number of api errors due to index already existing
+pub static ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS: AtomicUsize = AtomicUsize::new(0);
+/// Total number of api errors due to unknown reasons
+pub static ELASTIC_ERROR_API_UNKNOWN: AtomicUsize = AtomicUsize::new(0);
+/// Total number of client errors, no specific reasons
+pub static ELASTIC_ERROR_CLIENT: AtomicUsize = AtomicUsize::new(0);
 
 /// Configuration for the Elasticsearch sink
 ///

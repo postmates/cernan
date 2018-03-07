@@ -5,20 +5,17 @@ use mio;
 use serde_avro;
 use source::{TCPStreamHandler, TCP};
 use source::nonblocking::{write_all, BufferedPayload, PayloadErr};
-use std::net;
 use std::io::{Cursor, Read};
-use std::sync::Arc;
+use std::net;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
 
-lazy_static! {
-    /// Total payloads processed.
-    pub static ref AVRO_PAYLOAD_SUCCESS_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total fatal parse failures.
-    pub static ref AVRO_PAYLOAD_PARSE_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-    /// Total fatal IO related errors.
-    pub static ref AVRO_PAYLOAD_IO_FAILURE_SUM: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-}
+/// Total payloads processed.
+pub static AVRO_PAYLOAD_SUCCESS_SUM: AtomicUsize = AtomicUsize::new(0);
+/// Total fatal parse failures.
+pub static AVRO_PAYLOAD_PARSE_FAILURE_SUM: AtomicUsize = AtomicUsize::new(0);
+/// Total fatal IO related errors.
+pub static AVRO_PAYLOAD_IO_FAILURE_SUM: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Default, Debug, Clone, Deserialize)]
 pub struct AvroStreamHandler;

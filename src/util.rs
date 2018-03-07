@@ -8,13 +8,10 @@ use slab;
 use std::collections;
 use std::hash;
 use std::ops::{Index, IndexMut};
-use std::sync;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-lazy_static! {
-    /// Number of dropped events due to channel being totally full
-    pub static ref UTIL_SEND_HOPPER_ERROR_FULL: sync::Arc<AtomicUsize> = sync::Arc::new(AtomicUsize::new(0));
-}
+/// Number of dropped events due to channel being totally full
+pub static UTIL_SEND_HOPPER_ERROR_FULL: AtomicUsize = AtomicUsize::new(0);
 
 /// Cernan hashmap
 ///
