@@ -39,8 +39,7 @@ fn msg_in_fe(fe: &FilterError) -> &str {
 
 fn event_in_fe(fe: FilterError) -> metric::Event {
     match fe {
-        FilterError::NoSuchFunction(_, m) => m,
-        FilterError::LuaError(_, m) => m,
+        FilterError::NoSuchFunction(_, m) | FilterError::LuaError(_, m) => m,
     }
 }
 
