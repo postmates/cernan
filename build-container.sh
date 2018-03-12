@@ -18,9 +18,5 @@ cargo clean
 
 VERSION="${1}"
 
-mkdir -p target/bindir
-docker build -t cernan-build -f docker/build/Dockerfile .
-docker run -v $(pwd):/source -w /source -it cernan-build cargo build --release
-docker build -t quay.io/postmates/cernan:latest -t "quay.io/postmates/cernan:$VERSION" -f docker/release/Dockerfile .
+docker build -t "quay.io/postmates/cernan:$VERSION" .
 docker push "quay.io/postmates/cernan:$VERSION"
-docker push "quay.io/postmates/cernan:latest"
