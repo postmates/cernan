@@ -347,7 +347,7 @@ impl source::Source<InternalConfig> for Internal {
                             
                             chans
                         );
-                        atom_telem!(
+                        atom_set_telem!(
                             "cernan.sinks.prometheus.aggregation.reportable",
                             sink::prometheus::PROMETHEUS_AGGR_REPORTABLE,
                             chans
