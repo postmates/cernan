@@ -673,7 +673,7 @@ mod tests {
         let producer = RetryOnceMockKafkaSender {
             call_count: Arc::new(RwLock::new(0)),
             send_entries: Arc::new(RwLock::new(Vec::new())),
-            error_type: KafkaError::FutureCanceled,
+            error_type: KafkaError::NoMessageReceived,
             fail_retry: true,
         };
         let mut k = Kafka {
