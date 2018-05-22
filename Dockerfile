@@ -1,4 +1,4 @@
-FROM ekidd/rust-musl-builder:1.24.0 as builder
+FROM ekidd/rust-musl-builder:1.26.0 as builder
 
 RUN VERS=1.2.11 && \
     cd /home/rust/libs && \
