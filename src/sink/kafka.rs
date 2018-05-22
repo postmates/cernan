@@ -1,7 +1,7 @@
 //! Kafka sink for Raw events.
 use futures::future::Future;
 use metric;
-use rdkafka::client::Context;
+use rdkafka::client::ClientContext;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::error::{KafkaError, RDKafkaError};
 use rdkafka::message::{Message, OwnedMessage};
@@ -33,7 +33,7 @@ impl STFUContext {
     }
 }
 
-impl Context for STFUContext {
+impl ClientContext for STFUContext {
     /// Receives log lines from librdkafka.
     fn log(&self, level: RDKafkaLogLevel, fac: &str, log_message: &str) {
         if !self.should_emit_message(log_message) {

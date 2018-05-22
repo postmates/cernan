@@ -38,7 +38,7 @@ openssl-probe = "0.1"
 protobuf = "1.4"
 quantiles = { version = "0.7", features = ["serde_support"] }
 rand = "0.4"
-rdkafka = "0.14.0"
+rdkafka = "0.16.0"
 regex = "0.2"
 rusoto_core = "0.30"
 rusoto_firehose = "0.30"
