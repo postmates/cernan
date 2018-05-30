@@ -383,27 +383,6 @@ impl source::Source<InternalConfig> for Internal {
                             sink::influxdb::INFLUX_FAILURE_SERVER,
                             chans
                         );
-                        // sink::kinesis
-                        atom_telem!(
-                            "cernan.sinks.kinesis.publish.success",
-                            sink::kinesis::KINESIS_PUBLISH_SUCCESS_SUM,
-                            chans
-                        );
-                        atom_telem!(
-                            "cernan.sinks.kinesis.publish.discard",
-                            sink::kinesis::KINESIS_PUBLISH_DISCARD_SUM,
-                            chans
-                        );
-                        atom_telem!(
-                            "cernan.sinks.kinesis.publish.failure",
-                            sink::kinesis::KINESIS_PUBLISH_FAILURE_SUM,
-                            chans
-                        );
-                        atom_telem!(
-                            "cernan.sinks.kinesis.publish.fatal",
-                            sink::kinesis::KINESIS_PUBLISH_FATAL_SUM,
-                            chans
-                        );
                         // sink::kafka
                         atom_telem!(
                             "cernan.sinks.kafka.publish.success",

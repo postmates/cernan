@@ -36,9 +36,6 @@ extern crate quantiles;
 extern crate rand;
 extern crate rdkafka;
 extern crate regex;
-extern crate rusoto_core;
-extern crate rusoto_firehose;
-extern crate rusoto_kinesis;
 extern crate seahash;
 extern crate serde_avro;
 #[macro_use]

@@ -231,37 +231,7 @@ fn main() {
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
     }
-    if let Some(ref configs) = args.firehosen {
-        for config in configs {
-            let config_path = cfg_conf!(config);
-            let (send, recv) = hopper::channel_with_explicit_capacity(
-                &config_path,
-                &args.data_directory,
-                args.max_hopper_in_memory_bytes,
-                args.max_hopper_queue_bytes,
-                args.max_hopper_queue_files,
-            ).unwrap();
-            senders.insert(config_path.clone(), send);
-            receivers.insert(config_path.clone(), recv);
-            config_topology.insert(config_path.clone(), Default::default());
-        }
-    }
     if let Some(ref configs) = args.kafkas {
-        for config in configs {
-            let config_path = cfg_conf!(config);
-            let (send, recv) = hopper::channel_with_explicit_capacity(
-                &config_path,
-                &args.data_directory,
-                args.max_hopper_in_memory_bytes,
-                args.max_hopper_queue_bytes,
-                args.max_hopper_queue_files,
-            ).unwrap();
-            senders.insert(config_path.clone(), send);
-            receivers.insert(config_path.clone(), recv);
-            config_topology.insert(config_path.clone(), Default::default());
-        }
-    }
-    if let Some(ref configs) = args.kinesises {
         for config in configs {
             let config_path = cfg_conf!(config);
             let (send, recv) = hopper::channel_with_explicit_capacity(
@@ -502,19 +472,6 @@ fn main() {
             cernan::sink::Elasticsearch::new(recv, sources, config).run(),
         );
     }
-    if let Some(cfgs) = mem::replace(&mut args.firehosen, None) {
-        for config in cfgs {
-            let recv = receivers
-                .remove(&config.config_path.clone().unwrap())
-                .unwrap();
-            let sources =
-                adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
-            sinks.insert(
-                config.config_path.clone().unwrap(),
-                cernan::sink::Firehose::new(recv, sources, config).run(),
-            );
-        }
-    }
     if let Some(cfgs) = mem::replace(&mut args.kafkas, None) {
         for config in cfgs {
             let recv = receivers
@@ -525,19 +482,6 @@ fn main() {
             sinks.insert(
                 config.config_path.clone().unwrap(),
                 cernan::sink::Kafka::new(recv, sources, config).run(),
-            );
-        }
-    }
-    if let Some(cfgs) = mem::replace(&mut args.kinesises, None) {
-        for config in cfgs {
-            let recv = receivers
-                .remove(&config.config_path.clone().unwrap())
-                .unwrap();
-            let sources =
-                adjacency_matrix.pop_nodes(&config.config_path.clone().unwrap());
-            sinks.insert(
-                config.config_path.clone().unwrap(),
-                cernan::sink::Kinesis::new(recv, sources, config).run(),
             );
         }
     }

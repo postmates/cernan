@@ -12,7 +12,6 @@ use time;
 use util::Valve;
 
 mod console;
-mod firehose;
 mod null;
 pub mod wavefront;
 mod native;
@@ -20,14 +19,11 @@ pub mod influxdb;
 pub mod prometheus;
 pub mod elasticsearch;
 pub mod kafka;
-pub mod kinesis;
 
 pub use self::console::{Console, ConsoleConfig};
 pub use self::elasticsearch::{Elasticsearch, ElasticsearchConfig};
-pub use self::firehose::{Firehose, FirehoseConfig};
 pub use self::influxdb::{InfluxDB, InfluxDBConfig};
 pub use self::kafka::{Kafka, KafkaConfig};
-pub use self::kinesis::{Kinesis, KinesisConfig};
 pub use self::native::{Native, NativeConfig};
 pub use self::null::{Null, NullConfig};
 pub use self::prometheus::{Prometheus, PrometheusConfig};
