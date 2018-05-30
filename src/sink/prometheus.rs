@@ -299,8 +299,8 @@ impl PrometheusAggr {
                         Accumulator::Windowed {
                             cap: self.capacity_in_seconds,
                             count: 1,
-                            sum: sum,
-                            samples: samples,
+                            sum,
+                            samples,
                         }
                     }
                 });
@@ -326,7 +326,7 @@ impl PrometheusAggr {
     fn new(capacity_in_seconds: usize) -> PrometheusAggr {
         PrometheusAggr {
             data: Default::default(),
-            capacity_in_seconds: capacity_in_seconds,
+            capacity_in_seconds,
         }
     }
 }

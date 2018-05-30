@@ -206,8 +206,8 @@ impl Sink<InfluxDBConfig> for InfluxDB {
             aggrs: Vec::with_capacity(4048),
             delivery_attempts: 0,
             flush_interval: config.flush_interval,
-            client: client,
-            uri: uri,
+            client,
+            uri,
             tags: config.tags,
         }
     }

@@ -57,8 +57,8 @@ impl ConsoleConfig {
         ConsoleConfig {
             config_path: Some(config_path),
             bin_width: 1,
-            flush_interval: flush_interval,
-            tags: tags,
+            flush_interval,
+            tags,
         }
     }
 }
@@ -96,7 +96,7 @@ impl Sink<ConsoleConfig> for Console {
             for (k, v) in line.tags(&self.tags) {
                 print!(" {}={}", k, v);
             }
-            println!("");
+            println!();
         }
         self.buffer.clear();
 

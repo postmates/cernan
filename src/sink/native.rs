@@ -96,7 +96,7 @@ impl Sink<NativeConfig> for Native {
             buffer: Vec::new(),
             flush_interval: config.flush_interval,
             delivery_attempts: 0,
-            stream: stream,
+            stream,
             tags: config.tags,
         }
     }

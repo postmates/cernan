@@ -128,7 +128,7 @@ impl Default for WavefrontConfig {
             host: "localhost".to_string(),
             port: 2878,
             config_path: Some("sinks.wavefront".to_string()),
-            percentiles: percentiles,
+            percentiles,
             tags: TagMap::default(),
             flush_interval: 60,
             pad_control: PadControl::default(),
@@ -206,13 +206,13 @@ fn padding<'a>(
     pad_control: PadControl,
 ) -> Padding<'a> {
     Padding {
-        span: span,
+        span,
         orig: xs,
-        last_seen: last_seen,
+        last_seen,
         emit_q: Vec::new(),
         last_hash: 0,
         flush_padded: HashSet::default(),
-        pad_control: pad_control,
+        pad_control,
     }
 }
 
