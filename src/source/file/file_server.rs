@@ -22,7 +22,7 @@ use util::send;
 /// its path in at most 60 seconds.
 pub struct FileServer {
     pattern: PathBuf,
-    max_lines_read: usize,
+    max_read_bytes: usize,
 }
 
 /// The configuration struct for `FileServer`.
@@ -31,9 +31,9 @@ pub struct FileServerConfig {
     /// The path that `FileServer` will watch. Globs are allowed and
     /// `FileServer` will watch multiple files.
     pub path: Option<PathBuf>,
-    /// The maximum number of lines to read from a file before switching to a
+    /// The maximum number of bytes to read from a file before switching to a
     /// new file.
-    pub max_lines_read: usize,
+    pub max_read_bytes: usize,
     /// The forwards which `FileServer` will obey.
     pub forwards: Vec<String>,
     /// The configured name of FileServer.
@@ -44,7 +44,7 @@ impl Default for FileServerConfig {
     fn default() -> Self {
         FileServerConfig {
             path: None,
-            max_lines_read: 10_000,
+            max_read_bytes: 2048,
             forwards: Vec::default(),
             config_path: None,
         }
@@ -71,7 +71,7 @@ impl source::Source<FileServerConfig> for FileServer {
         let pattern = config.path.expect("must specify a 'path' for FileServer");
         FileServer {
             pattern: pattern,
-            max_lines_read: config.max_lines_read,
+            max_read_bytes: config.max_read_bytes,
         }
     }
 
@@ -91,7 +91,7 @@ impl source::Source<FileServerConfig> for FileServer {
         // given loop. This cap grows each time we fail to read lines in an
         // exponential fashion to some hard-coded cap.
         loop {
-            let mut global_lines_read: usize = 0;
+            let mut global_bytes_read: usize = 0;
             // glob poll
             for entry in glob(self.pattern.to_str().expect("no ability to glob"))
                 .expect("Failed to read glob pattern")
@@ -105,10 +105,10 @@ impl source::Source<FileServerConfig> for FileServer {
             }
             // line polling
             for (path, mut watcher) in fp_map.drain() {
-                let mut lines_read: usize = 0;
+                let mut bytes_read: usize = 0;
                 while let Ok(sz) = watcher.read_line(&mut buffer) {
                     if sz > 0 {
-                        lines_read += 1;
+                        bytes_read += sz;
                         lines.push(metric::LogLine::new(
                             path.to_str().expect("not a valid path"),
                             &buffer,
@@ -117,13 +117,13 @@ impl source::Source<FileServerConfig> for FileServer {
                     } else {
                         break;
                     }
-                    if lines_read > self.max_lines_read {
+                    if bytes_read > self.max_read_bytes {
                         break;
                     }
                 }
                 report_full_telemetry(
-                    "cernan.sources.file.lines_read",
-                    lines_read as f64,
+                    "cernan.sources.file.bytes_read",
+                    bytes_read as f64,
                     Some(vec![
                         ("file_path", path.to_str().expect("not a valid path")),
                     ]),
@@ -134,7 +134,7 @@ impl source::Source<FileServerConfig> for FileServer {
                 if !watcher.dead() {
                     fp_map_alt.insert(path, watcher);
                 }
-                global_lines_read = global_lines_read.saturating_add(lines_read);
+                global_bytes_read = global_bytes_read.saturating_add(bytes_read);
             }
             for l in lines.drain(..) {
                 send(&mut chans, metric::Event::new_log(l));
@@ -147,7 +147,7 @@ impl source::Source<FileServerConfig> for FileServer {
             // limited by the hard-coded cap. Else, we set the backup_cap to its
             // minimum on the assumption that next time through there will be
             // more lines to read promptly.
-            if global_lines_read == 0 {
+            if global_bytes_read == 0 {
                 let lim = backoff_cap.saturating_mul(2);
                 if lim > 2_048 {
                     backoff_cap = 2_048;
@@ -157,7 +157,7 @@ impl source::Source<FileServerConfig> for FileServer {
             } else {
                 backoff_cap = 1;
             }
-            let backoff = backoff_cap.saturating_sub(global_lines_read);
+            let backoff = backoff_cap.saturating_sub(global_bytes_read);
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(
                 &mut events,

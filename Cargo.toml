@@ -25,37 +25,36 @@ elastic = "0.20"
 elastic_types = "0.20"
 fern = "0.5"
 flate2 = "1.0"
-futures = "0.1.17"
+futures = "0.1"
 glob = "0.2.11"
 hopper = "0.4"
-hyper = "0.10" # 0.10 specifically required by rusoto_kinesis' KinesisClient
 lazy_static = "1.0"
 libc = "0.2"
 log = "0.4"
 mond = "0.1"
 mio = "0.6.11"
 openssl-probe = "0.1"
-protobuf = "1.4"
+protobuf = "1.7"
 quantiles = { version = "0.7", features = ["serde_support"] }
-rand = "0.4"
-rdkafka = "0.16.0"
-regex = "0.2"
+rand = "0.5"
+rdkafka = "0.16"
+regex = "1.0"
+reqwest = "0.8"
 seahash = "3.0"
 serde = "1.0"
 serde-avro = "0.5.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 slab = "0.4"
-tiny_http = "0.5.8"
+tiny_http = "0.6"
 toml = "0.4"
 url = "1.6"
-uuid = {version = "0.5", features = ["v4"]}
+uuid = {version = "0.6", features = ["v4"]}
 
 [dev-dependencies]
 tempdir = "0.3"
 quickcheck = "0.6"
 criterion = "0.1"
-rand = "0.4"
 
 [profile.dev]
 codegen-units = 4

@@ -27,7 +27,6 @@ extern crate flate2;
 extern crate futures;
 extern crate glob;
 extern crate hopper;
-extern crate hyper;
 extern crate libc;
 extern crate mio;
 extern crate mond;
@@ -36,6 +35,7 @@ extern crate quantiles;
 extern crate rand;
 extern crate rdkafka;
 extern crate regex;
+extern crate reqwest;
 extern crate seahash;
 extern crate serde_avro;
 #[macro_use]

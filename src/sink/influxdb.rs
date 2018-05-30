@@ -1,9 +1,8 @@
 //! `InfluxDB` is a telemetry database.
 
-use hyper::Client;
-use hyper::header;
 use metric::{TagIter, TagMap, Telemetry};
 use quantiles::histogram::Bound;
+use reqwest;
 use sink::{Sink, Valve};
 use std::cmp;
 use std::string;
@@ -32,7 +31,7 @@ pub struct InfluxDB {
     /// across flushes to avoid stampeding between flushes.
     delivery_attempts: u32,
     flush_interval: u64,
-    client: Client,
+    client: reqwest::Client,
     uri: Url,
     tags: TagMap,
 }
@@ -198,11 +197,16 @@ impl Sink<InfluxDBConfig> for InfluxDB {
             scheme, config.host, config.port, config.db
         )).expect("malformed url");
 
+        let client = reqwest::Client::builder()
+            .gzip(true)
+            .build()
+            .expect("could not create influxdb client");
+
         InfluxDB {
             aggrs: Vec::with_capacity(4048),
             delivery_attempts: 0,
             flush_interval: config.flush_interval,
-            client: Client::new(),
+            client: client,
             uri: uri,
             tags: config.tags,
         }
@@ -231,25 +235,25 @@ impl Sink<InfluxDBConfig> for InfluxDB {
 
             match self.client
                 .post(self.uri.clone())
-                .header(header::Connection::keep_alive())
-                .body(&buffer)
+                .header(reqwest::header::Connection::keep_alive())
+                .body(buffer.clone())
                 .send()
             {
                 Err(e) => debug!("hyper error doing POST: {:?}", e),
                 Ok(resp) => {
                     // https://docs.influxdata.com/influxdb/v1.
                     // 2/guides/writing_data/#http-response-summary
-                    if resp.status.is_success() {
+                    if resp.status().is_success() {
                         INFLUX_SUCCESS.fetch_add(1, Ordering::Relaxed);
                         buffer.clear();
                         self.delivery_attempts =
                             self.delivery_attempts.saturating_sub(1);
                         break;
-                    } else if resp.status.is_client_error() {
+                    } else if resp.status().is_client_error() {
                         self.delivery_attempts =
                             self.delivery_attempts.saturating_add(1);
                         INFLUX_FAILURE_CLIENT.fetch_add(1, Ordering::Relaxed);
-                    } else if resp.status.is_server_error() {
+                    } else if resp.status().is_server_error() {
                         self.delivery_attempts =
                             self.delivery_attempts.saturating_add(1);
                         INFLUX_FAILURE_SERVER.fetch_add(1, Ordering::Relaxed);
