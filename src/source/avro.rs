@@ -115,7 +115,7 @@ impl TCPStreamHandler for AvroStreamHandler {
         stream: mio::net::TcpStream,
     ) -> () {
         let mut streaming = true;
-        let mut reader = BufferedPayload::new(stream.try_clone().unwrap());
+        let mut reader = BufferedPayload::new(stream.try_clone().unwrap(), 1_048_576);
         while streaming {
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(&mut events, None) {

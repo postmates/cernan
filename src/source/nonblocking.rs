@@ -45,6 +45,8 @@ pub enum PayloadErr {
     IO(io::Error),
     /// Payload parsing failure.
     Protocol(String),
+    /// The length prefix is too large to be allocated
+    LengthTooLarge,
 }
 
 impl From<io::Error> for PayloadErr {
@@ -69,10 +71,13 @@ impl From<String> for PayloadErr {
 ///
 /// For use on blocking or non-blocking streams.
 pub struct BufferedPayload {
-    /// Size of the expected payload in bytes.
-    /// When None, this value is read off the underlying
-    /// stream as a big-endian u32.
+    /// Size of the expected payload in bytes. When None, this value is read
+    /// off the underlying stream as a big-endian u32.
     payload_size: Option<usize>,
+
+    /// The maximum allowable payload size. If a payload_size comes in over the
+    /// wire that is greater than this limit we close the connection.
+    max_payload_size: usize,
 
     /// Position in the payload byte vector receiving.
     payload_pos: usize,
@@ -80,16 +85,16 @@ pub struct BufferedPayload {
     ///Bytes comprising the payload.
     payload: Vec<u8>,
 
-    /// Inner buffer where bytes from the underlying
-    /// stream are staged.
+    /// Inner buffer where bytes from the underlying stream are staged.
     buffer: io::BufReader<mio::net::TcpStream>,
 }
 
 impl BufferedPayload {
     /// Constructs a new BufferedPayload.
-    pub fn new(stream: mio::net::TcpStream) -> Self {
+    pub fn new(stream: mio::net::TcpStream, max_payload_size: usize) -> Self {
         BufferedPayload {
             payload_size: None,
+            max_payload_size: max_payload_size,
             payload_pos: 0,
             payload: Vec::new(),
             buffer: io::BufReader::new(stream),
@@ -107,6 +112,9 @@ impl BufferedPayload {
         // Are we actively reading a payload already?
         if self.payload_size.is_none() {
             self.read_length()?;
+        }
+        if self.payload_size.unwrap() > self.max_payload_size {
+            return Err(PayloadErr::LengthTooLarge);
         }
 
         self.read_payload()?;
