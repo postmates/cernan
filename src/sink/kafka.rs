@@ -7,6 +7,7 @@ use rdkafka::error::{KafkaError, RDKafkaError};
 use rdkafka::message::{Message, OwnedMessage};
 use rdkafka::producer::FutureProducer;
 use rdkafka::producer::future_producer::DeliveryFuture;
+use rdkafka::util::current_time_millis;
 use sink::Sink;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -145,7 +146,7 @@ impl KafkaMessageSender for FutureProducer<STFUContext> {
                 /* partition */ None,
                 Some(payload),
                 Some(key),
-                /* timestamp */ None,
+                Some(current_time_millis()),
                 /* block_ms */ 0,
             )),
         })
@@ -541,7 +542,7 @@ mod tests {
                         Some(payload.to_vec())
                     },
                     topic.to_owned(),
-                    Timestamp::NotAvailable,
+                    Timestamp::CreateTime(current_time_millis()),
                     -1,
                     -1,
                 );
