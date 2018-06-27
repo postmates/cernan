@@ -143,8 +143,9 @@ impl ThreadPool {
         let mut joinable = self.joinable.lock().unwrap();
         let mut joined = Vec::new();
         while let Some(id) = joinable.pop() {
-            let handle = self.threads.remove(&id).unwrap();
-            handle.join();
+            if let Some(handle) = self.threads.remove(&id) {
+                handle.join();
+            }
             joined.push(id);
         }
         joined
