@@ -3,11 +3,14 @@ use constants;
 use mio;
 use std::option;
 use std::thread;
+use std::sync;
+use util;
 
 /// Event polling structure. Alias of `mio::Poll`.
 pub type Poll = mio::Poll;
 /// Events buffer type. Alias of `mio::Events`.
 pub type Events = mio::Events;
+
 
 /// Mio enabled thread state.
 pub struct ThreadHandle {
@@ -17,19 +20,12 @@ pub struct ThreadHandle {
     /// Readiness signal used to notify the given thread when an event is ready
     /// to be consumed on the SYSTEM channel.
     shutdown_event: mio::SetReadiness,
-
-    /// Poller used by the parent to poll for child events.  Currently,
-    /// the only event emitted by child threads signals that they are joinable.
-    joinable: option::Option<mio::SetReadiness>,
 }
 
 /// Trait for stoppable processes.
 pub trait Stoppable {
     /// Join the given process, blocking until it exits.
     fn join(self) -> ();
-
-    /// Is the given thread joinable?
-    fn ready(&self) -> bool;
 
     /// Gracefully shutdown the process, blocking until exit.
     fn shutdown(self) -> ();
@@ -39,15 +35,6 @@ impl Stoppable for ThreadHandle {
     /// Join the given Thread, blocking until it exits.
     fn join(self) {
         self.handle.join().expect("Failed to join child thread!");
-    }
-
-    fn ready(&self) -> bool {
-        if let Some(joinable) = self.joinable.clone() {
-            joinable.readiness().is_readable()
-        } else {
-            trace!("Only threads started with spawn2 are compatible with ready().");
-            false
-        }
     }
 
     /// Gracefully shutdown the given Thread, blocking until it exists.
@@ -71,8 +58,6 @@ where
     let (shutdown_event_registration, shutdown_event) = mio::Registration::new2();
     ThreadHandle {
         shutdown_event: shutdown_event,
-        joinable: None,
-
         handle: thread::spawn(move || {
             child_poller
                 .register(
@@ -88,32 +73,87 @@ where
     }
 }
 
-/// As spawn() exception the given SetReadiness will be set readable
-/// when the thread returns normally.
-pub fn spawn2<F>(joinable: mio::SetReadiness, f: F) -> ThreadHandle
-where
-    F: Send + 'static + FnOnce(mio::Poll) -> (),
-{
-    let child_poller = mio::Poll::new().unwrap();
-    let (shutdown_event_registration, shutdown_event) = mio::Registration::new2();
-    ThreadHandle {
-        shutdown_event: shutdown_event,
-        joinable: Some(joinable.clone()),
+/// mio Eventable ThreadPool.
+pub struct ThreadPool {
+    /// thread_id counter.
+    thread_id: usize,
+    /// Listing of all the joinable threads in the pool.
+    joinable: sync::Arc<sync::Mutex<Vec<usize>>>,
+    /// Mapping of thread_id to ThreadHandle.
+    threads: util::HashMap<usize, ThreadHandle>,
+    /// Mio readiness flagging when threads finish execution.
+    thread_event_readiness: option::Option<mio::SetReadiness>,
+}
 
-        handle: thread::spawn(move || {
-            child_poller
-                .register(
-                    &shutdown_event_registration,
-                    constants::SYSTEM,
-                    mio::Ready::readable(),
-                    mio::PollOpt::edge(),
-                )
-                .expect("Failed to register system pipe");
 
-            f(child_poller);
-            joinable.set_readiness(mio::Ready::readable()).expect("Failed to set joinable!");
-        }),
+impl ThreadPool {
 
+    /// Construct a new ThreadPool.
+    pub fn new(thread_events_readiness: option::Option<mio::SetReadiness>) -> Self {
+        ThreadPool {
+            thread_id: 0,
+            joinable: sync::Arc::new(sync::Mutex::new(Vec::new())),
+            thread_event_readiness: thread_events_readiness,
+            threads: util::HashMap::default(),
+        }
     }
 
+    /// Spawn a new thread and assign it to the pool.
+    pub fn spawn<F>(&mut self, f: F) -> usize
+    where
+        F: Send + 'static + FnOnce(mio::Poll) -> (),
+    {
+        let id = self.next_thread_id();
+        let joinable_arc = self.joinable.clone();
+        let thread_event_readiness = self.thread_event_readiness.clone();
+        let handler =
+            spawn(move |poller| {
+                f(poller);
+
+                let mut joinable = joinable_arc.lock().unwrap();
+                joinable.push(id);
+
+                if let Some(readiness) = thread_event_readiness {
+                    readiness
+                        .set_readiness(mio::Ready::readable())
+                        .expect("Failed to flag readiness for ThreadPool event!");
+                }
+            });
+        self.threads.insert(id, handler);
+        id
+    }
+
+    fn next_thread_id(&mut self) -> usize
+    {
+        let thread_id = self.thread_id;
+        self.thread_id += 1;
+        thread_id
+    }
+
+    /// Block on completion of all executing threads.
+    pub fn join(mut self) -> Vec<usize>
+    {
+        self.threads.drain().for_each(|(_, h)| h.join());
+        self.join_ready()
+    }
+
+    /// Join all completed threads.
+    pub fn join_ready(&mut self) -> Vec<usize>
+    {
+        let mut joinable = self.joinable.lock().unwrap();
+        let mut joined = Vec::new();
+        while let Some(id) = joinable.pop() {
+            let handle = self.threads.remove(&id).unwrap();
+            handle.join();
+            joined.push(id);
+        }
+        joined
+    }
+
+    /// Signal shutdown and block for their completion.
+    pub fn shutdown(mut self) -> Vec<usize>
+    {
+        self.threads.drain().for_each(|(_, h)| h.shutdown());
+        self.join_ready()
+    }
 }
