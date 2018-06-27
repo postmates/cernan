@@ -81,6 +81,10 @@ impl thread::Stoppable for Server {
         self.thread.join();
     }
 
+    fn ready(&self) -> bool {
+        self.thread.ready()
+    }
+
     fn shutdown(self) {
         self.thread.shutdown();
     }
