@@ -151,7 +151,7 @@ impl ThreadPool {
         joined
     }
 
-    /// Signal shutdown and block for their completion.
+    /// Serially signal shutdown and block for completion of all threads.
     pub fn shutdown(mut self) -> Vec<usize>
     {
         self.threads.drain().for_each(|(_, h)| h.shutdown());

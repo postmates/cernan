@@ -42,11 +42,6 @@ pub trait TCPStreamHandler: 'static + Default + Clone + Sync + Send {
         Default::default()
     }
 
-    /// Invokes handle_stream, toggling readiness if the function returns control.
-    fn run(&mut self, chan: util::Channel, poll: &mio::Poll, stream: mio::net::TcpStream) -> () {
-        self.handle_stream(chan, poll, stream);
-    }
-
     /// Handler for a single HTTP request.
     fn handle_stream(&mut self, util::Channel, &mio::Poll, mio::net::TcpStream) -> ();
 }
@@ -198,7 +193,7 @@ where
                                 .unwrap();
 
                             let mut handler = H::new();
-                            handler.run(rchans, &poller, stream);
+                            handler.handle_stream(rchans, &poller, stream);
                         });
                 }
                 Err(e) => match e.kind() {
