@@ -93,6 +93,7 @@ fn token_to_idx(token: &mio::Token) -> usize {
 
 /// Wrapper around Slab
 pub struct TokenSlab<E: mio::Evented> {
+    token_count: usize,
     tokens: slab::Slab<E>,
 }
 
@@ -125,6 +126,7 @@ impl<E: mio::Evented> TokenSlab<E> {
     /// of constants::SYSTEM.
     pub fn new() -> TokenSlab<E> {
         TokenSlab {
+            token_count: 0,
             tokens: slab::Slab::with_capacity(token_to_idx(&constants::SYSTEM)),
         }
     }
@@ -134,10 +136,16 @@ impl<E: mio::Evented> TokenSlab<E> {
         self.tokens.iter()
     }
 
+    /// Return the number of tokens stored in the TokenSlab.
+    pub fn count(&self) -> usize {
+        self.token_count
+    }
+
     /// Inserts a new Evented into the slab, returning a mio::Token
     /// corresponding to the index of the newly inserted type.
     pub fn insert(&mut self, thing: E) -> mio::Token {
         let idx = self.tokens.insert(thing);
+        self.token_count += 1;
         mio::Token::from(idx)
     }
 }
