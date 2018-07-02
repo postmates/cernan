@@ -8,7 +8,6 @@ use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::net::ToSocketAddrs;
 use thread;
-use thread::Stoppable;
 use util;
 
 /// Configured for the `metric::Telemetry` source.
@@ -50,7 +49,9 @@ pub trait TCPStreamHandler: 'static + Default + Clone + Sync + Send {
 /// State for a TCP backed source.
 pub struct TCP<H> {
     listeners: util::TokenSlab<mio::net::TcpListener>,
-    handlers: Vec<thread::ThreadHandle>,
+    stream_events: mio::Registration,
+    stream_events_token: mio::Token,
+    handlers: thread::ThreadPool,
     phantom: PhantomData<H>,
 }
 
@@ -60,6 +61,11 @@ where
 {
     /// Constructs and starts a new TCP source.
     fn init(config: TCPConfig) -> Self {
+        // Create registrations and for all TCP interfaces and stream handlers.
+        //
+        // Note - Due to restrictions in mio, we must construct these registrations
+        // here as we are assuming this function is called directly from the main
+        // process.  Registrations must be bound to a mio poller by the subordiante thread.
         let addrs = (config.host.as_str(), config.port).to_socket_addrs();
         let mut listeners = util::TokenSlab::<mio::net::TcpListener>::new();
         match addrs {
@@ -83,9 +89,14 @@ where
             }
         };
 
+        let (stream_events, stream_events_readiness) = mio::Registration::new2();
+        let stream_events_token = mio::Token::from(listeners.count());
+        let thread_pool = thread::ThreadPool::new(Some(stream_events_readiness));
         TCP {
             listeners: listeners,
-            handlers: Vec::new(),
+            stream_events: stream_events,
+            stream_events_token: stream_events_token,
+            handlers: thread_pool,
             phantom: PhantomData,
         }
     }
@@ -101,7 +112,16 @@ where
             ) {
                 error!("Failed to register {:?} - {:?}!", listener, e);
             }
-        }
+        };
+
+        if let Err(e) = poller.register(
+            &self.stream_events,
+            self.stream_events_token,
+            mio::Ready::readable(),
+            mio::PollOpt::edge(),
+            ) {
+                error!("Failed to register stream events - {:?}!", e);
+            };
 
         self.accept_loop(chans, &poller)
     }
@@ -119,21 +139,27 @@ where
                 Ok(_num_events) => for event in events {
                     match event.token() {
                         constants::SYSTEM => {
-                            for handler in self.handlers {
-                                handler.shutdown();
-                            }
-
+                            self.handlers.shutdown();
                             util::send(&mut chans, metric::Event::Shutdown);
                             return;
                         }
                         listener_token => {
-                            if let Err(e) =
-                                self.spawn_stream_handlers(&chans, listener_token)
-                            {
-                                let listener = &self.listeners[listener_token];
-                                error!("Failed to spawn stream handlers! {:?}", e);
-                                error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
-                                let _ = poll.deregister(listener);
+                            if listener_token == self.stream_events_token {
+                                // Mio event corresponding to a StreamHandler.
+                                // Currently, the only StreamHandler event flags
+                                // the StreamHandler as terminated.  Cleanup state.
+                                let ready = self.handlers.join_ready();
+                                trace!("Removed {:?} terminated stream handlers.", ready.len());
+
+                            } else {
+                                if let Err(e) =
+                                    self.spawn_stream_handlers(&chans, listener_token)
+                                {
+                                    let listener = &self.listeners[listener_token];
+                                    error!("Failed to spawn stream handlers! {:?}", e);
+                                    error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
+                                    let _ = poll.deregister(listener);
+                                }
                             }
                         }
                     }
@@ -151,23 +177,24 @@ where
         loop {
             match listener.accept() {
                 Ok((stream, _addr)) => {
+                    // Actually spawn the stream handler
                     let rchans = chans.to_owned();
-                    let new_stream = thread::spawn(move |poller| {
-                        // Note - Stream handlers are allowed to crash without
-                        // compromising Cernan's ability to gracefully shutdown.
-                        poller
-                            .register(
-                                &stream,
-                                mio::Token(0),
-                                mio::Ready::readable(),
-                                mio::PollOpt::edge(),
-                            )
-                            .unwrap();
+                    self.handlers.spawn(
+                        move |poller| {
+                            // Note - Stream handlers are allowed to crash without
+                            // compromising Cernan's ability to gracefully shutdown.
+                            poller
+                                .register(
+                                    &stream,
+                                    mio::Token(0),
+                                    mio::Ready::readable(),
+                                    mio::PollOpt::edge(),
+                                )
+                                .unwrap();
 
-                        let mut handler = H::new();
-                        handler.handle_stream(rchans, &poller, stream);
-                    });
-                    self.handlers.push(new_stream);
+                            let mut handler = H::new();
+                            handler.handle_stream(rchans, &poller, stream);
+                        });
                 }
                 Err(e) => match e.kind() {
                     ErrorKind::ConnectionAborted
