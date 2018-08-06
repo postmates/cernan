@@ -1,4 +1,5 @@
 use metric::{LogLine, Telemetry};
+use uuid::Uuid;
 
 /// Supported event encodings.
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -40,6 +41,8 @@ pub enum Event {
         encoding: Encoding,
         /// Encoded payload.
         bytes: Vec<u8>,
+        /// Connection ID of the source on which this raw event was received
+        connection_id: Option<Uuid>
     },
 }
 

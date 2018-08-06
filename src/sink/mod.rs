@@ -10,6 +10,7 @@ use std::marker::PhantomData;
 use thread;
 use time;
 use util::Valve;
+use uuid::Uuid;
 
 mod console;
 mod null;
@@ -151,8 +152,9 @@ where
                             order_by,
                             encoding,
                             bytes,
+                            connection_id
                         } => {
-                            self.state.deliver_raw(order_by, encoding, bytes);
+                            self.state.deliver_raw(order_by, encoding, bytes, connection_id);
                             break;
                         }
                         Event::Shutdown => {
@@ -234,6 +236,7 @@ where
         _order_by: u64,
         _encoding: Encoding,
         _bytes: Vec<u8>,
+        _connection_id: Option<Uuid>,
     ) -> () {
         // Not all sinks accept raw events.  By default, we do nothing.
     }
