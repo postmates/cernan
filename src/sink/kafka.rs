@@ -303,6 +303,7 @@ impl Sink<KafkaConfig> for Kafka {
     }
 
     fn flush(&mut self) {
+        let mut ack_ids: Vec<Option<Uuid>> = Vec::new();
         while !self.messages.is_empty() {
             let retry_payload_and_keys = self.await_inflight_messages();
             let new_messages = retry_payload_and_keys
@@ -318,6 +319,7 @@ impl Sink<KafkaConfig> for Kafka {
                             message.connection_id(),
                         ))
                     } else {
+                        ack_ids.push(message.connection_id());
                         error!("Unable to retry message. It was lost to the ether.");
                         self.stats.increment_retry_failed(1);
                         None
@@ -327,6 +329,9 @@ impl Sink<KafkaConfig> for Kafka {
             self.messages = new_messages;
         }
         self.message_bytes = 0;
+        for ack_id in ack_ids {
+            self.acknowledge(ack_id);
+        }
     }
 
     fn flush_interval(&self) -> Option<u64> {
