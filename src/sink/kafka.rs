@@ -9,6 +9,7 @@ use rdkafka::producer::FutureProducer;
 use rdkafka::producer::future_producer::DeliveryFuture;
 use rdkafka::util::current_time_millis;
 use sink::Sink;
+use source;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util::Valve;
@@ -95,7 +96,7 @@ impl Default for KafkaConfig {
             brokers: None,
             rdkafka_config: None,
             max_message_bytes: 10 * (1 << 20),
-            flush_interval: 1,
+            flush_interval: 1 * source::flushes_per_second(),
         }
     }
 }

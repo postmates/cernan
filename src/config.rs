@@ -14,25 +14,19 @@ use toml;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
-use filter::DelayFilterConfig;
-use filter::FlushBoundaryFilterConfig;
-use filter::JSONEncodeFilterConfig;
-use filter::ProgrammableFilterConfig;
-use sink::ConsoleConfig;
-use sink::ElasticsearchConfig;
-use sink::InfluxDBConfig;
-use sink::KafkaConfig;
-use sink::NativeConfig;
-use sink::NullConfig;
-use sink::PrometheusConfig;
-use sink::WavefrontConfig;
+use filter::{
+    DelayFilterConfig, FlushBoundaryFilterConfig, JSONEncodeFilterConfig,
+    ProgrammableFilterConfig,
+};
 use sink::wavefront::PadControl;
-use source::{StatsdConfig, StatsdParseConfig};
-use source::FileServerConfig;
-use source::GraphiteConfig;
-use source::InternalConfig;
-use source::NativeServerConfig;
-use source::TCPConfig;
+use sink::{
+    ConsoleConfig, ElasticsearchConfig, InfluxDBConfig, KafkaConfig, NativeConfig,
+    NullConfig, PrometheusConfig, WavefrontConfig,
+};
+use source::{
+    flushes_per_second, FileServerConfig, GraphiteConfig, InternalConfig,
+    NativeServerConfig, StatsdConfig, StatsdParseConfig, TCPConfig,
+};
 
 // This stinks and is verbose. Once
 // https://github.com/rust-lang/rust/issues/41681 lands we'll be able to do this
@@ -128,7 +122,7 @@ impl Default for Args {
             max_hopper_queue_files: 100,
             data_directory: default_data_directory(),
             scripts_directory: default_scripts_directory(),
-            flush_interval: 60,
+            flush_interval: 60 * flushes_per_second(),
             version: default_version(),
             // filters
             programmable_filters: None,
@@ -152,6 +146,19 @@ impl Default for Args {
             files: None,
             internal: InternalConfig::default(),
         }
+    }
+}
+
+/// Common utility function for parsing flush_interval and
+/// returning the number of flushes per second represented.
+fn parse_flush_interval(table: &toml::Value, key: &str) -> Option<u64> {
+    match table.get(key) {
+        Some(value) => match value {
+            toml::Value::Float(f) => Some((f * flushes_per_second() as f64) as u64),
+            toml::Value::Integer(i) => Some(*i as u64 * flushes_per_second()),
+            _ => panic!("Expected number of seconds for flush_interval config parameter.")
+        },
+        _ => None
     }
 }
 
@@ -253,9 +260,7 @@ fn parse_config_file(buffer: &str) -> Args {
         })
         .unwrap_or(args.scripts_directory);
 
-    args.flush_interval = value
-        .get("flush-interval")
-        .map(|fi| fi.as_integer().expect("could not parse flush-interval") as u64)
+    args.flush_interval = parse_flush_interval(&value, "flush-interval")
         .unwrap_or(args.flush_interval);
 
     let global_tags: TagMap = match value.get("tags") {
@@ -445,14 +450,7 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.bin_width);
 
-            res.flush_interval = snk.get("flush_interval")
-                .map(|fi| {
-                    fi.as_integer()
-                        .expect("could not parse sinks.console.flush_interval")
-                        as u64
-                })
-                .unwrap_or(args.flush_interval);
-
+            res.flush_interval = parse_flush_interval(snk, "flush_interval").unwrap_or(args.flush_interval);
             res.tags = global_tags.clone();
 
             res
@@ -526,13 +524,7 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.bin_width);
 
-            res.flush_interval = snk.get("flush_interval")
-                .map(|fi| {
-                    fi.as_integer()
-                        .expect("could not parse sinks.wavefront.flush_interval")
-                        as u64
-                })
-                .unwrap_or(args.flush_interval);
+            res.flush_interval = parse_flush_interval(snk, "flush_interval").unwrap_or(args.flush_interval);
             if res.bin_width > (res.flush_interval as i64) {
                 warn!("bin_width > flush_interval. bin_width will be effectively flush_interval due to flush behaviour.")
             }
@@ -572,14 +564,7 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.db);
 
-            res.flush_interval = snk.get("flush_interval")
-                .map(|fi| {
-                    fi.as_integer()
-                        .expect("could not parse sinks.influxdb.flush_interval")
-                        as u64
-                })
-                .unwrap_or(args.flush_interval);
-
+            res.flush_interval = parse_flush_interval(snk, "flush_interval").unwrap_or(args.flush_interval);
             res.tags = global_tags.clone();
 
             res
@@ -679,14 +664,7 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.index_type);
 
-            res.flush_interval = snk.get("flush_interval")
-                .map(|fi| {
-                    fi.as_integer()
-                        .expect("could not parse sinks.elasticsearch.flush_interval")
-                        as u64
-                })
-                .unwrap_or(args.flush_interval);
-
+            res.flush_interval = parse_flush_interval(snk, "flush_interval").unwrap_or(args.flush_interval);
             res.tags = global_tags.clone();
 
             res
@@ -710,14 +688,7 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.host);
 
-            res.flush_interval = snk.get("flush_interval")
-                .map(|fi| {
-                    fi.as_integer()
-                        .expect("could not parse sinks.native.flush_interval")
-                        as u64
-                })
-                .unwrap_or(args.flush_interval);
-
+            res.flush_interval = parse_flush_interval(snk, "flush_interval").unwrap_or(args.flush_interval);
             res.tags = global_tags.clone();
 
             res
@@ -798,14 +769,7 @@ fn parse_config_file(buffer: &str) -> Args {
                     map
                 });
 
-                res.flush_interval = tbl.get("flush_interval")
-                    .map(|fi| {
-                        fi.as_integer()
-                            .expect("could not parse sinks.kafka.flush_interval")
-                            as u64
-                    })
-                    .unwrap_or(res.flush_interval);
-
+                res.flush_interval = parse_flush_interval(tbl, "flush_interval").unwrap_or(args.flush_interval);
                 res.max_message_bytes = tbl.get("max_message_bytes")
                     .map(|fi| {
                         fi.as_integer()
@@ -1246,7 +1210,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(es.host, "example.com");
         assert_eq!(es.index_prefix, Some("prefix-".into()));
         assert_eq!(es.secure, true);
-        assert_eq!(es.flush_interval, 2020);
+        assert_eq!(es.flush_interval, 2020 * flushes_per_second());
         assert_eq!(es.delivery_attempt_limit, 33);
     }
 
@@ -1287,7 +1251,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(k.topic_name, Some(String::from("foobar")));
         assert_eq!(k.brokers, Some(String::from("127.0.0.1:9092")));
         assert_eq!(k.max_message_bytes, 65);
-        assert_eq!(k.flush_interval, 100);
+        assert_eq!(k.flush_interval, 100 * flushes_per_second());
         assert_eq!(k.rdkafka_config, Some(expected_librdkafka_config));
     }
 
@@ -1347,7 +1311,7 @@ scripts-directory = "/foo/bar"
         let k = &kafkas[0];
         let defaults = KafkaConfig::default();
 
-        assert_eq!(k.flush_interval, defaults.flush_interval);
+        assert_eq!(k.flush_interval, args.flush_interval);
         assert_eq!(k.max_message_bytes, defaults.max_message_bytes);
     }
 
@@ -1367,7 +1331,7 @@ scripts-directory = "/foo/bar"
         let native_sink_config = args.native_sink_config.unwrap();
         assert_eq!(native_sink_config.host, String::from("foo.example.com"));
         assert_eq!(native_sink_config.port, 1972);
-        assert_eq!(native_sink_config.flush_interval, 120);
+        assert_eq!(native_sink_config.flush_interval, 120 * flushes_per_second());
     }
 
     #[test]
@@ -1722,7 +1686,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(wavefront.host, String::from("example.com"));
         assert_eq!(wavefront.port, 3131);
         assert_eq!(wavefront.bin_width, 9);
-        assert_eq!(wavefront.flush_interval, 15);
+        assert_eq!(wavefront.flush_interval, 15 * flushes_per_second());
         assert_eq!(wavefront.age_threshold, Some(43));
     }
 
@@ -1805,7 +1769,7 @@ scripts-directory = "/foo/bar"
         assert_eq!(influxdb.host, String::from("example.com"));
         assert_eq!(influxdb.db, String::from("postmates"));
         assert_eq!(influxdb.port, 3131);
-        assert_eq!(influxdb.flush_interval, 70);
+        assert_eq!(influxdb.flush_interval, 70 * flushes_per_second());
         assert_eq!(influxdb.secure, true);
     }
 
@@ -1859,7 +1823,7 @@ scripts-directory = "/foo/bar"
         assert!(args.console.is_some());
         let console = args.console.unwrap();
         assert_eq!(console.bin_width, 9);
-        assert_eq!(console.flush_interval, 60); // default
+        assert_eq!(console.flush_interval, args.flush_interval); // default
     }
 
     #[test]
@@ -1921,5 +1885,22 @@ scripts-directory = "/foo/bar"
         assert_eq!(files[1].path, Some(PathBuf::from("/foo/bar.txt")));
         assert_eq!(files[1].max_read_bytes, 10);
         assert_eq!(files[1].forwards, vec!["sink.blech"]);
+    }
+
+    #[test]
+    fn flush_interval_converted_to_proper_discrete_values() {
+        let config = r#"
+        flush-interval = 10
+        "#;
+
+        let args = parse_config_file(config);
+        assert_eq!(args.flush_interval, 10 * flushes_per_second());
+
+        let config_f = r#"
+        flush-interval = 1.5
+        "#;
+
+        let args_f = parse_config_file(config_f);
+        assert_eq!(args_f.flush_interval, (1.5 * flushes_per_second() as f64) as u64);
     }
 }

@@ -131,7 +131,7 @@ where
                                 if let Some(flush_interval) =
                                     self.state.flush_interval()
                                 {
-                                    if idx % flush_interval == 0 {
+                                    if flush_interval == 0 || idx % flush_interval == 0 {
                                         self.state.flush();
                                     }
                                 }

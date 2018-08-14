@@ -6,6 +6,7 @@ use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
 use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
 use sink::{Sink, Valve};
+use source::flushes_per_second;
 
 /// The 'console' sink exists for development convenience. The sink will
 /// aggregate according to [buckets](../buckets/struct.Buckets.html) method and
@@ -39,7 +40,7 @@ impl Default for ConsoleConfig {
     fn default() -> ConsoleConfig {
         ConsoleConfig {
             bin_width: 1,
-            flush_interval: 60,
+            flush_interval: 60 * flushes_per_second(),
             config_path: None,
             tags: TagMap::default(),
         }

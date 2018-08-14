@@ -4,6 +4,7 @@ use metric::{TagIter, TagMap, Telemetry};
 use quantiles::histogram::Bound;
 use reqwest;
 use sink::{Sink, Valve};
+use source::flushes_per_second;
 use std::cmp;
 use std::string;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -68,7 +69,7 @@ impl Default for InfluxDBConfig {
             db: "cernan".to_string(),
             config_path: None,
             tags: Default::default(),
-            flush_interval: 60,
+            flush_interval: 60 * flushes_per_second(),
         }
     }
 }
@@ -303,7 +304,7 @@ mod test {
             port: 1987,
             config_path: Some("sinks.influxdb".to_string()),
             tags: tags,
-            flush_interval: 60,
+            flush_interval: 60 * flushes_per_second(),
         };
         let mut influxdb = InfluxDB::init(config);
         let dt_0 = Utc.ymd(1990, 6, 12).and_hms_milli(9, 10, 11, 00);

@@ -3,6 +3,7 @@
 use buckets;
 use metric::{AggregationMethod, TagIter, TagMap, Telemetry};
 use sink::{Sink, Valve};
+use source::flushes_per_second;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::io::Write as IoWrite;
@@ -130,7 +131,7 @@ impl Default for WavefrontConfig {
             config_path: Some("sinks.wavefront".to_string()),
             percentiles,
             tags: TagMap::default(),
-            flush_interval: 60,
+            flush_interval: 60 * flushes_per_second(),
             pad_control: PadControl::default(),
             age_threshold: None,
         }
