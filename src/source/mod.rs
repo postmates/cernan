@@ -20,7 +20,7 @@ mod tcp;
 
 pub use self::avro::Avro;
 pub use self::file::{FileServer, FileServerConfig};
-pub use self::flush::{FlushTimer, FlushTimerConfig};
+pub use self::flush::{FlushTimer, FlushTimerConfig, flushes_per_second};
 pub use self::graphite::{Graphite, GraphiteConfig};
 pub use self::internal::{report_full_telemetry, Internal, InternalConfig};
 pub use self::native::{NativeServer, NativeServerConfig};

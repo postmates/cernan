@@ -7,6 +7,7 @@ use protobuf::repeated::RepeatedField;
 use protobuf::stream::CodedOutputStream;
 use protocols::native::{AggregationMethod, LogLine, Payload, Telemetry};
 use sink::Sink;
+use source::flushes_per_second;
 use std::collections::HashMap;
 use std::io::BufWriter;
 use std::mem::replace;
@@ -54,7 +55,7 @@ impl Default for NativeConfig {
             port: 1972,
             host: "localhost".to_string(),
             config_path: None,
-            flush_interval: 60,
+            flush_interval: 60 * flushes_per_second(),
             tags: metric::TagMap::default(),
         }
     }
