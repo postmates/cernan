@@ -9,6 +9,7 @@ use std::io::{Cursor, Read};
 use std::net;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use util;
+use uuid::Uuid;
 
 /// Total payloads processed.
 pub static AVRO_PAYLOAD_SUCCESS_SUM: AtomicUsize = AtomicUsize::new(0);
@@ -114,6 +115,7 @@ impl TCPStreamHandler for AvroStreamHandler {
         poller: &mio::Poll,
         stream: mio::net::TcpStream,
     ) -> () {
+        let connection_id = Uuid::new_v4();
         let mut streaming = true;
         let mut reader = BufferedPayload::new(stream.try_clone().unwrap(), 1_048_576);
         while streaming {
@@ -133,6 +135,7 @@ impl TCPStreamHandler for AvroStreamHandler {
                                         let handle_res = self.handle_avro_payload(
                                             chans.clone(),
                                             payload,
+                                            connection_id,
                                         );
                                         if handle_res.is_err() {
                                             AVRO_PAYLOAD_PARSE_FAILURE_SUM
@@ -217,19 +220,28 @@ impl AvroStreamHandler {
         &mut self,
         mut chans: util::Channel,
         payload: Vec<u8>,
+        connection_id: Uuid
     ) -> Result<Option<u64>, PayloadErr> {
         match payload.into() {
             Payload::Valid { header, avro_blob } => {
+                let ackbag = metric::global_ack_bag();
+                if header.sync() {
+                    ackbag.prepare_wait(connection_id)
+                }
+
                 util::send(
                     &mut chans,
                     metric::Event::Raw {
                         order_by: header.order_by,
                         encoding: metric::Encoding::Avro,
                         bytes: avro_blob,
+                        connection_id: Some(connection_id)
                     },
                 );
 
                 if header.sync() {
+                    ackbag.wait_for(connection_id);
+                    ackbag.remove(connection_id);
                     Ok(Some(header.id))
                 } else {
                     Ok(None)
