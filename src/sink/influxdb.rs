@@ -63,7 +63,7 @@ pub struct InfluxDBConfig {
 impl Default for InfluxDBConfig {
     fn default() -> Self {
         InfluxDBConfig {
-            port: 8089,
+            port: 8086,
             secure: true,
             host: "localhost".to_string(),
             db: "cernan".to_string(),

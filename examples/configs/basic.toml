@@ -59,7 +59,7 @@ source = "cernan"
   # bin_width = 1
 
   [sinks.influxdb]
-  port = 8089
+  port = 8086
   host = "127.0.0.1"
   bin_width = 1
 
