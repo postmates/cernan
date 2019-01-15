@@ -115,6 +115,7 @@ impl filter::Filter for JSONEncodeFilter {
                     bytes: serde_json::to_string(&value).unwrap().into(), /* serde_json::Value
                                                                            * will never fail to
                                                                            * encode */
+                    metadata: None,
                     connection_id: None,
                 });
                 JSON_ENCODE_LOG_PROCESSED.fetch_add(1, Ordering::Relaxed);

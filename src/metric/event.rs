@@ -1,4 +1,5 @@
 use crate::metric::{LogLine, Telemetry};
+use crate::util::HashMap;
 use uuid::Uuid;
 
 /// Supported event encodings.
@@ -11,6 +12,9 @@ pub enum Encoding {
     /// JSON
     JSON,
 }
+
+/// Metadata: additional data attached to an event
+pub type Metadata = HashMap<Vec<u8>, Vec<u8>>;
 
 /// Event: the central cernan datastructure
 ///
@@ -41,6 +45,8 @@ pub enum Event {
         encoding: Encoding,
         /// Encoded payload.
         bytes: Vec<u8>,
+        /// Metadata used by some sinks
+        metadata: Option<Metadata>,
         /// Connection ID of the source on which this raw event was received
         connection_id: Option<Uuid>,
     },

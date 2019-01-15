@@ -1,5 +1,6 @@
 use crate::constants;
 use crate::metric;
+use crate::metric::Metadata;
 use crate::source::nonblocking::{write_all, BufferedPayload, PayloadErr};
 use crate::source::{TCPStreamHandler, TCP};
 use crate::util;
@@ -31,22 +32,51 @@ pub struct Header {
 }
 
 impl<'a> From<&'a mut Cursor<Vec<u8>>> for Header {
-    /// Parses payload headers from raw bytes.
-    /// All values assumed to be big endian.
-    ///
-    /// | version - 4 bytes   |   control - 4 bytes  |
-    /// |               id - 8 bytes                 |
-    /// |           order_by - 8 bytes               |
-    ///
-    /// The above fields have the following semantics:
-    ///
-    /// * version   -   Version of Avro source wire protocol.
-    /// * control   -   Metadata governing how the payload is to be published.
-    /// * id        -   Client assigned id for the payload.  Sent in reply on
-    ///   successful publication when the control field indicates a sync
-    ///   publish.
-    /// * order_by  -   Value used by some sinks to order payloads within
-    ///   buckets.
+    // Parses payload headers from raw bytes.
+    // All values assumed to be big endian.
+    // Diagram below describes packet layout.
+    //
+    // 0                   1                   2                   3
+    // 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                             Length                            |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                            Version                            |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                            Control                            |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                                                               |
+    // +                               ID                              +
+    // |                                                               |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                                                               |
+    // +                            ShardBy                            +
+    // |                                                               |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |   #KV Pairs   |   Key Length  |    Key (up to 255 bytes)      |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |          Value Length         |   Value (up to 65535 bytes)   |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                          Avro N Bytes                         |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    //
+    //
+    //    The fields of the payload have the following semantic meaning:
+    //
+    //    * Length  - Length of full packet
+    //    * Version - Version of the wire protocol used.  In this case, 2.
+    //    * Control - Metadata governing on the payload is to be published. Version
+    //      1 & 2 of the protocol only support a bit indicating whether or not the
+    //      client expects an ack after publication.
+    //    * ID - Explained in kwargs.
+    //    * ShardBy - Explained in kwargs.
+    //    * #KV Pairs - Number of KV pairs (max 255)
+    //    * Key Length - Length of Key in bytes (max 255)
+    //    * Key - N Bytes of Key data encoded as UTF-8 (max 255 bytes after
+    //      encoding)
+    //    * Value Length - Length of Value data (max 65535)
+    //    * Value - N Bytes of Value data, no encoding enforced (max 65535 bytes)
+
     fn from(cursor: &'a mut Cursor<Vec<u8>>) -> Self {
         let version = cursor.read_u32::<BigEndian>().unwrap();
         let control = cursor.read_u32::<BigEndian>().unwrap();
@@ -74,7 +104,11 @@ impl Header {
 #[derive(Debug, PartialEq)]
 enum Payload {
     Invalid(String),
-    Valid { header: Header, avro_blob: Vec<u8> },
+    Valid {
+        header: Header,
+        metadata: Option<Metadata>,
+        avro_blob: Vec<u8>,
+    },
 }
 
 impl From<Vec<u8>> for Payload {
@@ -82,6 +116,27 @@ impl From<Vec<u8>> for Payload {
     fn from(vec: Vec<u8>) -> Payload {
         let mut cursor = Cursor::new(vec);
         let header: Header = (&mut cursor).into();
+
+        let metadata = if header.version < 2 {
+            None
+        } else {
+            let num_kv = cursor.read_u8().unwrap();
+            if num_kv < 1 {
+                None
+            } else {
+                let mut m: Metadata = Metadata::default();
+                for _ in 0..num_kv {
+                    let key_len = cursor.read_u8().unwrap();
+                    let mut key = vec![0; key_len as usize];
+                    cursor.read_exact(&mut key).unwrap();
+                    let val_len = cursor.read_u16::<BigEndian>().unwrap();
+                    let mut val = vec![0; val_len as usize];
+                    cursor.read_exact(&mut val).unwrap();
+                    m.insert(key, val);
+                }
+                Some(m)
+            }
+        };
 
         // Read the avro payload off the wire
         let mut avro_blob = Vec::new();
@@ -101,6 +156,7 @@ impl From<Vec<u8>> for Payload {
         trace!("Successfully deserialized container.");
         Payload::Valid {
             header: header,
+            metadata: metadata,
             avro_blob: avro_blob,
         }
     }
@@ -207,19 +263,42 @@ impl TCPStreamHandler for AvroStreamHandler {
 }
 
 impl AvroStreamHandler {
-    /// Pulls length prefixed (4 bytes, BE), avro encoded
-    /// binaries off the wire and populates them in the configured
-    /// channel.
-    ///
-    /// Payloads are assumed to be of the following form:
-    /// | Length: 4 u32, BigEndian | Version: 4 u32, BigEndian  |
-    /// |               OrderBy: u64, BigEndian                 |
-    /// |                    Avro Blob                          |
-    ///
-    /// While not all sinks for Raw events will make use of OrderBy,
-    /// it should be the publisher that decides when they are interested
-    /// in their events being ordered.  As such, the burden of providing
-    /// this value is on the publishing client.
+    // Pulls length prefixed (4 bytes, BE), avro encoded
+    // binaries off the wire and populates them in the configured
+    // channel.
+    //
+    // Payloads are assumed to be of the following form:
+    //
+    // 0                   1                   2                   3
+    // 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                             Length                            |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                            Version                            |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                            Control                            |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                                                               |
+    // +                               ID                              +
+    // |                                                               |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                                                               |
+    // +                            ShardBy                            +
+    // |                                                               |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |   #KV Pairs   |   Key Length  |    Key (up to 255 bytes)      |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |          Value Length         |   Value (up to 65535 bytes)   |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                          Avro N Bytes                         |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    //
+    //
+    // While not all sinks for Raw events will make use of OrderBy,
+    // it should be the publisher that decides when they are interested
+    // in their events being ordered.  As such, the burden of providing
+    // this value is on the publishing client.
+
     fn handle_avro_payload(
         &mut self,
         mut chans: util::Channel,
@@ -227,7 +306,11 @@ impl AvroStreamHandler {
         connection_id: Uuid,
     ) -> Result<Option<u64>, PayloadErr> {
         match payload.into() {
-            Payload::Valid { header, avro_blob } => {
+            Payload::Valid {
+                header,
+                metadata,
+                avro_blob,
+            } => {
                 let ackbag = metric::global_ack_bag();
                 if header.sync() {
                     ackbag.prepare_wait(connection_id)
@@ -239,6 +322,7 @@ impl AvroStreamHandler {
                         order_by: header.order_by,
                         encoding: metric::Encoding::Avro,
                         bytes: avro_blob,
+                        metadata: metadata,
                         connection_id: Some(connection_id),
                     },
                 );
@@ -265,11 +349,13 @@ pub type Avro = TCP<AvroStreamHandler>;
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use byteorder::WriteBytesExt;
-    use glob;
     use std::fs::File;
     use std::io::Write;
+
+    use byteorder::WriteBytesExt;
+    use glob;
+
+    use super::*;
 
     #[test]
     fn header_async() {
@@ -296,7 +382,7 @@ mod test {
     }
 
     #[test]
-    fn parse_payload_happy_path() {
+    fn parse_payload_happy_path_v1() {
         let test_data_path =
             format!("{}/resources/tests/data/*.avro", env!("CARGO_MANIFEST_DIR"));
         for test_path in
@@ -318,7 +404,7 @@ mod test {
 
                     let buf = Vec::new();
                     let mut write_cursor = Cursor::new(buf);
-                    assert!(write_cursor.write_u32::<BigEndian>(0).is_ok());
+                    assert!(write_cursor.write_u32::<BigEndian>(1).is_ok());
                     assert!(write_cursor.write_u32::<BigEndian>(0).is_ok());
                     assert!(write_cursor.write_u64::<BigEndian>(0).is_ok());
                     assert!(write_cursor.write_u64::<BigEndian>(0).is_ok());
@@ -328,14 +414,85 @@ mod test {
 
                     let expected = Payload::Valid {
                         header: Header {
-                            version: 0,
+                            version: 1,
                             control: 0,
                             id: 0,
                             order_by: 0,
                         },
+                        metadata: None,
                         avro_blob: Vec::from(avro_blob),
                     };
-                    assert!(payload == expected);
+                    assert_eq!(payload, expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn parse_payload_happy_path_v2() {
+        let test_data_path =
+            format!("{}/resources/tests/data/*.avro", env!("CARGO_MANIFEST_DIR"));
+        for test_path in
+            glob::glob(&test_data_path).expect("Failed to glob test data!")
+        {
+            match test_path {
+                Err(e) => {
+                    warn!("Failed to load avro test file {:?}", e);
+                    assert!(false);
+                }
+
+                Ok(test_file) => {
+                    println!("Testing {:?}", test_file);
+                    let mut test_file_data = File::open(test_file).unwrap();
+                    let mut avro_blob = Vec::new();
+                    test_file_data
+                        .read_to_end(&mut avro_blob)
+                        .expect("Failed to read testdata!");
+
+                    let buf = Vec::new();
+                    let mut write_cursor = Cursor::new(buf);
+
+                    // Mocked header data
+                    assert!(write_cursor.write_u32::<BigEndian>(2).is_ok());
+                    assert!(write_cursor.write_u32::<BigEndian>(0).is_ok());
+                    assert!(write_cursor.write_u64::<BigEndian>(0).is_ok());
+                    assert!(write_cursor.write_u64::<BigEndian>(0).is_ok());
+
+                    // Mocked kv data
+                    // Write number of kv, 1 in this case
+                    assert!(write_cursor.write_u8(1).is_ok());
+
+                    // Write key
+                    let key = "testkey".as_bytes();
+                    assert!(write_cursor.write_u8(key.len() as u8).is_ok());
+                    assert!(write_cursor.write_all(&key).is_ok());
+
+                    // Write value
+                    let value = "testvalue".as_bytes();
+                    assert!(write_cursor
+                        .write_u16::<BigEndian>(value.len() as u16)
+                        .is_ok());
+                    assert!(write_cursor.write_all(&value).is_ok());
+
+                    // Mocked Avro data
+                    assert!(write_cursor.write_all(&avro_blob[..]).is_ok());
+
+                    let payload: Payload = write_cursor.into_inner().into();
+
+                    let mut expected_metadata: Metadata = Metadata::default();
+                    expected_metadata.insert(key.to_vec(), value.to_vec());
+
+                    let expected = Payload::Valid {
+                        header: Header {
+                            version: 2,
+                            control: 0,
+                            id: 0,
+                            order_by: 0,
+                        },
+                        metadata: Some(expected_metadata),
+                        avro_blob: Vec::from(avro_blob),
+                    };
+                    assert_eq!(payload, expected);
                 }
             }
         }

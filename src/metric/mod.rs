@@ -7,7 +7,7 @@ mod logline;
 mod telemetry;
 
 pub use self::ackbag::global_ack_bag;
-pub use self::event::{Encoding, Event};
+pub use self::event::{Encoding, Event, Metadata};
 pub use self::logline::LogLine;
 #[cfg(test)]
 pub use self::telemetry::Value;
