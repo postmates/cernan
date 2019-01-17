@@ -11,8 +11,8 @@
 use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
-use filter;
-use metric;
+use crate::filter;
+use crate::metric;
 use rand::random;
 use serde_json;
 use serde_json::Value;
@@ -156,8 +156,8 @@ fn merge_objects(objs: Vec<Map<String, Value>>) -> Map<String, Value> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use filter::Filter;
-    use metric;
+    use crate::filter::Filter;
+    use crate::metric;
     use quickcheck::QuickCheck;
     use serde_json::Value;
     use serde_json::map::Map;

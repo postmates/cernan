@@ -1,13 +1,13 @@
-use constants;
-use metric;
+use crate::constants;
+use crate::metric;
 use mio;
 use protobuf;
-use protocols::native::{AggregationMethod, Payload};
-use source::{BufferedPayload, PayloadErr, TCPConfig, TCPStreamHandler, TCP};
+use crate::protocols::native::{AggregationMethod, Payload};
+use crate::source::{BufferedPayload, PayloadErr, TCPConfig, TCPStreamHandler, TCP};
 use std::net;
 use std::str;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use util;
+use crate::util;
 
 /// Total payloads processed.
 pub static NATIVE_PAYLOAD_SUCCESS_SUM: AtomicUsize = AtomicUsize::new(0);

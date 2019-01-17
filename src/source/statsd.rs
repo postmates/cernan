@@ -1,16 +1,16 @@
-use constants;
-use metric;
+use crate::constants;
+use crate::metric;
 use mio;
-use protocols::statsd::parse_statsd;
+use crate::protocols::statsd::parse_statsd;
 use regex::Regex;
-use source;
+use crate::source;
 use std::io::ErrorKind;
 use std::net::ToSocketAddrs;
 use std::str;
 use std::sync;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use util;
-use util::send;
+use crate::util;
+use crate::util::send;
 
 pub static STATSD_GOOD_PACKET: AtomicUsize = AtomicUsize::new(0);
 pub static STATSD_BAD_PACKET: AtomicUsize = AtomicUsize::new(0);

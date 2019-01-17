@@ -5,8 +5,8 @@
 //! that creates `Telemetry`, `FileServer` is a source that creates `LogLine`s.
 use mio;
 use std::marker::PhantomData;
-use thread;
-use util;
+use crate::thread;
+use crate::util;
 
 mod avro;
 mod file;

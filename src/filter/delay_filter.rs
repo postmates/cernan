@@ -5,10 +5,10 @@
 //! for some time `T`, `(T - time::now()).abs() > tolerance` the item associated
 //! with `T` will be rejected.
 
-use filter;
-use metric;
+use crate::filter;
+use crate::metric;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use time;
+use crate::time;
 
 /// Total number of telemetry rejected for age
 pub static DELAY_TELEM_REJECT: AtomicUsize = AtomicUsize::new(0);

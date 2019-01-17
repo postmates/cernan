@@ -14,7 +14,7 @@ pub use self::telemetry::{AggregationMethod, Telemetry};
 pub use self::telemetry::Value;
 use std::cmp;
 use std::collections::{hash_map, HashSet};
-use util;
+use crate::util;
 
 /// A common type in cernan, a map from string to string
 pub type TagMap = util::HashMap<String, String>;

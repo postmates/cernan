@@ -1,10 +1,10 @@
 //! Mio enabled threading library.
-use constants;
+use crate::constants;
 use mio;
 use std::option;
 use std::thread;
 use std::sync;
-use util;
+use crate::util;
 
 /// Event polling structure. Alias of `mio::Poll`.
 pub type Poll = mio::Poll;

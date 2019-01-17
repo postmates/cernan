@@ -1,4 +1,4 @@
-use source::internal::report_full_telemetry;
+use crate::source::internal::report_full_telemetry;
 use std::fs;
 use std::io;
 use std::io::BufRead;

@@ -1,5 +1,5 @@
 //! Sink equivalent of /dev/null.
-use sink::{Sink, Valve};
+use crate::sink::{Sink, Valve};
 
 /// Null sink
 ///

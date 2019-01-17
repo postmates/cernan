@@ -1,9 +1,9 @@
 //! Wavefront is a proprietary aggregation and alerting product
 
-use buckets;
-use metric::{AggregationMethod, TagIter, TagMap, Telemetry};
-use sink::{Sink, Valve};
-use source::flushes_per_second;
+use crate::buckets;
+use crate::metric::{AggregationMethod, TagIter, TagMap, Telemetry};
+use crate::sink::{Sink, Valve};
+use crate::source::flushes_per_second;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::io::Write as IoWrite;
@@ -12,7 +12,7 @@ use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::string;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use time;
+use crate::time;
 
 /// Total number of connection attempts made to wavefront proxy
 pub static WAVEFRONT_CONNECT_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
@@ -656,11 +656,11 @@ impl Sink<WavefrontConfig> for Wavefront {
 #[cfg(test)]
 mod test {
     use super::*;
-    use buckets::Buckets;
+    use crate::buckets::Buckets;
     use chrono::{TimeZone, Utc};
-    use metric::{AggregationMethod, TagMap, Telemetry};
+    use crate::metric::{AggregationMethod, TagMap, Telemetry};
     use quickcheck::{QuickCheck, TestResult};
-    use sink::Sink;
+    use crate::sink::Sink;
 
     #[test]
     fn test_pad_across_flush() {

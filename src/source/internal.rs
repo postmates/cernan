@@ -1,14 +1,14 @@
 use coco::Stack;
-use filter;
-use metric;
-use metric::{AggregationMethod, Telemetry};
+use crate::filter;
+use crate::metric;
+use crate::metric::{AggregationMethod, Telemetry};
 use mio;
-use sink;
-use source;
+use crate::sink;
+use crate::source;
 use std;
 use std::sync::atomic::Ordering;
-use time;
-use util;
+use crate::time;
+use crate::util;
 
 lazy_static! {
     static ref Q: Stack<metric::Telemetry> = Stack::new();
@@ -48,7 +48,7 @@ pub fn report_full_telemetry(
     value: f64,
     metadata: Option<Vec<(&str, &str)>>,
 ) -> () {
-    use metric::AggregationMethod;
+    use crate::metric::AggregationMethod;
     let mut telem = metric::Telemetry::new()
         .name(name)
         .value(value)

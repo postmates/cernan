@@ -14,7 +14,7 @@ mod test {
     use std::io::Write;
     use std::os::unix::fs::MetadataExt;
     use std::str;
-    use time;
+    use crate::time;
     // Welcome.
     //
     // This suite of tests is structured as an interpreter of file system

@@ -1,6 +1,6 @@
 //! Kafka sink for Raw events.
 use futures::future::Future;
-use metric;
+use crate::metric;
 use rdkafka::client::ClientContext;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::error::{KafkaError, RDKafkaError};
@@ -8,11 +8,11 @@ use rdkafka::message::{Message, OwnedMessage};
 use rdkafka::producer::FutureProducer;
 use rdkafka::producer::future_producer::DeliveryFuture;
 use rdkafka::util::current_time_millis;
-use sink::Sink;
-use source;
+use crate::sink::Sink;
+use crate::source;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use util::Valve;
+use crate::util::Valve;
 use uuid::Uuid;
 
 /// Total records published.

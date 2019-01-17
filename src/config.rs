@@ -4,7 +4,7 @@
 //! the server can consume and use as configuration data.
 
 use clap::{App, Arg};
-use metric::TagMap;
+use crate::metric::TagMap;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
@@ -14,16 +14,16 @@ use toml;
 
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
-use filter::{
+use crate::filter::{
     DelayFilterConfig, FlushBoundaryFilterConfig, JSONEncodeFilterConfig,
     ProgrammableFilterConfig,
 };
-use sink::wavefront::PadControl;
-use sink::{
+use crate::sink::wavefront::PadControl;
+use crate::sink::{
     ConsoleConfig, ElasticsearchConfig, InfluxDBConfig, KafkaConfig, NativeConfig,
     NullConfig, PrometheusConfig, WavefrontConfig,
 };
-use source::{
+use crate::source::{
     flushes_per_second, FileServerConfig, GraphiteConfig, InternalConfig,
     NativeServerConfig, StatsdConfig, StatsdParseConfig, TCPConfig,
 };

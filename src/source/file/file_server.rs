@@ -1,15 +1,15 @@
 use glob::glob;
-use metric;
+use crate::metric;
 use mio;
-use source;
-use source::file::file_watcher::FileWatcher;
-use source::internal::report_full_telemetry;
+use crate::source;
+use crate::source::file::file_watcher::FileWatcher;
+use crate::source::internal::report_full_telemetry;
 use std::mem;
 use std::path::PathBuf;
 use std::str;
 use std::time;
-use util;
-use util::send;
+use crate::util;
+use crate::util::send;
 
 /// `FileServer` is a Source which cooperatively schedules reads over files,
 /// converting the lines of said files into `LogLine` structures. As

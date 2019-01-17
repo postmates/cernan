@@ -3,10 +3,10 @@
 //! Each bucket contains a set of hashmaps containing
 //! each set of metrics received by clients.
 
-use metric::Telemetry;
+use crate::metric::Telemetry;
 use std::iter::Iterator;
 use std::ops::IndexMut;
-use time;
+use crate::time;
 
 /// Buckets stores all metrics until they are flushed.
 #[derive(Clone)]
@@ -226,8 +226,8 @@ impl Buckets {
 mod test {
     use super::*;
     use chrono::{TimeZone, Utc};
-    use metric::AggregationMethod;
-    use metric::Telemetry;
+    use crate::metric::AggregationMethod;
+    use crate::metric::Telemetry;
     use quickcheck::{QuickCheck, TestResult};
     use std::cmp::Ordering;
     use std::collections::{HashMap, HashSet};
@@ -982,7 +982,7 @@ mod test {
 
     #[test]
     fn test_all_insertions() {
-        use metric::Value;
+        use crate::metric::Value;
 
         fn qos_ret(ms: Vec<Telemetry>) -> TestResult {
             let mut bucket = Buckets::default();

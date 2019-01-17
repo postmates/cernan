@@ -1,14 +1,14 @@
-use constants;
+use crate::constants;
 use hopper;
-use metric;
+use crate::metric;
 use mio;
-use source::Source;
+use crate::source::Source;
 use std;
 use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::net::ToSocketAddrs;
-use thread;
-use util;
+use crate::thread;
+use crate::util;
 
 /// Configured for the `metric::Telemetry` source.
 #[derive(Debug, Deserialize, Clone)]
@@ -43,7 +43,7 @@ pub trait TCPStreamHandler: 'static + Default + Clone + Sync + Send {
     }
 
     /// Handler for a single HTTP request.
-    fn handle_stream(&mut self, util::Channel, &mio::Poll, mio::net::TcpStream) -> ();
+    fn handle_stream(&mut self, _: util::Channel, _: &mio::Poll, _: mio::net::TcpStream) -> ();
 }
 
 /// State for a TCP backed source.

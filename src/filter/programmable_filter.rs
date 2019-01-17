@@ -1,6 +1,6 @@
-use filter;
+use crate::filter;
 use libc::c_int;
-use metric;
+use crate::metric;
 use mond;
 use mond::{Function, State, ThreadStatus};
 use mond::ffi::lua_State;

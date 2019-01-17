@@ -2,12 +2,12 @@
 //! no control over time. It is, uh, well it's kind of ad hoc and also totally
 //! ubiquitous.
 
-use metric;
-use metric::AggregationMethod;
-use source::StatsdParseConfig;
+use crate::metric;
+use crate::metric::AggregationMethod;
+use crate::source::StatsdParseConfig;
 use std::str::FromStr;
 use std::sync;
-use time;
+use crate::time;
 
 /// Valid message formats are:
 ///
@@ -165,7 +165,7 @@ pub fn parse_statsd(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use metric::{AggregationMethod, Telemetry};
+    use crate::metric::{AggregationMethod, Telemetry};
     use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use std::sync;
 

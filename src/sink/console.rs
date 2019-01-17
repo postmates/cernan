@@ -1,12 +1,12 @@
 //! Console Event logger.
 
-use buckets::Buckets;
+use crate::buckets::Buckets;
 use chrono::DateTime;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
-use metric::{AggregationMethod, LogLine, TagMap, Telemetry};
-use sink::{Sink, Valve};
-use source::flushes_per_second;
+use crate::metric::{AggregationMethod, LogLine, TagMap, Telemetry};
+use crate::sink::{Sink, Valve};
+use crate::source::flushes_per_second;
 
 /// The 'console' sink exists for development convenience. The sink will
 /// aggregate according to [buckets](../buckets/struct.Buckets.html) method and

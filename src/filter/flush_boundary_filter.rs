@@ -1,5 +1,5 @@
-use filter;
-use metric;
+use crate::filter;
+use crate::metric;
 use std::mem;
 
 /// Buffer events for a set period of flushes

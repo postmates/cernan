@@ -3,7 +3,7 @@
 use std;
 use std::fmt::Debug;
 use std::str::FromStr;
-use util;
+use crate::util;
 
 type AdjacencyMap<T> = util::HashMap<String, Option<T>>;
 
