@@ -436,7 +436,7 @@ impl source::Source<InternalConfig> for Internal {
                             filter::json_encode_filter::JSON_ENCODE_LOG_PARSED,
                             chans
                         );
-                        while let Some(mut telem) = Q.pop() {
+                        while let Some(telem) = Q.pop() {
                             if !chans.is_empty() {
                                 util::send(
                                     &mut chans,

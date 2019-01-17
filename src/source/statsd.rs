@@ -181,7 +181,7 @@ impl source::Source<StatsdConfig> for Statsd {
                             }
 
                             token => {
-                                let mut socket = &self.conns[token];
+                                let socket = &self.conns[token];
                                 if let Err(_e) =
                                     self.handle_datagrams(&mut chans, socket, &mut buf)
                                 {

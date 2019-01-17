@@ -150,7 +150,7 @@ impl Sink<NativeConfig> for Native {
                     // elsewhere
                     points.push(telem);
                 }
-                metric::Event::Log(mut l) => {
+                metric::Event::Log(l) => {
                     let mut ll = LogLine::new();
                     let mut meta = HashMap::new();
                     // TODO
