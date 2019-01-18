@@ -1,14 +1,14 @@
 //! `InfluxDB` is a telemetry database.
 
-use metric::{TagIter, TagMap, Telemetry};
+use crate::metric::{TagIter, TagMap, Telemetry};
 use quantiles::histogram::Bound;
 use reqwest;
-use sink::{Sink, Valve};
-use source::flushes_per_second;
+use crate::sink::{Sink, Valve};
+use crate::source::flushes_per_second;
 use std::cmp;
 use std::string;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use time;
+use crate::time;
 use url::Url;
 
 /// total delivery attempts made by this sink
@@ -102,7 +102,7 @@ where
 impl InfluxDB {
     /// Convert the slice into a payload that can be sent to InfluxDB
     fn format_stats(&self, buffer: &mut String, telems: &[Telemetry]) -> () {
-        use metric::AggregationMethod;
+        use crate::metric::AggregationMethod;
         let mut time_cache: Vec<(u64, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
 
@@ -287,9 +287,9 @@ impl Sink<InfluxDBConfig> for InfluxDB {
 mod test {
     use super::*;
     use chrono::{TimeZone, Utc};
-    use metric::{TagMap, Telemetry};
-    use metric::AggregationMethod;
-    use sink::Sink;
+    use crate::metric::{TagMap, Telemetry};
+    use crate::metric::AggregationMethod;
+    use crate::sink::Sink;
 
     #[test]
     fn test_format_influxdb() {

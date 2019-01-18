@@ -1,7 +1,7 @@
 use std::cmp::min;
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
-use util;
+use crate::util;
 use uuid::Uuid;
 
 #[derive(Clone)]

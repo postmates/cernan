@@ -10,11 +10,11 @@
 //!
 //! All points are retained indefinitely in their aggregation.
 use flate2::write::GzEncoder;
-use http;
-use metric;
-use metric::{AggregationMethod, TagIter, TagMap};
+use crate::http;
+use crate::metric;
+use crate::metric::{AggregationMethod, TagIter, TagMap};
 use quantiles::histogram::Bound;
-use sink::Sink;
+use crate::sink::Sink;
 use std::collections::hash_map;
 use std::f64;
 use std::io;
@@ -24,9 +24,9 @@ use std::sync;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
-use thread::Stoppable;
-use time;
-use util;
+use crate::thread::Stoppable;
+use crate::time;
+use crate::util;
 
 /// Total reportable metrics
 pub static PROMETHEUS_AGGR_REPORTABLE: AtomicUsize = AtomicUsize::new(0);
@@ -657,7 +657,7 @@ impl Sink<PrometheusConfig> for Prometheus {
 #[cfg(test)]
 mod test {
     use super::*;
-    use metric;
+    use crate::metric;
     use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
 
     impl Arbitrary for PrometheusAggr {

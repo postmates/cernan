@@ -1,7 +1,7 @@
 //! Handle the graphite protocol. Graphite is a timestamped, simple text-based
 //! protocol for telemetry.
 
-use metric::{AggregationMethod, Telemetry};
+use crate::metric::{AggregationMethod, Telemetry};
 use std::str::FromStr;
 use std::sync;
 
@@ -50,7 +50,7 @@ pub fn parse_graphite(
 mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
-    use metric::{AggregationMethod, Telemetry};
+    use crate::metric::{AggregationMethod, Telemetry};
     use std::sync;
 
     #[test]

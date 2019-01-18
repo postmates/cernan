@@ -1,4 +1,4 @@
-use metric::{LogLine, Telemetry};
+use crate::metric::{LogLine, Telemetry};
 use uuid::Uuid;
 
 /// Supported event encodings.

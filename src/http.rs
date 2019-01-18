@@ -3,7 +3,7 @@
 extern crate tiny_http;
 
 use std;
-use thread;
+use crate::thread;
 
 /// HTTP request. Alias of `tiny_http::Request`.
 pub type Request = tiny_http::Request;

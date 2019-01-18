@@ -1,6 +1,6 @@
-use filter;
+use crate::filter;
 use libc::c_int;
-use metric;
+use crate::metric;
 use mond;
 use mond::{Function, State, ThreadStatus};
 use mond::ffi::lua_State;
@@ -539,8 +539,7 @@ impl filter::Filter for ProgrammableFilter {
     ) -> Result<(), filter::FilterError> {
         match event {
             metric::Event::Telemetry(m) => {
-                let mut pyld =
-                    Payload::from_metric(m, &self.global_tags, self.path.as_str());
+                let pyld = Payload::from_metric(m, &self.global_tags, self.path.as_str());
                 run_lua_func(&mut self.state, "process_metric", res, pyld)
             }
             metric::Event::TimerFlush(flush_idx)
@@ -549,7 +548,7 @@ impl filter::Filter for ProgrammableFilter {
                 Ok(())
             }
             metric::Event::TimerFlush(flush_idx) => {
-                let mut pyld = Payload::blank(&self.global_tags, self.path.as_str());
+                let pyld = Payload::blank(&self.global_tags, self.path.as_str());
                 let result = run_lua_func(&mut self.state, "tick", res, pyld);
                 if result.is_ok() {
                     self.last_flush_idx = flush_idx;
@@ -558,8 +557,7 @@ impl filter::Filter for ProgrammableFilter {
                 result
             }
             metric::Event::Log(l) => {
-                let mut pyld =
-                    Payload::from_log(l, &self.global_tags, self.path.as_str());
+                let pyld = Payload::from_log(l, &self.global_tags, self.path.as_str());
                 run_lua_func(&mut self.state, "process_log", res, pyld)
             }
             raw @ metric::Event::Raw { .. } => {

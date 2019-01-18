@@ -1,14 +1,14 @@
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use constants;
-use metric;
+use crate::constants;
+use crate::metric;
 use mio;
 use serde_avro;
-use source::{TCPStreamHandler, TCP};
-use source::nonblocking::{write_all, BufferedPayload, PayloadErr};
+use crate::source::{TCPStreamHandler, TCP};
+use crate::source::nonblocking::{write_all, BufferedPayload, PayloadErr};
 use std::io::{Cursor, Read};
 use std::net;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use util;
+use crate::util;
 use uuid::Uuid;
 
 /// Total payloads processed.

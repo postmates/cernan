@@ -1,15 +1,15 @@
-use constants;
-use metric;
+use crate::constants;
+use crate::metric;
 use mio;
-use protocols::graphite::parse_graphite;
-use source::{TCPConfig, TCPStreamHandler, TCP};
+use crate::protocols::graphite::parse_graphite;
+use crate::source::{TCPConfig, TCPStreamHandler, TCP};
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::str;
 use std::sync;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use util;
-use util::send;
+use crate::util;
+use crate::util::send;
 
 pub static GRAPHITE_NEW_PEER: AtomicUsize = AtomicUsize::new(0);
 pub static GRAPHITE_GOOD_PACKET: AtomicUsize = AtomicUsize::new(0);

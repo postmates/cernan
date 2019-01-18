@@ -1,4 +1,4 @@
-use metric::{cmp_tagmap, TagIter, TagMap};
+use crate::metric::{cmp_tagmap, TagIter, TagMap};
 use quantiles::ckms::CKMS;
 use quantiles::histogram::{Histogram, Iter};
 #[cfg(test)]
@@ -7,7 +7,7 @@ use std::{cmp, mem};
 use std::collections::{hash_map, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, AddAssign};
-use time;
+use crate::time;
 
 /// The available aggregations for `Telemetry`.
 ///
@@ -921,7 +921,7 @@ impl Telemetry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use metric::{AggregationMethod, Event, Telemetry};
+    use crate::metric::{AggregationMethod, Event, Telemetry};
     use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use std::cmp;
 

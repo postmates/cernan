@@ -6,9 +6,9 @@
 //! filter receives on an input channel and outputs over its forwards.
 
 use hopper;
-use metric;
-use time;
-use util;
+use crate::metric;
+use crate::time;
+use crate::util;
 
 mod programmable_filter;
 pub mod delay_filter;

@@ -606,7 +606,7 @@ mod integration {
 
             for event in events {
                 match event {
-                    metric::Event::Telemetry(mut met) => {
+                    metric::Event::Telemetry(met) => {
                         assert_eq!(met.name, expected);
                     }
                     _ => {
@@ -651,7 +651,7 @@ mod integration {
 
             for event in events {
                 match event {
-                    metric::Event::Telemetry(mut met) => {
+                    metric::Event::Telemetry(met) => {
                         assert_eq!(met.name, expected);
                     }
                     _ => {

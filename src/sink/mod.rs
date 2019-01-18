@@ -5,11 +5,11 @@
 //! different choices.
 
 use hopper;
-use metric::{Encoding, Event, LogLine, Telemetry};
+use crate::metric::{Encoding, Event, LogLine, Telemetry};
 use std::marker::PhantomData;
-use thread;
-use time;
-use util::Valve;
+use crate::thread;
+use crate::time;
+use crate::util::Valve;
 use uuid::Uuid;
 
 mod console;

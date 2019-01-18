@@ -11,11 +11,12 @@ use cernan::buckets;
 use cernan::metric::{AggregationMethod, Telemetry};
 use chrono::{TimeZone, Utc};
 use rand::{Rng, SeedableRng, XorShiftRng};
+use rand::distributions::Alphanumeric;
 
 fn experiment(input: &ExperimentInput) {
     let total_adds = input.total_adds;
     let name_pool_size = input.name_pool_size;
-    let mut rng: XorShiftRng = SeedableRng::from_seed([1, 2, 3, 4]);
+    let mut rng: XorShiftRng = SeedableRng::from_seed([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
     let aggregations = [
         AggregationMethod::Histogram,
         AggregationMethod::Set,
@@ -41,7 +42,7 @@ fn experiment(input: &ExperimentInput) {
     ];
     let mut pool: Vec<String> = Vec::with_capacity(name_pool_size);
     for _ in 0..name_pool_size {
-        pool.push(rng.gen_ascii_chars().take(10).collect());
+        pool.push(rng.sample_iter(&Alphanumeric).take(10).collect());
     }
     let mut bucket = buckets::Buckets::default();
 
