@@ -2,8 +2,8 @@
 
 use byteorder::{BigEndian, ReadBytesExt};
 use mio;
-use std::{io, mem};
 use std::io::{Read, Write};
+use std::{io, mem};
 
 /// Like `std::net::TcpStream::write_all`, except it handles `WouldBlock` too.
 pub fn write_all(
@@ -137,8 +137,8 @@ impl BufferedPayload {
     }
 
     /// Attempts to read at least one payload worth of data.  If there
-    /// isn't enough data between the inner buffer and the underlying stream, then
-    /// PayloadErr::WouldBlock is returned.
+    /// isn't enough data between the inner buffer and the underlying stream,
+    /// then PayloadErr::WouldBlock is returned.
     fn read_payload(&mut self) -> Result<(), PayloadErr> {
         // At this point we can assume that we have successfully
         // read the length off the wire.
@@ -150,7 +150,8 @@ impl BufferedPayload {
         }
 
         loop {
-            match self.buffer
+            match self
+                .buffer
                 .read(&mut self.payload[self.payload_pos..payload_size])
             {
                 Ok(0) => return Err(PayloadErr::EOF),

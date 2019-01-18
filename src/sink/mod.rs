@@ -4,22 +4,22 @@
 //! and log lines it receives, other than to receive them. Individual sinks make
 //! different choices.
 
-use hopper;
 use crate::metric::{Encoding, Event, LogLine, Telemetry};
-use std::marker::PhantomData;
 use crate::thread;
 use crate::time;
 use crate::util::Valve;
+use hopper;
+use std::marker::PhantomData;
 use uuid::Uuid;
 
 mod console;
-mod null;
-pub mod wavefront;
-mod native;
-pub mod influxdb;
-pub mod prometheus;
 pub mod elasticsearch;
+pub mod influxdb;
 pub mod kafka;
+mod native;
+mod null;
+pub mod prometheus;
+pub mod wavefront;
 
 pub use self::console::{Console, ConsoleConfig};
 pub use self::elasticsearch::{Elasticsearch, ElasticsearchConfig};
@@ -132,7 +132,8 @@ where
                                 if let Some(flush_interval) =
                                     self.state.flush_interval()
                                 {
-                                    if flush_interval == 0 || idx % flush_interval == 0 {
+                                    if flush_interval == 0 || idx % flush_interval == 0
+                                    {
                                         self.state.flush();
                                     }
                                 }
@@ -152,9 +153,14 @@ where
                             order_by,
                             encoding,
                             bytes,
-                            connection_id
+                            connection_id,
                         } => {
-                            self.state.deliver_raw(order_by, encoding, bytes, connection_id);
+                            self.state.deliver_raw(
+                                order_by,
+                                encoding,
+                                bytes,
+                                connection_id,
+                            );
                             break;
                         }
                         Event::Shutdown => {
@@ -169,7 +175,10 @@ where
                             // upstream sources/filters.
                             total_shutdowns += 1;
                             if total_shutdowns >= self.sources.len() {
-                                trace!("Received shutdown from every configured source: {:?}", self.sources);
+                                trace!(
+                                    "Received shutdown from every configured source: {:?}",
+                                    self.sources
+                                );
                                 self.state.shutdown();
                                 return;
                             }

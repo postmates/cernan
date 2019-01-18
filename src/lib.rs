@@ -16,7 +16,12 @@
 //! If you'd like to learn more, please do have a look in
 //! our [wiki](https://github.com/postmates/cernan/wiki/).
 #![allow(unknown_lints)]
-#![deny(trivial_numeric_casts, missing_docs, unstable_features, unused_import_braces)]
+#![deny(
+    trivial_numeric_casts,
+    missing_docs,
+    unstable_features,
+    unused_import_braces
+)]
 extern crate base64;
 extern crate byteorder;
 extern crate chrono;
@@ -57,16 +62,16 @@ extern crate serde_derive;
 #[cfg(test)]
 extern crate quickcheck;
 
-pub mod sink;
 pub mod buckets;
 pub mod config;
-pub mod metric;
-pub mod time;
-pub mod source;
-pub mod filter;
-pub mod util;
 pub mod constants;
-pub mod thread;
-pub mod protocols;
+pub mod filter;
 pub mod http;
 pub mod matrix;
+pub mod metric;
+pub mod protocols;
+pub mod sink;
+pub mod source;
+pub mod thread;
+pub mod time;
+pub mod util;

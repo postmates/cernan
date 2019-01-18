@@ -7,8 +7,8 @@
 
 use crate::filter;
 use crate::metric;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::time;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Total number of telemetry rejected for age
 pub static DELAY_TELEM_REJECT: AtomicUsize = AtomicUsize::new(0);

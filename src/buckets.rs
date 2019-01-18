@@ -4,9 +4,9 @@
 //! each set of metrics received by clients.
 
 use crate::metric::Telemetry;
+use crate::time;
 use std::iter::Iterator;
 use std::ops::IndexMut;
-use crate::time;
 
 /// Buckets stores all metrics until they are flushed.
 #[derive(Clone)]
@@ -225,9 +225,9 @@ impl Buckets {
 #[cfg(test)]
 mod test {
     use super::*;
-    use chrono::{TimeZone, Utc};
     use crate::metric::AggregationMethod;
     use crate::metric::Telemetry;
+    use chrono::{TimeZone, Utc};
     use quickcheck::{QuickCheck, TestResult};
     use std::cmp::Ordering;
     use std::collections::{HashMap, HashSet};
@@ -279,6 +279,7 @@ mod test {
         bkt.add(m0);
         bkt.add(m1);
 
+        //
         //  * it is possible to switch a SET|SUM from persist to ephemeral
         //  * an ephemeral SET|SUM will have its value inherited by a persist SET|SUM
         let aggrs = bkt.clone();
@@ -288,10 +289,12 @@ mod test {
         assert_eq!(1, res[1].timestamp);
         assert_eq!(Some(3.0), res[1].sum());
 
+        //
         //  * a SET|SUM with persist will survive across resets
         bkt.reset();
         assert!(!bkt.is_empty());
 
+        //
         //  * an ephemeral SET|SUM will not inherit the value of a persist SET|SUM
         let aggrs = bkt.clone();
         let res = aggrs.get(id).unwrap();
@@ -421,7 +424,8 @@ mod test {
                 let time = v.timestamp;
                 let mut found_one = false;
                 for m in &mp {
-                    if (m.name == v.name) && (&m.kind() == kind)
+                    if (m.name == v.name)
+                        && (&m.kind() == kind)
                         && within(bin_width, m.timestamp, time)
                     {
                         assert_eq!(Ordering::Equal, m.within(bin_width, &v));
@@ -527,13 +531,16 @@ mod test {
     fn test_true_histogram() {
         let mut buckets = Buckets::default();
 
-        let dt_0 = Utc.ymd(1996, 10, 7)
+        let dt_0 = Utc
+            .ymd(1996, 10, 7)
             .and_hms_milli(10, 11, 11, 0)
             .timestamp();
-        let dt_1 = Utc.ymd(1996, 10, 7)
+        let dt_1 = Utc
+            .ymd(1996, 10, 7)
             .and_hms_milli(10, 11, 12, 0)
             .timestamp();
-        let dt_2 = Utc.ymd(1996, 10, 7)
+        let dt_2 = Utc
+            .ymd(1996, 10, 7)
             .and_hms_milli(10, 11, 13, 0)
             .timestamp();
 
@@ -999,13 +1006,15 @@ mod test {
                         let val = c[idx].1.clone();
                         c[idx].1 = val.add(m.priv_value());
                     }
-                    Err(idx) => if m.persist && idx > 0 {
-                        let mut val = c[idx - 1].clone().1;
-                        val = val.add(m.priv_value());
-                        c.insert(idx, (m.timestamp, val))
-                    } else {
-                        c.insert(idx, (m.timestamp, m.priv_value()))
-                    },
+                    Err(idx) => {
+                        if m.persist && idx > 0 {
+                            let mut val = c[idx - 1].clone().1;
+                            val = val.add(m.priv_value());
+                            c.insert(idx, (m.timestamp, val))
+                        } else {
+                            c.insert(idx, (m.timestamp, m.priv_value()))
+                        }
+                    }
                 }
             }
             let len_cnts = cnts.values().fold(0, |acc, ref x| acc + x.len());
@@ -1038,7 +1047,7 @@ mod test {
                                         assert!(
                                             (lhs.query(*prcnt).unwrap()
                                                 - rhs.query(*prcnt).unwrap())
-                                                .abs()
+                                            .abs()
                                                 < 0.0001
                                         )
                                     }

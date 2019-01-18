@@ -1,15 +1,15 @@
 //! `ElasticSearch` is a documentation indexing engine.
 
-use chrono::DateTime;
+use crate::metric::{LogLine, TagMap};
+use crate::sink::{Sink, Valve};
+use crate::source::flushes_per_second;
 use chrono::naive::NaiveDateTime;
 use chrono::offset::Utc;
+use chrono::DateTime;
 use elastic::client::responses::bulk;
 use elastic::error;
 use elastic::error::Result;
 use elastic::prelude::*;
-use crate::metric::{LogLine, TagMap};
-use crate::sink::{Sink, Valve};
-use crate::source::flushes_per_second;
 use std::cmp;
 use std::error::Error;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -267,75 +267,69 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
                         }
                     }
                 }
-                Err(err) => match err {
-                    error::Error::Api(ref api_error) => {
-                        use elastic::error::ApiError;
-                        match *api_error {
-                            ApiError::IndexNotFound { ref index } => {
-                                ELASTIC_ERROR_API_INDEX_NOT_FOUND
-                                    .fetch_add(1, Ordering::Relaxed);
-                                debug!(
-                                    "Unable to write, API Error (Index Not Found): {}",
-                                    index
-                                );
-                            }
-                            ApiError::Parsing { ref reason, .. } => {
-                                ELASTIC_ERROR_API_PARSING
-                                    .fetch_add(1, Ordering::Relaxed);
-                                debug!(
-                                    "Unable to write, API Error (Parsing): {}",
-                                    reason
-                                );
-                            }
-                            ApiError::MapperParsing { ref reason, .. } => {
-                                ELASTIC_ERROR_API_MAPPER_PARSING
-                                    .fetch_add(1, Ordering::Relaxed);
-                                debug!(
-                                    "Unable to write, API Error (Mapper Parsing): {}",
-                                    reason
-                                );
-                            }
-                            ApiError::ActionRequestValidation {
-                                ref reason, ..
-                            } => {
-                                ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION
-                                    .fetch_add(1, Ordering::Relaxed);
-                                debug!(
+                Err(err) => {
+                    match err {
+                        error::Error::Api(ref api_error) => {
+                            use elastic::error::ApiError;
+                            match *api_error {
+                                ApiError::IndexNotFound { ref index } => {
+                                    ELASTIC_ERROR_API_INDEX_NOT_FOUND
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    debug!("Unable to write, API Error (Index Not Found): {}", index);
+                                }
+                                ApiError::Parsing { ref reason, .. } => {
+                                    ELASTIC_ERROR_API_PARSING
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    debug!(
+                                        "Unable to write, API Error (Parsing): {}",
+                                        reason
+                                    );
+                                }
+                                ApiError::MapperParsing { ref reason, .. } => {
+                                    ELASTIC_ERROR_API_MAPPER_PARSING
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    debug!("Unable to write, API Error (Mapper Parsing): {}", reason);
+                                }
+                                ApiError::ActionRequestValidation {
+                                    ref reason,
+                                    ..
+                                } => {
+                                    ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    debug!(
                                     "Unable to write, API Error (Action Request Validation): {}",
                                     reason
                                 );
-                            }
-                            ApiError::DocumentMissing { ref index, .. } => {
-                                ELASTIC_ERROR_API_DOCUMENT_MISSING
-                                    .fetch_add(1, Ordering::Relaxed);
-                                debug!(
-                                "Unable to write, API Error (Document Missing): {}",
-                                index
-                            );
-                            }
-                            ApiError::IndexAlreadyExists { ref index, .. } => {
-                                ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS
-                                    .fetch_add(1, Ordering::Relaxed);
-                                debug!(
+                                }
+                                ApiError::DocumentMissing { ref index, .. } => {
+                                    ELASTIC_ERROR_API_DOCUMENT_MISSING
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    debug!("Unable to write, API Error (Document Missing): {}", index);
+                                }
+                                ApiError::IndexAlreadyExists { ref index, .. } => {
+                                    ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    debug!(
                                     "Unable to write, API Error (Index Already Exists): {}",
                                     index
                                 );
-                            }
-                            _ => {
-                                ELASTIC_ERROR_API_UNKNOWN
-                                    .fetch_add(1, Ordering::Relaxed);
-                                debug!("Unable to write, API Error (Unknown)");
+                                }
+                                _ => {
+                                    ELASTIC_ERROR_API_UNKNOWN
+                                        .fetch_add(1, Ordering::Relaxed);
+                                    debug!("Unable to write, API Error (Unknown)");
+                                }
                             }
                         }
+                        error::Error::Client(ref client_error) => {
+                            ELASTIC_ERROR_CLIENT.fetch_add(1, Ordering::Relaxed);
+                            debug!(
+                                "Unable to write, client error: {}",
+                                client_error.description()
+                            );
+                        }
                     }
-                    error::Error::Client(ref client_error) => {
-                        ELASTIC_ERROR_CLIENT.fetch_add(1, Ordering::Relaxed);
-                        debug!(
-                            "Unable to write, client error: {}",
-                            client_error.description()
-                        );
-                    }
-                },
+                }
             }
         }
     }

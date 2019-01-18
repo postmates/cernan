@@ -3,10 +3,10 @@
 //! In cernan a `Source` is a place where all `metric::Event` come from, feeding
 //! down into the source's forwards for further processing. Statsd is a source
 //! that creates `Telemetry`, `FileServer` is a source that creates `LogLine`s.
-use mio;
-use std::marker::PhantomData;
 use crate::thread;
 use crate::util;
+use mio;
+use std::marker::PhantomData;
 
 mod avro;
 mod file;
@@ -20,7 +20,7 @@ mod tcp;
 
 pub use self::avro::Avro;
 pub use self::file::{FileServer, FileServerConfig};
-pub use self::flush::{FlushTimer, FlushTimerConfig, flushes_per_second};
+pub use self::flush::{flushes_per_second, FlushTimer, FlushTimerConfig};
 pub use self::graphite::{Graphite, GraphiteConfig};
 pub use self::internal::{report_full_telemetry, Internal, InternalConfig};
 pub use self::native::{NativeServer, NativeServerConfig};

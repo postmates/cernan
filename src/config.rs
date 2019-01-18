@@ -3,8 +3,8 @@
 //! Used to parse the argv/config file into a struct that
 //! the server can consume and use as configuration data.
 
-use clap::{App, Arg};
 use crate::metric::TagMap;
+use clap::{App, Arg};
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
@@ -156,9 +156,11 @@ fn parse_flush_interval(table: &toml::Value, key: &str) -> Option<u64> {
         Some(value) => match value {
             toml::Value::Float(f) => Some((f * flushes_per_second() as f64) as u64),
             toml::Value::Integer(i) => Some(*i as u64 * flushes_per_second()),
-            _ => panic!("Expected number of seconds for flush_interval config parameter.")
+            _ => panic!(
+                "Expected number of seconds for flush_interval config parameter."
+            ),
         },
-        _ => None
+        _ => None,
     }
 }
 
@@ -245,7 +247,8 @@ fn parse_config_file(buffer: &str) -> Args {
     args.data_directory = value
         .get("data-directory")
         .map(|s| {
-            let s = s.as_str()
+            let s = s
+                .as_str()
                 .expect("data-directory value must be valid string");
             Path::new(s).to_path_buf()
         })
@@ -254,14 +257,15 @@ fn parse_config_file(buffer: &str) -> Args {
     args.scripts_directory = value
         .get("scripts-directory")
         .map(|s| {
-            let s = s.as_str()
+            let s = s
+                .as_str()
                 .expect("scripts-directory value must be valid string");
             Path::new(s).to_path_buf()
         })
         .unwrap_or(args.scripts_directory);
 
-    args.flush_interval = parse_flush_interval(&value, "flush-interval")
-        .unwrap_or(args.flush_interval);
+    args.flush_interval =
+        parse_flush_interval(&value, "flush-interval").unwrap_or(args.flush_interval);
 
     let global_tags: TagMap = match value.get("tags") {
         Some(tbl) => {
@@ -273,10 +277,12 @@ fn parse_config_file(buffer: &str) -> Args {
                     None => {
                         let ktbl =
                             v.as_table().expect("tag must be a string or a table");
-                        if ktbl.get("environment")
+                        if ktbl
+                            .get("environment")
                             .map_or(false, |ev| ev.as_bool().unwrap_or(false))
                         {
-                            let env_key = ktbl.get("value")
+                            let env_key = ktbl
+                                .get("value")
                                 .expect("must have a value key")
                                 .as_str()
                                 .expect("value key must be string");
@@ -313,7 +319,8 @@ fn parse_config_file(buffer: &str) -> Args {
                         let tolerance =
                             tol.as_integer().expect("tolerance must be an integer");
                         let fwds = match tbl.get("forwards") {
-                            Some(fwds) => fwds.as_array()
+                            Some(fwds) => fwds
+                                .as_array()
                                 .expect("forwards must be an array")
                                 .to_vec()
                                 .iter()
@@ -346,7 +353,8 @@ fn parse_config_file(buffer: &str) -> Args {
                     false
                 };
                 let fwds = match tbl.get("forwards") {
-                    Some(fwds) => fwds.as_array()
+                    Some(fwds) => fwds
+                        .as_array()
                         .expect("forwards must be an array")
                         .to_vec()
                         .iter()
@@ -375,7 +383,8 @@ fn parse_config_file(buffer: &str) -> Args {
                         let tolerance =
                             tol.as_integer().expect("tolerance must be an integer");
                         let fwds = match tbl.get("forwards") {
-                            Some(fwds) => fwds.as_array()
+                            Some(fwds) => fwds
+                                .as_array()
                                 .expect("forwards must be an array")
                                 .to_vec()
                                 .iter()
@@ -405,7 +414,8 @@ fn parse_config_file(buffer: &str) -> Args {
                     Some(pth) => {
                         let path = Path::new(pth.as_str().unwrap());
                         let fwds = match tbl.get("forwards") {
-                            Some(fwds) => fwds.as_array()
+                            Some(fwds) => fwds
+                                .as_array()
                                 .expect("forwards must be an array")
                                 .to_vec()
                                 .iter()
@@ -443,14 +453,16 @@ fn parse_config_file(buffer: &str) -> Args {
             let mut res = ConsoleConfig::default();
             res.config_path = Some("sinks.console".to_string());
 
-            res.bin_width = snk.get("bin_width")
+            res.bin_width = snk
+                .get("bin_width")
                 .map(|bw| {
                     bw.as_integer()
                         .expect("could not parse sinks.console.bin_width")
                 })
                 .unwrap_or(res.bin_width);
 
-            res.flush_interval = parse_flush_interval(snk, "flush_interval").unwrap_or(args.flush_interval);
+            res.flush_interval = parse_flush_interval(snk, "flush_interval")
+                .unwrap_or(args.flush_interval);
             res.tags = global_tags.clone();
 
             res
@@ -538,17 +550,20 @@ fn parse_config_file(buffer: &str) -> Args {
             let mut res = InfluxDBConfig::default();
             res.config_path = Some("sinks.influxdb".to_string());
 
-            res.port = snk.get("port")
+            res.port = snk
+                .get("port")
                 .map(|p| {
                     p.as_integer().expect("could not parse sinks.influxdb.port") as u16
                 })
                 .unwrap_or(res.port);
 
-            res.secure = snk.get("secure")
+            res.secure = snk
+                .get("secure")
                 .map(|p| p.as_bool().expect("could not parse sinks.influxdb.secure"))
                 .unwrap_or(res.secure);
 
-            res.host = snk.get("host")
+            res.host = snk
+                .get("host")
                 .map(|p| {
                     p.as_str()
                         .expect("could not parse sinks.influxdb.host")
@@ -556,7 +571,8 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.host);
 
-            res.db = snk.get("db")
+            res.db = snk
+                .get("db")
                 .map(|p| {
                     p.as_str()
                         .expect("could not parse sinks.influxdb.db")
@@ -564,58 +580,65 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.db);
 
-            res.flush_interval = parse_flush_interval(snk, "flush_interval").unwrap_or(args.flush_interval);
+            res.flush_interval = parse_flush_interval(snk, "flush_interval")
+                .unwrap_or(args.flush_interval);
             res.tags = global_tags.clone();
 
             res
         });
 
-        args.prometheus = sinks.get("prometheus").map(|snk| {
-            let mut res = PrometheusConfig::default();
-            res.config_path = Some("sinks.prometheus".to_string());
+        args.prometheus =
+            sinks.get("prometheus").map(|snk| {
+                let mut res = PrometheusConfig::default();
+                res.config_path = Some("sinks.prometheus".to_string());
 
-            res.age_threshold = snk.get("age_threshold")
-                .map(|p| {
-                    Some(p.as_integer()
-                        .expect("could not parse sinks.prometheus.age_threshold")
-                        as u64)
-                })
-                .unwrap_or(res.age_threshold);
+                res.age_threshold =
+                    snk.get("age_threshold")
+                        .map(|p| {
+                            Some(p.as_integer().expect(
+                                "could not parse sinks.prometheus.age_threshold",
+                            ) as u64)
+                        })
+                        .unwrap_or(res.age_threshold);
 
-            res.port = snk.get("port")
-                .map(|p| {
-                    p.as_integer()
-                        .expect("could not parse sinks.prometheus.port")
-                        as u16
-                })
-                .unwrap_or(res.port);
+                res.port = snk
+                    .get("port")
+                    .map(|p| {
+                        p.as_integer()
+                            .expect("could not parse sinks.prometheus.port")
+                            as u16
+                    })
+                    .unwrap_or(res.port);
 
-            res.host = snk.get("host")
-                .map(|p| {
-                    p.as_str()
-                        .expect("could not parse sinks.prometheus.host")
-                        .to_string()
-                })
-                .unwrap_or(res.host);
+                res.host = snk
+                    .get("host")
+                    .map(|p| {
+                        p.as_str()
+                            .expect("could not parse sinks.prometheus.host")
+                            .to_string()
+                    })
+                    .unwrap_or(res.host);
 
-            res.capacity_in_seconds = snk.get("capacity_in_seconds")
-                .map(|p| {
-                    p.as_integer()
-                        .expect("could not parse sinks.prometheus.capacity_in_seconds")
-                        as usize
-                })
-                .unwrap_or(res.capacity_in_seconds);
+                res.capacity_in_seconds = snk
+                    .get("capacity_in_seconds")
+                    .map(|p| {
+                        p.as_integer().expect(
+                            "could not parse sinks.prometheus.capacity_in_seconds",
+                        ) as usize
+                    })
+                    .unwrap_or(res.capacity_in_seconds);
 
-            res.tags = global_tags.clone();
+                res.tags = global_tags.clone();
 
-            res
-        });
+                res
+            });
 
         args.elasticsearch = sinks.get("elasticsearch").map(|snk| {
             let mut res = ElasticsearchConfig::default();
             res.config_path = Some("sinks.elasticsearch".to_string());
 
-            res.delivery_attempt_limit = snk.get("delivery_attempt_limit")
+            res.delivery_attempt_limit = snk
+                .get("delivery_attempt_limit")
                 .map(|p| {
                     p.as_integer().expect(
                         "could not parse sinks.elasticsearch.delivery_attempt_limit",
@@ -623,7 +646,8 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.delivery_attempt_limit);
 
-            res.port = snk.get("port")
+            res.port = snk
+                .get("port")
                 .map(|p| {
                     p.as_integer()
                         .expect("could not parse sinks.elasticsearch.port")
@@ -631,7 +655,8 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.port);
 
-            res.host = snk.get("host")
+            res.host = snk
+                .get("host")
                 .map(|p| {
                     p.as_str()
                         .expect("could not parse sinks.elasticsearch.host")
@@ -639,7 +664,8 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.host);
 
-            res.index_prefix = snk.get("index-prefix")
+            res.index_prefix = snk
+                .get("index-prefix")
                 .map(|p| {
                     Some(
                         p.as_str()
@@ -649,14 +675,16 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.index_prefix);
 
-            res.secure = snk.get("secure")
+            res.secure = snk
+                .get("secure")
                 .map(|bw| {
                     bw.as_bool()
                         .expect("could not parse sinks.elasticsearch.secure")
                 })
                 .unwrap_or(res.secure);
 
-            res.index_type = snk.get("index_type")
+            res.index_type = snk
+                .get("index_type")
                 .map(|bw| {
                     bw.as_str()
                         .expect("could not parse sinks.elasticsearch.index_type")
@@ -664,7 +692,8 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.index_type);
 
-            res.flush_interval = parse_flush_interval(snk, "flush_interval").unwrap_or(args.flush_interval);
+            res.flush_interval = parse_flush_interval(snk, "flush_interval")
+                .unwrap_or(args.flush_interval);
             res.tags = global_tags.clone();
 
             res
@@ -674,13 +703,15 @@ fn parse_config_file(buffer: &str) -> Args {
             let mut res = NativeConfig::default();
             res.config_path = Some("sinks.native".to_string());
 
-            res.port = snk.get("port")
+            res.port = snk
+                .get("port")
                 .map(|p| {
                     p.as_integer().expect("could not parse sinks.native.port") as u16
                 })
                 .unwrap_or(res.port);
 
-            res.host = snk.get("host")
+            res.host = snk
+                .get("host")
                 .map(|p| {
                     p.as_str()
                         .expect("could not parse sinks.native.host")
@@ -688,7 +719,8 @@ fn parse_config_file(buffer: &str) -> Args {
                 })
                 .unwrap_or(res.host);
 
-            res.flush_interval = parse_flush_interval(snk, "flush_interval").unwrap_or(args.flush_interval);
+            res.flush_interval = parse_flush_interval(snk, "flush_interval")
+                .unwrap_or(args.flush_interval);
             res.tags = global_tags.clone();
 
             res
@@ -697,7 +729,8 @@ fn parse_config_file(buffer: &str) -> Args {
         args.kafkas = sinks.get("kafka").map(|snk| {
             let mut kafkas = Vec::new();
             for (name, tbl) in snk.as_table().unwrap().iter() {
-                let is_enabled = tbl.get("enabled")
+                let is_enabled = tbl
+                    .get("enabled")
                     .unwrap_or(&toml::Value::Boolean(true))
                     .as_bool()
                     .expect("must be a bool");
@@ -709,7 +742,8 @@ fn parse_config_file(buffer: &str) -> Args {
                 let config_path = &format!("sinks.kafka.{}", name)[..];
                 res.config_path = Some(config_path.to_string());
 
-                let topic = tbl.get("topic")
+                let topic = tbl
+                    .get("topic")
                     .map(|x| x.as_str().expect("topic must be a string").to_string());
                 if topic.is_none() {
                     warn!(
@@ -738,23 +772,16 @@ fn parse_config_file(buffer: &str) -> Args {
                 // Sooo many options:
                 // https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md
                 res.rdkafka_config = tbl.get("librdkafka").map(|x| {
-                    let tbl = x.as_table()
+                    let tbl = x
+                        .as_table()
                         .expect("librdkafka configuration should be a table");
                     let mut map = HashMap::new();
                     for (key, value) in tbl.iter() {
                         match *value {
-                            toml::Value::Integer(i) => {
-                                map.insert(key.clone(), format!("{}", i))
-                            }
-                            toml::Value::String(ref s) => {
-                                map.insert(key.clone(), s.clone())
-                            }
-                            toml::Value::Float(f) => {
-                                map.insert(key.clone(), format!("{}", f))
-                            }
-                            toml::Value::Boolean(b) => {
-                                map.insert(key.clone(), format!("{}", b))
-                            }
+                            toml::Value::Integer(i) => map.insert(key.clone(), format!("{}", i)),
+                            toml::Value::String(ref s) => map.insert(key.clone(), s.clone()),
+                            toml::Value::Float(f) => map.insert(key.clone(), format!("{}", f)),
+                            toml::Value::Boolean(b) => map.insert(key.clone(), format!("{}", b)),
                             _ => {
                                 warn!(
                                     "ignoring {:?} in {}.librdkafka: unusable type {}",
@@ -769,8 +796,10 @@ fn parse_config_file(buffer: &str) -> Args {
                     map
                 });
 
-                res.flush_interval = parse_flush_interval(tbl, "flush_interval").unwrap_or(args.flush_interval);
-                res.max_message_bytes = tbl.get("max_message_bytes")
+                res.flush_interval =
+                    parse_flush_interval(tbl, "flush_interval").unwrap_or(args.flush_interval);
+                res.max_message_bytes = tbl
+                    .get("max_message_bytes")
                     .map(|fi| {
                         fi.as_integer()
                             .expect("could not parse sinks.kafka.max_message_bytes")
@@ -798,7 +827,8 @@ fn parse_config_file(buffer: &str) -> Args {
                         fl.path = Some(Path::new(pth.as_str().unwrap()).to_path_buf());
                         fl.config_path = Some(format!("sources.files.{}", pth));
 
-                        fl.forwards = tbl.get("forwards")
+                        fl.forwards = tbl
+                            .get("forwards")
                             .map(|fwd| {
                                 fwd.as_array()
                                     .expect("forwards must be an array")
@@ -818,7 +848,8 @@ fn parse_config_file(buffer: &str) -> Args {
                         //
                         // Someday a static analysis system will flag this as
                         // unsafe. Welcome.
-                        fl.max_read_bytes = tbl.get("max_read_bytes")
+                        fl.max_read_bytes = tbl
+                            .get("max_read_bytes")
                             .map(|mrl| {
                                 mrl.as_integer()
                                     .expect("could not parse max_read_bytes")
@@ -837,7 +868,8 @@ fn parse_config_file(buffer: &str) -> Args {
         args.statsds = sources.get("statsd").map(|src| {
             let mut statsds = HashMap::default();
             for (name, tbl) in src.as_table().unwrap().iter() {
-                let is_enabled = tbl.get("enabled")
+                let is_enabled = tbl
+                    .get("enabled")
                     .unwrap_or(&toml::Value::Boolean(true))
                     .as_bool()
                     .expect("must be a bool");
@@ -845,13 +877,15 @@ fn parse_config_file(buffer: &str) -> Args {
                     let mut res = StatsdConfig::default();
                     res.config_path = Some(name.clone());
 
-                    res.port = tbl.get("port")
+                    res.port = tbl
+                        .get("port")
                         .map(|p| {
                             p.as_integer().expect("could not parse statsd port") as u16
                         })
                         .unwrap_or(res.port);
 
-                    res.host = tbl.get("host")
+                    res.host = tbl
+                        .get("host")
                         .map(|p| {
                             p.as_str()
                                 .expect("could not parse statsd host")
@@ -859,7 +893,8 @@ fn parse_config_file(buffer: &str) -> Args {
                         })
                         .unwrap_or(res.host);
 
-                    res.forwards = tbl.get("forwards")
+                    res.forwards = tbl
+                        .get("forwards")
                         .map(|fwd| {
                             fwd.as_array()
                                 .expect("forwards must be an array")
@@ -870,7 +905,8 @@ fn parse_config_file(buffer: &str) -> Args {
                         })
                         .unwrap_or(res.forwards);
 
-                    res.parse_config = tbl.get("mapping")
+                    res.parse_config = tbl
+                        .get("mapping")
                         .map(|cfg| {
                             let mut masks = Vec::new();
                             for (_, tbl) in
@@ -879,9 +915,11 @@ fn parse_config_file(buffer: &str) -> Args {
                                 if let Some(mask) = tbl.get("mask") {
                                     let re = ::regex::Regex::new(
                                         mask.as_str().expect("mask must be a string"),
-                                    ).expect("mask is not a valid regex");
+                                    )
+                                    .expect("mask is not a valid regex");
                                     if let Some(bnds) = tbl.get("bounds") {
-                                        let bounds = bnds.as_array()
+                                        let bounds = bnds
+                                            .as_array()
                                             .expect("bounds must be an array")
                                             .to_vec()
                                             .iter()
@@ -902,7 +940,8 @@ fn parse_config_file(buffer: &str) -> Args {
                         })
                         .unwrap_or(res.parse_config);
 
-                    let error_bound = tbl.get("summarize_error_bound")
+                    let error_bound = tbl
+                        .get("summarize_error_bound")
                         .map(|p| {
                             p.as_float()
                                 .expect("summarize_error_bound must be a flaot")
@@ -923,7 +962,8 @@ fn parse_config_file(buffer: &str) -> Args {
         args.graphites = sources.get("graphite").map(|src| {
             let mut graphites = HashMap::default();
             for (name, tbl) in src.as_table().unwrap().iter() {
-                let is_enabled = tbl.get("enabled")
+                let is_enabled = tbl
+                    .get("enabled")
                     .unwrap_or(&toml::Value::Boolean(true))
                     .as_bool()
                     .expect("must be a bool");
@@ -931,14 +971,16 @@ fn parse_config_file(buffer: &str) -> Args {
                     let mut res = GraphiteConfig::default();
                     res.config_path = Some(name.clone());
 
-                    res.port = tbl.get("port")
+                    res.port = tbl
+                        .get("port")
                         .map(|p| {
                             p.as_integer().expect("could not parse graphite port")
                                 as u16
                         })
                         .unwrap_or(res.port);
 
-                    res.host = tbl.get("host")
+                    res.host = tbl
+                        .get("host")
                         .map(|p| {
                             p.as_str()
                                 .expect("could not parse graphite host")
@@ -946,7 +988,8 @@ fn parse_config_file(buffer: &str) -> Args {
                         })
                         .unwrap_or(res.host);
 
-                    res.forwards = tbl.get("forwards")
+                    res.forwards = tbl
+                        .get("forwards")
                         .map(|fwd| {
                             fwd.as_array()
                                 .expect("forwards must be an array")
@@ -969,7 +1012,8 @@ fn parse_config_file(buffer: &str) -> Args {
         args.avros = sources.get("avro").map(|src| {
             let mut avros = HashMap::default();
             for (name, tbl) in src.as_table().unwrap().iter() {
-                let is_enabled = tbl.get("enabled")
+                let is_enabled = tbl
+                    .get("enabled")
                     .unwrap_or(&toml::Value::Boolean(true))
                     .as_bool()
                     .expect("must be a bool");
@@ -980,19 +1024,22 @@ fn parse_config_file(buffer: &str) -> Args {
                     // If the user doesn't provide a port, we assume 2002.
                     // This default value has been selected to commemorate the year
                     // Buzz Aldrin punched Bart Sibrel in the face.
-                    res.port = tbl.get("port")
+                    res.port = tbl
+                        .get("port")
                         .map(|p| {
                             p.as_integer().expect("could not parse avro port") as u16
                         })
                         .unwrap_or(2002);
 
-                    res.host = tbl.get("host")
+                    res.host = tbl
+                        .get("host")
                         .map(|p| {
                             p.as_str().expect("could not parse avro host").to_string()
                         })
                         .unwrap_or(res.host);
 
-                    res.forwards = tbl.get("forwards")
+                    res.forwards = tbl
+                        .get("forwards")
                         .map(|fwd| {
                             fwd.as_array()
                                 .expect("forwards must be an array")
@@ -1015,7 +1062,8 @@ fn parse_config_file(buffer: &str) -> Args {
         args.native_server_config = sources.get("native").map(|src| {
             let mut native_server_config = HashMap::default();
             for (name, tbl) in src.as_table().unwrap().iter() {
-                let is_enabled = tbl.get("enabled")
+                let is_enabled = tbl
+                    .get("enabled")
                     .unwrap_or(&toml::Value::Boolean(true))
                     .as_bool()
                     .expect("must be a bool");
@@ -1023,19 +1071,22 @@ fn parse_config_file(buffer: &str) -> Args {
                     let mut res = NativeServerConfig::default();
                     res.config_path = Some(format!("sources.native.{}", name));
 
-                    res.port = tbl.get("port")
+                    res.port = tbl
+                        .get("port")
                         .map(|p| {
                             p.as_integer().expect("could not parse native port") as u16
                         })
                         .unwrap_or(res.port);
 
-                    res.ip = tbl.get("ip")
+                    res.ip = tbl
+                        .get("ip")
                         .map(|p| {
                             p.as_str().expect("could not parse native ip").to_string()
                         })
                         .unwrap_or(res.ip);
 
-                    res.forwards = tbl.get("forwards")
+                    res.forwards = tbl
+                        .get("forwards")
                         .map(|fwd| {
                             fwd.as_array()
                                 .expect("forwards must be an array")
@@ -1061,7 +1112,8 @@ fn parse_config_file(buffer: &str) -> Args {
                 let mut res = InternalConfig::default();
                 res.config_path = Some("sources.internal".to_string());
 
-                res.forwards = src.get("forwards")
+                res.forwards = src
+                    .get("forwards")
                     .map(|fwd| {
                         fwd.as_array()
                             .expect("forwards must be an array")
@@ -1243,9 +1295,10 @@ scripts-directory = "/foo/bar"
             (String::from("setting.four.five"), String::from("4.5")),
             (String::from("setting.six"), String::from("true")),
             (String::from("setting.seven"), String::from("false")),
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         let k = &kafkas[0];
         assert_eq!(k.topic_name, Some(String::from("foobar")));
@@ -1331,7 +1384,10 @@ scripts-directory = "/foo/bar"
         let native_sink_config = args.native_sink_config.unwrap();
         assert_eq!(native_sink_config.host, String::from("foo.example.com"));
         assert_eq!(native_sink_config.port, 1972);
-        assert_eq!(native_sink_config.flush_interval, 120 * flushes_per_second());
+        assert_eq!(
+            native_sink_config.flush_interval,
+            120 * flushes_per_second()
+        );
     }
 
     #[test]
@@ -1901,6 +1957,9 @@ scripts-directory = "/foo/bar"
         "#;
 
         let args_f = parse_config_file(config_f);
-        assert_eq!(args_f.flush_interval, (1.5 * flushes_per_second() as f64) as u64);
+        assert_eq!(
+            args_f.flush_interval,
+            (1.5 * flushes_per_second() as f64) as u64
+        );
     }
 }

@@ -1,7 +1,7 @@
 //! Utility module, a grab-bag of functionality
 use crate::constants;
-use hopper;
 use crate::metric;
+use hopper;
 use mio;
 use seahash::SeaHasher;
 use slab;

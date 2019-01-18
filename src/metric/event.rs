@@ -42,7 +42,7 @@ pub enum Event {
         /// Encoded payload.
         bytes: Vec<u8>,
         /// Connection ID of the source on which this raw event was received
-        connection_id: Option<Uuid>
+        connection_id: Option<Uuid>,
     },
 }
 

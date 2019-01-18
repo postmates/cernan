@@ -1,14 +1,14 @@
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use crate::constants;
 use crate::metric;
+use crate::source::nonblocking::{write_all, BufferedPayload, PayloadErr};
+use crate::source::{TCPStreamHandler, TCP};
+use crate::util;
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use mio;
 use serde_avro;
-use crate::source::{TCPStreamHandler, TCP};
-use crate::source::nonblocking::{write_all, BufferedPayload, PayloadErr};
 use std::io::{Cursor, Read};
 use std::net;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::util;
 use uuid::Uuid;
 
 /// Total payloads processed.
@@ -43,9 +43,10 @@ impl<'a> From<&'a mut Cursor<Vec<u8>>> for Header {
     /// * version   -   Version of Avro source wire protocol.
     /// * control   -   Metadata governing how the payload is to be published.
     /// * id        -   Client assigned id for the payload.  Sent in reply on
-    ///                 successful publication when the control field indicates
-    ///                 a sync publish.
-    /// * order_by  -   Value used by some sinks to order payloads within buckets.
+    ///   successful publication when the control field indicates a sync
+    ///   publish.
+    /// * order_by  -   Value used by some sinks to order payloads within
+    ///   buckets.
     fn from(cursor: &'a mut Cursor<Vec<u8>>) -> Self {
         let version = cursor.read_u32::<BigEndian>().unwrap();
         let control = cursor.read_u32::<BigEndian>().unwrap();
@@ -122,76 +123,79 @@ impl TCPStreamHandler for AvroStreamHandler {
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(&mut events, None) {
                 Err(e) => panic!(format!("Failed during poll {:?}", e)),
-                Ok(_num_events) => for event in events {
-                    match event.token() {
-                        constants::SYSTEM => {
-                            streaming = false;
-                            break;
-                        }
-                        _stream_token => {
-                            while streaming {
-                                match reader.read() {
-                                    Ok(payload) => {
-                                        let handle_res = self.handle_avro_payload(
-                                            chans.clone(),
-                                            payload,
-                                            connection_id,
-                                        );
-                                        if handle_res.is_err() {
-                                            AVRO_PAYLOAD_PARSE_FAILURE_SUM
+                Ok(_num_events) => {
+                    for event in events {
+                        match event.token() {
+                            constants::SYSTEM => {
+                                streaming = false;
+                                break;
+                            }
+                            _stream_token => {
+                                while streaming {
+                                    match reader.read() {
+                                        Ok(payload) => {
+                                            let handle_res = self.handle_avro_payload(
+                                                chans.clone(),
+                                                payload,
+                                                connection_id,
+                                            );
+                                            if handle_res.is_err() {
+                                                AVRO_PAYLOAD_PARSE_FAILURE_SUM
+                                                    .fetch_add(1, Ordering::Relaxed);
+                                                streaming = false;
+                                                break;
+                                            }
+
+                                            trace!("Avro payloads processed successfully.");
+                                            AVRO_PAYLOAD_SUCCESS_SUM
                                                 .fetch_add(1, Ordering::Relaxed);
+
+                                            let maybe_id = handle_res.unwrap();
+                                            if let Some(id) = maybe_id {
+                                                let mut resp = Cursor::new(Vec::new());
+                                                resp.write_u64::<BigEndian>(id)
+                                                    .expect(
+                                                        "Failed to write response id!",
+                                                    );
+                                                write_all(&stream, resp.get_ref())
+                                                    .expect(
+                                                        "Failed to write response!",
+                                                    );
+                                                trace!("Acked {:?}", id);
+                                            }
+                                        }
+
+                                        Err(PayloadErr::WouldBlock) => {
+                                            // Not enough data on the wire.  Try again
+                                            // later.
+                                            break;
+                                        }
+
+                                        Err(PayloadErr::EOF) => {
+                                            // Client went away.  Shut it down
+                                            // (gracefully).
+                                            trace!("TCP stream closed.");
                                             streaming = false;
                                             break;
                                         }
 
-                                        trace!(
-                                            "Avro payloads processed successfully."
-                                        );
-                                        AVRO_PAYLOAD_SUCCESS_SUM
-                                            .fetch_add(1, Ordering::Relaxed);
-
-                                        let maybe_id = handle_res.unwrap();
-                                        if let Some(id) = maybe_id {
-                                            let mut resp = Cursor::new(Vec::new());
-                                            resp.write_u64::<BigEndian>(id).expect(
-                                                "Failed to write response id!",
+                                        Err(e) => {
+                                            // Something unexpected / fatal.
+                                            error!(
+                                                "Failed to process avro payload: {:?}",
+                                                e
                                             );
-                                            write_all(&stream, resp.get_ref())
-                                                .expect("Failed to write response!");
-                                            trace!("Acked {:?}", id);
+                                            AVRO_PAYLOAD_IO_FAILURE_SUM
+                                                .fetch_add(1, Ordering::Relaxed);
+                                            streaming = false;
+                                            break;
                                         }
                                     }
-
-                                    Err(PayloadErr::WouldBlock) => {
-                                        // Not enough data on the wire.  Try again
-                                        // later.
-                                        break;
-                                    }
-
-                                    Err(PayloadErr::EOF) => {
-                                        // Client went away.  Shut it down
-                                        // (gracefully).
-                                        trace!("TCP stream closed.");
-                                        streaming = false;
-                                        break;
-                                    }
-
-                                    Err(e) => {
-                                        // Something unexpected / fatal.
-                                        error!(
-                                            "Failed to process avro payload: {:?}",
-                                            e
-                                        );
-                                        AVRO_PAYLOAD_IO_FAILURE_SUM
-                                            .fetch_add(1, Ordering::Relaxed);
-                                        streaming = false;
-                                        break;
-                                    }
-                                }
-                            } // WouldBlock loop
+                                } // WouldBlock loop
+                            }
                         }
                     }
-                },
+                }
             }
         } // while streaming
 
@@ -220,7 +224,7 @@ impl AvroStreamHandler {
         &mut self,
         mut chans: util::Channel,
         payload: Vec<u8>,
-        connection_id: Uuid
+        connection_id: Uuid,
     ) -> Result<Option<u64>, PayloadErr> {
         match payload.into() {
             Payload::Valid { header, avro_blob } => {
@@ -235,7 +239,7 @@ impl AvroStreamHandler {
                         order_by: header.order_by,
                         encoding: metric::Encoding::Avro,
                         bytes: avro_blob,
-                        connection_id: Some(connection_id)
+                        connection_id: Some(connection_id),
                     },
                 );
 

@@ -1,18 +1,18 @@
 //! Sink for Cernan's native protocol.
 
-use byteorder::{BigEndian, ByteOrder};
 use crate::metric;
-use protobuf::Message;
-use protobuf::repeated::RepeatedField;
-use protobuf::stream::CodedOutputStream;
 use crate::protocols::native::{AggregationMethod, LogLine, Payload, Telemetry};
 use crate::sink::Sink;
 use crate::source::flushes_per_second;
+use crate::time;
+use byteorder::{BigEndian, ByteOrder};
+use protobuf::repeated::RepeatedField;
+use protobuf::stream::CodedOutputStream;
+use protobuf::Message;
 use std::collections::HashMap;
 use std::io::BufWriter;
 use std::mem::replace;
 use std::net::{TcpStream, ToSocketAddrs};
-use crate::time;
 
 /// The native sink
 ///

@@ -1,15 +1,15 @@
 use crate::constants;
 use crate::metric;
-use mio;
 use crate::protocols::graphite::parse_graphite;
 use crate::source::{TCPConfig, TCPStreamHandler, TCP};
-use std::io::BufReader;
+use crate::util;
+use crate::util::send;
+use mio;
 use std::io::prelude::*;
+use std::io::BufReader;
 use std::str;
 use std::sync;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::util;
-use crate::util::send;
 
 pub static GRAPHITE_NEW_PEER: AtomicUsize = AtomicUsize::new(0);
 pub static GRAPHITE_GOOD_PACKET: AtomicUsize = AtomicUsize::new(0);
@@ -71,34 +71,44 @@ impl TCPStreamHandler for GraphiteStreamHandler {
             let mut events = mio::Events::with_capacity(1024);
             match poller.poll(&mut events, None) {
                 Err(e) => panic!("Failed during poll {:?}", e),
-                Ok(_num_events) => for event in events {
-                    match event.token() {
-                        constants::SYSTEM => return,
-                        _stream_token => while let Ok(len) =
-                            line_reader.read_line(&mut line)
-                        {
-                            if len > 0 {
-                                if parse_graphite(&line, &mut res, &basic_metric) {
-                                    assert!(!res.is_empty());
-                                    GRAPHITE_GOOD_PACKET
-                                        .fetch_add(1, Ordering::Relaxed);
-                                    GRAPHITE_TELEM.fetch_add(1, Ordering::Relaxed);
-                                    for m in res.drain(..) {
-                                        send(&mut chans, metric::Event::Telemetry(m));
+                Ok(_num_events) => {
+                    for event in events {
+                        match event.token() {
+                            constants::SYSTEM => return,
+                            _stream_token => {
+                                while let Ok(len) = line_reader.read_line(&mut line) {
+                                    if len > 0 {
+                                        if parse_graphite(
+                                            &line,
+                                            &mut res,
+                                            &basic_metric,
+                                        ) {
+                                            assert!(!res.is_empty());
+                                            GRAPHITE_GOOD_PACKET
+                                                .fetch_add(1, Ordering::Relaxed);
+                                            GRAPHITE_TELEM
+                                                .fetch_add(1, Ordering::Relaxed);
+                                            for m in res.drain(..) {
+                                                send(
+                                                    &mut chans,
+                                                    metric::Event::Telemetry(m),
+                                                );
+                                            }
+                                            line.clear();
+                                        } else {
+                                            GRAPHITE_BAD_PACKET
+                                                .fetch_add(1, Ordering::Relaxed);
+                                            error!("bad packet: {:?}", line);
+                                            line.clear();
+                                        }
+                                    } else {
+                                        break;
                                     }
-                                    line.clear();
-                                } else {
-                                    GRAPHITE_BAD_PACKET
-                                        .fetch_add(1, Ordering::Relaxed);
-                                    error!("bad packet: {:?}", line);
-                                    line.clear();
                                 }
-                            } else {
-                                break;
                             }
-                        },
+                        }
                     }
-                },
+                }
             }
         }
     }

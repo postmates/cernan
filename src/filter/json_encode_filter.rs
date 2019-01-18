@@ -8,15 +8,15 @@
 //! `LogLine` metadata. Otherwise, the original line will be included simply as
 //! a string.
 
-use chrono::DateTime;
-use chrono::naive::NaiveDateTime;
-use chrono::offset::Utc;
 use crate::filter;
 use crate::metric;
+use chrono::naive::NaiveDateTime;
+use chrono::offset::Utc;
+use chrono::DateTime;
 use rand::random;
 use serde_json;
-use serde_json::Value;
 use serde_json::map::Map;
+use serde_json::Value;
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -112,7 +112,9 @@ impl filter::Filter for JSONEncodeFilter {
                 res.push(metric::Event::Raw {
                     order_by: random(),
                     encoding: metric::Encoding::JSON,
-                    bytes: serde_json::to_string(&value).unwrap().into(), /* serde_json::Value will never fail to encode */
+                    bytes: serde_json::to_string(&value).unwrap().into(), /* serde_json::Value
+                                                                           * will never fail to
+                                                                           * encode */
                     connection_id: None,
                 });
                 JSON_ENCODE_LOG_PROCESSED.fetch_add(1, Ordering::Relaxed);
@@ -126,8 +128,8 @@ impl filter::Filter for JSONEncodeFilter {
     }
 }
 
-/// Convenience helper to take a json!() macro you know is an object and get back a
-/// Map<String, Value>, instead of a generic Value.
+/// Convenience helper to take a json!() macro you know is an object and get
+/// back a Map<String, Value>, instead of a generic Value.
 fn json_to_object(v: Value) -> Map<String, Value> {
     if let Value::Object(obj) = v {
         obj
@@ -136,9 +138,9 @@ fn json_to_object(v: Value) -> Map<String, Value> {
     }
 }
 
-/// Merge JSON objects, with values from earlier objects in the list overriding later
-/// ones. Note this is not a recursive merge - if the same key is in many objects, we
-/// simply take the value from the earliest one.
+/// Merge JSON objects, with values from earlier objects in the list overriding
+/// later ones. Note this is not a recursive merge - if the same key is in many
+/// objects, we simply take the value from the earliest one.
 fn merge_objects(objs: Vec<Map<String, Value>>) -> Map<String, Value> {
     let mut result = Map::new();
     for obj in objs {
@@ -159,8 +161,8 @@ mod test {
     use crate::filter::Filter;
     use crate::metric;
     use quickcheck::QuickCheck;
-    use serde_json::Value;
     use serde_json::map::Map;
+    use serde_json::Value;
 
     fn process_event(parse_line: bool, event: metric::Event) -> Value {
         let mut filter = JSONEncodeFilter {
@@ -304,9 +306,11 @@ mod test {
             let result = merge_objects(objs.clone());
             for (key, result_value) in result {
                 match objs.iter().find(|obj| obj.contains_key(&key)) {
-                    Some(obj) => if obj[&key] != result_value {
-                        return false; // result value did not match first obj containing key
-                    },
+                    Some(obj) => {
+                        if obj[&key] != result_value {
+                            return false; // result value did not match first obj containing key
+                        }
+                    }
                     None => return false, // key in result was not in any input objs
                 }
             }

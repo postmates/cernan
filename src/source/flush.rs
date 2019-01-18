@@ -1,10 +1,10 @@
 use crate::metric;
-use mio;
 use crate::source;
-use std::thread::sleep;
-use std::time::Duration;
 use crate::util;
 use crate::util::send;
+use mio;
+use std::thread::sleep;
+use std::time::Duration;
 
 /// The source of all flush pulses.
 pub struct FlushTimer;

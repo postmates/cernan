@@ -11,8 +11,10 @@ extern crate mio;
 extern crate log;
 extern crate openssl_probe;
 
-use cernan::filter::{DelayFilterConfig, Filter, FlushBoundaryFilterConfig,
-                     JSONEncodeFilterConfig, ProgrammableFilterConfig};
+use cernan::filter::{
+    DelayFilterConfig, Filter, FlushBoundaryFilterConfig, JSONEncodeFilterConfig,
+    ProgrammableFilterConfig,
+};
 use cernan::matrix;
 use cernan::metric;
 use cernan::sink::Sink;
@@ -64,8 +66,11 @@ fn join_all(workers: HashMap<String, cernan::thread::ThreadHandle>) {
 
 macro_rules! cfg_conf {
     ($config:ident) => {
-        $config.config_path.clone().expect("[INTERNAL ERROR] no config_path")
-    }
+        $config
+            .config_path
+            .clone()
+            .expect("[INTERNAL ERROR] no config_path")
+    };
 }
 
 #[allow(cyclomatic_complexity)]
@@ -148,7 +153,8 @@ fn main() {
             args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
             args.max_hopper_queue_files,
-        ).unwrap();
+        )
+        .unwrap();
         senders.insert(config.config_path.clone(), send);
         receivers.insert(config.config_path.clone(), recv);
         config_topology.insert(config.config_path.clone(), Default::default());
@@ -161,7 +167,8 @@ fn main() {
             args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
             args.max_hopper_queue_files,
-        ).unwrap();
+        )
+        .unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -174,7 +181,8 @@ fn main() {
             args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
             args.max_hopper_queue_files,
-        ).unwrap();
+        )
+        .unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -187,7 +195,8 @@ fn main() {
             args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
             args.max_hopper_queue_files,
-        ).unwrap();
+        )
+        .unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -200,7 +209,8 @@ fn main() {
             args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
             args.max_hopper_queue_files,
-        ).unwrap();
+        )
+        .unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -213,7 +223,8 @@ fn main() {
             args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
             args.max_hopper_queue_files,
-        ).unwrap();
+        )
+        .unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -226,7 +237,8 @@ fn main() {
             args.max_hopper_in_memory_bytes,
             args.max_hopper_queue_bytes,
             args.max_hopper_queue_files,
-        ).unwrap();
+        )
+        .unwrap();
         senders.insert(config_path.clone(), send);
         receivers.insert(config_path.clone(), recv);
         config_topology.insert(config_path.clone(), Default::default());
@@ -240,7 +252,8 @@ fn main() {
                 args.max_hopper_in_memory_bytes,
                 args.max_hopper_queue_bytes,
                 args.max_hopper_queue_files,
-            ).unwrap();
+            )
+            .unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), Default::default());
@@ -255,7 +268,8 @@ fn main() {
                 args.max_hopper_in_memory_bytes,
                 args.max_hopper_queue_bytes,
                 args.max_hopper_queue_files,
-            ).unwrap();
+            )
+            .unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
@@ -274,7 +288,8 @@ fn main() {
                 args.max_hopper_in_memory_bytes,
                 args.max_hopper_queue_bytes,
                 args.max_hopper_queue_files,
-            ).unwrap();
+            )
+            .unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
@@ -293,7 +308,8 @@ fn main() {
                 args.max_hopper_in_memory_bytes,
                 args.max_hopper_queue_bytes,
                 args.max_hopper_queue_files,
-            ).unwrap();
+            )
+            .unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());
@@ -312,7 +328,8 @@ fn main() {
                 args.max_hopper_in_memory_bytes,
                 args.max_hopper_queue_bytes,
                 args.max_hopper_queue_files,
-            ).unwrap();
+            )
+            .unwrap();
             senders.insert(config_path.clone(), send);
             receivers.insert(config_path.clone(), recv);
             config_topology.insert(config_path.clone(), config.forwards.clone());

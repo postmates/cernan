@@ -5,8 +5,8 @@
 //! module for more details.
 
 use chrono::offset::Utc;
-use std::{thread, time};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{thread, time};
 
 lazy_static! {
     static ref NOW: AtomicUsize = AtomicUsize::new(Utc::now().timestamp() as usize);

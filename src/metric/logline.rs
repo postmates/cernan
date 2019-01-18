@@ -1,6 +1,6 @@
 use crate::metric::{TagIter, TagMap};
-use std::collections::HashSet;
 use crate::time;
+use std::collections::HashSet;
 
 /// An unstructured piece of text, plus associated metadata
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]

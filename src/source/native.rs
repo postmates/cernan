@@ -1,13 +1,13 @@
 use crate::constants;
 use crate::metric;
-use mio;
-use protobuf;
 use crate::protocols::native::{AggregationMethod, Payload};
 use crate::source::{BufferedPayload, PayloadErr, TCPConfig, TCPStreamHandler, TCP};
+use crate::util;
+use mio;
+use protobuf;
 use std::net;
 use std::str;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::util;
 
 /// Total payloads processed.
 pub static NATIVE_PAYLOAD_SUCCESS_SUM: AtomicUsize = AtomicUsize::new(0);
@@ -84,8 +84,8 @@ impl TCPStreamHandler for NativeStreamHandler {
                                 while streaming {
                                     match reader.read() {
                                         Ok(mut raw) => {
-                                            let handle_res =
-                                                self.handle_stream_payload(
+                                            let handle_res = self
+                                                .handle_stream_payload(
                                                     chans.clone(),
                                                     &mut raw,
                                                 );

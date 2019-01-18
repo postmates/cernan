@@ -5,18 +5,20 @@
 //! stream members as they come through. Exact behaviour varies by filters. The
 //! filter receives on an input channel and outputs over its forwards.
 
-use hopper;
 use crate::metric;
 use crate::time;
 use crate::util;
+use hopper;
 
-mod programmable_filter;
 pub mod delay_filter;
 mod flush_boundary_filter;
 pub mod json_encode_filter;
+mod programmable_filter;
 
 pub use self::delay_filter::{DelayFilter, DelayFilterConfig};
-pub use self::flush_boundary_filter::{FlushBoundaryFilter, FlushBoundaryFilterConfig};
+pub use self::flush_boundary_filter::{
+    FlushBoundaryFilter, FlushBoundaryFilterConfig,
+};
 pub use self::json_encode_filter::{JSONEncodeFilter, JSONEncodeFilterConfig};
 pub use self::programmable_filter::{ProgrammableFilter, ProgrammableFilterConfig};
 
@@ -92,9 +94,11 @@ pub trait Filter {
                 Some(event) => {
                     attempts = 0;
                     match self.process(event, &mut events) {
-                        Ok(()) => for ev in events.drain(..) {
-                            util::send(&mut chans, ev)
-                        },
+                        Ok(()) => {
+                            for ev in events.drain(..) {
+                                util::send(&mut chans, ev)
+                            }
+                        }
                         Err(fe) => {
                             error!(
                                 "Failed to run filter with error: {:?}",

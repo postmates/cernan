@@ -93,12 +93,10 @@ impl FileWatcher {
                 report_full_telemetry(
                     "cernan.sources.file.switch",
                     1.0,
-                    Some(vec![
-                        (
-                            "file_path",
-                            self.path.to_str().expect("could not make path"),
-                        ),
-                    ]),
+                    Some(vec![(
+                        "file_path",
+                        self.path.to_str().expect("could not make path"),
+                    )]),
                 );
             }
         } else {
@@ -151,12 +149,10 @@ impl FileWatcher {
                 report_full_telemetry(
                     "cernan.sources.file.truncation",
                     (self.previous_size - current_size) as f64,
-                    Some(vec![
-                        (
-                            "file_path",
-                            self.path.to_str().expect("could not make path"),
-                        ),
-                    ]),
+                    Some(vec![(
+                        "file_path",
+                        self.path.to_str().expect("could not make path"),
+                    )]),
                 );
             }
             self.previous_size = current_size;
