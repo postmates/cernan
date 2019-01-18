@@ -2,19 +2,19 @@
 //! over, plus related metadata. The main show here is
 //! `metric::Event`. Everything branches down from that.
 mod ackbag;
-mod logline;
 mod event;
+mod logline;
 mod telemetry;
 
 pub use self::ackbag::global_ack_bag;
 pub use self::event::{Encoding, Event};
 pub use self::logline::LogLine;
-pub use self::telemetry::{AggregationMethod, Telemetry};
 #[cfg(test)]
 pub use self::telemetry::Value;
+pub use self::telemetry::{AggregationMethod, Telemetry};
+use crate::util;
 use std::cmp;
 use std::collections::{hash_map, HashSet};
-use crate::util;
 
 /// A common type in cernan, a map from string to string
 pub type TagMap = util::HashMap<String, String>;

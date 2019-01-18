@@ -1,7 +1,3 @@
-chain_one_line_max = 80
-error_on_line_overflow = false
-format_strings = false
 max_width = 87
-reorder_imports = true 
-reorder_imported_names = true
+format_strings = false
 wrap_comments = true 

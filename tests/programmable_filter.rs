@@ -3,8 +3,9 @@ mod integration {
 
         extern crate cernan;
 
-        use self::cernan::filter::{Filter, ProgrammableFilter,
-                                   ProgrammableFilterConfig};
+        use self::cernan::filter::{
+            Filter, ProgrammableFilter, ProgrammableFilterConfig,
+        };
         use self::cernan::metric;
         use self::cernan::metric::AggregationMethod;
         use std::path::PathBuf;
@@ -94,8 +95,9 @@ mod integration {
             let log = metric::LogLine::new(
                 "clear_me",
                 "i am the very model of the modern major general",
-            ).overlay_tag("foo", "bar")
-                .overlay_tag("bizz", "bazz");
+            )
+            .overlay_tag("foo", "bar")
+            .overlay_tag("bizz", "bazz");
             let event = metric::Event::new_log(log);
 
             let mut events: Vec<metric::Event> = Vec::new();
@@ -123,13 +125,15 @@ mod integration {
             let orig_log = metric::LogLine::new(
                 "identity",
                 "i am the very model of the modern major general",
-            ).overlay_tag("foo", "bar")
-                .overlay_tag("bizz", "bazz");
+            )
+            .overlay_tag("foo", "bar")
+            .overlay_tag("bizz", "bazz");
             let expected_log = metric::LogLine::new(
                 "identity",
                 "i am the very model of the modern major \
                  general",
-            ).overlay_tag("foo", "bar");
+            )
+            .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -165,7 +169,8 @@ mod integration {
                 "identity",
                 "i am the very model of the modern major \
                  general",
-            ).insert_field("foo", "identity");
+            )
+            .insert_field("foo", "identity");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -197,10 +202,7 @@ mod integration {
                 "identity",
                 "i am the very model of the modern major general",
             );
-            let expected_log = metric::LogLine::new(
-                "identity",
-                "foo"
-            );
+            let expected_log = metric::LogLine::new("identity", "foo");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -368,12 +370,14 @@ mod integration {
                 "identity",
                 "i am the very model of the modern major \
                  general",
-            ).overlay_tag("foo", "bar")
-                .overlay_tag("bizz", "bazz");
+            )
+            .overlay_tag("foo", "bar")
+            .overlay_tag("bizz", "bazz");
             let orig_log = metric::LogLine::new(
                 "identity",
                 "i am the very model of the modern major general",
-            ).overlay_tag("foo", "bar");
+            )
+            .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 
@@ -405,12 +409,14 @@ mod integration {
                 "identity",
                 "i am the very model of the modern major \
                  general",
-            ).overlay_tag("foo", "bar")
-                .overlay_tag("bizz", "bazz");
+            )
+            .overlay_tag("foo", "bar")
+            .overlay_tag("bizz", "bazz");
             let orig_log = metric::LogLine::new(
                 "identity",
                 "i am the very model of the modern major general",
-            ).overlay_tag("foo", "bar");
+            )
+            .overlay_tag("foo", "bar");
             let orig_event = metric::Event::new_log(orig_log);
             let expected_event = metric::Event::new_log(expected_log);
 

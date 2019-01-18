@@ -49,14 +49,13 @@ pub fn parse_graphite(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone, Utc};
     use crate::metric::{AggregationMethod, Telemetry};
+    use chrono::{TimeZone, Utc};
     use std::sync;
 
     #[test]
     fn test_parse_graphite() {
-        let pyld =
-            "fst 1 101\nsnd -2.0 202\nthr 3 303\nfth@fth 4 404\nfv%fv 5 505\ns-th 6 606\n";
+        let pyld = "fst 1 101\nsnd -2.0 202\nthr 3 303\nfth@fth 4 404\nfv%fv 5 505\ns-th 6 606\n";
         let mut res = Vec::new();
         let metric = sync::Arc::new(Some(Telemetry::default()));
         assert!(parse_graphite(pyld, &mut res, &metric));

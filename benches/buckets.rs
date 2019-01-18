@@ -10,13 +10,15 @@ extern crate rand;
 use cernan::buckets;
 use cernan::metric::{AggregationMethod, Telemetry};
 use chrono::{TimeZone, Utc};
-use rand::{Rng, SeedableRng, XorShiftRng};
 use rand::distributions::Alphanumeric;
+use rand::{Rng, SeedableRng, XorShiftRng};
 
 fn experiment(input: &ExperimentInput) {
     let total_adds = input.total_adds;
     let name_pool_size = input.name_pool_size;
-    let mut rng: XorShiftRng = SeedableRng::from_seed([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+    let mut rng: XorShiftRng = SeedableRng::from_seed([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+    ]);
     let aggregations = [
         AggregationMethod::Histogram,
         AggregationMethod::Set,

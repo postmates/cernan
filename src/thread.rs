@@ -1,16 +1,15 @@
 //! Mio enabled threading library.
 use crate::constants;
+use crate::util;
 use mio;
 use std::option;
-use std::thread;
 use std::sync;
-use crate::util;
+use std::thread;
 
 /// Event polling structure. Alias of `mio::Poll`.
 pub type Poll = mio::Poll;
 /// Events buffer type. Alias of `mio::Events`.
 pub type Events = mio::Events;
-
 
 /// Mio enabled thread state.
 pub struct ThreadHandle {
@@ -85,9 +84,7 @@ pub struct ThreadPool {
     thread_event_readiness: option::Option<mio::SetReadiness>,
 }
 
-
 impl ThreadPool {
-
     /// Construct a new ThreadPool.
     pub fn new(thread_events_readiness: option::Option<mio::SetReadiness>) -> Self {
         ThreadPool {
@@ -106,40 +103,36 @@ impl ThreadPool {
         let id = self.next_thread_id();
         let joinable_arc = self.joinable.clone();
         let thread_event_readiness = self.thread_event_readiness.clone();
-        let handler =
-            spawn(move |poller| {
-                f(poller);
+        let handler = spawn(move |poller| {
+            f(poller);
 
-                let mut joinable = joinable_arc.lock().unwrap();
-                joinable.push(id);
+            let mut joinable = joinable_arc.lock().unwrap();
+            joinable.push(id);
 
-                if let Some(readiness) = thread_event_readiness {
-                    readiness
-                        .set_readiness(mio::Ready::readable())
-                        .expect("Failed to flag readiness for ThreadPool event!");
-                }
-            });
+            if let Some(readiness) = thread_event_readiness {
+                readiness
+                    .set_readiness(mio::Ready::readable())
+                    .expect("Failed to flag readiness for ThreadPool event!");
+            }
+        });
         self.threads.insert(id, handler);
         id
     }
 
-    fn next_thread_id(&mut self) -> usize
-    {
+    fn next_thread_id(&mut self) -> usize {
         let thread_id = self.thread_id;
         self.thread_id += 1;
         thread_id
     }
 
     /// Block on completion of all executing threads.
-    pub fn join(mut self) -> Vec<usize>
-    {
+    pub fn join(mut self) -> Vec<usize> {
         self.threads.drain().for_each(|(_, h)| h.join());
         self.join_ready()
     }
 
     /// Join all completed threads.
-    pub fn join_ready(&mut self) -> Vec<usize>
-    {
+    pub fn join_ready(&mut self) -> Vec<usize> {
         let mut joinable = self.joinable.lock().unwrap();
         let mut joined = Vec::new();
         while let Some(id) = joinable.pop() {
@@ -152,8 +145,7 @@ impl ThreadPool {
     }
 
     /// Serially signal shutdown and block for completion of all threads.
-    pub fn shutdown(mut self) -> Vec<usize>
-    {
+    pub fn shutdown(mut self) -> Vec<usize> {
         self.threads.drain().for_each(|(_, h)| h.shutdown());
         self.join_ready()
     }

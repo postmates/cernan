@@ -4,6 +4,7 @@ use crate::buckets;
 use crate::metric::{AggregationMethod, TagIter, TagMap, Telemetry};
 use crate::sink::{Sink, Valve};
 use crate::source::flushes_per_second;
+use crate::time;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::io::Write as IoWrite;
@@ -12,7 +13,6 @@ use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::string;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::time;
 
 /// Total number of connection attempts made to wavefront proxy
 pub static WAVEFRONT_CONNECT_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
@@ -262,7 +262,8 @@ impl<'a> Iterator for Padding<'a> {
                             if x.timestamp() > *ts {
                                 self.flush_padded.insert(x.hash());
                                 if (x.timestamp() - ts) / self.span > 1 {
-                                    let sub_x = x.clone()
+                                    let sub_x = x
+                                        .clone()
                                         .zero_at(x.timestamp().saturating_sub(1));
                                     let post_x =
                                         x.clone().zero_at(ts.saturating_add(1));
@@ -464,60 +465,69 @@ impl Wavefront {
     ) -> () {
         let mut tag_buf = String::with_capacity(1_024);
         match value.kind() {
-            AggregationMethod::Histogram => if let Some(bins) = value.bins() {
-                use quantiles::histogram::Bound;
-                fmt_tags(value.tags(&self.tags), &mut tag_buf);
-                for &(bound, count) in bins {
+            AggregationMethod::Histogram => {
+                if let Some(bins) = value.bins() {
+                    use quantiles::histogram::Bound;
+                    fmt_tags(value.tags(&self.tags), &mut tag_buf);
+                    for &(bound, count) in bins {
+                        self.stats.push_str(&value.name);
+                        self.stats.push_str("_");
+                        match bound {
+                            Bound::Finite(bnd) => {
+                                self.stats
+                                    .push_str(get_from_cache(&mut value_cache, bnd));
+                            }
+                            Bound::PosInf => {
+                                self.stats.push_str("pos_inf");
+                            }
+                        };
+                        self.stats.push_str(" ");
+                        self.stats.push_str(get_from_cache(&mut count_cache, count));
+                        self.stats.push_str(" ");
+                        self.stats.push_str(get_from_cache(
+                            &mut time_cache,
+                            value.timestamp,
+                        ));
+                        self.stats.push_str(" ");
+                        self.stats.push_str(&tag_buf);
+                        self.stats.push_str("\n");
+                    }
+
+                    tag_buf.clear();
+                }
+            }
+            AggregationMethod::Sum => {
+                if let Some(v) = value.sum() {
                     self.stats.push_str(&value.name);
-                    self.stats.push_str("_");
-                    match bound {
-                        Bound::Finite(bnd) => {
-                            self.stats.push_str(get_from_cache(&mut value_cache, bnd));
-                        }
-                        Bound::PosInf => {
-                            self.stats.push_str("pos_inf");
-                        }
-                    };
                     self.stats.push_str(" ");
-                    self.stats.push_str(get_from_cache(&mut count_cache, count));
+                    self.stats.push_str(get_from_cache(&mut value_cache, v));
                     self.stats.push_str(" ");
                     self.stats
                         .push_str(get_from_cache(&mut time_cache, value.timestamp));
                     self.stats.push_str(" ");
+                    fmt_tags(value.tags(&self.tags), &mut tag_buf);
                     self.stats.push_str(&tag_buf);
                     self.stats.push_str("\n");
+
+                    tag_buf.clear();
                 }
+            }
+            AggregationMethod::Set => {
+                if let Some(v) = value.set() {
+                    self.stats.push_str(&value.name);
+                    self.stats.push_str(" ");
+                    self.stats.push_str(get_from_cache(&mut value_cache, v));
+                    self.stats.push_str(" ");
+                    self.stats
+                        .push_str(get_from_cache(&mut time_cache, value.timestamp));
+                    self.stats.push_str(" ");
+                    fmt_tags(value.tags(&self.tags), &mut tag_buf);
+                    self.stats.push_str(&tag_buf);
+                    self.stats.push_str("\n");
 
-                tag_buf.clear();
-            },
-            AggregationMethod::Sum => if let Some(v) = value.sum() {
-                self.stats.push_str(&value.name);
-                self.stats.push_str(" ");
-                self.stats.push_str(get_from_cache(&mut value_cache, v));
-                self.stats.push_str(" ");
-                self.stats
-                    .push_str(get_from_cache(&mut time_cache, value.timestamp));
-                self.stats.push_str(" ");
-                fmt_tags(value.tags(&self.tags), &mut tag_buf);
-                self.stats.push_str(&tag_buf);
-                self.stats.push_str("\n");
-
-                tag_buf.clear();
-            },
-            AggregationMethod::Set => if let Some(v) = value.set() {
-                self.stats.push_str(&value.name);
-                self.stats.push_str(" ");
-                self.stats.push_str(get_from_cache(&mut value_cache, v));
-                self.stats.push_str(" ");
-                self.stats
-                    .push_str(get_from_cache(&mut time_cache, value.timestamp));
-                self.stats.push_str(" ");
-                fmt_tags(value.tags(&self.tags), &mut tag_buf);
-                self.stats.push_str(&tag_buf);
-                self.stats.push_str("\n");
-
-                tag_buf.clear();
-            },
+                    tag_buf.clear();
+                }
+            }
             AggregationMethod::Summarize => {
                 fmt_tags(value.tags(&self.tags), &mut tag_buf);
                 for tup in &self.percentiles {
@@ -657,10 +667,10 @@ impl Sink<WavefrontConfig> for Wavefront {
 mod test {
     use super::*;
     use crate::buckets::Buckets;
-    use chrono::{TimeZone, Utc};
     use crate::metric::{AggregationMethod, TagMap, Telemetry};
-    use quickcheck::{QuickCheck, TestResult};
     use crate::sink::Sink;
+    use chrono::{TimeZone, Utc};
+    use quickcheck::{QuickCheck, TestResult};
 
     #[test]
     fn test_pad_across_flush() {
@@ -1032,13 +1042,16 @@ mod test {
             age_threshold: None,
         };
         let mut wavefront = Wavefront::init(config);
-        let dt_0 = Utc.ymd(1990, 6, 12)
+        let dt_0 = Utc
+            .ymd(1990, 6, 12)
             .and_hms_milli(9, 10, 11, 00)
             .timestamp();
-        let dt_1 = Utc.ymd(1990, 6, 12)
+        let dt_1 = Utc
+            .ymd(1990, 6, 12)
             .and_hms_milli(9, 10, 12, 00)
             .timestamp();
-        let dt_2 = Utc.ymd(1990, 6, 12)
+        let dt_2 = Utc
+            .ymd(1990, 6, 12)
             .and_hms_milli(9, 10, 13, 00)
             .timestamp();
         wavefront.deliver(
@@ -1167,11 +1180,8 @@ mod test {
         assert!(lines.contains(&"test.timer.99 12.101 645181811 source=test-src"));
         assert!(lines.contains(&"test.timer.999 12.101 645181811 source=test-src"));
         assert!(lines.contains(&"test.timer.count 3 645181811 source=test-src"));
-        assert!(
-            lines.contains(
-                &"test.timer.mean 5.434333333333334 645181811 source=test-src"
-            )
-        );
+        assert!(lines
+            .contains(&"test.timer.mean 5.434333333333334 645181811 source=test-src"));
         assert!(lines.contains(&"test.raw 1 645181811 source=test-src"));
     }
 }

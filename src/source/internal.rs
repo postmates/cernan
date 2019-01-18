@@ -1,14 +1,14 @@
-use coco::Stack;
 use crate::filter;
 use crate::metric;
 use crate::metric::{AggregationMethod, Telemetry};
-use mio;
 use crate::sink;
 use crate::source;
-use std;
-use std::sync::atomic::Ordering;
 use crate::time;
 use crate::util;
+use coco::Stack;
+use mio;
+use std;
+use std::sync::atomic::Ordering;
 
 lazy_static! {
     static ref Q: Stack<metric::Telemetry> = Stack::new();
@@ -76,7 +76,7 @@ macro_rules! atom_telem {
                 .unwrap();
             util::send(&mut $chans, metric::Event::new_telemetry(telem));
         }
-    }
+    };
 }
 
 macro_rules! atom_set_telem {
@@ -93,7 +93,7 @@ macro_rules! atom_set_telem {
                 .unwrap();
             util::send(&mut $chans, metric::Event::new_telemetry(telem));
         }
-    }
+    };
 }
 
 /// Internal as Source
@@ -250,21 +250,18 @@ impl source::Source<InternalConfig> for Internal {
                             chans
                         );
                         atom_telem!(
-                           "cernan.sinks.elasticsearch.error.api.action_request_validation",
-                           sink::elasticsearch::ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION,
-                           
-                           chans
-                       );
+                            "cernan.sinks.elasticsearch.error.api.action_request_validation",
+                            sink::elasticsearch::ELASTIC_ERROR_API_ACTION_REQUEST_VALIDATION,
+                            chans
+                        );
                         atom_telem!(
                             "cernan.sinks.elasticsearch.error.api.action_document_missing",
                             sink::elasticsearch::ELASTIC_ERROR_API_DOCUMENT_MISSING,
-                            
                             chans
                         );
                         atom_telem!(
                             "cernan.sinks.elasticsearch.error.api.index_already_exists",
                             sink::elasticsearch::ELASTIC_ERROR_API_INDEX_ALREADY_EXISTS,
-                            
                             chans
                         );
                         atom_telem!(
@@ -311,7 +308,6 @@ impl source::Source<InternalConfig> for Internal {
                         atom_telem!(
                             "cernan.sinks.wavefront.aggregation.summarize.total_percentiles",
                             sink::wavefront::WAVEFRONT_AGGR_TOT_PERCENT,
-                            
                             chans
                         );
                         atom_telem!(
@@ -338,13 +334,11 @@ impl source::Source<InternalConfig> for Internal {
                         atom_telem!(
                             "cernan.sinks.prometheus.aggregation.inside_baseball.windowed.purged",
                             sink::prometheus::PROMETHEUS_AGGR_WINDOWED_PURGED,
-                            
                             chans
                         );
                         atom_telem!(
                             "cernan.sinks.prometheus.exposition.inside_baseball.delay.sum",
                             sink::prometheus::PROMETHEUS_RESPONSE_DELAY_SUM,
-                            
                             chans
                         );
                         atom_set_telem!(

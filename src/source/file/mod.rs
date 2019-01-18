@@ -9,12 +9,12 @@ mod test {
 
     use self::file_watcher::FileWatcher;
     use super::*;
+    use crate::time;
     use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
     use std::fs;
     use std::io::Write;
     use std::os::unix::fs::MetadataExt;
     use std::str;
-    use crate::time;
     // Welcome.
     //
     // This suite of tests is structured as an interpreter of file system

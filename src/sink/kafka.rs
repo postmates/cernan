@@ -1,18 +1,18 @@
 //! Kafka sink for Raw events.
-use futures::future::Future;
 use crate::metric;
+use crate::sink::Sink;
+use crate::source;
+use crate::util::Valve;
+use futures::future::Future;
 use rdkafka::client::ClientContext;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::error::{KafkaError, RDKafkaError};
 use rdkafka::message::{Message, OwnedMessage};
-use rdkafka::producer::FutureProducer;
 use rdkafka::producer::future_producer::DeliveryFuture;
+use rdkafka::producer::FutureProducer;
 use rdkafka::util::current_time_millis;
-use crate::sink::Sink;
-use crate::source;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::util::Valve;
 use uuid::Uuid;
 
 /// Total records published.
@@ -139,7 +139,7 @@ trait KafkaMessageSender {
         topic: &str,
         payload: &[u8],
         key: &[u8],
-        connection_id: Option<Uuid>
+        connection_id: Option<Uuid>,
     ) -> BoxedKafkaPublishable;
 }
 
@@ -149,7 +149,7 @@ impl KafkaMessageSender for FutureProducer<STFUContext> {
         topic: &str,
         payload: &[u8],
         key: &[u8],
-        connection_id: Option<Uuid>
+        connection_id: Option<Uuid>,
     ) -> BoxedKafkaPublishable {
         Box::new(KafkaPublishResult {
             inner: Some(self.send_copy(
@@ -282,14 +282,14 @@ impl Sink<KafkaConfig> for Kafka {
         }
     }
 
-    /// Fire off the given event to librdkafka. That library handles buffering and
-    /// batching internally.
+    /// Fire off the given event to librdkafka. That library handles buffering
+    /// and batching internally.
     fn deliver_raw(
         &mut self,
         order_by: u64,
         _encoding: metric::Encoding,
         bytes: Vec<u8>,
-        connection_id: Option<Uuid>
+        connection_id: Option<Uuid>,
     ) {
         let key = format!("{:X}", order_by);
         let future = self.producer.try_payload(
@@ -354,8 +354,8 @@ impl Kafka {
         }
     }
 
-    /// Wait on all in-flight messages, and return an `OwnedMessage` for each message
-    /// that needs to be retried.
+    /// Wait on all in-flight messages, and return an `OwnedMessage` for each
+    /// message that needs to be retried.
     fn await_inflight_messages(&mut self) -> Vec<FailedMessageWrapper> {
         let mut inc_pub = 0usize;
         let mut inc_retry = 0usize;
@@ -435,8 +435,8 @@ impl Kafka {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::metric::Encoding;
+    use super::*;
     use rdkafka::message::Timestamp;
     use std::sync::{Arc, RwLock};
 
@@ -473,7 +473,7 @@ mod tests {
             _topic: &str,
             _payload: &[u8],
             _key: &[u8],
-            _connection_id: Option<Uuid>
+            _connection_id: Option<Uuid>,
         ) -> BoxedKafkaPublishable {
             Box::new(MockKafkaPublishResult {
                 return_value: Some(Ok((0, 1))),
@@ -576,7 +576,7 @@ mod tests {
             topic: &str,
             payload: &[u8],
             key: &[u8],
-            _connection_id: Option<Uuid>
+            _connection_id: Option<Uuid>,
         ) -> BoxedKafkaPublishable {
             let mut entries = self.send_entries.write().unwrap();
             let entry = TopicKeyPayloadEntry {
@@ -650,7 +650,12 @@ mod tests {
                 stats: Box::new(RecordingStatsCollector::new()),
             };
 
-            k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10], None);
+            k.deliver_raw(
+                1024,
+                Encoding::Raw,
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                None,
+            );
             k.flush();
 
             let count = producer.call_count.read().unwrap();
@@ -696,7 +701,12 @@ mod tests {
             stats: Box::new(RecordingStatsCollector::new()),
         };
 
-        k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10], None);
+        k.deliver_raw(
+            1024,
+            Encoding::Raw,
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            None,
+        );
         k.flush();
 
         let count = producer.call_count.read().unwrap();
@@ -724,7 +734,12 @@ mod tests {
             stats: Box::new(RecordingStatsCollector::new()),
         };
 
-        k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10], None);
+        k.deliver_raw(
+            1024,
+            Encoding::Raw,
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            None,
+        );
         k.flush();
 
         let count = producer.call_count.read().unwrap();
@@ -750,7 +765,12 @@ mod tests {
             stats: Box::new(RecordingStatsCollector::new()),
         };
 
-        k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10], None);
+        k.deliver_raw(
+            1024,
+            Encoding::Raw,
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            None,
+        );
         k.flush();
 
         let count = producer.call_count.read().unwrap();
@@ -765,7 +785,7 @@ mod tests {
             _topic: &str,
             _payload: &[u8],
             _key: &[u8],
-            _connection_id: Option<Uuid>
+            _connection_id: Option<Uuid>,
         ) -> BoxedKafkaPublishable {
             Box::new(MockKafkaPublishResult { return_value: None })
         }
@@ -783,7 +803,12 @@ mod tests {
             stats: Box::new(RecordingStatsCollector::new()),
         };
 
-        k.deliver_raw(1024, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10], None);
+        k.deliver_raw(
+            1024,
+            Encoding::Raw,
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            None,
+        );
         k.flush();
         assert_eq!(k.stats.get_publish_failed(), 1);
     }

@@ -1,14 +1,14 @@
 use crate::constants;
-use hopper;
 use crate::metric;
-use mio;
 use crate::source::Source;
+use crate::thread;
+use crate::util;
+use hopper;
+use mio;
 use std;
 use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::net::ToSocketAddrs;
-use crate::thread;
-use crate::util;
 
 /// Configured for the `metric::Telemetry` source.
 #[derive(Debug, Deserialize, Clone)]
@@ -43,7 +43,12 @@ pub trait TCPStreamHandler: 'static + Default + Clone + Sync + Send {
     }
 
     /// Handler for a single HTTP request.
-    fn handle_stream(&mut self, _: util::Channel, _: &mio::Poll, _: mio::net::TcpStream) -> ();
+    fn handle_stream(
+        &mut self,
+        _: util::Channel,
+        _: &mio::Poll,
+        _: mio::net::TcpStream,
+    ) -> ();
 }
 
 /// State for a TCP backed source.
@@ -65,7 +70,8 @@ where
         //
         // Note - Due to restrictions in mio, we must construct these registrations
         // here as we are assuming this function is called directly from the main
-        // process.  Registrations must be bound to a mio poller by the subordiante thread.
+        // process.  Registrations must be bound to a mio poller by the subordiante
+        // thread.
         let addrs = (config.host.as_str(), config.port).to_socket_addrs();
         let mut listeners = util::TokenSlab::<mio::net::TcpListener>::new();
         match addrs {
@@ -112,16 +118,16 @@ where
             ) {
                 error!("Failed to register {:?} - {:?}!", listener, e);
             }
-        };
+        }
 
         if let Err(e) = poller.register(
             &self.stream_events,
             self.stream_events_token,
             mio::Ready::readable(),
             mio::PollOpt::edge(),
-            ) {
-                error!("Failed to register stream events - {:?}!", e);
-            };
+        ) {
+            error!("Failed to register stream events - {:?}!", e);
+        };
 
         self.accept_loop(chans, &poller)
     }
@@ -136,34 +142,41 @@ where
             let mut events = mio::Events::with_capacity(1024);
             match poll.poll(&mut events, None) {
                 Err(e) => panic!(format!("Failed during poll {:?}", e)),
-                Ok(_num_events) => for event in events {
-                    match event.token() {
-                        constants::SYSTEM => {
-                            self.handlers.shutdown();
-                            util::send(&mut chans, metric::Event::Shutdown);
-                            return;
-                        }
-                        listener_token => {
-                            if listener_token == self.stream_events_token {
-                                // Mio event corresponding to a StreamHandler.
-                                // Currently, the only StreamHandler event flags
-                                // the StreamHandler as terminated.  Cleanup state.
-                                let ready = self.handlers.join_ready();
-                                trace!("Removed {:?} terminated stream handlers.", ready.len());
-
-                            } else {
-                                if let Err(e) =
-                                    self.spawn_stream_handlers(&chans, listener_token)
-                                {
-                                    let listener = &self.listeners[listener_token];
-                                    error!("Failed to spawn stream handlers! {:?}", e);
-                                    error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
-                                    let _ = poll.deregister(listener);
+                Ok(_num_events) => {
+                    for event in events {
+                        match event.token() {
+                            constants::SYSTEM => {
+                                self.handlers.shutdown();
+                                util::send(&mut chans, metric::Event::Shutdown);
+                                return;
+                            }
+                            listener_token => {
+                                if listener_token == self.stream_events_token {
+                                    // Mio event corresponding to a StreamHandler.
+                                    // Currently, the only StreamHandler event flags
+                                    // the StreamHandler as terminated.  Cleanup state.
+                                    let ready = self.handlers.join_ready();
+                                    trace!(
+                                        "Removed {:?} terminated stream handlers.",
+                                        ready.len()
+                                    );
+                                } else {
+                                    if let Err(e) = self
+                                        .spawn_stream_handlers(&chans, listener_token)
+                                    {
+                                        let listener = &self.listeners[listener_token];
+                                        error!(
+                                            "Failed to spawn stream handlers! {:?}",
+                                            e
+                                        );
+                                        error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
+                                        let _ = poll.deregister(listener);
+                                    }
                                 }
                             }
                         }
                     }
-                },
+                }
             }
         }
     }
@@ -179,22 +192,21 @@ where
                 Ok((stream, _addr)) => {
                     // Actually spawn the stream handler
                     let rchans = chans.to_owned();
-                    self.handlers.spawn(
-                        move |poller| {
-                            // Note - Stream handlers are allowed to crash without
-                            // compromising Cernan's ability to gracefully shutdown.
-                            poller
-                                .register(
-                                    &stream,
-                                    mio::Token(0),
-                                    mio::Ready::readable(),
-                                    mio::PollOpt::edge(),
-                                )
-                                .unwrap();
+                    self.handlers.spawn(move |poller| {
+                        // Note - Stream handlers are allowed to crash without
+                        // compromising Cernan's ability to gracefully shutdown.
+                        poller
+                            .register(
+                                &stream,
+                                mio::Token(0),
+                                mio::Ready::readable(),
+                                mio::PollOpt::edge(),
+                            )
+                            .unwrap();
 
-                            let mut handler = H::new();
-                            handler.handle_stream(rchans, &poller, stream);
-                        });
+                        let mut handler = H::new();
+                        handler.handle_stream(rchans, &poller, stream);
+                    });
                 }
                 Err(e) => match e.kind() {
                     ErrorKind::ConnectionAborted

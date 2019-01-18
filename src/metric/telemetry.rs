@@ -1,19 +1,21 @@
 use crate::metric::{cmp_tagmap, TagIter, TagMap};
+use crate::time;
 use quantiles::ckms::CKMS;
-use quantiles::histogram::{Histogram, Iter};
 #[cfg(test)]
 use quantiles::histogram::Bound;
-use std::{cmp, mem};
+use quantiles::histogram::{Histogram, Iter};
 use std::collections::{hash_map, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, AddAssign};
-use crate::time;
+use std::{cmp, mem};
 
 /// The available aggregations for `Telemetry`.
 ///
 /// This enumeration signals the way in which `Telemetry` values will be
 /// aggregated. The exact descriptions are detailed below.
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
+#[derive(
+    Debug, Serialize, Deserialize, Clone, Copy, PartialEq, PartialOrd, Eq, Hash,
+)]
 pub enum AggregationMethod {
     /// Cumulatively add `Telemetry` objects. That is, we store only the
     /// summation of all like-points.
@@ -186,13 +188,15 @@ impl Value {
     pub fn mean(&self) -> f64 {
         match *self {
             Value::Set(_) | Value::Sum(_) => 1.0,
-            Value::Histogram(ref histo) => if let Some(sum) = histo.sum() {
-                let count = histo.count();
-                assert!(count > 0);
-                sum / (count as f64)
-            } else {
-                0.0
-            },
+            Value::Histogram(ref histo) => {
+                if let Some(sum) = histo.sum() {
+                    let count = histo.count();
+                    assert!(count > 0);
+                    sum / (count as f64)
+                } else {
+                    0.0
+                }
+            }
             Value::Quantiles { ref ckms, .. } => ckms.cma().unwrap_or(0.0),
         }
     }
@@ -1085,11 +1089,11 @@ mod tests {
                 AggregationMethod::Set => mb.kind(AggregationMethod::Set),
                 AggregationMethod::Sum => mb.kind(AggregationMethod::Sum),
                 AggregationMethod::Summarize => mb.kind(AggregationMethod::Summarize),
-                AggregationMethod::Histogram => mb.kind(AggregationMethod::Histogram)
+                AggregationMethod::Histogram => mb
+                    .kind(AggregationMethod::Histogram)
                     .bounds(vec![1.0, 10.0, 100.0, 1000.0]),
             };
-            mb =
-                if persist { mb.persist(true) } else { mb };
+            mb = if persist { mb.persist(true) } else { mb };
             mb.harden().unwrap()
         }
     }

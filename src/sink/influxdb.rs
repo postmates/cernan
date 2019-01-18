@@ -1,14 +1,14 @@
 //! `InfluxDB` is a telemetry database.
 
 use crate::metric::{TagIter, TagMap, Telemetry};
-use quantiles::histogram::Bound;
-use reqwest;
 use crate::sink::{Sink, Valve};
 use crate::source::flushes_per_second;
+use crate::time;
+use quantiles::histogram::Bound;
+use reqwest;
 use std::cmp;
 use std::string;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::time;
 use url::Url;
 
 /// total delivery attempts made by this sink
@@ -109,63 +109,9 @@ impl InfluxDB {
         let mut tag_buf = String::with_capacity(1_024);
         for telem in telems.iter() {
             match telem.kind() {
-                AggregationMethod::Sum => if let Some(val) = telem.sum() {
-                    buffer.push_str(&telem.name);
-                    fmt_tags(telem.tags(&self.tags), &mut tag_buf);
-                    buffer.push_str(&tag_buf);
-                    buffer.push_str(" ");
-                    buffer.push_str("value=");
-                    buffer.push_str(get_from_cache(&mut value_cache, val));
-                    buffer.push_str(" ");
-                    buffer.push_str(get_from_cache(
-                        &mut time_cache,
-                        telem.timestamp.saturating_mul(1_000_000_000) as u64,
-                    ));
-                    buffer.push_str("\n");
-                    tag_buf.clear();
-                },
-                AggregationMethod::Set => if let Some(val) = telem.set() {
-                    buffer.push_str(&telem.name);
-                    fmt_tags(telem.tags(&self.tags), &mut tag_buf);
-                    buffer.push_str(&tag_buf);
-                    buffer.push_str(" ");
-                    buffer.push_str("value=");
-                    buffer.push_str(get_from_cache(&mut value_cache, val));
-                    buffer.push_str(" ");
-                    buffer.push_str(get_from_cache(
-                        &mut time_cache,
-                        telem.timestamp.saturating_mul(1_000_000_000) as u64,
-                    ));
-                    buffer.push_str("\n");
-                    tag_buf.clear();
-                },
-                AggregationMethod::Histogram => if let Some(bin_iter) = telem.bins() {
-                    for &(bound, count) in bin_iter {
-                        let bound_name = match bound {
-                            Bound::Finite(x) => format!("le_{}", x),
-                            Bound::PosInf => "le_inf".to_string(),
-                        };
-                        buffer.push_str(&format!("{}.{}", &telem.name, bound_name));
-                        fmt_tags(telem.tags(&self.tags), &mut tag_buf);
-                        buffer.push_str(&tag_buf);
-                        buffer.push_str(" ");
-                        buffer.push_str("value=");
-                        buffer
-                            .push_str(get_from_cache(&mut value_cache, count as f64));
-                        buffer.push_str(" ");
-                        buffer.push_str(get_from_cache(
-                            &mut time_cache,
-                            telem.timestamp.saturating_mul(1_000_000_000) as u64,
-                        ));
-                        buffer.push_str("\n");
-                        tag_buf.clear();
-                    }
-                },
-                AggregationMethod::Summarize => for percentile in
-                    &[0.25, 0.50, 0.75, 0.90, 0.99, 1.0]
-                {
-                    if let Some(val) = telem.query(*percentile) {
-                        buffer.push_str(&format!("{}.{}", &telem.name, percentile));
+                AggregationMethod::Sum => {
+                    if let Some(val) = telem.sum() {
+                        buffer.push_str(&telem.name);
                         fmt_tags(telem.tags(&self.tags), &mut tag_buf);
                         buffer.push_str(&tag_buf);
                         buffer.push_str(" ");
@@ -179,7 +125,71 @@ impl InfluxDB {
                         buffer.push_str("\n");
                         tag_buf.clear();
                     }
-                },
+                }
+                AggregationMethod::Set => {
+                    if let Some(val) = telem.set() {
+                        buffer.push_str(&telem.name);
+                        fmt_tags(telem.tags(&self.tags), &mut tag_buf);
+                        buffer.push_str(&tag_buf);
+                        buffer.push_str(" ");
+                        buffer.push_str("value=");
+                        buffer.push_str(get_from_cache(&mut value_cache, val));
+                        buffer.push_str(" ");
+                        buffer.push_str(get_from_cache(
+                            &mut time_cache,
+                            telem.timestamp.saturating_mul(1_000_000_000) as u64,
+                        ));
+                        buffer.push_str("\n");
+                        tag_buf.clear();
+                    }
+                }
+                AggregationMethod::Histogram => {
+                    if let Some(bin_iter) = telem.bins() {
+                        for &(bound, count) in bin_iter {
+                            let bound_name = match bound {
+                                Bound::Finite(x) => format!("le_{}", x),
+                                Bound::PosInf => "le_inf".to_string(),
+                            };
+                            buffer
+                                .push_str(&format!("{}.{}", &telem.name, bound_name));
+                            fmt_tags(telem.tags(&self.tags), &mut tag_buf);
+                            buffer.push_str(&tag_buf);
+                            buffer.push_str(" ");
+                            buffer.push_str("value=");
+                            buffer.push_str(get_from_cache(
+                                &mut value_cache,
+                                count as f64,
+                            ));
+                            buffer.push_str(" ");
+                            buffer.push_str(get_from_cache(
+                                &mut time_cache,
+                                telem.timestamp.saturating_mul(1_000_000_000) as u64,
+                            ));
+                            buffer.push_str("\n");
+                            tag_buf.clear();
+                        }
+                    }
+                }
+                AggregationMethod::Summarize => {
+                    for percentile in &[0.25, 0.50, 0.75, 0.90, 0.99, 1.0] {
+                        if let Some(val) = telem.query(*percentile) {
+                            buffer
+                                .push_str(&format!("{}.{}", &telem.name, percentile));
+                            fmt_tags(telem.tags(&self.tags), &mut tag_buf);
+                            buffer.push_str(&tag_buf);
+                            buffer.push_str(" ");
+                            buffer.push_str("value=");
+                            buffer.push_str(get_from_cache(&mut value_cache, val));
+                            buffer.push_str(" ");
+                            buffer.push_str(get_from_cache(
+                                &mut time_cache,
+                                telem.timestamp.saturating_mul(1_000_000_000) as u64,
+                            ));
+                            buffer.push_str("\n");
+                            tag_buf.clear();
+                        }
+                    }
+                }
             }
         }
     }
@@ -196,7 +206,8 @@ impl Sink<InfluxDBConfig> for InfluxDB {
         let uri = Url::parse(&format!(
             "{}://{}:{}/write?db={}",
             scheme, config.host, config.port, config.db
-        )).expect("malformed url");
+        ))
+        .expect("malformed url");
 
         let client = reqwest::Client::builder()
             .gzip(true)
@@ -234,7 +245,8 @@ impl Sink<InfluxDBConfig> for InfluxDB {
                 .fetch_add(self.delivery_attempts as usize, Ordering::Relaxed);
             time::delay(self.delivery_attempts);
 
-            match self.client
+            match self
+                .client
                 .post(self.uri.clone())
                 .header(reqwest::header::Connection::keep_alive())
                 .body(buffer.clone())
@@ -286,10 +298,10 @@ impl Sink<InfluxDBConfig> for InfluxDB {
 #[cfg(test)]
 mod test {
     use super::*;
-    use chrono::{TimeZone, Utc};
-    use crate::metric::{TagMap, Telemetry};
     use crate::metric::AggregationMethod;
+    use crate::metric::{TagMap, Telemetry};
     use crate::sink::Sink;
+    use chrono::{TimeZone, Utc};
 
     #[test]
     fn test_format_influxdb() {

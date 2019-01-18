@@ -1,9 +1,9 @@
 //! Collection of matrix implementations.
 
+use crate::util;
 use std;
 use std::fmt::Debug;
 use std::str::FromStr;
-use crate::util;
 
 type AdjacencyMap<T> = util::HashMap<String, Option<T>>;
 
@@ -112,7 +112,8 @@ impl<M: Clone + Debug> Adjacency<M> {
     /// Option values will be unwrapped and None values filtered.
     pub fn pop_metadata(&mut self, id: &str) -> Vec<M> {
         match self.pop(id) {
-            Some(map) => map.into_iter()
+            Some(map) => map
+                .into_iter()
                 .filter(|&(ref _k, ref option_v)| option_v.is_some())
                 .map(|(_, some_v)| some_v.unwrap())
                 .collect(),

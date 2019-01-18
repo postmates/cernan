@@ -5,9 +5,9 @@
 use crate::metric;
 use crate::metric::AggregationMethod;
 use crate::source::StatsdParseConfig;
+use crate::time;
 use std::str::FromStr;
 use std::sync;
-use crate::time;
 
 /// Valid message formats are:
 ///
@@ -45,11 +45,11 @@ pub fn parse_statsd(
                                 Ok(f) => f,
                                 Err(_) => return false,
                             };
-                        let mut metric = sync::Arc::make_mut(&mut sync::Arc::clone(
-                            metric,
-                        )).take()
-                            .unwrap()
-                            .thaw();
+                        let mut metric =
+                            sync::Arc::make_mut(&mut sync::Arc::clone(metric))
+                                .take()
+                                .unwrap()
+                                .thaw();
                         metric = metric.name(name);
                         metric = metric.value(val);
                         metric = metric.timestamp(time::now());
@@ -319,7 +319,8 @@ mod tests {
                         assert!(
                             (sline.value * (1.0 / sline.sample_rate)
                                 - telem.value().unwrap())
-                                .abs() < 0.0001
+                            .abs()
+                                < 0.0001
                         );
                     } else {
                         assert!((sline.value - telem.value().unwrap()).abs() < 0.0001);

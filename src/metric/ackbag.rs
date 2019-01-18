@@ -1,19 +1,17 @@
+use crate::util;
 use std::cmp::min;
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
-use crate::util;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct SyncAckProps {
-    acks_received: usize
+    acks_received: usize,
 }
 
 impl Default for SyncAckProps {
     fn default() -> SyncAckProps {
-        SyncAckProps {
-            acks_received: 0,
-        }
+        SyncAckProps { acks_received: 0 }
     }
 }
 
@@ -30,17 +28,16 @@ impl SyncAckProps {
 type SyncAckBagMap = util::HashMap<Uuid, SyncAckProps>;
 
 pub struct SyncAckBag {
-    waiting_syncs: Arc<Mutex<SyncAckBagMap>>
+    waiting_syncs: Arc<Mutex<SyncAckBagMap>>,
 }
 
 impl Default for SyncAckBag {
     fn default() -> SyncAckBag {
         SyncAckBag {
-            waiting_syncs: Arc::new(Mutex::new(SyncAckBagMap::default()))
+            waiting_syncs: Arc::new(Mutex::new(SyncAckBagMap::default())),
         }
     }
 }
-
 
 impl SyncAckBag {
     /// Return a clone of the SyncAckProps for the given key
@@ -48,7 +45,7 @@ impl SyncAckBag {
         let bag = self.waiting_syncs.lock().unwrap();
         match bag.get(&key) {
             Some(v) => Some((*v).clone()),
-            None => None
+            None => None,
         }
     }
 
@@ -64,13 +61,14 @@ impl SyncAckBag {
         bag.remove(&key);
     }
 
-    /// Retrieve a mutable reference to the SyncAckProps for the key and invoke a callback
-    /// if it exists. If the key is not present, then the callback is not called.
+    /// Retrieve a mutable reference to the SyncAckProps for the key and invoke
+    /// a callback if it exists. If the key is not present, then the
+    /// callback is not called.
     pub fn with_props<F: FnOnce(&mut SyncAckProps)>(&self, key: Uuid, f: F) {
         let mut bag = self.waiting_syncs.lock().unwrap();
         match bag.get_mut(&key) {
             Some(v) => Some(f(v)),
-            None => None
+            None => None,
         };
     }
 
@@ -87,7 +85,7 @@ impl SyncAckBag {
         while wait {
             match self.props_for(key) {
                 Some(props) => wait = props.acks_received() == 0,
-                _ => wait = false
+                _ => wait = false,
             }
             if wait {
                 cb(current_nap_time);
@@ -102,9 +100,10 @@ lazy_static! {
 }
 
 /// Returns the singleton ack bag.
-/// The ack bag is necessary because we need to protect concurrent access of raw events' data,
-/// but we can't Arc that enum due to serialization needs. Instead, we keep (and Arc) a global bag
-/// of properties and only serialize a key into the bag.
+/// The ack bag is necessary because we need to protect concurrent access of raw
+/// events' data, but we can't Arc that enum due to serialization needs.
+/// Instead, we keep (and Arc) a global bag of properties and only serialize a
+/// key into the bag.
 pub fn global_ack_bag() -> &'static SyncAckBag {
     &SINGLETON
 }
@@ -180,6 +179,6 @@ mod tests {
     #[test]
     fn test_waiting_for_nonexistent_key_returns() {
         let ack_bag = SyncAckBag::default();
-        ack_bag.wait_for(Uuid::new_v4());        
+        ack_bag.wait_for(Uuid::new_v4());
     }
 }

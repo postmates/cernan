@@ -1,16 +1,16 @@
 use crate::constants;
 use crate::metric;
-use mio;
 use crate::protocols::statsd::parse_statsd;
-use regex::Regex;
 use crate::source;
+use crate::util;
+use crate::util::send;
+use mio;
+use regex::Regex;
 use std::io::ErrorKind;
 use std::net::ToSocketAddrs;
 use std::str;
 use std::sync;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::util;
-use crate::util::send;
 
 pub static STATSD_GOOD_PACKET: AtomicUsize = AtomicUsize::new(0);
 pub static STATSD_BAD_PACKET: AtomicUsize = AtomicUsize::new(0);
@@ -98,20 +98,22 @@ impl Statsd {
         loop {
             match socket.recv_from(&mut buf) {
                 Ok((len, _)) => match str::from_utf8(&buf[..len]) {
-                    Ok(val) => if parse_statsd(
-                        val,
-                        &mut metrics,
-                        &basic_metric,
-                        &self.parse_config,
-                    ) {
-                        for m in metrics.drain(..) {
-                            send(&mut chans, metric::Event::new_telemetry(m));
+                    Ok(val) => {
+                        if parse_statsd(
+                            val,
+                            &mut metrics,
+                            &basic_metric,
+                            &self.parse_config,
+                        ) {
+                            for m in metrics.drain(..) {
+                                send(&mut chans, metric::Event::new_telemetry(m));
+                            }
+                            STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
+                        } else {
+                            STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
+                            error!("BAD PACKET: {:?}", val);
                         }
-                        STATSD_GOOD_PACKET.fetch_add(1, Ordering::Relaxed);
-                    } else {
-                        STATSD_BAD_PACKET.fetch_add(1, Ordering::Relaxed);
-                        error!("BAD PACKET: {:?}", val);
-                    },
+                    }
                     Err(e) => {
                         error!("Payload not valid UTF-8: {:?}", e);
                     }
@@ -137,11 +139,13 @@ impl source::Source<StatsdConfig> for Statsd {
         let mut conns = util::TokenSlab::<mio::net::UdpSocket>::new();
         let addrs = (config.host.as_str(), config.port).to_socket_addrs();
         match addrs {
-            Ok(ips) => for addr in ips {
-                let socket = mio::net::UdpSocket::bind(&addr)
-                    .expect("Unable to bind to UDP socket");
-                conns.insert(socket);
-            },
+            Ok(ips) => {
+                for addr in ips {
+                    let socket = mio::net::UdpSocket::bind(&addr)
+                        .expect("Unable to bind to UDP socket");
+                    conns.insert(socket);
+                }
+            }
             Err(e) => {
                 info!(
                     "Unable to perform DNS lookup on host {} with error {}",
@@ -185,7 +189,10 @@ impl source::Source<StatsdConfig> for Statsd {
                                 if let Err(_e) =
                                     self.handle_datagrams(&mut chans, socket, &mut buf)
                                 {
-                                    error!("Deregistering {:?} due to unrecoverable error!", *socket);
+                                    error!(
+                                        "Deregistering {:?} due to unrecoverable error!",
+                                        *socket
+                                    );
                                 }
                             }
                         }

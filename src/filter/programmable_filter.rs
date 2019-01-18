@@ -1,9 +1,9 @@
 use crate::filter;
-use libc::c_int;
 use crate::metric;
+use libc::c_int;
 use mond;
-use mond::{Function, State, ThreadStatus};
 use mond::ffi::lua_State;
+use mond::{Function, State, ThreadStatus};
 use std::path::PathBuf;
 
 struct Payload<'a> {
@@ -539,7 +539,8 @@ impl filter::Filter for ProgrammableFilter {
     ) -> Result<(), filter::FilterError> {
         match event {
             metric::Event::Telemetry(m) => {
-                let pyld = Payload::from_metric(m, &self.global_tags, self.path.as_str());
+                let pyld =
+                    Payload::from_metric(m, &self.global_tags, self.path.as_str());
                 run_lua_func(&mut self.state, "process_metric", res, pyld)
             }
             metric::Event::TimerFlush(flush_idx)

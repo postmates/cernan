@@ -1,15 +1,15 @@
-use glob::glob;
 use crate::metric;
-use mio;
 use crate::source;
 use crate::source::file::file_watcher::FileWatcher;
 use crate::source::internal::report_full_telemetry;
+use crate::util;
+use crate::util::send;
+use glob::glob;
+use mio;
 use std::mem;
 use std::path::PathBuf;
 use std::str;
 use std::time;
-use crate::util;
-use crate::util::send;
 
 /// `FileServer` is a Source which cooperatively schedules reads over files,
 /// converting the lines of said files into `LogLine` structures. As
@@ -66,7 +66,6 @@ impl Default for FileServerConfig {
 /// problem but your intrepid authors know of no generic solution.
 impl source::Source<FileServerConfig> for FileServer {
     /// Make a FileServer
-    ///
     fn init(config: FileServerConfig) -> Self {
         let pattern = config.path.expect("must specify a 'path' for FileServer");
         FileServer {
@@ -124,9 +123,10 @@ impl source::Source<FileServerConfig> for FileServer {
                 report_full_telemetry(
                     "cernan.sources.file.bytes_read",
                     bytes_read as f64,
-                    Some(vec![
-                        ("file_path", path.to_str().expect("not a valid path")),
-                    ]),
+                    Some(vec![(
+                        "file_path",
+                        path.to_str().expect("not a valid path"),
+                    )]),
                 );
                 // A FileWatcher is dead when the underlying file has
                 // disappeared. If the FileWatcher is dead we don't stick it in

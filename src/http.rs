@@ -2,8 +2,8 @@
 
 extern crate tiny_http;
 
-use std;
 use crate::thread;
+use std;
 
 /// HTTP request. Alias of `tiny_http::Request`.
 pub type Request = tiny_http::Request;
@@ -46,9 +46,11 @@ where
             Ok(_) => match tiny_http_server
                 .recv_timeout(std::time::Duration::from_millis(1000))
             {
-                Ok(maybe_a_request) => if let Some(request) = maybe_a_request {
-                    handler.handle(request);
-                },
+                Ok(maybe_a_request) => {
+                    if let Some(request) = maybe_a_request {
+                        handler.handle(request);
+                    }
+                }
 
                 Err(e) => {
                     panic!(format!("Failed during recv_timeout {:?}", e));
