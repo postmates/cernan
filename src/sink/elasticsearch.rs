@@ -233,11 +233,11 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
                                 }
                                 ELASTIC_RECORDS_TOTAL_FAILED
                                     .fetch_add(1, Ordering::Relaxed);
-                                if let Some(cause) = item.cause() {
+                                if let Some(source) = item.source() {
                                     debug!(
-                                        "Failed to write item with error {}, cause {}",
+                                        "Failed to write item with error {}, source {}",
                                         item.description(),
-                                        cause
+                                        source
                                     );
                                 } else {
                                     debug!(
