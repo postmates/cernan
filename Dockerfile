@@ -1,4 +1,4 @@
-FROM ekidd/rust-musl-builder:1.26.0 as builder
+FROM ekidd/rust-musl-builder:1.32.0 as builder
 
 RUN VERS=1.2.11 && \
     cd /home/rust/libs && \
@@ -29,7 +29,7 @@ ENV CC=musl-gcc \
 COPY --chown=rust:rust . /source
 RUN cd /source && cargo build --release
 
-FROM alpine:3.7
+FROM alpine:3.8
 
 RUN apk update \
   && apk upgrade --no-cache
