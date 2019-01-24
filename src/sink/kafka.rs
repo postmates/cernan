@@ -1,5 +1,5 @@
 //! Kafka sink for Raw events.
-use crate::metric;
+use crate::metric::{global_ack_bag, Encoding, Metadata};
 use crate::sink::Sink;
 use crate::source;
 use crate::util::Valve;
@@ -7,11 +7,12 @@ use futures::future::Future;
 use rdkafka::client::ClientContext;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::error::{KafkaError, RDKafkaError};
-use rdkafka::message::{Message, OwnedMessage};
+use rdkafka::message::{Headers, Message, OwnedHeaders, OwnedMessage};
 use rdkafka::producer::future_producer::DeliveryFuture;
-use rdkafka::producer::FutureProducer;
+use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::current_time_millis;
 use std::collections::HashMap;
+use std::str;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 
@@ -131,7 +132,7 @@ impl KafkaPublishable for KafkaPublishResult {
     }
 }
 
-type BoxedKafkaPublishable = Box<KafkaPublishable + Send + Sync>;
+type BoxedKafkaPublishable = Box<KafkaPublishable + Send>;
 
 trait KafkaMessageSender {
     fn try_payload(
@@ -139,6 +140,7 @@ trait KafkaMessageSender {
         topic: &str,
         payload: &[u8],
         key: &[u8],
+        metadata: Option<Metadata>,
         connection_id: Option<Uuid>,
     ) -> BoxedKafkaPublishable;
 }
@@ -149,17 +151,29 @@ impl KafkaMessageSender for FutureProducer<STFUContext> {
         topic: &str,
         payload: &[u8],
         key: &[u8],
+        metadata: Option<Metadata>,
         connection_id: Option<Uuid>,
     ) -> BoxedKafkaPublishable {
+        let mut headers = OwnedHeaders::new();
+        match metadata {
+            Some(m) => {
+                for (k, v) in m {
+                    headers = headers.clone().add(str::from_utf8(&k).unwrap(), &v);
+                }
+            }
+            None => {}
+        };
         Box::new(KafkaPublishResult {
-            inner: Some(self.send_copy(
-                topic,
-                /* partition */ None,
-                Some(payload),
-                Some(key),
-                Some(current_time_millis()),
-                /* block_ms */ 0,
-            )),
+            inner: Some(
+                self.send(
+                    FutureRecord::to(topic)
+                        .payload(payload)
+                        .key(key)
+                        .timestamp(current_time_millis())
+                        .headers(headers),
+                    0, // block_ms
+                ),
+            ),
             connection_id: connection_id,
         })
     }
@@ -217,6 +231,21 @@ impl FailedMessageWrapper {
 
     pub fn connection_id(&self) -> Option<Uuid> {
         self.connection_id
+    }
+
+    pub fn metadata(&self) -> Option<Metadata> {
+        let headers = self.message.headers();
+        match headers {
+            Some(h) => {
+                let mut hash_map: Metadata = Metadata::default();
+                for idx in 0..h.count() {
+                    let (k, v) = h.get(idx).unwrap();
+                    hash_map.insert(k.as_bytes().to_vec(), v.to_vec());
+                }
+                return Some(hash_map);
+            }
+            None => None,
+        }
     }
 }
 
@@ -287,8 +316,9 @@ impl Sink<KafkaConfig> for Kafka {
     fn deliver_raw(
         &mut self,
         order_by: u64,
-        _encoding: metric::Encoding,
+        _encoding: Encoding,
         bytes: Vec<u8>,
+        metadata: Option<Metadata>,
         connection_id: Option<Uuid>,
     ) {
         let key = format!("{:X}", order_by);
@@ -296,6 +326,7 @@ impl Sink<KafkaConfig> for Kafka {
             &self.topic_name[..],
             bytes.as_slice(),
             key.as_bytes(),
+            metadata,
             connection_id,
         );
         self.messages.push(future);
@@ -311,11 +342,13 @@ impl Sink<KafkaConfig> for Kafka {
                 .filter_map(|message| {
                     let payload = message.payload();
                     let key = message.key();
+                    let metadata = message.metadata();
                     if payload.is_some() && key.is_some() {
                         Some(self.producer.try_payload(
                             &self.topic_name[..],
                             payload.unwrap(),
                             key.unwrap(),
+                            metadata,
                             message.connection_id(),
                         ))
                     } else {
@@ -347,7 +380,7 @@ impl Kafka {
     /// Trigger acknowledgement of message
     fn acknowledge(&self, connection_id: Option<Uuid>) {
         if let Some(connection_id) = connection_id {
-            let bag = metric::global_ack_bag();
+            let bag = global_ack_bag();
             bag.with_props(connection_id, |props| {
                 props.ack();
             })
@@ -435,8 +468,8 @@ impl Kafka {
 
 #[cfg(test)]
 mod tests {
-    use super::metric::Encoding;
     use super::*;
+    use crate::metric::Encoding;
     use rdkafka::message::Timestamp;
     use std::sync::{Arc, RwLock};
 
@@ -457,6 +490,10 @@ mod tests {
                             m.timestamp(),
                             m.partition(),
                             m.offset(),
+                            match m.headers() {
+                                Some(h) => Some(h.to_owned()),
+                                None => None,
+                            },
                         );
                         Some(Err((e.clone(), om)))
                     }
@@ -473,6 +510,7 @@ mod tests {
             _topic: &str,
             _payload: &[u8],
             _key: &[u8],
+            _metadata: Option<Metadata>,
             _connection_id: Option<Uuid>,
         ) -> BoxedKafkaPublishable {
             Box::new(MockKafkaPublishResult {
@@ -539,12 +577,18 @@ mod tests {
 
         assert_eq!(k.valve_state(), Valve::Open);
 
-        k.deliver_raw(0, Encoding::Raw, vec![1, 2, 3, 4, 5, 6, 7, 8, 9], None);
+        k.deliver_raw(
+            0,
+            Encoding::Raw,
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
+            None,
+            None,
+        );
         assert_eq!(k.valve_state(), Valve::Open);
         assert_eq!(k.message_bytes, 9);
         assert_eq!(k.messages.len(), 1);
 
-        k.deliver_raw(0, Encoding::Raw, vec![10], None);
+        k.deliver_raw(0, Encoding::Raw, vec![10], None, None);
         assert_eq!(k.valve_state(), Valve::Closed);
         assert_eq!(k.message_bytes, 10);
         assert_eq!(k.messages.len(), 2);
@@ -562,6 +606,7 @@ mod tests {
         topic: String,
         payload: Vec<u8>,
         key: Vec<u8>,
+        metadata: Option<Metadata>,
     }
     #[derive(Clone)]
     struct RetryOnceMockKafkaSender {
@@ -576,6 +621,7 @@ mod tests {
             topic: &str,
             payload: &[u8],
             key: &[u8],
+            metadata: Option<Metadata>,
             _connection_id: Option<Uuid>,
         ) -> BoxedKafkaPublishable {
             let mut entries = self.send_entries.write().unwrap();
@@ -583,6 +629,7 @@ mod tests {
                 topic: topic.to_owned(),
                 payload: payload.to_vec(),
                 key: key.to_vec(),
+                metadata: metadata.clone(),
             };
             entries.push(entry);
 
@@ -593,6 +640,16 @@ mod tests {
                     return_value: Some(Ok((0, 1))),
                 })
             } else {
+                let headers = match &metadata {
+                    Some(m) => {
+                        let mut h = OwnedHeaders::new();
+                        for (k, v) in m {
+                            h = h.clone().add(str::from_utf8(&k).unwrap(), &v);
+                        }
+                        Some(h)
+                    }
+                    None => None,
+                };
                 let om = OwnedMessage::new(
                     if self.fail_retry {
                         None
@@ -608,7 +665,9 @@ mod tests {
                     Timestamp::CreateTime(current_time_millis()),
                     -1,
                     -1,
+                    headers,
                 );
+
                 Box::new(MockKafkaPublishResult {
                     return_value: Some(Err((self.error_type.clone(), om))),
                 })
@@ -650,10 +709,14 @@ mod tests {
                 stats: Box::new(RecordingStatsCollector::new()),
             };
 
+            let mut metadata = Metadata::default();
+            metadata.insert("k".as_bytes().to_vec(), vec![1, 2, 3]);
+
             k.deliver_raw(
                 1024,
                 Encoding::Raw,
                 vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                Some(metadata.clone()),
                 None,
             );
             k.flush();
@@ -668,6 +731,7 @@ mod tests {
                     topic: String::from("test-topic"),
                     key: format!("{:X}", 1024).as_bytes().to_vec(),
                     payload: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                    metadata: Some(metadata.clone()),
                 }
             );
             assert_eq!(
@@ -676,6 +740,7 @@ mod tests {
                     topic: String::from("test-topic"),
                     key: format!("{:X}", 1024).as_bytes().to_vec(),
                     payload: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                    metadata: Some(metadata.clone()),
                 }
             );
             assert_eq!(k.stats.get_publish(), 1);
@@ -705,6 +770,7 @@ mod tests {
             1024,
             Encoding::Raw,
             vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            None,
             None,
         );
         k.flush();
@@ -739,6 +805,7 @@ mod tests {
             Encoding::Raw,
             vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             None,
+            None,
         );
         k.flush();
 
@@ -770,6 +837,7 @@ mod tests {
             Encoding::Raw,
             vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             None,
+            None,
         );
         k.flush();
 
@@ -785,6 +853,7 @@ mod tests {
             _topic: &str,
             _payload: &[u8],
             _key: &[u8],
+            _metadata: Option<Metadata>,
             _connection_id: Option<Uuid>,
         ) -> BoxedKafkaPublishable {
             Box::new(MockKafkaPublishResult { return_value: None })
@@ -807,6 +876,7 @@ mod tests {
             1024,
             Encoding::Raw,
             vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            None,
             None,
         );
         k.flush();

@@ -38,7 +38,7 @@ openssl-probe = "0.1"
 protobuf = "1.7"
 quantiles = { version = "0.7", features = ["serde_support"] }
 rand = "0.5"
-rdkafka = "0.16"
+rdkafka = "0.17.0"
 regex = "1.0"
 reqwest = "0.8"
 seahash = "3.0"

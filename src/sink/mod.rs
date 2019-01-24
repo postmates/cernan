@@ -4,7 +4,7 @@
 //! and log lines it receives, other than to receive them. Individual sinks make
 //! different choices.
 
-use crate::metric::{Encoding, Event, LogLine, Telemetry};
+use crate::metric::{Encoding, Event, LogLine, Metadata, Telemetry};
 use crate::thread;
 use crate::time;
 use crate::util::Valve;
@@ -153,12 +153,14 @@ where
                             order_by,
                             encoding,
                             bytes,
+                            metadata,
                             connection_id,
                         } => {
                             self.state.deliver_raw(
                                 order_by,
                                 encoding,
                                 bytes,
+                                metadata,
                                 connection_id,
                             );
                             break;
@@ -245,6 +247,7 @@ where
         _order_by: u64,
         _encoding: Encoding,
         _bytes: Vec<u8>,
+        _metadata: Option<Metadata>,
         _connection_id: Option<Uuid>,
     ) -> () {
         // Not all sinks accept raw events.  By default, we do nothing.
