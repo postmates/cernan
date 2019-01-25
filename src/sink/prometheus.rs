@@ -17,8 +17,10 @@ use crate::thread::Stoppable;
 use crate::time;
 use crate::util;
 use flate2::write::GzEncoder;
+use flate2::Compression;
 use quantiles::histogram::Bound;
 use std::collections::hash_map;
+use std::collections::HashSet;
 use std::f64;
 use std::io;
 use std::io::Write;
@@ -396,8 +398,9 @@ impl http::Handler for PrometheusHandler {
             PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
             let reportable = aggr.reportable();
             let now = Instant::now();
-            buffer =
-                write_text(reportable, &self.tags, Vec::with_capacity(2048)).unwrap();
+            let mut enc = GzEncoder::new(buffer, Compression::fast());
+            enc = write_text(reportable, &self.tags, enc).unwrap();
+            buffer = enc.finish().unwrap();
             let elapsed = now.elapsed();
             let us = ((elapsed.as_secs() as f64) * 10_000.0)
                 + (f64::from(elapsed.subsec_nanos()) / 100_000.0);
@@ -435,7 +438,7 @@ impl http::Handler for PrometheusHandler {
 
 #[allow(cyclomatic_complexity)]
 #[inline]
-fn fmt_tags<W>(mut iter: TagIter, s: &mut GzEncoder<W>) -> ()
+fn fmt_tags<W>(mut iter: TagIter, s: &mut W) -> ()
 where
     W: Write,
 {
@@ -458,137 +461,136 @@ where
     }
 }
 
-fn write_text<W>(aggrs: Iter, default: &TagMap, buffer: W) -> io::Result<W>
+fn write_text<W>(aggrs: Iter, default: &TagMap, mut out: W) -> io::Result<W>
 where
     W: Write,
 {
-    use flate2::Compression;
-    use std::collections::HashSet;
-
     let mut seen: HashSet<String> = HashSet::new();
-    let mut enc = GzEncoder::new(buffer, Compression::fast());
     for value in aggrs {
         let sanitized_name: String = sanitize(&value.name);
         match value.kind() {
             AggregationMethod::Sum => {
                 if let Some(v) = value.sum() {
                     if seen.insert(value.name.clone()) {
-                        enc.write_all(b"# TYPE ")?;
-                        enc.write_all(sanitized_name.as_bytes())?;
-                        enc.write_all(b" counter\n")?;
+                        out.write_all(b"# TYPE ")?;
+                        out.write_all(sanitized_name.as_bytes())?;
+                        out.write_all(b" counter\n")?;
                     }
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut enc);
-                    enc.write_all(b"} ")?;
-                    enc.write_all(v.to_string().as_bytes())?;
-                    enc.write_all(b"\n")?;
+                    out.write_all(sanitized_name.as_bytes())?;
+                    out.write_all(b"{")?;
+                    fmt_tags(value.tags(default), &mut out);
+                    out.write_all(b"} ")?;
+                    out.write_all(v.to_string().as_bytes())?;
+                    out.write_all(b"\n")?;
                 }
             }
             AggregationMethod::Set => {
                 if let Some(v) = value.set() {
                     if seen.insert(value.name.clone()) {
-                        enc.write_all(b"# TYPE ")?;
-                        enc.write_all(sanitized_name.as_bytes())?;
-                        enc.write_all(b" gauge\n")?;
+                        out.write_all(b"# TYPE ")?;
+                        out.write_all(sanitized_name.as_bytes())?;
+                        out.write_all(b" gauge\n")?;
                     }
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut enc);
-                    enc.write_all(b"} ")?;
-                    enc.write_all(v.to_string().as_bytes())?;
-                    enc.write_all(b"\n")?;
+                    out.write_all(sanitized_name.as_bytes())?;
+                    out.write_all(b"{")?;
+                    fmt_tags(value.tags(default), &mut out);
+                    out.write_all(b"} ")?;
+                    out.write_all(v.to_string().as_bytes())?;
+                    out.write_all(b"\n")?;
                 }
             }
             AggregationMethod::Histogram => {
                 if let Some(bin_iter) = value.bins() {
                     if seen.insert(value.name.clone()) {
-                        enc.write_all(b"# TYPE ")?;
-                        enc.write_all(sanitized_name.as_bytes())?;
-                        enc.write_all(b" histogram\n")?;
+                        out.write_all(b"# TYPE ")?;
+                        out.write_all(sanitized_name.as_bytes())?;
+                        out.write_all(b" histogram\n")?;
                     }
                     let mut running_sum = 0;
                     for &(bound, val) in bin_iter {
-                        enc.write_all(sanitized_name.as_bytes())?;
-                        enc.write_all(b"{le=\"")?;
+                        out.write_all(sanitized_name.as_bytes())?;
+                        out.write_all(b"{le=\"")?;
                         match bound {
                             Bound::Finite(bnd) => {
-                                enc.write_all(bnd.to_string().as_bytes())?;
+                                out.write_all(bnd.to_string().as_bytes())?;
                             }
                             Bound::PosInf => {
-                                enc.write_all(b"+Inf")?;
+                                out.write_all(b"+Inf")?;
                             }
                         }
                         for (k, v) in value.tags(default) {
-                            enc.write_all(b"\", ")?;
-                            enc.write_all(k.as_bytes())?;
-                            enc.write_all(b"=\"")?;
-                            enc.write_all(v.as_bytes())?;
+                            out.write_all(b"\", ")?;
+                            out.write_all(k.as_bytes())?;
+                            out.write_all(b"=\"")?;
+                            out.write_all(v.as_bytes())?;
                         }
-                        enc.write_all(b"\"} ")?;
-                        enc.write_all((val + running_sum).to_string().as_bytes())?;
+                        out.write_all(b"\"} ")?;
+                        out.write_all((val + running_sum).to_string().as_bytes())?;
                         running_sum += val;
-                        enc.write_all(b"\n")?;
+                        out.write_all(b"\n")?;
                     }
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"_sum ")?;
-                    enc.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut enc);
-                    enc.write_all(b"} ")?;
-                    enc.write_all(
+                    out.write_all(sanitized_name.as_bytes())?;
+                    out.write_all(b"_sum ")?;
+                    out.write_all(b"{")?;
+                    fmt_tags(value.tags(default), &mut out);
+                    out.write_all(b"} ")?;
+                    out.write_all(
                         value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
                     )?;
-                    enc.write_all(b"\n")?;
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"_count ")?;
-                    enc.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut enc);
-                    enc.write_all(b"} ")?;
-                    enc.write_all(value.count().to_string().as_bytes())?;
-                    enc.write_all(b"\n")?;
+                    out.write_all(b"\n")?;
+                    out.write_all(sanitized_name.as_bytes())?;
+                    out.write_all(b"_count ")?;
+                    out.write_all(b"{")?;
+                    fmt_tags(value.tags(default), &mut out);
+                    out.write_all(b"} ")?;
+                    out.write_all(value.count().to_string().as_bytes())?;
+                    out.write_all(b"\n")?;
                 }
             }
             AggregationMethod::Summarize => {
                 if seen.insert(value.name.clone()) {
-                    enc.write_all(b"# TYPE ")?;
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b" summary\n")?;
+                    out.write_all(b"# TYPE ")?;
+                    out.write_all(sanitized_name.as_bytes())?;
+                    out.write_all(b" summary\n")?;
                 }
                 for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"{quantile=\"")?;
-                    enc.write_all(q.to_string().as_bytes())?;
+                    out.write_all(sanitized_name.as_bytes())?;
+                    out.write_all(b"{quantile=\"")?;
+                    out.write_all(q.to_string().as_bytes())?;
                     for (k, v) in value.tags(default) {
-                        enc.write_all(b"\", ")?;
-                        enc.write_all(k.as_bytes())?;
-                        enc.write_all(b"=\"")?;
-                        enc.write_all(v.as_bytes())?;
+                        out.write_all(b"\", ")?;
+                        out.write_all(k.as_bytes())?;
+                        out.write_all(b"=\"")?;
+                        out.write_all(v.as_bytes())?;
                     }
-                    enc.write_all(b"\"} ")?;
+                    out.write_all(b"\"} ")?;
 
-                    enc.write_all(value.query(*q).unwrap().to_string().as_bytes())?;
-                    enc.write_all(b"\n")?;
+                    out.write_all(value.query(*q).unwrap().to_string().as_bytes())?;
+                    out.write_all(b"\n")?;
                 }
-                enc.write_all(sanitized_name.as_bytes())?;
-                enc.write_all(b"_sum ")?;
-                enc.write_all(b"{")?;
-                fmt_tags(value.tags(default), &mut enc);
-                enc.write_all(b"} ")?;
-                enc.write_all(
+                out.write_all(sanitized_name.as_bytes())?;
+                out.write_all(b"_sum ")?;
+                out.write_all(b"{")?;
+                fmt_tags(value.tags(default), &mut out);
+                out.write_all(b"} ")?;
+                out.write_all(
                     value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
                 )?;
-                enc.write_all(b"\n")?;
-                enc.write_all(sanitized_name.as_bytes())?;
-                enc.write_all(b"_count ")?;
-                enc.write_all(b"{")?;
-                fmt_tags(value.tags(default), &mut enc);
-                enc.write_all(b"} ")?;
-                enc.write_all((value.count()).to_string().as_bytes())?;
-                enc.write_all(b"\n")?;
+                out.write_all(b"\n")?;
+                out.write_all(sanitized_name.as_bytes())?;
+                out.write_all(b"_count ")?;
+                out.write_all(b"{")?;
+                fmt_tags(value.tags(default), &mut out);
+                out.write_all(b"} ")?;
+                out.write_all((value.count()).to_string().as_bytes())?;
+                out.write_all(b"\n")?;
             }
         }
     }
-    enc.finish()
+    match out.flush() {
+        Ok(_) => Ok(out),
+        Err(e) => Err(e),
+    }
 }
 
 /// Sanitize cernan Telemetry into prometheus' notion
