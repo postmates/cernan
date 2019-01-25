@@ -443,32 +443,60 @@ impl Handler for PrometheusHandler {
     }
 }
 
-#[allow(cyclomatic_complexity)]
 #[inline]
-fn fmt_tags<W>(mut iter: TagIter, s: &mut W) -> ()
+fn write_kv<W>(k: &str, v: &str, s: &mut W) -> io::Result<()>
 where
     W: Write,
 {
-    // TODO this is wrong for a single tag
-    //  afgIPQC{source="cernan""} 1422522
+    s.write_all(k.as_bytes())?;
+    s.write_all(b"=\"")?;
+    s.write_all(v.as_bytes())?;
+    s.write_all(b"\"")
+}
+
+#[inline]
+fn write_tags<W>(mut iter: TagIter, w: &mut W) -> io::Result<()>
+where
+    W: Write,
+{
     if let Some((fk, fv)) = iter.next() {
-        let _ = s.write(fk.as_bytes());
-        let _ = s.write(b"=\"");
-        let _ = s.write(fv.as_bytes());
-        let _ = s.write(b"\"");
+        w.write_all(b"{")?;
+        write_kv(fk, fv, w)?;
         for (k, v) in iter {
-            let _ = s.write(b", ");
-            let _ = s.write(k.as_bytes());
-            let _ = s.write(b"=\"");
-            let _ = s.write(v.as_bytes());
-            let _ = s.write(b"\"");
+            w.write_all(b", ")?;
+            write_kv(k, v, w)?;
         }
+        w.write_all(b"}")
     } else {
-        let _ = s.write(b"");
+        w.write_all(b"")
     }
 }
 
-fn write_text<W>(aggrs: Iter, default: &TagMap, mut out: W) -> io::Result<W>
+#[inline]
+fn write_metric<W>(name: &String, tags: TagIter, v: f64, w: &mut W) -> io::Result<()>
+where
+    W: Write,
+{
+    w.write_all(name.as_bytes())?;
+    write_tags(tags, w)?;
+    w.write_all(b" ")?;
+    w.write_all(v.to_string().as_bytes())?;
+    w.write_all(b"\n")
+}
+
+#[inline]
+fn write_type<W>(name: &String, tname: &str, w: &mut W) -> io::Result<()>
+where
+    W: Write,
+{
+    w.write_all(b"# TYPE ")?;
+    w.write_all(name.as_bytes())?;
+    w.write_all(b" ")?;
+    w.write_all(tname.as_bytes())?;
+    w.write_all(b"\n")
+}
+
+fn write_text<W>(aggrs: Iter, default: &TagMap, mut w: W) -> io::Result<W>
 where
     W: Write,
 {
@@ -479,123 +507,99 @@ where
             AggregationMethod::Sum => {
                 if let Some(v) = value.sum() {
                     if seen.insert(value.name.clone()) {
-                        out.write_all(b"# TYPE ")?;
-                        out.write_all(sanitized_name.as_bytes())?;
-                        out.write_all(b" counter\n")?;
+                        write_type(&sanitized_name, "counter", &mut w)?;
                     }
-                    out.write_all(sanitized_name.as_bytes())?;
-                    out.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut out);
-                    out.write_all(b"} ")?;
-                    out.write_all(v.to_string().as_bytes())?;
-                    out.write_all(b"\n")?;
+                    write_metric(&sanitized_name, value.tags(default), v, &mut w)?;
                 }
             }
             AggregationMethod::Set => {
                 if let Some(v) = value.set() {
                     if seen.insert(value.name.clone()) {
-                        out.write_all(b"# TYPE ")?;
-                        out.write_all(sanitized_name.as_bytes())?;
-                        out.write_all(b" gauge\n")?;
+                        write_type(&sanitized_name, "gauge", &mut w)?;
                     }
-                    out.write_all(sanitized_name.as_bytes())?;
-                    out.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut out);
-                    out.write_all(b"} ")?;
-                    out.write_all(v.to_string().as_bytes())?;
-                    out.write_all(b"\n")?;
+                    write_metric(&sanitized_name, value.tags(default), v, &mut w)?;
                 }
             }
             AggregationMethod::Histogram => {
                 if let Some(bin_iter) = value.bins() {
                     if seen.insert(value.name.clone()) {
-                        out.write_all(b"# TYPE ")?;
-                        out.write_all(sanitized_name.as_bytes())?;
-                        out.write_all(b" histogram\n")?;
+                        write_type(&sanitized_name, "histogram", &mut w)?;
                     }
                     let mut running_sum = 0;
                     for &(bound, val) in bin_iter {
-                        out.write_all(sanitized_name.as_bytes())?;
-                        out.write_all(b"{le=\"")?;
-                        match bound {
-                            Bound::Finite(bnd) => {
-                                out.write_all(bnd.to_string().as_bytes())?;
-                            }
-                            Bound::PosInf => {
-                                out.write_all(b"+Inf")?;
-                            }
-                        }
+                        w.write_all(sanitized_name.as_bytes())?;
+
+                        // TODO(jpg): Could be combined with tags and processed with
+                        // write_metric()
+                        let le = match bound {
+                            Bound::Finite(bnd) => bnd.to_string(),
+                            Bound::PosInf => "+Inf".to_string(),
+                        };
+                        w.write_all(b"{")?;
+                        write_kv("le", le.as_str(), &mut w)?;
                         for (k, v) in value.tags(default) {
-                            out.write_all(b"\", ")?;
-                            out.write_all(k.as_bytes())?;
-                            out.write_all(b"=\"")?;
-                            out.write_all(v.as_bytes())?;
+                            w.write_all(b", ")?;
+                            write_kv(k, v, &mut w)?;
                         }
-                        out.write_all(b"\"} ")?;
-                        out.write_all((val + running_sum).to_string().as_bytes())?;
+                        w.write_all(b"} ")?;
+
+                        w.write_all((val + running_sum).to_string().as_bytes())?;
                         running_sum += val;
-                        out.write_all(b"\n")?;
+                        w.write_all(b"\n")?;
                     }
-                    out.write_all(sanitized_name.as_bytes())?;
-                    out.write_all(b"_sum ")?;
-                    out.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut out);
-                    out.write_all(b"} ")?;
-                    out.write_all(
-                        value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
+                    let sum_value = value.samples_sum().unwrap_or(0.0);
+                    write_metric(
+                        &(sanitized_name.clone() + "_sum"),
+                        value.tags(default),
+                        sum_value,
+                        &mut w,
                     )?;
-                    out.write_all(b"\n")?;
-                    out.write_all(sanitized_name.as_bytes())?;
-                    out.write_all(b"_count ")?;
-                    out.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut out);
-                    out.write_all(b"} ")?;
-                    out.write_all(value.count().to_string().as_bytes())?;
-                    out.write_all(b"\n")?;
+                    write_metric(
+                        &(sanitized_name.clone() + "_count"),
+                        value.tags(default),
+                        value.count() as f64,
+                        &mut w,
+                    )?;
                 }
             }
             AggregationMethod::Summarize => {
                 if seen.insert(value.name.clone()) {
-                    out.write_all(b"# TYPE ")?;
-                    out.write_all(sanitized_name.as_bytes())?;
-                    out.write_all(b" summary\n")?;
+                    write_type(&sanitized_name, "summary", &mut w)?;
                 }
                 for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-                    out.write_all(sanitized_name.as_bytes())?;
-                    out.write_all(b"{quantile=\"")?;
-                    out.write_all(q.to_string().as_bytes())?;
-                    for (k, v) in value.tags(default) {
-                        out.write_all(b"\", ")?;
-                        out.write_all(k.as_bytes())?;
-                        out.write_all(b"=\"")?;
-                        out.write_all(v.as_bytes())?;
-                    }
-                    out.write_all(b"\"} ")?;
+                    w.write_all(sanitized_name.as_bytes())?;
 
-                    out.write_all(value.query(*q).unwrap().to_string().as_bytes())?;
-                    out.write_all(b"\n")?;
+                    // TODO(jpg): Could be combined with tags and processed with
+                    // write_metric()
+                    w.write_all(b"{")?;
+                    write_kv("quantile", q.to_string().as_str(), &mut w)?;
+                    for (k, v) in value.tags(default) {
+                        w.write_all(b", ")?;
+                        write_kv(k, v, &mut w)?;
+                    }
+                    w.write_all(b"} ")?;
+
+                    w.write_all(value.query(*q).unwrap().to_string().as_bytes())?;
+                    w.write_all(b"\n")?;
                 }
-                out.write_all(sanitized_name.as_bytes())?;
-                out.write_all(b"_sum ")?;
-                out.write_all(b"{")?;
-                fmt_tags(value.tags(default), &mut out);
-                out.write_all(b"} ")?;
-                out.write_all(
-                    value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
+                let sum_value = value.samples_sum().unwrap_or(0.0);
+                write_metric(
+                    &(sanitized_name.clone() + "_sum"),
+                    value.tags(default),
+                    sum_value,
+                    &mut w,
                 )?;
-                out.write_all(b"\n")?;
-                out.write_all(sanitized_name.as_bytes())?;
-                out.write_all(b"_count ")?;
-                out.write_all(b"{")?;
-                fmt_tags(value.tags(default), &mut out);
-                out.write_all(b"} ")?;
-                out.write_all((value.count()).to_string().as_bytes())?;
-                out.write_all(b"\n")?;
+                write_metric(
+                    &(sanitized_name.clone() + "_count"),
+                    value.tags(default),
+                    value.count() as f64,
+                    &mut w,
+                )?;
             }
         }
     }
-    match out.flush() {
-        Ok(_) => Ok(out),
+    match w.flush() {
+        Ok(_) => Ok(w),
         Err(e) => Err(e),
     }
 }
@@ -673,7 +677,6 @@ impl Sink<PrometheusConfig> for Prometheus {
 #[cfg(test)]
 mod test {
     use super::*;
-    use chrono::{TimeZone, Utc};
     use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
 
     impl Arbitrary for PrometheusAggr {
@@ -842,42 +845,42 @@ mod test {
         QuickCheck::new().quickcheck(inner as fn(Telemetry) -> TestResult);
     }
 
-    fn fmt_tags_test_helper(iter: TagIter, expected: &str) {
+    fn write_tags_test_helper(iter: TagIter, expected: &str) {
         let mut buffer = Vec::with_capacity(2048);
-        fmt_tags(iter, &mut buffer);
+        write_tags(iter, &mut buffer).unwrap();
         assert_eq!(expected, String::from_utf8(buffer).unwrap());
     }
 
     #[test]
-    fn test_fmt_tags() {
+    fn test_write_tags() {
         let empty = TagMap::default();
         let mut defaults = TagMap::default();
         defaults.insert("source".into(), "test-src".into());
         let mut tags = TagMap::default();
         tags.insert("custom-tag".into(), "custom-value".into());
 
-        fmt_tags_test_helper(
+        write_tags_test_helper(
             TagIter::Single {
                 defaults: empty.iter(),
             },
             "",
         );
 
-        fmt_tags_test_helper(
+        write_tags_test_helper(
             TagIter::Single {
                 defaults: tags.iter(),
             },
-            r#"custom-tag="custom-value""#,
+            r#"{custom-tag="custom-value"}"#,
         );
 
-        fmt_tags_test_helper(
+        write_tags_test_helper(
             TagIter::Double {
                 iters_exhausted: false,
                 seen_keys: HashSet::new(),
                 defaults: defaults.iter(),
                 iters: tags.iter(),
             },
-            r#"custom-tag="custom-value", source="test-src""#,
+            r#"{custom-tag="custom-value", source="test-src"}"#,
         );
     }
 
@@ -946,11 +949,8 @@ mod test {
 
         write_text_test_helper(
             &gauge_aggr,
-            &defaults,
-            vec![
-                "# TYPE test_gauge gauge",
-                r#"test_gauge{source="test-src"} 3.211"#,
-            ],
+            &empty,
+            vec!["# TYPE test_gauge gauge", r#"test_gauge 3.211"#],
         );
 
         let mut timer_aggr = PrometheusAggr::new(1);
@@ -969,8 +969,8 @@ mod test {
             &defaults,
             vec![
                 "# TYPE test_timer summary",
-                r#"test_timer_count {source="test-src"} 1"#,
-                r#"test_timer_sum {source="test-src"} 12.101"#,
+                r#"test_timer_count{source="test-src"} 1"#,
+                r#"test_timer_sum{source="test-src"} 12.101"#,
                 r#"test_timer{quantile="0", source="test-src"} 12.101"#,
                 r#"test_timer{quantile="0.25", source="test-src"} 12.101"#,
                 r#"test_timer{quantile="0.5", source="test-src"} 12.101"#,
@@ -1016,8 +1016,8 @@ mod test {
             &defaults,
             vec![
                 "# TYPE test_histogram histogram",
-                r#"test_histogram_count {source="test-src"} 1"#,
-                r#"test_histogram_sum {source="test-src"} 0.1"#,
+                r#"test_histogram_count{source="test-src"} 1"#,
+                r#"test_histogram_sum{source="test-src"} 0.1"#,
                 r#"test_histogram{le="+Inf", source="test-src"} 1"#,
                 r#"test_histogram{le="1", source="test-src"} 1"#,
                 r#"test_histogram{le="10", source="test-src"} 1"#,
