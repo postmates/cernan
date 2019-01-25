@@ -10,16 +10,14 @@
 //!
 //! All points are retained indefinitely in their aggregation.
 use crate::http::{Handler, Header, Request, Response, Server, StatusCode};
-use crate::metric;
-use crate::metric::{AggregationMethod, TagIter, TagMap};
+use crate::metric::{AggregationMethod, TagIter, TagMap, Telemetry};
 use crate::sink::Sink;
 use crate::thread::Stoppable;
 use crate::time;
-use crate::util;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use quantiles::histogram::Bound;
-use std::collections::hash_map;
+use std::collections::hash_map::{Entry, HashMap, Values};
 use std::collections::HashSet;
 use std::f64;
 use std::io;
@@ -96,12 +94,12 @@ impl Default for PrometheusConfig {
 
 #[derive(Clone, Debug)]
 enum Accumulator {
-    Perpetual(metric::Telemetry),
+    Perpetual(Telemetry),
     Windowed {
         cap: usize,
         sum: f64,
         count: u64,
-        samples: Vec<metric::Telemetry>,
+        samples: Vec<Telemetry>,
     },
 }
 
@@ -149,7 +147,7 @@ impl Accumulator {
         }
     }
 
-    pub fn insert(&mut self, telem: metric::Telemetry) {
+    pub fn insert(&mut self, telem: Telemetry) {
         match *self {
             Accumulator::Perpetual(ref mut t) => *t += telem,
             Accumulator::Windowed {
@@ -227,7 +225,7 @@ struct PrometheusAggr {
     // The idea being that there's no good reason to flush these things,
     // according to this conversation:
     // https://github.com/postmates/cernan/pull/306#discussion_r139770087
-    data: util::HashMap<String, Accumulator>,
+    data: HashMap<String, Accumulator>,
     // Summarize metrics are kept in a time-based sliding window. The
     // capacity_in_seconds determines how wide this window is.
     capacity_in_seconds: usize,
@@ -237,7 +235,7 @@ impl PrometheusAggr {
     /// Return a reference to the stored Telemetry if it matches the passed
     /// Telemetry
     #[cfg(test)]
-    fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
+    fn find_match(&self, telem: &Telemetry) -> Option<Telemetry> {
         if let Some(accum) = self.data.get(&telem.name) {
             match *accum {
                 Accumulator::Perpetual(ref t) => Some(t.clone()),
@@ -278,8 +276,7 @@ impl PrometheusAggr {
     /// We DO NOT allow aggregation kinds to change in Prometheus sink. To that
     /// end, this function returns False if a Telemetry is inserted that differs
     /// only in its aggregation method from a Telemetry stored previously.
-    fn insert(&mut self, telem: metric::Telemetry) -> bool {
-        use std::collections::hash_map::*;
+    fn insert(&mut self, telem: Telemetry) -> bool {
         let entry: Entry<String, Accumulator> = self.data.entry(telem.name.clone());
         match entry {
             Entry::Occupied(mut oe) => {
@@ -292,12 +289,10 @@ impl PrometheusAggr {
             }
             Entry::Vacant(ve) => {
                 ve.insert(match telem.kind() {
-                    metric::AggregationMethod::Set
-                    | metric::AggregationMethod::Sum
-                    | metric::AggregationMethod::Histogram => {
-                        Accumulator::Perpetual(telem)
-                    }
-                    metric::AggregationMethod::Summarize => {
+                    AggregationMethod::Set
+                    | AggregationMethod::Sum
+                    | AggregationMethod::Histogram => Accumulator::Perpetual(telem),
+                    AggregationMethod::Summarize => {
                         let mut samples = Vec::new();
                         let sum = telem.query(1.0).unwrap();
                         samples.push(telem);
@@ -338,13 +333,13 @@ impl PrometheusAggr {
 
 /// Iteration struct for the bucket. Created by `Buckets.iter()`.
 pub struct Iter<'a> {
-    samples: hash_map::Values<'a, String, Accumulator>,
+    samples: Values<'a, String, Accumulator>,
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = metric::Telemetry;
+    type Item = Telemetry;
 
-    fn next(&mut self) -> Option<metric::Telemetry> {
+    fn next(&mut self) -> Option<Telemetry> {
         loop {
             match self.samples.next() {
                 Some(&Accumulator::Perpetual(ref t)) => return Some(t.clone()),
@@ -659,7 +654,7 @@ impl Sink<PrometheusConfig> for Prometheus {
         PROMETHEUS_AGGR_WINDOWED_PURGED.store(total_purged, Ordering::Relaxed);
     }
 
-    fn deliver(&mut self, telem: metric::Telemetry) -> () {
+    fn deliver(&mut self, telem: Telemetry) -> () {
         if let Some(age_threshold) = self.age_threshold {
             if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
                 self.aggrs.lock().unwrap().insert(telem);
@@ -678,7 +673,7 @@ impl Sink<PrometheusConfig> for Prometheus {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::metric;
+    use chrono::{TimeZone, Utc};
     use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
 
     impl Arbitrary for PrometheusAggr {
@@ -686,16 +681,14 @@ mod test {
         where
             G: Gen,
         {
-            use std::collections::hash_map::*;
-
             let limit: usize = Arbitrary::arbitrary(g);
             let capacity_in_seconds: usize = match Arbitrary::arbitrary(g) {
                 0 => 1,
                 i => i,
             };
-            let mut data: util::HashMap<String, Accumulator> = Default::default();
+            let mut data: HashMap<String, Accumulator> = Default::default();
             for _ in 0..limit {
-                let telem: metric::Telemetry = Arbitrary::arbitrary(g);
+                let telem: Telemetry = Arbitrary::arbitrary(g);
                 let entry: Entry<String, Accumulator> = data.entry(telem.name.clone());
                 match entry {
                     Entry::Occupied(mut oe) => {
@@ -708,12 +701,12 @@ mod test {
                     }
                     Entry::Vacant(ve) => {
                         ve.insert(match telem.kind() {
-                            metric::AggregationMethod::Set
-                            | metric::AggregationMethod::Sum
-                            | metric::AggregationMethod::Histogram => {
+                            AggregationMethod::Set
+                            | AggregationMethod::Sum
+                            | AggregationMethod::Histogram => {
                                 Accumulator::Perpetual(telem)
                             }
-                            metric::AggregationMethod::Summarize => {
+                            AggregationMethod::Summarize => {
                                 let mut samples = Vec::new();
                                 let sum = telem.query(1.0).unwrap();
                                 samples.push(telem);
@@ -737,7 +730,7 @@ mod test {
 
     #[test]
     fn test_accumlator_window_boundary_obeyed() {
-        fn inner(cap: usize, telems: Vec<metric::Telemetry>) -> TestResult {
+        fn inner(cap: usize, telems: Vec<Telemetry>) -> TestResult {
             let mut windowed = Accumulator::Windowed {
                 cap: cap,
                 samples: Vec::new(),
@@ -756,8 +749,7 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new()
-            .quickcheck(inner as fn(usize, Vec<metric::Telemetry>) -> TestResult);
+        QuickCheck::new().quickcheck(inner as fn(usize, Vec<Telemetry>) -> TestResult);
     }
 
     #[test]
@@ -789,7 +781,7 @@ mod test {
     //    - insertion WILL make telemetry exist after the insertion
     #[test]
     fn test_insertion_exists_property() {
-        fn inner(telem: metric::Telemetry, mut aggr: PrometheusAggr) -> TestResult {
+        fn inner(telem: Telemetry, mut aggr: PrometheusAggr) -> TestResult {
             let cur_cnt = aggr.count();
             match aggr.find_match(&telem) {
                 Some(other) => {
@@ -801,7 +793,7 @@ mod test {
                         assert_eq!(other.name, new_t.name);
                         assert_eq!(new_t.kind(), telem.kind());
                     } else {
-                        assert!(other.kind() != telem.kind());
+                        assert_ne!(other.kind(), telem.kind());
                         assert_eq!(cur_cnt, aggr.count());
                         return TestResult::discard();
                     }
@@ -811,12 +803,12 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new()
-            .quickcheck(inner as fn(metric::Telemetry, PrometheusAggr) -> TestResult);
+            .quickcheck(inner as fn(Telemetry, PrometheusAggr) -> TestResult);
     }
 
     #[test]
     fn test_insertion_not_exists_property() {
-        fn inner(telem: metric::Telemetry, mut aggr: PrometheusAggr) -> TestResult {
+        fn inner(telem: Telemetry, mut aggr: PrometheusAggr) -> TestResult {
             let cur_cnt = aggr.count();
             match aggr.find_match(&telem) {
                 Some(_) => return TestResult::discard(),
@@ -829,12 +821,12 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new()
-            .quickcheck(inner as fn(metric::Telemetry, PrometheusAggr) -> TestResult);
+            .quickcheck(inner as fn(Telemetry, PrometheusAggr) -> TestResult);
     }
 
     #[test]
     fn test_sanitization() {
-        fn inner(metric: metric::Telemetry) -> TestResult {
+        fn inner(metric: Telemetry) -> TestResult {
             let name: String = sanitize(&metric.name);
             for c in name.chars() {
                 match c {
@@ -847,7 +839,7 @@ mod test {
             }
             TestResult::passed()
         }
-        QuickCheck::new().quickcheck(inner as fn(metric::Telemetry) -> TestResult);
+        QuickCheck::new().quickcheck(inner as fn(Telemetry) -> TestResult);
     }
 
     fn fmt_tags_test_helper(iter: TagIter, expected: &str) {
@@ -886,6 +878,152 @@ mod test {
                 iters: tags.iter(),
             },
             r#"custom-tag="custom-value", source="test-src""#,
+        );
+    }
+
+    fn write_text_test_helper(
+        aggr: &PrometheusAggr,
+        defaults: &TagMap,
+        mut expected: Vec<&str>,
+    ) {
+        let mut buffer = Vec::with_capacity(2048);
+        buffer = write_text(aggr.reportable(), &defaults, buffer).unwrap();
+        let string = String::from_utf8(buffer).unwrap();
+        let mut lines: Vec<&str> = string.lines().collect();
+        lines.sort();
+        expected.sort();
+        println!("Expected:");
+        println!("{:#?}", expected);
+        println!("Actual:");
+        println!("{:#?}", lines);
+        assert_eq!(expected, lines);
+    }
+
+    #[test]
+    fn test_write_text() {
+        let empty = TagMap::default();
+        let mut defaults = TagMap::default();
+        defaults.insert("source".into(), "test-src".into());
+        let mut tags = TagMap::default();
+        tags.insert("custom-tag".into(), "custom-value".into());
+
+        let aggr = PrometheusAggr::new(1);
+
+        write_text_test_helper(&aggr, &empty, vec![]);
+        write_text_test_helper(&aggr, &defaults, vec![]);
+
+        let mut counter_aggr = PrometheusAggr::new(1);
+
+        counter_aggr.insert(
+            Telemetry::new()
+                .name("test.counter")
+                .value(-1.0)
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
+                .overlay_tags_from_map(&tags),
+        );
+
+        write_text_test_helper(
+            &counter_aggr,
+            &defaults,
+            vec![
+                "# TYPE test_counter counter",
+                r#"test_counter{custom-tag="custom-value", source="test-src"} -1"#,
+            ],
+        );
+
+        let mut gauge_aggr = PrometheusAggr::new(1);
+
+        gauge_aggr.insert(
+            Telemetry::new()
+                .name("test.gauge")
+                .value(3.211)
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap(),
+        );
+
+        write_text_test_helper(
+            &gauge_aggr,
+            &defaults,
+            vec![
+                "# TYPE test_gauge gauge",
+                r#"test_gauge{source="test-src"} 3.211"#,
+            ],
+        );
+
+        let mut timer_aggr = PrometheusAggr::new(1);
+
+        timer_aggr.insert(
+            Telemetry::new()
+                .name("test.timer")
+                .value(12.101)
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap(),
+        );
+
+        write_text_test_helper(
+            &timer_aggr,
+            &defaults,
+            vec![
+                "# TYPE test_timer summary",
+                r#"test_timer_count {source="test-src"} 1"#,
+                r#"test_timer_sum {source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.25", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.5", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.75", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.9", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.95", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.99", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.999", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="1", source="test-src"} 12.101"#,
+            ],
+        );
+
+        let mut raw_aggr = PrometheusAggr::new(1);
+
+        raw_aggr.insert(
+            Telemetry::new()
+                .name("test.raw")
+                .value(1.0)
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap(),
+        );
+
+        write_text_test_helper(
+            &raw_aggr,
+            &defaults,
+            vec!["# TYPE test_raw gauge", r#"test_raw{source="test-src"} 1"#],
+        );
+
+        let mut histogram_aggr = PrometheusAggr::new(1);
+
+        histogram_aggr.insert(
+            Telemetry::new()
+                .name("test.histogram")
+                .value(0.1)
+                .kind(AggregationMethod::Histogram)
+                .harden()
+                .unwrap(),
+        );
+
+        write_text_test_helper(
+            &histogram_aggr,
+            &defaults,
+            vec![
+                "# TYPE test_histogram histogram",
+                r#"test_histogram_count {source="test-src"} 1"#,
+                r#"test_histogram_sum {source="test-src"} 0.1"#,
+                r#"test_histogram{le="+Inf", source="test-src"} 1"#,
+                r#"test_histogram{le="1", source="test-src"} 1"#,
+                r#"test_histogram{le="10", source="test-src"} 1"#,
+                r#"test_histogram{le="100", source="test-src"} 1"#,
+                r#"test_histogram{le="1000", source="test-src"} 1"#,
+            ],
         );
     }
 }
