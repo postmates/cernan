@@ -9,7 +9,7 @@
 //!   - HISTOGRAM -> histogram
 //!
 //! All points are retained indefinitely in their aggregation.
-use crate::http;
+use crate::http::{Handler, Header, Request, Response, Server, StatusCode};
 use crate::metric;
 use crate::metric::{AggregationMethod, TagIter, TagMap};
 use crate::sink::Sink;
@@ -53,7 +53,7 @@ pub static PROMETHEUS_AGGR_WINDOWED_PURGED: AtomicUsize = AtomicUsize::new(0);
 pub struct Prometheus {
     aggrs: sync::Arc<sync::Mutex<PrometheusAggr>>,
     age_threshold: Option<u64>,
-    http_srv: http::Server,
+    http_srv: Server,
     tags: TagMap,
 }
 
@@ -76,6 +76,8 @@ pub struct PrometheusConfig {
     /// sink. These tags will overwrite any tags carried by the `metric::Event`
     /// itself.
     pub tags: TagMap,
+    /// Enable gzip for Prometheus scrape endpoint
+    pub gzip: bool,
 }
 
 impl Default for PrometheusConfig {
@@ -87,6 +89,7 @@ impl Default for PrometheusConfig {
             capacity_in_seconds: 600, // ten minutes
             age_threshold: None,
             tags: TagMap::default(),
+            gzip: false,
         }
     }
 }
@@ -389,34 +392,43 @@ impl<'a> Iterator for Iter<'a> {
 struct PrometheusHandler {
     tags: TagMap,
     aggr: sync::Arc<Mutex<PrometheusAggr>>,
+    gzip: bool,
 }
 
-impl http::Handler for PrometheusHandler {
-    fn handle(&self, request: http::Request) -> () {
+impl Handler for PrometheusHandler {
+    fn handle(&self, request: Request) -> () {
         let mut buffer = Vec::with_capacity(2048);
         if let Ok(ref aggr) = self.aggr.try_lock() {
             PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
             let reportable = aggr.reportable();
             let now = Instant::now();
-            let mut enc = GzEncoder::new(buffer, Compression::fast());
-            enc = write_text(reportable, &self.tags, enc).unwrap();
-            buffer = enc.finish().unwrap();
+            buffer = match self.gzip {
+                true => {
+                    let mut enc = GzEncoder::new(buffer, Compression::fast());
+                    enc = write_text(reportable, &self.tags, enc).unwrap();
+                    enc.finish().unwrap()
+                }
+                false => write_text(reportable, &self.tags, buffer).unwrap(),
+            };
             let elapsed = now.elapsed();
             let us = ((elapsed.as_secs() as f64) * 10_000.0)
                 + (f64::from(elapsed.subsec_nanos()) / 100_000.0);
             PROMETHEUS_RESPONSE_DELAY_SUM.fetch_add(us as usize, Ordering::Relaxed);
         }
         if !buffer.is_empty() {
-            let content_encoding = "gzip";
             let content_type = "text/plain; version=0.0.4";
-            let headers = [
-                http::Header::from_bytes(&b"Content-Type"[..], content_type).unwrap(),
-                http::Header::from_bytes(&b"Content-Encoding"[..], content_encoding)
-                    .unwrap(),
-            ];
+            let mut headers =
+                vec![Header::from_bytes(&b"Content-Type"[..], content_type).unwrap()];
+            if self.gzip {
+                let content_encoding = "gzip";
+                headers.push(
+                    Header::from_bytes(&b"Content-Encoding"[..], content_encoding)
+                        .unwrap(),
+                )
+            };
 
-            let response = http::Response::new(
-                http::StatusCode::from(200),
+            let response = Response::new(
+                StatusCode::from(200),
                 headers.to_vec(),
                 &buffer[..],
                 Some(buffer.len()),
@@ -626,11 +638,12 @@ impl Sink<PrometheusConfig> for Prometheus {
         Prometheus {
             aggrs: sync::Arc::clone(&aggrs),
             age_threshold: config.age_threshold,
-            http_srv: http::Server::new(
+            http_srv: Server::new(
                 host_port,
                 PrometheusHandler {
                     tags: config.tags.clone(),
                     aggr: aggrs,
+                    gzip: config.gzip,
                 },
             ),
             tags: config.tags,
