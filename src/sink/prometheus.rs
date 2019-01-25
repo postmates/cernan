@@ -849,4 +849,43 @@ mod test {
         }
         QuickCheck::new().quickcheck(inner as fn(metric::Telemetry) -> TestResult);
     }
+
+    fn fmt_tags_test_helper(iter: TagIter, expected: &str) {
+        let mut buffer = Vec::with_capacity(2048);
+        fmt_tags(iter, &mut buffer);
+        assert_eq!(expected, String::from_utf8(buffer).unwrap());
+    }
+
+    #[test]
+    fn test_fmt_tags() {
+        let empty = TagMap::default();
+        let mut defaults = TagMap::default();
+        defaults.insert("source".into(), "test-src".into());
+        let mut tags = TagMap::default();
+        tags.insert("custom-tag".into(), "custom-value".into());
+
+        fmt_tags_test_helper(
+            TagIter::Single {
+                defaults: empty.iter(),
+            },
+            "",
+        );
+
+        fmt_tags_test_helper(
+            TagIter::Single {
+                defaults: tags.iter(),
+            },
+            r#"custom-tag="custom-value""#,
+        );
+
+        fmt_tags_test_helper(
+            TagIter::Double {
+                iters_exhausted: false,
+                seen_keys: HashSet::new(),
+                defaults: defaults.iter(),
+                iters: tags.iter(),
+            },
+            r#"custom-tag="custom-value", source="test-src""#,
+        );
+    }
 }
