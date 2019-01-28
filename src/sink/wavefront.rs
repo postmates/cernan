@@ -180,7 +180,7 @@ impl<'a> Pad<'a> {
         }
     }
 
-    pub fn skip_pad(&self, pad_control: &PadControl) -> bool {
+    pub fn skip_pad(&self, pad_control: PadControl) -> bool {
         match *self {
             Pad::Zero(_, _) => true,
             Pad::Telem(x) => match x.kind() {
@@ -252,7 +252,7 @@ impl<'a> Iterator for Padding<'a> {
                 // is not part of our current sequence and it requires no
                 // padding.
                 if x.hash() == y.hash() {
-                    if x.skip_pad(&self.pad_control) {
+                    if x.skip_pad(self.pad_control) {
                         self.emit_q.push(y);
                         return Some(x);
                     }
@@ -315,7 +315,7 @@ impl<'a> Iterator for Padding<'a> {
             (Some(x), None) => {
                 self.last_hash = x.hash();
                 // end of sequence
-                if x.skip_pad(&self.pad_control) {
+                if x.skip_pad(self.pad_control) {
                     return Some(x);
                 }
                 let flush_padded = self.flush_padded.contains(&x.hash());
