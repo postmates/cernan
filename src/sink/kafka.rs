@@ -239,7 +239,7 @@ impl FailedMessageWrapper {
                     let (k, v) = h.get(idx).unwrap();
                     hash_map.insert(k.as_bytes().to_vec(), v.to_vec());
                 }
-                return Some(hash_map);
+                Some(hash_map)
             }
             None => None,
         }
