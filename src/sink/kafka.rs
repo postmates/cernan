@@ -155,13 +155,10 @@ impl KafkaMessageSender for FutureProducer<STFUContext> {
         connection_id: Option<Uuid>,
     ) -> BoxedKafkaPublishable {
         let mut headers = OwnedHeaders::new();
-        match metadata {
-            Some(m) => {
-                for (k, v) in m {
-                    headers = headers.clone().add(str::from_utf8(&k).unwrap(), &v);
-                }
+        if let Some(m) = metadata {
+            for (k, v) in m {
+                headers = headers.clone().add(str::from_utf8(&k).unwrap(), &v);
             }
-            None => {}
         };
         Box::new(KafkaPublishResult {
             inner: Some(
@@ -640,15 +637,14 @@ mod tests {
                     return_value: Some(Ok((0, 1))),
                 })
             } else {
-                let headers = match &metadata {
-                    Some(m) => {
-                        let mut h = OwnedHeaders::new();
-                        for (k, v) in m {
-                            h = h.clone().add(str::from_utf8(&k).unwrap(), &v);
-                        }
-                        Some(h)
+                let headers = if let Some(m) = &metadata {
+                    let mut h = OwnedHeaders::new();
+                    for (k, v) in m {
+                        h = h.clone().add(str::from_utf8(&k).unwrap(), &v);
                     }
-                    None => None,
+                    Some(h)
+                } else {
+                    None
                 };
                 let om = OwnedMessage::new(
                     if self.fail_retry {
