@@ -33,7 +33,7 @@ impl STFUContext {
         // Don't emit noisy errors about idle connection disconnects.
         let matches: Vec<_> =
             message.matches("Receive failed: Disconnected").collect();
-        matches.len() == 0
+        matches.is_empty()
     }
 }
 
