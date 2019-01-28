@@ -7,8 +7,10 @@ rust:
 
 before_script:
   - rustup component add rustfmt
+  - rustup component add clippy
 script:
   - cargo fmt --all -- --check
+  - cargo clippy -- -A clippy::redundant_field_names
   - cargo clean
   - cargo test
 
