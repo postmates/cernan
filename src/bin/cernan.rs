@@ -73,7 +73,7 @@ macro_rules! cfg_conf {
     };
 }
 
-#[allow(cyclomatic_complexity)]
+#[allow(clippy::cyclomatic_complexity)]
 fn main() {
     openssl_probe::init_ssl_cert_env_vars();
 

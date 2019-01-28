@@ -433,7 +433,7 @@ impl http::Handler for PrometheusHandler {
     }
 }
 
-#[allow(cyclomatic_complexity)]
+#[allow(clippy::cyclomatic_complexity)]
 #[inline]
 fn fmt_tags<W>(mut iter: TagIter, s: &mut GzEncoder<W>) -> ()
 where

@@ -108,7 +108,7 @@ impl source::Source<InternalConfig> for Internal {
         Internal {}
     }
 
-    #[allow(cyclomatic_complexity)]
+    #[allow(clippy::cyclomatic_complexity)]
     fn run(self, mut chans: util::Channel, poller: mio::Poll) -> () {
         let slp = std::time::Duration::from_millis(1_000);
         loop {
