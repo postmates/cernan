@@ -160,18 +160,13 @@ where
                                         "Removed {:?} terminated stream handlers.",
                                         ready.len()
                                     );
-                                } else {
-                                    if let Err(e) = self
-                                        .spawn_stream_handlers(&chans, listener_token)
-                                    {
-                                        let listener = &self.listeners[listener_token];
-                                        error!(
-                                            "Failed to spawn stream handlers! {:?}",
-                                            e
-                                        );
-                                        error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
-                                        let _ = poll.deregister(listener);
-                                    }
+                                } else if let Err(e) =
+                                    self.spawn_stream_handlers(&chans, listener_token)
+                                {
+                                    let listener = &self.listeners[listener_token];
+                                    error!("Failed to spawn stream handlers! {:?}", e);
+                                    error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
+                                    let _ = poll.deregister(listener);
                                 }
                             }
                         }
