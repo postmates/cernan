@@ -95,7 +95,7 @@ impl Default for ElasticsearchConfig {
             index_type: "payload".to_string(),
             delivery_attempt_limit: 10,
             port: 9200,
-            flush_interval: 1 * flushes_per_second(),
+            flush_interval: flushes_per_second(),
             tags: TagMap::default(),
         }
     }

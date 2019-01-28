@@ -1,7 +1,7 @@
 //! Kafka sink for Raw events.
 use crate::metric::{global_ack_bag, Encoding, Metadata};
 use crate::sink::Sink;
-use crate::source;
+use crate::source::flushes_per_second;
 use crate::util::Valve;
 use futures::future::Future;
 use rdkafka::client::ClientContext;
@@ -98,7 +98,7 @@ impl Default for KafkaConfig {
             brokers: None,
             rdkafka_config: None,
             max_message_bytes: 10 * (1 << 20),
-            flush_interval: 1 * source::flushes_per_second(),
+            flush_interval: flushes_per_second(),
         }
     }
 }
