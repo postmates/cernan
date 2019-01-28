@@ -207,7 +207,7 @@ impl Accumulator {
 /// `PrometheusAggr`. It's job is to encode these operations and allow us to
 /// establish the above invariants.
 #[derive(Clone, Debug)]
-struct PrometheusAggr {
+pub struct PrometheusAggr {
     // The approach we take is unique in cernan: we drop all timestamps and _do
     // not bin_. This is driven by the following comment in Prometheus' doc /
     // our own experience trying to set explict timestamps:
@@ -261,7 +261,7 @@ impl PrometheusAggr {
     ///
     /// This function returns all the stored Telemetry points that are available
     /// for shipping to Prometheus.
-    fn reportable(&self) -> Iter {
+    pub fn reportable(&self) -> Iter {
         Iter {
             samples: self.data.values(),
         }
@@ -276,7 +276,7 @@ impl PrometheusAggr {
     /// We DO NOT allow aggregation kinds to change in Prometheus sink. To that
     /// end, this function returns False if a Telemetry is inserted that differs
     /// only in its aggregation method from a Telemetry stored previously.
-    fn insert(&mut self, telem: Telemetry) -> bool {
+    pub fn insert(&mut self, telem: Telemetry) -> bool {
         let entry: Entry<String, Accumulator> = self.data.entry(telem.name.clone());
         match entry {
             Entry::Occupied(mut oe) => {
@@ -323,7 +323,7 @@ impl PrometheusAggr {
     }
 
     /// Create a new PrometheusAggr
-    fn new(capacity_in_seconds: usize) -> PrometheusAggr {
+    pub fn new(capacity_in_seconds: usize) -> PrometheusAggr {
         PrometheusAggr {
             data: Default::default(),
             capacity_in_seconds,
@@ -496,7 +496,8 @@ where
     w.write_all(b"\n")
 }
 
-fn write_text<W>(aggrs: Iter, default: &TagMap, mut w: W) -> io::Result<W>
+/// Write aggregations to writer
+pub fn write_text<W>(aggrs: Iter, default: &TagMap, mut w: W) -> io::Result<W>
 where
     W: Write,
 {
