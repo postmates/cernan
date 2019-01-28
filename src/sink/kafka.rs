@@ -371,7 +371,7 @@ impl Sink<KafkaConfig> for Kafka {
         Some(self.flush_interval)
     }
 
-    fn shutdown(mut self) -> () {
+    fn shutdown(mut self) {
         self.flush();
     }
 }

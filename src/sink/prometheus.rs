@@ -390,7 +390,7 @@ struct PrometheusHandler {
 }
 
 impl http::Handler for PrometheusHandler {
-    fn handle(&self, request: http::Request) -> () {
+    fn handle(&self, request: http::Request) {
         let mut buffer = Vec::with_capacity(2048);
         if let Ok(ref aggr) = self.aggr.try_lock() {
             PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
@@ -435,7 +435,7 @@ impl http::Handler for PrometheusHandler {
 
 #[allow(clippy::cyclomatic_complexity)]
 #[inline]
-fn fmt_tags<W>(mut iter: TagIter, s: &mut GzEncoder<W>) -> ()
+fn fmt_tags<W>(mut iter: TagIter, s: &mut GzEncoder<W>)
 where
     W: Write,
 {
@@ -644,7 +644,7 @@ impl Sink<PrometheusConfig> for Prometheus {
         PROMETHEUS_AGGR_WINDOWED_PURGED.store(total_purged, Ordering::Relaxed);
     }
 
-    fn deliver(&mut self, telem: metric::Telemetry) -> () {
+    fn deliver(&mut self, telem: metric::Telemetry) {
         if let Some(age_threshold) = self.age_threshold {
             if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
                 self.aggrs.lock().unwrap().insert(telem);
@@ -654,7 +654,7 @@ impl Sink<PrometheusConfig> for Prometheus {
         }
     }
 
-    fn shutdown(mut self) -> () {
+    fn shutdown(mut self) {
         self.flush();
         self.http_srv.shutdown();
     }

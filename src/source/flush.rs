@@ -28,7 +28,7 @@ impl source::Source<FlushTimerConfig> for FlushTimer {
         FlushTimer {}
     }
 
-    fn run(self, mut chans: util::Channel, _poller: mio::Poll) -> () {
+    fn run(self, mut chans: util::Channel, _poller: mio::Poll) {
         let flush_duration = Duration::from_millis(1000 / flushes_per_second());
         // idx will _always_ increase. If it's kept at u64 or greater it will
         // overflow long past the collapse of our industrial civilization even

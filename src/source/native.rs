@@ -66,7 +66,7 @@ impl TCPStreamHandler for NativeStreamHandler {
         chans: util::Channel,
         poller: &mio::Poll,
         stream: mio::net::TcpStream,
-    ) -> () {
+    ) {
         let mut streaming = true;
         let mut reader = BufferedPayload::new(stream.try_clone().unwrap(), 1_048_576);
         while streaming {

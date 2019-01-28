@@ -32,8 +32,7 @@ fn http_server<H>(
     poller: &thread::Poll,
     tiny_http_server: &tiny_http::Server,
     handler: &H,
-) -> ()
-where
+) where
     H: Handler,
 {
     loop {

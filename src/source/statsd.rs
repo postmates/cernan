@@ -160,7 +160,7 @@ impl source::Source<StatsdConfig> for Statsd {
         }
     }
 
-    fn run(self, mut chans: util::Channel, poller: mio::Poll) -> () {
+    fn run(self, mut chans: util::Channel, poller: mio::Poll) {
         for (idx, socket) in self.conns.iter() {
             if let Err(e) = poller.register(
                 socket,

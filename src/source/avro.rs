@@ -171,7 +171,7 @@ impl TCPStreamHandler for AvroStreamHandler {
         chans: util::Channel,
         poller: &mio::Poll,
         stream: mio::net::TcpStream,
-    ) -> () {
+    ) {
         let connection_id = Uuid::new_v4();
         let mut streaming = true;
         let mut reader = BufferedPayload::new(stream.try_clone().unwrap(), 1_048_576);

@@ -74,7 +74,7 @@ impl source::Source<FileServerConfig> for FileServer {
         }
     }
 
-    fn run(self, mut chans: util::Channel, poller: mio::Poll) -> () {
+    fn run(self, mut chans: util::Channel, poller: mio::Poll) {
         let mut buffer = String::new();
 
         let mut fp_map: util::HashMap<PathBuf, FileWatcher> = Default::default();

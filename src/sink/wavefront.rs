@@ -139,7 +139,7 @@ impl Default for WavefrontConfig {
 }
 
 #[inline]
-fn fmt_tags(mut iter: TagIter, s: &mut String) -> () {
+fn fmt_tags(mut iter: TagIter, s: &mut String) {
     if let Some((fk, fv)) = iter.next() {
         s.push_str(fk);
         s.push_str("=");
@@ -386,7 +386,7 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
 impl Wavefront {
     /// Convert the buckets into a String that
     /// can be sent to the the wavefront proxy
-    pub fn format_stats(&mut self) -> () {
+    pub fn format_stats(&mut self) {
         let mut time_cache: Vec<(i64, String)> = Vec::with_capacity(128);
         let mut count_cache: Vec<(usize, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
@@ -462,7 +462,7 @@ impl Wavefront {
         mut time_cache: &mut Vec<(i64, String)>,
         mut count_cache: &mut Vec<(usize, String)>,
         mut value_cache: &mut Vec<(f64, String)>,
-    ) -> () {
+    ) {
         let mut tag_buf = String::with_capacity(1_024);
         match value.kind() {
             AggregationMethod::Histogram => {
@@ -636,11 +636,11 @@ impl Sink<WavefrontConfig> for Wavefront {
         }
     }
 
-    fn shutdown(mut self) -> () {
+    fn shutdown(mut self) {
         self.flush();
     }
 
-    fn deliver(&mut self, telem: Telemetry) -> () {
+    fn deliver(&mut self, telem: Telemetry) {
         if let Some(age_threshold) = self.age_threshold {
             if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
                 self.aggrs.add(telem);

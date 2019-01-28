@@ -123,7 +123,7 @@ pub struct Elasticsearch {
 }
 
 impl Elasticsearch {
-    fn bulk_body(&self, buffer: &mut String) -> () {
+    fn bulk_body(&self, buffer: &mut String) {
         assert!(!self.buffer.is_empty());
         use serde_json::{to_string, Value};
         for m in &self.buffer {
@@ -334,11 +334,11 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
         }
     }
 
-    fn shutdown(mut self) -> () {
+    fn shutdown(mut self) {
         self.flush();
     }
 
-    fn deliver_line(&mut self, line: LogLine) -> () {
+    fn deliver_line(&mut self, line: LogLine) {
         let uuid = uuid::Uuid::new_v4();
         self.buffer.push(Line {
             uuid: uuid,
