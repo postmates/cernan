@@ -424,10 +424,10 @@ mod test {
         );
         let mut buffer = String::new();
         influxdb.format_stats(&mut buffer, influxdb.aggr_slice());
-        let lines: Vec<&str> = buffer.lines().collect();
+        let mut lines: Vec<&str> = buffer.lines().collect();
+        lines.sort();
 
-        println!("{:?}", lines);
-        let expected = [
+        let mut expected = vec![
             "test.counter,filter=test-filter-mod,source=test-src value=-1 645181811000000000",
             "test.counter,source=test-src value=2 645181811000000000",
             "test.counter,source=test-src value=3 645181812000000000",
@@ -455,10 +455,8 @@ mod test {
             "test.raw,source=test-src value=1 645181811000000000",
             "test.raw,source=test-src value=2 645181812000000000",
         ];
-        assert_eq!(expected.len(), lines.len());
-        for line in &expected {
-            println!("LINE: {:?}", line);
-            assert!(lines.contains(line))
-        }
+        expected.sort();
+
+        assert_eq!(expected, lines);
     }
 }

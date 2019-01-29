@@ -9,16 +9,16 @@
 //!   - HISTOGRAM -> histogram
 //!
 //! All points are retained indefinitely in their aggregation.
-use crate::http;
-use crate::metric;
-use crate::metric::{AggregationMethod, TagIter, TagMap};
+use crate::http::{Handler, Header, Request, Response, Server, StatusCode};
+use crate::metric::{AggregationMethod, TagIter, TagMap, Telemetry};
 use crate::sink::Sink;
 use crate::thread::Stoppable;
 use crate::time;
-use crate::util;
 use flate2::write::GzEncoder;
+use flate2::Compression;
 use quantiles::histogram::Bound;
-use std::collections::hash_map;
+use std::collections::hash_map::{Entry, HashMap, Values};
+use std::collections::HashSet;
 use std::f64;
 use std::io;
 use std::io::Write;
@@ -51,7 +51,7 @@ pub static PROMETHEUS_AGGR_WINDOWED_PURGED: AtomicUsize = AtomicUsize::new(0);
 pub struct Prometheus {
     aggrs: sync::Arc<sync::Mutex<PrometheusAggr>>,
     age_threshold: Option<u64>,
-    http_srv: http::Server,
+    http_srv: Server,
     tags: TagMap,
 }
 
@@ -74,6 +74,8 @@ pub struct PrometheusConfig {
     /// sink. These tags will overwrite any tags carried by the `metric::Event`
     /// itself.
     pub tags: TagMap,
+    /// Enable gzip for Prometheus scrape endpoint
+    pub gzip: bool,
 }
 
 impl Default for PrometheusConfig {
@@ -85,18 +87,19 @@ impl Default for PrometheusConfig {
             capacity_in_seconds: 600, // ten minutes
             age_threshold: None,
             tags: TagMap::default(),
+            gzip: false,
         }
     }
 }
 
 #[derive(Clone, Debug)]
 enum Accumulator {
-    Perpetual(metric::Telemetry),
+    Perpetual(Telemetry),
     Windowed {
         cap: usize,
         sum: f64,
         count: u64,
-        samples: Vec<metric::Telemetry>,
+        samples: Vec<Telemetry>,
     },
 }
 
@@ -144,7 +147,7 @@ impl Accumulator {
         }
     }
 
-    pub fn insert(&mut self, telem: metric::Telemetry) {
+    pub fn insert(&mut self, telem: Telemetry) {
         match *self {
             Accumulator::Perpetual(ref mut t) => *t += telem,
             Accumulator::Windowed {
@@ -222,7 +225,7 @@ struct PrometheusAggr {
     // The idea being that there's no good reason to flush these things,
     // according to this conversation:
     // https://github.com/postmates/cernan/pull/306#discussion_r139770087
-    data: util::HashMap<String, Accumulator>,
+    data: HashMap<String, Accumulator>,
     // Summarize metrics are kept in a time-based sliding window. The
     // capacity_in_seconds determines how wide this window is.
     capacity_in_seconds: usize,
@@ -232,7 +235,7 @@ impl PrometheusAggr {
     /// Return a reference to the stored Telemetry if it matches the passed
     /// Telemetry
     #[cfg(test)]
-    fn find_match(&self, telem: &metric::Telemetry) -> Option<metric::Telemetry> {
+    fn find_match(&self, telem: &Telemetry) -> Option<Telemetry> {
         if let Some(accum) = self.data.get(&telem.name) {
             match *accum {
                 Accumulator::Perpetual(ref t) => Some(t.clone()),
@@ -273,8 +276,7 @@ impl PrometheusAggr {
     /// We DO NOT allow aggregation kinds to change in Prometheus sink. To that
     /// end, this function returns False if a Telemetry is inserted that differs
     /// only in its aggregation method from a Telemetry stored previously.
-    fn insert(&mut self, telem: metric::Telemetry) -> bool {
-        use std::collections::hash_map::*;
+    fn insert(&mut self, telem: Telemetry) -> bool {
         let entry: Entry<String, Accumulator> = self.data.entry(telem.name.clone());
         match entry {
             Entry::Occupied(mut oe) => {
@@ -287,12 +289,10 @@ impl PrometheusAggr {
             }
             Entry::Vacant(ve) => {
                 ve.insert(match telem.kind() {
-                    metric::AggregationMethod::Set
-                    | metric::AggregationMethod::Sum
-                    | metric::AggregationMethod::Histogram => {
-                        Accumulator::Perpetual(telem)
-                    }
-                    metric::AggregationMethod::Summarize => {
+                    AggregationMethod::Set
+                    | AggregationMethod::Sum
+                    | AggregationMethod::Histogram => Accumulator::Perpetual(telem),
+                    AggregationMethod::Summarize => {
                         let mut samples = Vec::new();
                         let sum = telem.query(1.0).unwrap();
                         samples.push(telem);
@@ -333,13 +333,13 @@ impl PrometheusAggr {
 
 /// Iteration struct for the bucket. Created by `Buckets.iter()`.
 pub struct Iter<'a> {
-    samples: hash_map::Values<'a, String, Accumulator>,
+    samples: Values<'a, String, Accumulator>,
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = metric::Telemetry;
+    type Item = Telemetry;
 
-    fn next(&mut self) -> Option<metric::Telemetry> {
+    fn next(&mut self) -> Option<Telemetry> {
         loop {
             match self.samples.next() {
                 Some(&Accumulator::Perpetual(ref t)) => return Some(t.clone()),
@@ -387,33 +387,43 @@ impl<'a> Iterator for Iter<'a> {
 struct PrometheusHandler {
     tags: TagMap,
     aggr: sync::Arc<Mutex<PrometheusAggr>>,
+    gzip: bool,
 }
 
-impl http::Handler for PrometheusHandler {
-    fn handle(&self, request: http::Request) {
+impl Handler for PrometheusHandler {
+    fn handle(&self, request: Request) {
         let mut buffer = Vec::with_capacity(2048);
         if let Ok(ref aggr) = self.aggr.try_lock() {
             PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
             let reportable = aggr.reportable();
             let now = Instant::now();
-            buffer =
-                write_text(reportable, &self.tags, Vec::with_capacity(2048)).unwrap();
+            buffer = match self.gzip {
+                true => {
+                    let mut enc = GzEncoder::new(buffer, Compression::fast());
+                    enc = write_text(reportable, &self.tags, enc).unwrap();
+                    enc.finish().unwrap()
+                }
+                false => write_text(reportable, &self.tags, buffer).unwrap(),
+            };
             let elapsed = now.elapsed();
             let us = ((elapsed.as_secs() as f64) * 10_000.0)
                 + (f64::from(elapsed.subsec_nanos()) / 100_000.0);
             PROMETHEUS_RESPONSE_DELAY_SUM.fetch_add(us as usize, Ordering::Relaxed);
         }
         if !buffer.is_empty() {
-            let content_encoding = "gzip";
             let content_type = "text/plain; version=0.0.4";
-            let headers = [
-                http::Header::from_bytes(&b"Content-Type"[..], content_type).unwrap(),
-                http::Header::from_bytes(&b"Content-Encoding"[..], content_encoding)
-                    .unwrap(),
-            ];
+            let mut headers =
+                vec![Header::from_bytes(&b"Content-Type"[..], content_type).unwrap()];
+            if self.gzip {
+                let content_encoding = "gzip";
+                headers.push(
+                    Header::from_bytes(&b"Content-Encoding"[..], content_encoding)
+                        .unwrap(),
+                )
+            };
 
-            let response = http::Response::new(
-                http::StatusCode::from(200),
+            let response = Response::new(
+                StatusCode::from(200),
                 headers.to_vec(),
                 &buffer[..],
                 Some(buffer.len()),
@@ -433,162 +443,165 @@ impl http::Handler for PrometheusHandler {
     }
 }
 
-#[allow(clippy::cyclomatic_complexity)]
 #[inline]
-fn fmt_tags<W>(mut iter: TagIter, s: &mut GzEncoder<W>)
+fn write_kv<W>(k: &str, v: &str, s: &mut W) -> io::Result<()>
 where
     W: Write,
 {
-    // TODO this is wrong for a single tag
-    //  afgIPQC{source="cernan""} 1422522
+    s.write_all(k.as_bytes())?;
+    s.write_all(b"=\"")?;
+    s.write_all(v.as_bytes())?;
+    s.write_all(b"\"")
+}
+
+#[inline]
+fn write_tags<W>(mut iter: TagIter, w: &mut W) -> io::Result<()>
+where
+    W: Write,
+{
     if let Some((fk, fv)) = iter.next() {
-        let _ = s.write(fk.as_bytes());
-        let _ = s.write(b"=\"");
-        let _ = s.write(fv.as_bytes());
-        let _ = s.write(b"\"");
+        w.write_all(b"{")?;
+        write_kv(fk, fv, w)?;
         for (k, v) in iter {
-            let _ = s.write(b", ");
-            let _ = s.write(k.as_bytes());
-            let _ = s.write(b"=\"");
-            let _ = s.write(v.as_bytes());
-            let _ = s.write(b"\"");
+            w.write_all(b", ")?;
+            write_kv(k, v, w)?;
         }
+        w.write_all(b"}")
     } else {
-        let _ = s.write(b"");
+        w.write_all(b"")
     }
 }
 
-fn write_text<W>(aggrs: Iter, default: &TagMap, buffer: W) -> io::Result<W>
+#[inline]
+fn write_metric<W>(name: &String, tags: TagIter, v: f64, w: &mut W) -> io::Result<()>
 where
     W: Write,
 {
-    use flate2::Compression;
-    use std::collections::HashSet;
+    w.write_all(name.as_bytes())?;
+    write_tags(tags, w)?;
+    w.write_all(b" ")?;
+    w.write_all(v.to_string().as_bytes())?;
+    w.write_all(b"\n")
+}
 
+#[inline]
+fn write_type<W>(name: &String, tname: &str, w: &mut W) -> io::Result<()>
+where
+    W: Write,
+{
+    w.write_all(b"# TYPE ")?;
+    w.write_all(name.as_bytes())?;
+    w.write_all(b" ")?;
+    w.write_all(tname.as_bytes())?;
+    w.write_all(b"\n")
+}
+
+fn write_text<W>(aggrs: Iter, default: &TagMap, mut w: W) -> io::Result<W>
+where
+    W: Write,
+{
     let mut seen: HashSet<String> = HashSet::new();
-    let mut enc = GzEncoder::new(buffer, Compression::fast());
     for value in aggrs {
         let sanitized_name: String = sanitize(&value.name);
         match value.kind() {
             AggregationMethod::Sum => {
                 if let Some(v) = value.sum() {
                     if seen.insert(value.name.clone()) {
-                        enc.write_all(b"# TYPE ")?;
-                        enc.write_all(sanitized_name.as_bytes())?;
-                        enc.write_all(b" counter\n")?;
+                        write_type(&sanitized_name, "counter", &mut w)?;
                     }
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut enc);
-                    enc.write_all(b"} ")?;
-                    enc.write_all(v.to_string().as_bytes())?;
-                    enc.write_all(b"\n")?;
+                    write_metric(&sanitized_name, value.tags(default), v, &mut w)?;
                 }
             }
             AggregationMethod::Set => {
                 if let Some(v) = value.set() {
                     if seen.insert(value.name.clone()) {
-                        enc.write_all(b"# TYPE ")?;
-                        enc.write_all(sanitized_name.as_bytes())?;
-                        enc.write_all(b" gauge\n")?;
+                        write_type(&sanitized_name, "gauge", &mut w)?;
                     }
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut enc);
-                    enc.write_all(b"} ")?;
-                    enc.write_all(v.to_string().as_bytes())?;
-                    enc.write_all(b"\n")?;
+                    write_metric(&sanitized_name, value.tags(default), v, &mut w)?;
                 }
             }
             AggregationMethod::Histogram => {
                 if let Some(bin_iter) = value.bins() {
                     if seen.insert(value.name.clone()) {
-                        enc.write_all(b"# TYPE ")?;
-                        enc.write_all(sanitized_name.as_bytes())?;
-                        enc.write_all(b" histogram\n")?;
+                        write_type(&sanitized_name, "histogram", &mut w)?;
                     }
                     let mut running_sum = 0;
                     for &(bound, val) in bin_iter {
-                        enc.write_all(sanitized_name.as_bytes())?;
-                        enc.write_all(b"{le=\"")?;
-                        match bound {
-                            Bound::Finite(bnd) => {
-                                enc.write_all(bnd.to_string().as_bytes())?;
-                            }
-                            Bound::PosInf => {
-                                enc.write_all(b"+Inf")?;
-                            }
-                        }
+                        w.write_all(sanitized_name.as_bytes())?;
+
+                        // TODO(jpg): Could be combined with tags and processed with
+                        // write_metric()
+                        let le = match bound {
+                            Bound::Finite(bnd) => bnd.to_string(),
+                            Bound::PosInf => "+Inf".to_string(),
+                        };
+                        w.write_all(b"{")?;
+                        write_kv("le", le.as_str(), &mut w)?;
                         for (k, v) in value.tags(default) {
-                            enc.write_all(b"\", ")?;
-                            enc.write_all(k.as_bytes())?;
-                            enc.write_all(b"=\"")?;
-                            enc.write_all(v.as_bytes())?;
+                            w.write_all(b", ")?;
+                            write_kv(k, v, &mut w)?;
                         }
-                        enc.write_all(b"\"} ")?;
-                        enc.write_all((val + running_sum).to_string().as_bytes())?;
+                        w.write_all(b"} ")?;
+
+                        w.write_all((val + running_sum).to_string().as_bytes())?;
                         running_sum += val;
-                        enc.write_all(b"\n")?;
+                        w.write_all(b"\n")?;
                     }
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"_sum ")?;
-                    enc.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut enc);
-                    enc.write_all(b"} ")?;
-                    enc.write_all(
-                        value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
+                    let sum_value = value.samples_sum().unwrap_or(0.0);
+                    write_metric(
+                        &(sanitized_name.clone() + "_sum"),
+                        value.tags(default),
+                        sum_value,
+                        &mut w,
                     )?;
-                    enc.write_all(b"\n")?;
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"_count ")?;
-                    enc.write_all(b"{")?;
-                    fmt_tags(value.tags(default), &mut enc);
-                    enc.write_all(b"} ")?;
-                    enc.write_all(value.count().to_string().as_bytes())?;
-                    enc.write_all(b"\n")?;
+                    write_metric(
+                        &(sanitized_name.clone() + "_count"),
+                        value.tags(default),
+                        value.count() as f64,
+                        &mut w,
+                    )?;
                 }
             }
             AggregationMethod::Summarize => {
                 if seen.insert(value.name.clone()) {
-                    enc.write_all(b"# TYPE ")?;
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b" summary\n")?;
+                    write_type(&sanitized_name, "summary", &mut w)?;
                 }
                 for q in &[0.0, 1.0, 0.25, 0.5, 0.75, 0.90, 0.95, 0.99, 0.999] {
-                    enc.write_all(sanitized_name.as_bytes())?;
-                    enc.write_all(b"{quantile=\"")?;
-                    enc.write_all(q.to_string().as_bytes())?;
-                    for (k, v) in value.tags(default) {
-                        enc.write_all(b"\", ")?;
-                        enc.write_all(k.as_bytes())?;
-                        enc.write_all(b"=\"")?;
-                        enc.write_all(v.as_bytes())?;
-                    }
-                    enc.write_all(b"\"} ")?;
+                    w.write_all(sanitized_name.as_bytes())?;
 
-                    enc.write_all(value.query(*q).unwrap().to_string().as_bytes())?;
-                    enc.write_all(b"\n")?;
+                    // TODO(jpg): Could be combined with tags and processed with
+                    // write_metric()
+                    w.write_all(b"{")?;
+                    write_kv("quantile", q.to_string().as_str(), &mut w)?;
+                    for (k, v) in value.tags(default) {
+                        w.write_all(b", ")?;
+                        write_kv(k, v, &mut w)?;
+                    }
+                    w.write_all(b"} ")?;
+
+                    w.write_all(value.query(*q).unwrap().to_string().as_bytes())?;
+                    w.write_all(b"\n")?;
                 }
-                enc.write_all(sanitized_name.as_bytes())?;
-                enc.write_all(b"_sum ")?;
-                enc.write_all(b"{")?;
-                fmt_tags(value.tags(default), &mut enc);
-                enc.write_all(b"} ")?;
-                enc.write_all(
-                    value.samples_sum().unwrap_or(0.0).to_string().as_bytes(),
+                let sum_value = value.samples_sum().unwrap_or(0.0);
+                write_metric(
+                    &(sanitized_name.clone() + "_sum"),
+                    value.tags(default),
+                    sum_value,
+                    &mut w,
                 )?;
-                enc.write_all(b"\n")?;
-                enc.write_all(sanitized_name.as_bytes())?;
-                enc.write_all(b"_count ")?;
-                enc.write_all(b"{")?;
-                fmt_tags(value.tags(default), &mut enc);
-                enc.write_all(b"} ")?;
-                enc.write_all((value.count()).to_string().as_bytes())?;
-                enc.write_all(b"\n")?;
+                write_metric(
+                    &(sanitized_name.clone() + "_count"),
+                    value.tags(default),
+                    value.count() as f64,
+                    &mut w,
+                )?;
             }
         }
     }
-    enc.finish()
+    match w.flush() {
+        Ok(_) => Ok(w),
+        Err(e) => Err(e),
+    }
 }
 
 /// Sanitize cernan Telemetry into prometheus' notion
@@ -624,11 +637,12 @@ impl Sink<PrometheusConfig> for Prometheus {
         Prometheus {
             aggrs: sync::Arc::clone(&aggrs),
             age_threshold: config.age_threshold,
-            http_srv: http::Server::new(
+            http_srv: Server::new(
                 host_port,
                 PrometheusHandler {
                     tags: config.tags.clone(),
                     aggr: aggrs,
+                    gzip: config.gzip,
                 },
             ),
             tags: config.tags,
@@ -644,7 +658,7 @@ impl Sink<PrometheusConfig> for Prometheus {
         PROMETHEUS_AGGR_WINDOWED_PURGED.store(total_purged, Ordering::Relaxed);
     }
 
-    fn deliver(&mut self, telem: metric::Telemetry) {
+    fn deliver(&mut self, telem: Telemetry) {
         if let Some(age_threshold) = self.age_threshold {
             if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
                 self.aggrs.lock().unwrap().insert(telem);
@@ -663,7 +677,6 @@ impl Sink<PrometheusConfig> for Prometheus {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::metric;
     use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
 
     impl Arbitrary for PrometheusAggr {
@@ -671,16 +684,14 @@ mod test {
         where
             G: Gen,
         {
-            use std::collections::hash_map::*;
-
             let limit: usize = Arbitrary::arbitrary(g);
             let capacity_in_seconds: usize = match Arbitrary::arbitrary(g) {
                 0 => 1,
                 i => i,
             };
-            let mut data: util::HashMap<String, Accumulator> = Default::default();
+            let mut data: HashMap<String, Accumulator> = Default::default();
             for _ in 0..limit {
-                let telem: metric::Telemetry = Arbitrary::arbitrary(g);
+                let telem: Telemetry = Arbitrary::arbitrary(g);
                 let entry: Entry<String, Accumulator> = data.entry(telem.name.clone());
                 match entry {
                     Entry::Occupied(mut oe) => {
@@ -693,12 +704,12 @@ mod test {
                     }
                     Entry::Vacant(ve) => {
                         ve.insert(match telem.kind() {
-                            metric::AggregationMethod::Set
-                            | metric::AggregationMethod::Sum
-                            | metric::AggregationMethod::Histogram => {
+                            AggregationMethod::Set
+                            | AggregationMethod::Sum
+                            | AggregationMethod::Histogram => {
                                 Accumulator::Perpetual(telem)
                             }
-                            metric::AggregationMethod::Summarize => {
+                            AggregationMethod::Summarize => {
                                 let mut samples = Vec::new();
                                 let sum = telem.query(1.0).unwrap();
                                 samples.push(telem);
@@ -722,7 +733,7 @@ mod test {
 
     #[test]
     fn test_accumlator_window_boundary_obeyed() {
-        fn inner(cap: usize, telems: Vec<metric::Telemetry>) -> TestResult {
+        fn inner(cap: usize, telems: Vec<Telemetry>) -> TestResult {
             let mut windowed = Accumulator::Windowed {
                 cap: cap,
                 samples: Vec::new(),
@@ -741,8 +752,7 @@ mod test {
 
             TestResult::passed()
         }
-        QuickCheck::new()
-            .quickcheck(inner as fn(usize, Vec<metric::Telemetry>) -> TestResult);
+        QuickCheck::new().quickcheck(inner as fn(usize, Vec<Telemetry>) -> TestResult);
     }
 
     #[test]
@@ -774,7 +784,7 @@ mod test {
     //    - insertion WILL make telemetry exist after the insertion
     #[test]
     fn test_insertion_exists_property() {
-        fn inner(telem: metric::Telemetry, mut aggr: PrometheusAggr) -> TestResult {
+        fn inner(telem: Telemetry, mut aggr: PrometheusAggr) -> TestResult {
             let cur_cnt = aggr.count();
             match aggr.find_match(&telem) {
                 Some(other) => {
@@ -786,7 +796,7 @@ mod test {
                         assert_eq!(other.name, new_t.name);
                         assert_eq!(new_t.kind(), telem.kind());
                     } else {
-                        assert!(other.kind() != telem.kind());
+                        assert_ne!(other.kind(), telem.kind());
                         assert_eq!(cur_cnt, aggr.count());
                         return TestResult::discard();
                     }
@@ -796,12 +806,12 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new()
-            .quickcheck(inner as fn(metric::Telemetry, PrometheusAggr) -> TestResult);
+            .quickcheck(inner as fn(Telemetry, PrometheusAggr) -> TestResult);
     }
 
     #[test]
     fn test_insertion_not_exists_property() {
-        fn inner(telem: metric::Telemetry, mut aggr: PrometheusAggr) -> TestResult {
+        fn inner(telem: Telemetry, mut aggr: PrometheusAggr) -> TestResult {
             let cur_cnt = aggr.count();
             match aggr.find_match(&telem) {
                 Some(_) => return TestResult::discard(),
@@ -814,12 +824,12 @@ mod test {
             TestResult::passed()
         }
         QuickCheck::new()
-            .quickcheck(inner as fn(metric::Telemetry, PrometheusAggr) -> TestResult);
+            .quickcheck(inner as fn(Telemetry, PrometheusAggr) -> TestResult);
     }
 
     #[test]
     fn test_sanitization() {
-        fn inner(metric: metric::Telemetry) -> TestResult {
+        fn inner(metric: Telemetry) -> TestResult {
             let name: String = sanitize(&metric.name);
             for c in name.chars() {
                 match c {
@@ -832,6 +842,188 @@ mod test {
             }
             TestResult::passed()
         }
-        QuickCheck::new().quickcheck(inner as fn(metric::Telemetry) -> TestResult);
+        QuickCheck::new().quickcheck(inner as fn(Telemetry) -> TestResult);
+    }
+
+    fn write_tags_test_helper(iter: TagIter, expected: &str) {
+        let mut buffer = Vec::with_capacity(2048);
+        write_tags(iter, &mut buffer).unwrap();
+        assert_eq!(expected, String::from_utf8(buffer).unwrap());
+    }
+
+    #[test]
+    fn test_write_tags() {
+        let empty = TagMap::default();
+        let mut defaults = TagMap::default();
+        defaults.insert("source".into(), "test-src".into());
+        let mut tags = TagMap::default();
+        tags.insert("custom-tag".into(), "custom-value".into());
+
+        write_tags_test_helper(
+            TagIter::Single {
+                defaults: empty.iter(),
+            },
+            "",
+        );
+
+        write_tags_test_helper(
+            TagIter::Single {
+                defaults: tags.iter(),
+            },
+            r#"{custom-tag="custom-value"}"#,
+        );
+
+        write_tags_test_helper(
+            TagIter::Double {
+                iters_exhausted: false,
+                seen_keys: HashSet::new(),
+                defaults: defaults.iter(),
+                iters: tags.iter(),
+            },
+            r#"{custom-tag="custom-value", source="test-src"}"#,
+        );
+    }
+
+    fn write_text_test_helper(
+        aggr: &PrometheusAggr,
+        defaults: &TagMap,
+        mut expected: Vec<&str>,
+    ) {
+        let mut buffer = Vec::with_capacity(2048);
+        buffer = write_text(aggr.reportable(), &defaults, buffer).unwrap();
+        let string = String::from_utf8(buffer).unwrap();
+        let mut lines: Vec<&str> = string.lines().collect();
+        lines.sort();
+        expected.sort();
+        println!("Expected:");
+        println!("{:#?}", expected);
+        println!("Actual:");
+        println!("{:#?}", lines);
+        assert_eq!(expected, lines);
+    }
+
+    #[test]
+    fn test_write_text() {
+        let empty = TagMap::default();
+        let mut defaults = TagMap::default();
+        defaults.insert("source".into(), "test-src".into());
+        let mut tags = TagMap::default();
+        tags.insert("custom-tag".into(), "custom-value".into());
+
+        let aggr = PrometheusAggr::new(1);
+
+        write_text_test_helper(&aggr, &empty, vec![]);
+        write_text_test_helper(&aggr, &defaults, vec![]);
+
+        let mut counter_aggr = PrometheusAggr::new(1);
+
+        counter_aggr.insert(
+            Telemetry::new()
+                .name("test.counter")
+                .value(-1.0)
+                .kind(AggregationMethod::Sum)
+                .harden()
+                .unwrap()
+                .overlay_tags_from_map(&tags),
+        );
+
+        write_text_test_helper(
+            &counter_aggr,
+            &defaults,
+            vec![
+                "# TYPE test_counter counter",
+                r#"test_counter{custom-tag="custom-value", source="test-src"} -1"#,
+            ],
+        );
+
+        let mut gauge_aggr = PrometheusAggr::new(1);
+
+        gauge_aggr.insert(
+            Telemetry::new()
+                .name("test.gauge")
+                .value(3.211)
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap(),
+        );
+
+        write_text_test_helper(
+            &gauge_aggr,
+            &empty,
+            vec!["# TYPE test_gauge gauge", r#"test_gauge 3.211"#],
+        );
+
+        let mut timer_aggr = PrometheusAggr::new(1);
+
+        timer_aggr.insert(
+            Telemetry::new()
+                .name("test.timer")
+                .value(12.101)
+                .kind(AggregationMethod::Summarize)
+                .harden()
+                .unwrap(),
+        );
+
+        write_text_test_helper(
+            &timer_aggr,
+            &defaults,
+            vec![
+                "# TYPE test_timer summary",
+                r#"test_timer_count{source="test-src"} 1"#,
+                r#"test_timer_sum{source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.25", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.5", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.75", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.9", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.95", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.99", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="0.999", source="test-src"} 12.101"#,
+                r#"test_timer{quantile="1", source="test-src"} 12.101"#,
+            ],
+        );
+
+        let mut raw_aggr = PrometheusAggr::new(1);
+
+        raw_aggr.insert(
+            Telemetry::new()
+                .name("test.raw")
+                .value(1.0)
+                .kind(AggregationMethod::Set)
+                .harden()
+                .unwrap(),
+        );
+
+        write_text_test_helper(
+            &raw_aggr,
+            &defaults,
+            vec!["# TYPE test_raw gauge", r#"test_raw{source="test-src"} 1"#],
+        );
+
+        let mut histogram_aggr = PrometheusAggr::new(1);
+
+        histogram_aggr.insert(
+            Telemetry::new()
+                .name("test.histogram")
+                .value(0.1)
+                .kind(AggregationMethod::Histogram)
+                .harden()
+                .unwrap(),
+        );
+
+        write_text_test_helper(
+            &histogram_aggr,
+            &defaults,
+            vec![
+                "# TYPE test_histogram histogram",
+                r#"test_histogram_count{source="test-src"} 1"#,
+                r#"test_histogram_sum{source="test-src"} 0.1"#,
+                r#"test_histogram{le="+Inf", source="test-src"} 1"#,
+                r#"test_histogram{le="1", source="test-src"} 1"#,
+                r#"test_histogram{le="10", source="test-src"} 1"#,
+                r#"test_histogram{le="100", source="test-src"} 1"#,
+                r#"test_histogram{le="1000", source="test-src"} 1"#,
+            ],
+        );
     }
 }
