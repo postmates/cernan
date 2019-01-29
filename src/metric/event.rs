@@ -21,6 +21,7 @@ pub type Metadata = HashMap<Vec<u8>, Vec<u8>>;
 /// Event is the heart of cernan, the enumeration that cernan works on in all
 /// cases. The enumeration fields drive sink / source / filter operations
 /// depending on their implementation.
+#[allow(clippy::large_enum_variant)]
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub enum Event {
     /// A wrapper for `metric::Telemetry`. See its documentation for more

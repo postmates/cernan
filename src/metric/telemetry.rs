@@ -512,7 +512,7 @@ pub enum Error {
 impl Telemetry {
     /// Make a builder for metrics
     ///
-    /// This function returns a TelemetryBuidler with a name set. A metric must
+    /// This function returns a TelemetryBuilder with a name set. A metric must
     /// have _at least_ a name and a value but values may be delayed behind
     /// names.
     ///
@@ -527,6 +527,7 @@ impl Telemetry {
     /// assert_eq!(m.name, "foo");
     /// assert_eq!(m.set(), Some(1.1));
     /// ```
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> SoftTelemetry {
         SoftTelemetry {
             name: None,

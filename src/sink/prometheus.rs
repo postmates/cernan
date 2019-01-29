@@ -391,7 +391,7 @@ struct PrometheusHandler {
 }
 
 impl Handler for PrometheusHandler {
-    fn handle(&self, request: Request) -> () {
+    fn handle(&self, request: Request) {
         let mut buffer = Vec::with_capacity(2048);
         if let Ok(ref aggr) = self.aggr.try_lock() {
             PROMETHEUS_AGGR_REPORTABLE.store(aggr.count(), Ordering::Relaxed);
@@ -658,7 +658,7 @@ impl Sink<PrometheusConfig> for Prometheus {
         PROMETHEUS_AGGR_WINDOWED_PURGED.store(total_purged, Ordering::Relaxed);
     }
 
-    fn deliver(&mut self, telem: Telemetry) -> () {
+    fn deliver(&mut self, telem: Telemetry) {
         if let Some(age_threshold) = self.age_threshold {
             if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
                 self.aggrs.lock().unwrap().insert(telem);
@@ -668,7 +668,7 @@ impl Sink<PrometheusConfig> for Prometheus {
         }
     }
 
-    fn shutdown(mut self) -> () {
+    fn shutdown(mut self) {
         self.flush();
         self.http_srv.shutdown();
     }

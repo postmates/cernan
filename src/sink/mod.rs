@@ -77,7 +77,7 @@ where
         })
     }
 
-    fn consume(mut self) -> () {
+    fn consume(mut self) {
         let mut attempts = 0;
         let mut recv = self.recv.into_iter();
         let mut last_flush_idx = 0;
@@ -233,12 +233,12 @@ where
     }
     /// Deliver a `Telemetry` to the `Sink`. Exact behaviour varies by
     /// implementation.
-    fn deliver(&mut self, _telem: Telemetry) -> () {
+    fn deliver(&mut self, _telem: Telemetry) {
         // nothing, intentionally
     }
     /// Deliver a `LogLine` to the `Sink`. Exact behaviour varies by
     /// implementation.
-    fn deliver_line(&mut self, _line: LogLine) -> () {
+    fn deliver_line(&mut self, _line: LogLine) {
         // nothing, intentionally
     }
     /// Deliver a 'Raw' series of encoded bytes to the sink.
@@ -249,7 +249,7 @@ where
         _bytes: Vec<u8>,
         _metadata: Option<Metadata>,
         _connection_id: Option<Uuid>,
-    ) -> () {
+    ) {
         // Not all sinks accept raw events.  By default, we do nothing.
     }
     /// Provide a hook to shutdown a sink. This is necessary for sinks which

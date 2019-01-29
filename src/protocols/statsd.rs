@@ -53,7 +53,7 @@ pub fn parse_statsd(
                         metric = metric.name(name);
                         metric = metric.value(val);
                         metric = metric.timestamp(time::now());
-                        let signed = match &src[offset..(offset + 1)] {
+                        let signed = match &src[offset..=offset] {
                             "+" | "-" => true,
                             _ => false,
                         };

@@ -139,7 +139,7 @@ impl Default for WavefrontConfig {
 }
 
 #[inline]
-fn fmt_tags(mut iter: TagIter, s: &mut String) -> () {
+fn fmt_tags(mut iter: TagIter, s: &mut String) {
     if let Some((fk, fv)) = iter.next() {
         s.push_str(fk);
         s.push_str("=");
@@ -180,7 +180,7 @@ impl<'a> Pad<'a> {
         }
     }
 
-    pub fn skip_pad(&self, pad_control: &PadControl) -> bool {
+    pub fn skip_pad(&self, pad_control: PadControl) -> bool {
         match *self {
             Pad::Zero(_, _) => true,
             Pad::Telem(x) => match x.kind() {
@@ -252,7 +252,7 @@ impl<'a> Iterator for Padding<'a> {
                 // is not part of our current sequence and it requires no
                 // padding.
                 if x.hash() == y.hash() {
-                    if x.skip_pad(&self.pad_control) {
+                    if x.skip_pad(self.pad_control) {
                         self.emit_q.push(y);
                         return Some(x);
                     }
@@ -315,7 +315,7 @@ impl<'a> Iterator for Padding<'a> {
             (Some(x), None) => {
                 self.last_hash = x.hash();
                 // end of sequence
-                if x.skip_pad(&self.pad_control) {
+                if x.skip_pad(self.pad_control) {
                     return Some(x);
                 }
                 let flush_padded = self.flush_padded.contains(&x.hash());
@@ -386,7 +386,7 @@ fn connect(host: &str, port: u16) -> Option<TcpStream> {
 impl Wavefront {
     /// Convert the buckets into a String that
     /// can be sent to the the wavefront proxy
-    pub fn format_stats(&mut self) -> () {
+    pub fn format_stats(&mut self) {
         let mut time_cache: Vec<(i64, String)> = Vec::with_capacity(128);
         let mut count_cache: Vec<(usize, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
@@ -462,7 +462,7 @@ impl Wavefront {
         mut time_cache: &mut Vec<(i64, String)>,
         mut count_cache: &mut Vec<(usize, String)>,
         mut value_cache: &mut Vec<(f64, String)>,
-    ) -> () {
+    ) {
         let mut tag_buf = String::with_capacity(1_024);
         match value.kind() {
             AggregationMethod::Histogram => {
@@ -636,11 +636,11 @@ impl Sink<WavefrontConfig> for Wavefront {
         }
     }
 
-    fn shutdown(mut self) -> () {
+    fn shutdown(mut self) {
         self.flush();
     }
 
-    fn deliver(&mut self, telem: Telemetry) -> () {
+    fn deliver(&mut self, telem: Telemetry) {
         if let Some(age_threshold) = self.age_threshold {
             if (telem.timestamp - time::now()).abs() <= (age_threshold as i64) {
                 self.aggrs.add(telem);

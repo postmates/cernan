@@ -76,7 +76,7 @@ impl FileWatcher {
         }
     }
 
-    fn open_at_start(&mut self) -> () {
+    fn open_at_start(&mut self) {
         if let Ok(f) = fs::File::open(&self.path) {
             let metadata = f.metadata().unwrap(); // we _must_ be able to read the metadata
             let dev = metadata.dev();

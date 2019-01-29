@@ -47,7 +47,7 @@ pub fn report_full_telemetry(
     name: &str,
     value: f64,
     metadata: Option<Vec<(&str, &str)>>,
-) -> () {
+) {
     use crate::metric::AggregationMethod;
     let mut telem = metric::Telemetry::new()
         .name(name)
@@ -108,8 +108,8 @@ impl source::Source<InternalConfig> for Internal {
         Internal {}
     }
 
-    #[allow(cyclomatic_complexity)]
-    fn run(self, mut chans: util::Channel, poller: mio::Poll) -> () {
+    #[allow(clippy::cyclomatic_complexity)]
+    fn run(self, mut chans: util::Channel, poller: mio::Poll) {
         let slp = std::time::Duration::from_millis(1_000);
         loop {
             let mut events = mio::Events::with_capacity(1024);

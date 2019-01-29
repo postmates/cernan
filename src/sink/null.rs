@@ -38,7 +38,7 @@ impl Sink<NullConfig> for Null {
         // do nothing
     }
 
-    fn shutdown(mut self) -> () {
+    fn shutdown(mut self) {
         self.flush();
     }
 }

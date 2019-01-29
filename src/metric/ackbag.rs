@@ -64,12 +64,11 @@ impl SyncAckBag {
     /// Retrieve a mutable reference to the SyncAckProps for the key and invoke
     /// a callback if it exists. If the key is not present, then the
     /// callback is not called.
-    pub fn with_props<F: FnOnce(&mut SyncAckProps)>(&self, key: Uuid, f: F) {
+    pub fn with_props<F: FnOnce(&mut SyncAckProps)>(&self, key: Uuid, callback: F) {
         let mut bag = self.waiting_syncs.lock().unwrap();
-        match bag.get_mut(&key) {
-            Some(v) => Some(f(v)),
-            None => None,
-        };
+        if let Some(v) = bag.get_mut(&key) {
+            callback(v);
+        }
     }
 
     /// Wait until the number of acks in the specified key becomes non-zero.

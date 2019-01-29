@@ -78,11 +78,11 @@ impl Sink<ConsoleConfig> for Console {
         Valve::Open
     }
 
-    fn deliver(&mut self, point: Telemetry) -> () {
+    fn deliver(&mut self, point: Telemetry) {
         self.aggrs.add(point);
     }
 
-    fn deliver_line(&mut self, line: LogLine) -> () {
+    fn deliver_line(&mut self, line: LogLine) {
         self.buffer.append(&mut vec![line]);
     }
 
@@ -195,7 +195,7 @@ impl Sink<ConsoleConfig> for Console {
         self.aggrs.reset();
     }
 
-    fn shutdown(mut self) -> () {
+    fn shutdown(mut self) {
         self.flush();
     }
 }

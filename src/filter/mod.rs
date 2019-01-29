@@ -34,8 +34,8 @@ pub enum FilterError {
 
 fn msg_in_fe(fe: &FilterError) -> &str {
     match fe {
-        &FilterError::NoSuchFunction(n, _) => n,
-        &FilterError::LuaError(ref n, _) => n,
+        FilterError::NoSuchFunction(n, _) => n,
+        FilterError::LuaError(ref n, _) => n,
     }
 }
 

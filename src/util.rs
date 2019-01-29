@@ -85,8 +85,8 @@ pub enum Valve {
 }
 
 #[inline]
-fn token_to_idx(token: &mio::Token) -> usize {
-    match *token {
+fn token_to_idx(token: mio::Token) -> usize {
+    match token {
         mio::Token(idx) => idx,
     }
 }
@@ -108,13 +108,13 @@ impl<E: mio::Evented> Index<mio::Token> for TokenSlab<E> {
 
     /// Returns Evented object corresponding to Token.
     fn index(&self, token: mio::Token) -> &E {
-        &self.tokens[token_to_idx(&token)]
+        &self.tokens[token_to_idx(token)]
     }
 }
 
 impl<E: mio::Evented> IndexMut<mio::Token> for TokenSlab<E> {
     fn index_mut(&mut self, token: mio::Token) -> &mut E {
-        &mut self.tokens[token_to_idx(&token)]
+        &mut self.tokens[token_to_idx(token)]
     }
 }
 
@@ -127,7 +127,7 @@ impl<E: mio::Evented> TokenSlab<E> {
     pub fn new() -> TokenSlab<E> {
         TokenSlab {
             token_count: 0,
-            tokens: slab::Slab::with_capacity(token_to_idx(&constants::SYSTEM)),
+            tokens: slab::Slab::with_capacity(token_to_idx(constants::SYSTEM)),
         }
     }
 

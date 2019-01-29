@@ -108,7 +108,7 @@ where
     }
 
     /// Starts the accept loop.
-    fn run(self, chans: util::Channel, poller: mio::Poll) -> () {
+    fn run(self, chans: util::Channel, poller: mio::Poll) {
         for (idx, listener) in self.listeners.iter() {
             if let Err(e) = poller.register(
                 listener,
@@ -137,7 +137,7 @@ impl<H> TCP<H>
 where
     H: TCPStreamHandler,
 {
-    fn accept_loop(mut self, mut chans: util::Channel, poll: &mio::Poll) -> () {
+    fn accept_loop(mut self, mut chans: util::Channel, poll: &mio::Poll) {
         loop {
             let mut events = mio::Events::with_capacity(1024);
             match poll.poll(&mut events, None) {
@@ -160,18 +160,13 @@ where
                                         "Removed {:?} terminated stream handlers.",
                                         ready.len()
                                     );
-                                } else {
-                                    if let Err(e) = self
-                                        .spawn_stream_handlers(&chans, listener_token)
-                                    {
-                                        let listener = &self.listeners[listener_token];
-                                        error!(
-                                            "Failed to spawn stream handlers! {:?}",
-                                            e
-                                        );
-                                        error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
-                                        let _ = poll.deregister(listener);
-                                    }
+                                } else if let Err(e) =
+                                    self.spawn_stream_handlers(&chans, listener_token)
+                                {
+                                    let listener = &self.listeners[listener_token];
+                                    error!("Failed to spawn stream handlers! {:?}", e);
+                                    error!("Deregistering listener for {:?} due to unrecoverable error!", *listener);
+                                    let _ = poll.deregister(listener);
                                 }
                             }
                         }

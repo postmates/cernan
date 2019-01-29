@@ -73,7 +73,7 @@ macro_rules! cfg_conf {
     };
 }
 
-#[allow(cyclomatic_complexity)]
+#[allow(clippy::cyclomatic_complexity)]
 fn main() {
     openssl_probe::init_ssl_cert_env_vars();
 
@@ -505,7 +505,7 @@ fn main() {
 
     // FILTERS
     //
-    mem::replace(&mut args.programmable_filters, None).map(|cfg_map| {
+    if let Some(cfg_map) = mem::replace(&mut args.programmable_filters, None) {
         for config in cfg_map.values() {
             let c: ProgrammableFilterConfig = (*config).clone();
             let recv = receivers
@@ -539,9 +539,9 @@ fn main() {
                 }),
             );
         }
-    });
+    };
 
-    mem::replace(&mut args.delay_filters, None).map(|cfg_map| {
+    if let Some(cfg_map) = mem::replace(&mut args.delay_filters, None) {
         for config in cfg_map.values() {
             let c: DelayFilterConfig = (*config).clone();
             let recv = receivers
@@ -576,9 +576,9 @@ fn main() {
                 }),
             );
         }
-    });
+    };
 
-    mem::replace(&mut args.json_encode_filters, None).map(|cfg_map| {
+    if let Some(cfg_map) = mem::replace(&mut args.json_encode_filters, None) {
         for config in cfg_map.values() {
             let c: JSONEncodeFilterConfig = (*config).clone();
             let recv = receivers
@@ -613,9 +613,9 @@ fn main() {
                 }),
             );
         }
-    });
+    };
 
-    mem::replace(&mut args.flush_boundary_filters, None).map(|cfg_map| {
+    if let Some(cfg_map) = mem::replace(&mut args.flush_boundary_filters, None) {
         for config in cfg_map.values() {
             let c: FlushBoundaryFilterConfig = (*config).clone();
             let recv = receivers
@@ -649,11 +649,11 @@ fn main() {
                 }),
             );
         }
-    });
+    };
 
     // SOURCES
     //
-    mem::replace(&mut args.native_server_config, None).map(|cfg_map| {
+    if let Some(cfg_map) = mem::replace(&mut args.native_server_config, None) {
         for (config_path, config) in cfg_map {
             populate_forwards(
                 Some(&mut flush_sends),
@@ -670,7 +670,7 @@ fn main() {
                     .run(),
             );
         }
-    });
+    };
 
     let internal_config = mem::replace(&mut args.internal, Default::default());
     let internal_config_path = internal_config.config_path.clone().unwrap();
@@ -688,7 +688,7 @@ fn main() {
         cernan::source::Internal::new(internal_send, internal_config).run(),
     );
 
-    mem::replace(&mut args.statsds, None).map(|cfg_map| {
+    if let Some(cfg_map) = mem::replace(&mut args.statsds, None) {
         for (config_path, config) in cfg_map {
             populate_forwards(
                 Some(&mut flush_sends),
@@ -704,9 +704,9 @@ fn main() {
                 cernan::source::Statsd::new(statsd_sends, config).run(),
             );
         }
-    });
+    };
 
-    mem::replace(&mut args.graphites, None).map(|cfg_map| {
+    if let Some(cfg_map) = mem::replace(&mut args.graphites, None) {
         for (config_path, config) in cfg_map {
             populate_forwards(
                 Some(&mut flush_sends),
@@ -722,9 +722,9 @@ fn main() {
                 cernan::source::Graphite::new(graphite_sends, config.into()).run(),
             );
         }
-    });
+    };
 
-    mem::replace(&mut args.avros, None).map(|cfg_map| {
+    if let Some(cfg_map) = mem::replace(&mut args.avros, None) {
         for (config_path, config) in cfg_map {
             populate_forwards(
                 Some(&mut flush_sends),
@@ -740,9 +740,9 @@ fn main() {
                 cernan::source::Avro::new(avro_sends, config).run(),
             );
         }
-    });
+    };
 
-    mem::replace(&mut args.files, None).map(|cfg| {
+    if let Some(cfg) = mem::replace(&mut args.files, None) {
         for config in cfg {
             let config_path = config.config_path.clone().unwrap();
             populate_forwards(
@@ -759,7 +759,7 @@ fn main() {
                 cernan::source::FileServer::new(fp_sends, config).run(),
             );
         }
-    });
+    };
 
     // BACKGROUND
     //

@@ -75,7 +75,7 @@ impl Default for InfluxDBConfig {
 }
 
 #[inline]
-fn fmt_tags(tags: TagIter, s: &mut String) -> () {
+fn fmt_tags(tags: TagIter, s: &mut String) {
     for (k, v) in tags {
         s.push_str(",");
         s.push_str(k);
@@ -101,7 +101,7 @@ where
 
 impl InfluxDB {
     /// Convert the slice into a payload that can be sent to InfluxDB
-    fn format_stats(&self, buffer: &mut String, telems: &[Telemetry]) -> () {
+    fn format_stats(&self, buffer: &mut String, telems: &[Telemetry]) {
         use crate::metric::AggregationMethod;
         let mut time_cache: Vec<(u64, String)> = Vec::with_capacity(128);
         let mut value_cache: Vec<(f64, String)> = Vec::with_capacity(128);
@@ -278,11 +278,11 @@ impl Sink<InfluxDBConfig> for InfluxDB {
         self.aggrs.clear();
     }
 
-    fn shutdown(mut self) -> () {
+    fn shutdown(mut self) {
         self.flush();
     }
 
-    fn deliver(&mut self, point: Telemetry) -> () {
+    fn deliver(&mut self, point: Telemetry) {
         self.aggrs.push(point);
     }
 

@@ -199,7 +199,7 @@ mod test {
     // What we can do, though, is drive our FWFile model and the SUT at the same
     // time, recording the total number of reads/writes. The SUT reads should be
     // bounded below by the model reads, bounded above by the writes.
-    fn experiment(actions: Vec<FWAction>) -> () {
+    fn experiment(actions: Vec<FWAction>) {
         let dir = tempdir::TempDir::new("file_watcher_qc").unwrap();
         let path = dir.path().join("a_file.log");
         let mut fp = fs::File::create(&path).expect("could not create");
@@ -300,7 +300,7 @@ mod test {
     // This interpretation is the happy case. When there are no truncations our
     // model and SUT should agree exactly. To that end, we confirm that every
     // read from SUT exactly matches the reads from the model.
-    fn experiment_no_truncations(actions: Vec<FWAction>) -> () {
+    fn experiment_no_truncations(actions: Vec<FWAction>) {
         let dir = tempdir::TempDir::new("file_watcher_qc").unwrap();
         let path = dir.path().join("a_file.log");
         let mut fp = fs::File::create(&path).expect("could not create");

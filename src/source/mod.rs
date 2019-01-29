@@ -88,5 +88,5 @@ where
 
     /// Run method invoked by RunnableSource.
     /// It is from this method that Sources produce metric::Events.
-    fn run(self, chans: util::Channel, poller: mio::Poll) -> ();
+    fn run(self, chans: util::Channel, poller: mio::Poll);
 }

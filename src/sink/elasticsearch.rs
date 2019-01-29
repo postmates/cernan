@@ -95,7 +95,7 @@ impl Default for ElasticsearchConfig {
             index_type: "payload".to_string(),
             delivery_attempt_limit: 10,
             port: 9200,
-            flush_interval: 1 * flushes_per_second(),
+            flush_interval: flushes_per_second(),
             tags: TagMap::default(),
         }
     }
@@ -123,7 +123,7 @@ pub struct Elasticsearch {
 }
 
 impl Elasticsearch {
-    fn bulk_body(&self, buffer: &mut String) -> () {
+    fn bulk_body(&self, buffer: &mut String) {
         assert!(!self.buffer.is_empty());
         use serde_json::{to_string, Value};
         for m in &self.buffer {
@@ -176,7 +176,7 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
         Some(self.flush_interval)
     }
 
-    #[allow(cyclomatic_complexity)]
+    #[allow(clippy::cyclomatic_complexity)]
     fn flush(&mut self) {
         if self.buffer.is_empty() {
             return;
@@ -334,11 +334,11 @@ impl Sink<ElasticsearchConfig> for Elasticsearch {
         }
     }
 
-    fn shutdown(mut self) -> () {
+    fn shutdown(mut self) {
         self.flush();
     }
 
-    fn deliver_line(&mut self, line: LogLine) -> () {
+    fn deliver_line(&mut self, line: LogLine) {
         let uuid = uuid::Uuid::new_v4();
         self.buffer.push(Line {
             uuid: uuid,

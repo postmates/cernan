@@ -102,11 +102,11 @@ impl Sink<NativeConfig> for Native {
         }
     }
 
-    fn deliver(&mut self, telemetry: metric::Telemetry) -> () {
+    fn deliver(&mut self, telemetry: metric::Telemetry) {
         self.buffer.push(metric::Event::Telemetry(telemetry));
     }
 
-    fn deliver_line(&mut self, line: metric::LogLine) -> () {
+    fn deliver_line(&mut self, line: metric::LogLine) {
         self.buffer.push(metric::Event::Log(line));
     }
 
@@ -202,7 +202,7 @@ impl Sink<NativeConfig> for Native {
         }
     }
 
-    fn shutdown(mut self) -> () {
+    fn shutdown(mut self) {
         self.flush();
     }
 }
