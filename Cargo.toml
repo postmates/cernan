@@ -8,7 +8,7 @@ license = "MIT"
 name = "cernan"
 readme = "README.md"
 repository = "https://github.com/postmates/cernan"
-version = "0.9.1-pre"
+version = "0.9.1"
 edition = "2018"
 
 [[bin]]
