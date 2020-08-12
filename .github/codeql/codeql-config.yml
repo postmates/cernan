@@ -2,3 +2,4 @@ name: "CodeQL config"
 
 queries:
   - uses: security-extended
+  
