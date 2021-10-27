@@ -1,3 +1,6 @@
+# Now Archived and Forked
+_cernan_ will not be maintained in this repository going forward. Please use, create issues on, and make PRs to the fork of _cernan_ located [here](https://github.com/blt/cernan).
+
 # cernan - telemetry aggregation and shipping, last up the ladder
 
 [![Build Status](https://travis-ci.com/postmates/cernan.svg?branch=master)](https://travis-ci.com/postmates/cernan) [![Codecov](https://img.shields.io/codecov/c/github/postmates/cernan.svg)](https://codecov.io/gh/postmates/cernan)
